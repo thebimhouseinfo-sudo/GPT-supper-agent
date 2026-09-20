@@ -1,0 +1,229 @@
+# GPT Super Agent — Implementation Plan v0.1
+
+## Goal
+
+Build the smallest useful version of the harness that can persist project memory, prepare grounded plans, enforce role boundaries, and coordinate GitHub coding with independent review.
+
+## Phase 0 — Repository foundation
+
+- Establish architecture/spec documents.
+- Define JSON schemas for Job, Project Profile, State, Repo Graph, Knowledge Profile, Capability Matrix, Task, Review, and Change Set.
+- Define plugin naming and packaging conventions.
+- Define tests for harness state transitions.
+
+Exit criterion: architecture and schemas are stable enough to implement without inventing storage semantics during coding.
+
+## Phase 1 — Project Memory foundation
+
+Implement:
+
+- Job registry
+- one Google Drive folder per Job
+- Job bootstrap
+- Project Memory folder creation
+- Markdown/JSON templates
+- Project/repo relationship lookup
+- read/write abstraction for Project Memory
+- state versioning and validation
+
+Hard rule: Drive contains project memory only, never source code.
+
+Exit criterion: a Job can be created, reopened in another conversation, and its structured state restored.
+
+## Phase 2 — Project and repo profiling
+
+Implement:
+
+- single-repo / multi-repo classification
+- repo metadata
+- repo graph
+- shared contract representation
+- project architecture reference
+- relevant-context resolution for child repos
+
+Exit criterion: opening a child repo resolves the parent project and loads inherited shared context without duplicating files into every repo.
+
+## Phase 3 — Knowledge and capability system
+
+Implement:
+
+- Knowledge Profile
+- Knowledge requirement detection
+- domain/platform/engineering knowledge categories
+- provenance/freshness metadata
+- knowledge-gap representation
+- executor registry
+- capability matrix
+- negative capability knowledge
+- session-level capability refresh
+
+Hard rule: unknown capability is unavailable until verified.
+
+Exit criterion: Planner can determine whether a proposed implementation step has enough knowledge and a valid executor.
+
+## Phase 4 — Planner Harness
+
+Implement Planner causal pipeline:
+
+1. intent resolution
+2. project classification
+3. domain/stack detection
+4. knowledge requirements
+5. knowledge gap resolution
+6. architecture reconstruction
+7. dependency/contract analysis
+8. capability resolution
+9. impact analysis
+10. execution design
+11. plan compilation
+12. plan validation
+
+Planner writes only Project Memory.
+
+Outputs:
+
+- Project Start Package
+- Master Plan where needed
+- repo plans
+- acceptance criteria
+- verification strategy
+- executor assignment
+- impact report
+
+Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
+
+## Phase 5 — Coder Harness
+
+Implement:
+
+- context packet pull
+- live repo inspection
+- detailed execution plan generation
+- ephemeral execution checklist
+- QA/QC loop
+- deviation classification
+- PLANNING_GAP escalation
+- structured handoff
+
+Coder writes only source repos.
+
+Exit criterion: Coder can work from Planner material without modifying planning memory and can stop correctly when a Level 3 deviation is discovered.
+
+## Phase 6 — Reviewer Harness
+
+Implement two reviewer modes:
+
+1. Execution Plan Audit
+2. Implementation Review
+
+Execution Plan Audit decides:
+
+- task grouping
+- review units
+- PR boundaries
+- architectural checkpoints
+- executor feasibility
+- verification feasibility
+
+Implementation Review records:
+
+- critical/important/minor findings
+- plan compliance
+- architecture/contract compliance
+- evidence quality
+- cross-repo obligations
+
+Reviewer writes only Project Memory.
+
+Exit criterion: Coder cannot begin before audit approval and cannot complete before independent implementation review.
+
+## Phase 7 — GitHub remote execution
+
+Use GitHub as the first code executor.
+
+Support:
+
+- branch creation
+- file changes
+- commits
+- draft PR
+- PR diff inspection
+- CI/workflow evidence
+- fixes
+- formal review
+- merge decision
+
+Do not infer shell/local-runtime capabilities from GitHub access.
+
+Exit criterion: a repo with sufficient GitHub Actions can complete a full remote code/review loop.
+
+## Phase 8 — Multi-repo Change Sets
+
+Implement:
+
+- master plan to repo-plan mapping
+- coordinated PR tracking
+- contract migration order
+- cross-repo obligations
+- integration review
+- Change Set completion gate
+
+Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
+
+## Phase 9 — Additional executors
+
+Add GPTWorker/local execution after the core harness is stable.
+
+Route tasks by capability:
+
+- local filesystem
+- shell
+- dev server
+- desktop application runtime
+- Revit/AutoCAD
+- local integration testing
+
+Do not duplicate planning logic in executor-specific code.
+
+## Phase 10 — Plugin packaging and UX
+
+Expose a concise user interaction model, for example:
+
+```text
+@SuperAgent job create ...
+@SuperAgent job open ...
+@SuperAgent status
+@SuperAgent plan ...
+@SuperAgent continue
+@SuperAgent review
+```
+
+Natural-language requests remain supported; command grammar is an optional deterministic control surface.
+
+## Initial non-goals
+
+- Storing source code in Google Drive
+- Dumping full chat history into Project Memory
+- Building a universal shell before harness governance is stable
+- Allowing Coder to update project plans directly
+- Allowing Reviewer to fix source code
+- Assuming one task equals one PR
+- Assuming one repo equals one project
+
+## First implementation milestone
+
+The recommended first milestone is:
+
+```text
+Job creation
++ Drive Project Memory
++ repo/project profiling
++ Planner Harness
++ capability matrix
++ Coder detailed execution plan
++ Reviewer execution-plan audit
++ GitHub source write
++ Reviewer final report
+```
+
+This is sufficient to validate the architecture before adding local execution or more advanced MCP functionality.
