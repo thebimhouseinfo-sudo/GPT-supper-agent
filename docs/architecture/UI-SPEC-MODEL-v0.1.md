@@ -603,7 +603,7 @@ If any material branch of the UI Tree remains unspecified, Planner must not mark
 
 ## 17. Designer handoff
 
-For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create Concept Artwork, then decomposes the selected concept into a numbered Asset Sheet with asset specifications and generation prompts as defined in `DESIGNER-HARNESS-v0.1.md`.
+For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create Concept Artwork, then decomposes the selected concept into a single crop-ready numbered `ASSET-SHEET.png`: each visual asset is isolated on the sheet with spacing for manual cropping. Sidecar specifications and prompts support later high-quality regeneration of each cropped asset, as defined in `DESIGNER-HARNESS-v0.1.md`.
 
 UI implementation readiness therefore requires both:
 
