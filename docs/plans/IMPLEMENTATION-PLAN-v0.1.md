@@ -83,12 +83,19 @@ Planner writes only Project Memory.
 Outputs:
 
 - Project Start Package
+- project delivery roadmap
 - Master Plan where needed
 - repo plans
+- specialist skill routing record
 - acceptance criteria
 - verification strategy
 - executor assignment
 - impact report
+- UI/UX Design Package for material user-facing changes
+- responsive/interaction specs where applicable
+- asset manifest where applicable
+
+For UI/UX work, readiness additionally requires resolved product intent, user flow, screen hierarchy, responsive behavior, interaction states, design-system relationship, asset requirements, UI acceptance criteria, and a feasible UI verification path.
 
 Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
 
