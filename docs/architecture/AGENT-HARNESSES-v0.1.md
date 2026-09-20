@@ -89,15 +89,15 @@ No material UI/UX decision deferred to Coder when it could be resolved during pl
 
 ## 2. Designer Harness
 
-Designer is the visual-production agent for user-facing work.
+Designer is the visual-concept agent for user-facing work.
 
-Designer reads approved Planner materials and existing product visuals, then creates visual concepts, art direction, key screen concepts, asset inventories, production-ready assets, and asset sheets.
+Designer reads use cases, target audience, UI Tree, Planner requirements, existing visuals, and relevant design skills; then creates Concept Artwork and derives a numbered Asset Sheet with specifications and generation prompts.
 
 Designer writes only to the Project Memory / Design Workspace and never modifies source repositories.
 
 For details, see `DESIGNER-HARNESS-v0.1.md`.
 
-Material UI work requires an independent Design Review Gate before Coder implementation begins.
+Material UI work requires an independent Design Concept Review before Coder implementation begins. Designer is not required to generate a complete production asset library.
 
 ## 3. Coder Harness
 
@@ -199,7 +199,7 @@ For non-visual work, the Design Review Gate is skipped.
 
 ### 4.1 Design Review Gate
 
-Reviewer verifies that Designer outputs satisfy Planner requirements, that asset coverage is complete, and that unresolved visual decisions are not pushed onto Coder.
+Reviewer verifies that the concept satisfies Planner requirements and target audience needs, and that the numbered Asset Sheet completely decomposes the visual elements Coder will depend on.
 
 ### 4.2 Execution Plan Audit
 
