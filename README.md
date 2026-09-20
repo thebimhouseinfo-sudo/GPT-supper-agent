@@ -13,7 +13,10 @@ Orchestrator
    |
    +-- Planner  -> prepares project/specs; writes Project Memory
    +-- Designer -> creates visual concepts/assets; writes Design Workspace
-   +-- Coder    -> writes source repositories only
+   +-- Coder
+   |   +-- UX Coder -> behavior/flow/state
+   |   +-- UI Coder -> visual implementation/fidelity
+   |   -> writes source repositories only
    +-- Reviewer -> audits design/plan/code; writes Project Memory
 ```
 
@@ -39,6 +42,7 @@ Source code remains in GitHub or an approved local workspace. Google Drive is us
 - [Planner Scope, Skill Routing & UI/UX](docs/architecture/PLANNER-SCOPE-AND-UIUX-v0.1.md)
 - [UI Specification Model](docs/architecture/UI-SPEC-MODEL-v0.1.md)
 - [Designer Harness](docs/architecture/DESIGNER-HARNESS-v0.1.md)
+- [Coder UI/UX Harness](docs/architecture/CODER-UIUX-HARNESS-v0.1.md)
 - [Execution & Review Model](docs/architecture/EXECUTION-AND-REVIEW-v0.1.md)
 - [Implementation Plan v0.1](docs/plans/IMPLEMENTATION-PLAN-v0.1.md)
 
