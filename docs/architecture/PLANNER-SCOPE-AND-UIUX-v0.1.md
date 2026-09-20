@@ -249,9 +249,14 @@ design/
   CONTENT-SPEC.md
   ASSET-MANIFEST.json
   UI-ACCEPTANCE.md
+  UI-TREE.md
+  UI-REQUIREMENTS.json
+  DESIGN-TOKENS.json
+  DEVICE-MATRIX.md
+  COMPONENT-SPECS.md
 ```
 
-These may be combined for small tasks, but the information obligations remain.
+These may be combined for small tasks, but the information obligations remain. For new apps and major redesigns, the UI Tree and Design Foundation are mandatory. See `UI-SPEC-MODEL-v0.1.md`.
 
 ## 7. Product Spec
 
@@ -498,6 +503,10 @@ For material interface changes, `PROJECT_READY_FOR_IMPLEMENTATION` additionally 
 
 ```text
 Product intent resolved
+UI Tree resolved
+Per-node UI requirements resolved
+Design Foundation / tokens resolved
+Device Matrix resolved
 UX flow resolved
 Screen hierarchy resolved
 Responsive behavior resolved
