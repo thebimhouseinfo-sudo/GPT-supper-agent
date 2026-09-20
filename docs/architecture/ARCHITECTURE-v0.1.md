@@ -43,6 +43,11 @@ Chat history is not a source of truth. It is an interaction surface.
                             |
                   Implementation Plan
                             |
+                         Designer
+                    (when UI/visual)
+                            |
+                    Design Review Gate
+                            |
                            Coder
                             |
                 Detailed Execution Plan
@@ -162,6 +167,10 @@ Planner
   Drive: write
   Repo: read-only
 
+Designer
+  Drive Design Workspace: write
+  Repo: read-only
+
 Coder
   Drive: read-only
   Repo: write
@@ -191,6 +200,7 @@ PROJECT_READY_FOR_IMPLEMENTATION =
   AND executors assigned
   AND impact analysis complete
   AND implementation plan prepared
+  AND design package approved when required
   AND verification strategy prepared
   AND acceptance criteria prepared
 ```
@@ -207,3 +217,5 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 8. A repository passing its own checks does not imply a multi-repo change set is complete.
 9. No completion claim without fresh evidence.
 10. No agent may claim an action its active executor cannot physically perform.
+11. For material UI work, Coder may not begin before required Designer outputs pass Design Review.
+12. Production visual assets must have stable manifest identities before Coder integrates them.
