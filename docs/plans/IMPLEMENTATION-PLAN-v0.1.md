@@ -104,13 +104,17 @@ Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated determini
 Implement:
 
 - Planner-to-Designer Design Brief
-- visual concept package
+- use-case and target-audience interpretation
+- design-skill routing
+- Concept Artwork
 - selected visual direction
-- key-screen concept artifacts
+- key-screen concept artifacts where needed
 - artwork/icon direction
-- asset inventory
-- asset manifest
-- asset sheet
+- concept-derived asset decomposition
+- numbered Asset Sheet
+- asset specifications
+- master style prompt
+- per-asset generation prompts
 - design QA
 - Design Review Gate
 - DESIGN_PLANNING_GAP escalation
@@ -118,7 +122,7 @@ Implement:
 
 Designer writes only to Project Memory / Design Workspace.
 
-Exit criterion: material UI work cannot enter coding until required visual concepts and assets are either approved or explicitly marked as non-blocking.
+Exit criterion: material UI work cannot enter coding until the visual concept is approved and its reusable visual parts have been decomposed into a complete numbered Asset Sheet. Final individual assets do not need to be generated at this stage.
 
 ## Phase 6 — Coder Harness
 
