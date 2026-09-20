@@ -35,6 +35,7 @@ Source code remains in GitHub or an approved local workspace. Google Drive is us
 - [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
 - [Project Memory & Knowledge](docs/architecture/PROJECT-MEMORY-v0.1.md)
 - [Agent Harnesses](docs/architecture/AGENT-HARNESSES-v0.1.md)
+- [Planner Scope, Skill Routing & UI/UX](docs/architecture/PLANNER-SCOPE-AND-UIUX-v0.1.md)
 - [Execution & Review Model](docs/architecture/EXECUTION-AND-REVIEW-v0.1.md)
 - [Implementation Plan v0.1](docs/plans/IMPLEMENTATION-PLAN-v0.1.md)
 
