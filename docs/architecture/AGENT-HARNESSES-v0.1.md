@@ -64,9 +64,9 @@ Planner MUST prepare material that was reasonably knowable before implementation
 - known risks and constraints
 - project delivery roadmap
 - required specialist skill routing
-- product/UX/UI design package when the change is user-facing
+- product/UX functional specification and Design Brief when the change is user-facing
 - responsive and interaction specifications where applicable
-- planned asset manifest where applicable
+- planned asset requirements where applicable
 
 For user-facing work, Planner owns design readiness. See `PLANNER-SCOPE-AND-UIUX-v0.1.md`.
 
@@ -105,7 +105,7 @@ Coder writes only to the source repository or approved local source workspace.
 
 Coder reads approved Project Memory materials but does not edit them.
 
-### 4.1 Coder flow
+### 3.1 Coder flow
 
 ```text
 RECEIVE TASK
@@ -125,7 +125,7 @@ Planner decides WHAT, WHY, constraints, architecture, and acceptance.
 
 Coder decides the exact HOW inside those boundaries.
 
-### 4.2 Detailed Execution Plan
+### 3.2 Detailed Execution Plan
 
 Coder translates an approved implementation plan into a concrete execution plan based on live source reality.
 
@@ -145,7 +145,7 @@ Typical steps include:
 
 This detailed plan is audited by Reviewer before source modifications begin.
 
-### 4.3 Coder deviation levels
+### 3.3 Coder deviation levels
 
 ```text
 Level 1 — implementation detail
@@ -160,7 +160,7 @@ Coder stops affected work and emits PLANNING_GAP.
 
 Coder MUST NOT silently expand cross-repo scope or alter shared contracts.
 
-### 4.4 Self QA/QC
+### 3.4 Self QA/QC
 
 Coder performs continuous checks, not only end-of-task verification.
 
@@ -242,6 +242,8 @@ Typical states:
 ```text
 IDLE
 -> PREPARING
+-> DESIGNING (when applicable)
+-> DESIGN_REVIEW (when applicable)
 -> READY_TO_IMPLEMENT
 -> EXEC_PLAN_AUDIT
 -> IMPLEMENTING
