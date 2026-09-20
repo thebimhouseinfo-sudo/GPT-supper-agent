@@ -101,6 +101,19 @@ Material UI work requires an independent Design Concept Review before Coder impl
 
 ## 3. Coder Harness
 
+For material user-facing work, Coder is internally split into two specialized execution roles:
+
+```text
+UX Coder
++ UI Coder
+```
+
+UX Coder owns functional experience, interaction, state, accessibility behavior, and responsive semantics.
+
+UI Coder owns visual implementation and must interpret the approved Concept Artwork, design tokens, and Asset Sheet to achieve the required visual fidelity.
+
+See `CODER-UIUX-HARNESS-v0.1.md`.
+
 Coder writes only to the source repository or approved local source workspace.
 
 Coder reads approved Project Memory materials but does not edit them.
@@ -128,6 +141,8 @@ Coder decides the exact HOW inside those boundaries.
 ### 3.2 Detailed Execution Plan
 
 Coder translates an approved implementation plan into a concrete execution plan based on live source reality.
+
+For user-facing work, the detailed plan MUST label tasks as UX, UI, or joint UX/UI QA and establish their execution order.
 
 Typical steps include:
 
@@ -178,6 +193,8 @@ QC asks:
 - Are contracts preserved?
 - Are acceptance criteria satisfied?
 - Were regressions introduced?
+- For UX work, do flow/state/interaction requirements pass?
+- For UI work, does rendered output satisfy approved visual acceptance?
 
 Coder maintains an ephemeral execution checklist for progress and resume. This checklist is not automatically part of durable Project Memory.
 
