@@ -132,6 +132,10 @@ Implement:
 - UI Coder specialization
 - UX/UI task ownership in execution plans
 - Concept Artwork reading skill for UI Coder
+- concept geometry measurement
+- normalized layout model
+- repeated-value/token inference
+- measurement confidence model
 - visual fidelity classification: MUST MATCH / INTENT MATCH / IMPLEMENTATION FLEXIBLE
 - capability-gated render-and-compare loop
 - visual comparison capability resolver (runtime + browser/renderer + screenshot + concept access + visual analysis)
