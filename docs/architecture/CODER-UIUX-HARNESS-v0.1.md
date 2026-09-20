@@ -110,6 +110,12 @@ UI Coder may choose non-material details such as CSS technique, grid vs flex, sm
 ```text
 READ CONCEPT ARTWORK
   ↓
+MEASURE CONCEPT GEOMETRY
+  ↓
+NORMALIZE RATIOS / CONSTRAINTS
+  ↓
+MAP TO DESIGN TOKENS
+  ↓
 READ UI TREE + NODE SPECS
   ↓
 READ DESIGN TOKENS
@@ -133,7 +139,7 @@ VISUAL QA
 
 UI Coder must not stop because the code compiles.
 
-## 7. Concept-reading skill
+## 7. Concept-reading and measurement skill
 
 UI Coder requires a dedicated concept-reading skill that converts visual evidence into implementation constraints.
 
@@ -154,6 +160,8 @@ Concept: icon nearly fills card height
 ```
 
 The goal is faithful visual relationships, not blind pixel copying.
+
+UI Coder should measure identifiable regions in the concept, normalize them against concept dimensions, infer repeated spacing/size patterns, and convert them into semantic layout constraints before coding. See `CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`.
 
 ## 8. Render-and-compare is capability-gated
 
