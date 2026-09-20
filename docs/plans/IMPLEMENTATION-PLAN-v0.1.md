@@ -128,6 +128,16 @@ Exit criterion: material UI work cannot enter coding until the visual concept is
 
 Implement:
 
+- UX Coder specialization
+- UI Coder specialization
+- UX/UI task ownership in execution plans
+- Concept Artwork reading skill for UI Coder
+- visual fidelity classification: MUST MATCH / INTENT MATCH / IMPLEMENTATION FLEXIBLE
+- render-and-compare loop
+- viewport-based visual QA
+- UX/UI joint QA
+- visual acceptance status/evidence
+- UX_UI_CONFLICT escalation
 - context packet pull
 - live repo inspection
 - detailed execution plan generation
@@ -139,7 +149,7 @@ Implement:
 
 Coder writes only source repos.
 
-Exit criterion: Coder can work from Planner material without modifying planning memory and can stop correctly when a Level 3 deviation is discovered.
+Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and demonstrate required visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
 
 ## Phase 7 — Reviewer Harness
 
