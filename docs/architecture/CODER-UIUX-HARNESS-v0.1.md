@@ -155,9 +155,31 @@ Concept: icon nearly fills card height
 
 The goal is faithful visual relationships, not blind pixel copying.
 
-## 8. Render-and-compare loop
+## 8. Render-and-compare is capability-gated
 
-When runtime/browser capability exists, UI Coder MUST use rendered evidence:
+The plugin itself does NOT inherently provide rendering, localhost access, screenshot capture, or browser automation.
+
+UI visual comparison is available only when the active executor exposes all required capabilities.
+
+Required capability set:
+
+```text
+app_runtime_or_deployed_url
++ browser_or_renderer
++ screenshot_capture
++ concept_image_access
++ visual_analysis
+```
+
+The Orchestrator resolves these before execution and records:
+
+```text
+VISUAL_COMPARE_CAPABLE = true | false
+```
+
+Only when `VISUAL_COMPARE_CAPABLE=true` may UI Coder run an autonomous render-and-compare loop.
+
+When capability exists, UI Coder MUST use rendered evidence:
 
 ```text
 implementation
@@ -170,7 +192,38 @@ implementation
 
 Viewport classes come from Device Matrix, normally phone, tablet, desktop, and wide desktop when material.
 
-If screenshot/runtime capability is unavailable, visual verification must be marked incomplete rather than assumed to pass.
+If any required capability is unavailable, UI Coder MUST NOT simulate or claim render comparison.
+
+Fallback statuses:
+
+```text
+VISUAL_REVIEW_CODE_ONLY
+VISUAL_REVIEW_MANUAL_SCREENSHOT_REQUIRED
+VISUAL_BLOCKED_BY_RUNTIME
+VISUAL_BLOCKED_BY_BROWSER
+```
+
+A user-provided screenshot may still be visually compared with the concept even when the plugin cannot launch/render the app itself, but that is manual evidence rather than autonomous rendering.
+
+### 8.1 Executor examples
+
+```text
+GitHub connector only
+→ edit/PR/CI capable
+→ autonomous localhost render: NO by default
+
+GitHub connector + deployed preview URL + browser capability
+→ browser render may be possible
+
+Desktop Work/Codex + local project + browser/runtime permission
+→ local development render may be possible
+
+GPTWorker + dev server, but no browser/screenshot tool
+→ app runtime possible
+→ autonomous visual compare still incomplete
+```
+
+The capability matrix, not the executor name, is authoritative.
 
 ## 9. Visual QA
 
