@@ -60,10 +60,10 @@ CodeAgent/
         concepts/
           selected/
         asset-sheet/
-          ASSET-SHEET.md
           ASSET-SHEET.png
           ASSET-SPECS.json
           PROMPTS.md
+          ASSET-SHEET.md
         reviews/
 
       lessons/
@@ -75,7 +75,7 @@ CodeAgent/
 
 Markdown is primarily human/agent-readable. JSON is primarily orchestrator-readable.
 
-The `design/` workspace may contain concept images and annotated Asset Sheet visuals. It is not expected to contain a complete generated asset library. The Asset Sheet and prompt records describe reusable visual pieces that may be generated later and then integrated into source repositories.
+The `design/` workspace may contain concept images and one crop-ready `ASSET-SHEET.png`. The Asset Sheet is a single image canvas containing concept-derived visual assets already separated from one another, numbered, and padded for manual cropping. It is intentionally not a complete directory of individually generated production assets. `ASSET-SPECS.json` and `PROMPTS.md` are sidecars that explain each numbered region and support later high-quality regeneration of individual assets.
 
 ## 3. Global registry
 
