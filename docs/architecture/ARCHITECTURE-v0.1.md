@@ -222,5 +222,5 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 10. No agent may claim an action its active executor cannot physically perform.
 11. For material UI work, Coder may not begin before required Designer outputs pass Design Review.
 12. User-facing coding separates UX behavior from UI visual implementation while preserving one coordinated execution plan.
-13. UI Coder must interpret approved Concept Artwork and demonstrate visual acceptance when render evidence is available.
-14. Missing runtime visual verification must be reported explicitly rather than assumed to pass.
+13. UI Coder must interpret approved Concept Artwork; autonomous render-and-compare is permitted only when the capability matrix confirms runtime/URL, browser or renderer, screenshot capture, concept access, and visual analysis.
+14. Plugin presence alone never implies render capability. Missing visual-verification capabilities must be reported explicitly rather than assumed to pass.
