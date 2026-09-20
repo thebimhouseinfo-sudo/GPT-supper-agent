@@ -147,6 +147,8 @@ For a Math learning app, a representative Home concept plus one Learning/Exercis
 
 The concept is a visual source of truth, not necessarily a pixel-perfect implementation mockup.
 
+Designer SHOULD attach concept canvas dimensions, intended layout mode, and nominal target viewport when known. This allows UI Coder to normalize measured geometry correctly rather than treating decorative canvas margins as browser layout.
+
 ## 7. Concept-first asset derivation
 
 Designer must NOT begin by guessing a fixed list such as 12 icons, 4 banners, and 3 illustrations.
