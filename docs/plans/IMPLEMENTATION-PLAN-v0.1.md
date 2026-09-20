@@ -249,6 +249,8 @@ Job creation
 + repo/project profiling
 + Planner Harness
 + capability matrix
++ Designer Harness for UI work
++ Design Review Gate
 + Coder detailed execution plan
 + Reviewer execution-plan audit
 + GitHub source write
