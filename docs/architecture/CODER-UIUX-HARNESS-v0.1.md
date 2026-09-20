@@ -112,6 +112,10 @@ READ CONCEPT ARTWORK
   ↓
 MEASURE CONCEPT GEOMETRY
   ↓
+RESOLVE REFERENCE VIEWPORT
+  ↓
+PROJECT TO TARGET VIEWPORT
+  ↓
 NORMALIZE RATIOS / CONSTRAINTS
   ↓
 MAP TO DESIGN TOKENS
@@ -159,7 +163,7 @@ Concept: icon nearly fills card height
 → do not reduce it to generic glyph size
 ```
 
-The goal is faithful visual relationships, not blind pixel copying.
+The goal is faithful visual relationships, not blind pixel copying. For mobile concepts, UI Coder treats the artwork as a reference viewport, calculates scale factors for target widths, then snaps/clamps projected values into responsive tokens and constraints.
 
 UI Coder should measure identifiable regions in the concept, normalize them against concept dimensions, infer repeated spacing/size patterns, and convert them into semantic layout constraints before coding. See `CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`.
 
