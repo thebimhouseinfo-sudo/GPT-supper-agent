@@ -221,7 +221,7 @@ For each node, Planner resolves applicable requirements in the following dimensi
 
 ## 5. Design Foundation must be defined before screen specs
 
-Planner MUST define a shared Design Foundation before specifying individual branches in detail.
+Planner MUST define the functional Design Foundation requirements before specifying individual branches in detail. Designer then realizes the approved visual direction, concrete treatments, concept art, and assets without changing functional requirements.
 
 The foundation contains:
 
@@ -601,8 +601,22 @@ Verification capability resolved
 
 If any material branch of the UI Tree remains unspecified, Planner must not mark the UI implementation ready.
 
-## 17. Core principle
+## 17. Designer handoff
 
-> Planner designs the UI system before Coder builds UI screens.
+For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create the visual concept and asset package described in `DESIGNER-HARNESS-v0.1.md`.
+
+UI implementation readiness therefore requires both:
+
+```text
+PLANNER_UI_SPEC_READY
+AND
+DESIGN_PACKAGE_APPROVED
+```
+
+before Coder begins the visual implementation.
+
+## 18. Core principle
+
+> Planner defines the UI system and requirements; Designer realizes the visual system and assets; Coder builds the approved screens.
 
 A screen is not an isolated page. It is one branch of a product-wide UI tree governed by shared tokens, shared components, device rules, interaction rules, and traceable requirements.
