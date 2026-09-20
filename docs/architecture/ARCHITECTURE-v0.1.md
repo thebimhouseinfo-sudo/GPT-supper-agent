@@ -49,6 +49,9 @@ Chat history is not a source of truth. It is an interaction surface.
                     Design Review Gate
                             |
                            Coder
+                     ┌──────┴──────┐
+                  UX Coder      UI Coder
+                     └──────┬──────┘
                             |
                 Detailed Execution Plan
                             |
@@ -218,4 +221,6 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 9. No completion claim without fresh evidence.
 10. No agent may claim an action its active executor cannot physically perform.
 11. For material UI work, Coder may not begin before required Designer outputs pass Design Review.
-12. Production visual assets must have stable manifest identities before Coder integrates them.
+12. User-facing coding separates UX behavior from UI visual implementation while preserving one coordinated execution plan.
+13. UI Coder must interpret approved Concept Artwork and demonstrate visual acceptance when render evidence is available.
+14. Missing runtime visual verification must be reported explicitly rather than assumed to pass.
