@@ -627,7 +627,7 @@ UI Coder
 → visual hierarchy, layout fidelity, typography, spacing, artwork integration, responsive visual composition
 ```
 
-UI Coder must treat Concept Artwork as an implementation reference and use render-and-compare verification when runtime capability exists.
+UI Coder must treat Concept Artwork as an implementation reference. Before coding, it should measure and normalize concept geometry into proportions, constraints, and design-token candidates; render-and-compare verification is a separate capability-gated step after implementation.
 
 See `CODER-UIUX-HARNESS-v0.1.md`.
 
