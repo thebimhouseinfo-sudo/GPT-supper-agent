@@ -87,13 +87,25 @@ No execution step without an executor.
 No untracked dependency impact.
 No material UI/UX decision deferred to Coder when it could be resolved during planning.
 
-## 2. Coder Harness
+## 2. Designer Harness
+
+Designer is the visual-production agent for user-facing work.
+
+Designer reads approved Planner materials and existing product visuals, then creates visual concepts, art direction, key screen concepts, asset inventories, production-ready assets, and asset sheets.
+
+Designer writes only to the Project Memory / Design Workspace and never modifies source repositories.
+
+For details, see `DESIGNER-HARNESS-v0.1.md`.
+
+Material UI work requires an independent Design Review Gate before Coder implementation begins.
+
+## 3. Coder Harness
 
 Coder writes only to the source repository or approved local source workspace.
 
 Coder reads approved Project Memory materials but does not edit them.
 
-### 2.1 Coder flow
+### 4.1 Coder flow
 
 ```text
 RECEIVE TASK
@@ -113,7 +125,7 @@ Planner decides WHAT, WHY, constraints, architecture, and acceptance.
 
 Coder decides the exact HOW inside those boundaries.
 
-### 2.2 Detailed Execution Plan
+### 4.2 Detailed Execution Plan
 
 Coder translates an approved implementation plan into a concrete execution plan based on live source reality.
 
@@ -133,7 +145,7 @@ Typical steps include:
 
 This detailed plan is audited by Reviewer before source modifications begin.
 
-### 2.3 Coder deviation levels
+### 4.3 Coder deviation levels
 
 ```text
 Level 1 — implementation detail
@@ -148,7 +160,7 @@ Coder stops affected work and emits PLANNING_GAP.
 
 Coder MUST NOT silently expand cross-repo scope or alter shared contracts.
 
-### 2.4 Self QA/QC
+### 4.4 Self QA/QC
 
 Coder performs continuous checks, not only end-of-task verification.
 
@@ -169,7 +181,7 @@ QC asks:
 
 Coder maintains an ephemeral execution checklist for progress and resume. This checklist is not automatically part of durable Project Memory.
 
-## 3. Reviewer Harness
+## 4. Reviewer Harness
 
 Reviewer reads Project Memory, repo state, diffs, CI/test evidence, and relevant knowledge.
 
@@ -177,12 +189,19 @@ Reviewer writes only to Google Drive Project Memory.
 
 Reviewer does not fix source code.
 
-Reviewer has two distinct jobs:
+Reviewer has three distinct jobs when UI/design work is involved:
 
-1. Execution Plan Audit before coding.
-2. Implementation Review after coding.
+1. Design Review Gate after Designer.
+2. Execution Plan Audit before coding.
+3. Implementation Review after coding.
 
-### 3.1 Execution Plan Audit
+For non-visual work, the Design Review Gate is skipped.
+
+### 4.1 Design Review Gate
+
+Reviewer verifies that Designer outputs satisfy Planner requirements, that asset coverage is complete, and that unresolved visual decisions are not pushed onto Coder.
+
+### 4.2 Execution Plan Audit
 
 Reviewer checks:
 
@@ -198,7 +217,7 @@ Reviewer checks:
 
 The result can approve the plan or require restructuring before coding begins.
 
-### 3.2 Implementation review
+### 4.3 Implementation review
 
 Reviewer evaluates:
 
@@ -214,7 +233,7 @@ Reviewer evaluates:
 
 Reviewer records findings in durable Project Memory.
 
-## 4. Orchestrator
+## 5. Orchestrator
 
 Orchestrator owns workflow state, not technical implementation.
 
