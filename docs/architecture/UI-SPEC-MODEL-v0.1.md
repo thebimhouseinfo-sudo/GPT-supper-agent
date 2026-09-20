@@ -603,20 +603,20 @@ If any material branch of the UI Tree remains unspecified, Planner must not mark
 
 ## 17. Designer handoff
 
-For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create the visual concept and asset package described in `DESIGNER-HARNESS-v0.1.md`.
+For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create Concept Artwork, then decomposes the selected concept into a numbered Asset Sheet with asset specifications and generation prompts as defined in `DESIGNER-HARNESS-v0.1.md`.
 
 UI implementation readiness therefore requires both:
 
 ```text
 PLANNER_UI_SPEC_READY
 AND
-DESIGN_PACKAGE_APPROVED
+DESIGN_CONCEPT_APPROVED
 ```
 
 before Coder begins the visual implementation.
 
 ## 18. Core principle
 
-> Planner defines the UI system and requirements; Designer realizes the visual system and assets; Coder builds the approved screens.
+> Planner defines the UI system and requirements; Designer turns them into an approved visual concept and asset-production blueprint; Coder builds the approved screens.
 
 A screen is not an isolated page. It is one branch of a product-wide UI tree governed by shared tokens, shared components, device rules, interaction rules, and traceable requirements.
