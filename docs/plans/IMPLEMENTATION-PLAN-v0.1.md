@@ -99,7 +99,28 @@ For UI/UX work, readiness additionally requires resolved product intent, user fl
 
 Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
 
-## Phase 5 — Coder Harness
+## Phase 5 — Designer Harness
+
+Implement:
+
+- Planner-to-Designer Design Brief
+- visual concept package
+- selected visual direction
+- key-screen concept artifacts
+- artwork/icon direction
+- asset inventory
+- asset manifest
+- asset sheet
+- design QA
+- Design Review Gate
+- DESIGN_PLANNING_GAP escalation
+- design executor/capability routing
+
+Designer writes only to Project Memory / Design Workspace.
+
+Exit criterion: material UI work cannot enter coding until required visual concepts and assets are either approved or explicitly marked as non-blocking.
+
+## Phase 6 — Coder Harness
 
 Implement:
 
@@ -116,12 +137,13 @@ Coder writes only source repos.
 
 Exit criterion: Coder can work from Planner material without modifying planning memory and can stop correctly when a Level 3 deviation is discovered.
 
-## Phase 6 — Reviewer Harness
+## Phase 7 — Reviewer Harness
 
-Implement two reviewer modes:
+Implement reviewer modes:
 
-1. Execution Plan Audit
-2. Implementation Review
+1. Design Review Gate when applicable
+2. Execution Plan Audit
+3. Implementation Review
 
 Execution Plan Audit decides:
 
@@ -144,7 +166,7 @@ Reviewer writes only Project Memory.
 
 Exit criterion: Coder cannot begin before audit approval and cannot complete before independent implementation review.
 
-## Phase 7 — GitHub remote execution
+## Phase 8 — GitHub remote execution
 
 Use GitHub as the first code executor.
 
@@ -164,7 +186,7 @@ Do not infer shell/local-runtime capabilities from GitHub access.
 
 Exit criterion: a repo with sufficient GitHub Actions can complete a full remote code/review loop.
 
-## Phase 8 — Multi-repo Change Sets
+## Phase 9 — Multi-repo Change Sets
 
 Implement:
 
@@ -177,7 +199,7 @@ Implement:
 
 Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
 
-## Phase 9 — Additional executors
+## Phase 10 — Additional executors
 
 Add GPTWorker/local execution after the core harness is stable.
 
@@ -192,7 +214,7 @@ Route tasks by capability:
 
 Do not duplicate planning logic in executor-specific code.
 
-## Phase 10 — Plugin packaging and UX
+## Phase 11 — Plugin packaging and UX
 
 Expose a concise user interaction model, for example:
 
