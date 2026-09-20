@@ -58,13 +58,12 @@ CodeAgent/
       design/
         brief/
         concepts/
-        screens/
-        system/
-        assets/
-          ASSET-MANIFEST.json
+          selected/
+        asset-sheet/
           ASSET-SHEET.md
-          source/
-          approved/
+          ASSET-SHEET.png
+          ASSET-SPECS.json
+          PROMPTS.md
         reviews/
 
       lessons/
@@ -76,7 +75,7 @@ CodeAgent/
 
 Markdown is primarily human/agent-readable. JSON is primarily orchestrator-readable.
 
-The `design/` workspace may also contain binary visual artifacts such as concept images, contact sheets, and approved production asset candidates. These are design artifacts, not source code. Approved assets enter a source repository only when Coder integrates them at manifest-defined target paths.
+The `design/` workspace may contain concept images and annotated Asset Sheet visuals. It is not expected to contain a complete generated asset library. The Asset Sheet and prompt records describe reusable visual pieces that may be generated later and then integrated into source repositories.
 
 ## 3. Global registry
 
@@ -276,4 +275,4 @@ current task
 
 Planner, Designer, Coder, and Reviewer receive different context packets according to role.
 
-Designer context additionally includes the approved Design Brief, UI Tree, node requirements, Design Foundation constraints, Device Matrix, existing visual references, and required asset inventory.
+Designer context additionally includes the approved Design Brief, use cases, target audience, UI Tree, node requirements, Design Foundation constraints, Device Matrix, existing visual references, and relevant design skills. The asset inventory is derived after concept creation rather than treated as a fixed upstream input.
