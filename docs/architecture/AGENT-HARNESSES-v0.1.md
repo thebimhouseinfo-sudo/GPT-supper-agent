@@ -62,6 +62,13 @@ Planner MUST prepare material that was reasonably knowable before implementation
 - capability feasibility
 - implementation ordering
 - known risks and constraints
+- project delivery roadmap
+- required specialist skill routing
+- product/UX/UI design package when the change is user-facing
+- responsive and interaction specifications where applicable
+- planned asset manifest where applicable
+
+For user-facing work, Planner owns design readiness. See `PLANNER-SCOPE-AND-UIUX-v0.1.md`.
 
 Principle:
 
@@ -78,6 +85,7 @@ Every planning decision should have:
 No unexplained architectural decisions.
 No execution step without an executor.
 No untracked dependency impact.
+No material UI/UX decision deferred to Coder when it could be resolved during planning.
 
 ## 2. Coder Harness
 
