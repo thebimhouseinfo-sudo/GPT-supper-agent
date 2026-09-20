@@ -228,6 +228,156 @@ Each major component may produce a normalized record:
 }
 ```
 
+
+## Mobile reference scaling
+
+A mobile Concept Artwork defines a reference viewport and coordinate system.
+
+If the concept represents width `Wref` and the target mobile viewport is `Wtarget`:
+
+```text
+scaleX = Wtarget / Wref
+```
+
+Initial projected geometry:
+
+```text
+x'      = x      × scaleX
+width'  = width  × scaleX
+gap'    = gap    × scaleX
+radius' = radius × scaleX
+```
+
+Example:
+
+```text
+Reference concept width = 390
+Target viewport width   = 430
+
+scaleX = 430 / 390 = 1.1026
+
+Concept card width      = 350
+Projected card width    ≈ 386
+```
+
+This is only a first projection. UI Coder then normalizes the result into responsive constraints and project tokens.
+
+### Property scaling classes
+
+```text
+PROPORTIONAL
+- card width
+- artwork width
+- horizontal gaps
+- page padding
+- decorative geometry
+
+TOKEN-BOUNDED
+- font size
+- button height
+- touch target
+- radius
+- icon size
+
+FIXED / SEMANTIC
+- 1px borders
+- accessibility minimums
+- safe-area insets
+- platform constraints
+```
+
+For proportional values, scaling is usually direct.
+
+For token-bounded values:
+
+```text
+measure
+→ project
+→ snap/clamp to approved token
+```
+
+Example:
+
+```text
+Projected title = 21.7px
+Available type tokens = 20 / 22 / 24
+→ normalize to 22px
+```
+
+For fixed/semantic values, do not scale unless explicitly allowed.
+
+### Ratio preservation
+
+UI Coder should preserve ratios such as:
+
+```text
+page gutter / viewport width
+card width / viewport width
+artwork width / card width
+gap / card width
+button width / content width
+```
+
+Example:
+
+```text
+390px concept
+20px gutter
+
+gutter ratio = 20 / 390 = 5.13%
+
+430px viewport
+projected gutter ≈ 22px
+```
+
+Then snap to the nearest approved spacing token if needed.
+
+### Fluid compact range
+
+A single mobile concept normally defines the `COMPACT` layout mode.
+
+UI Coder may turn the measured relationships into a fluid range, for example:
+
+```css
+padding-inline: clamp(16px, 5.1vw, 24px);
+```
+
+This keeps the same design proportions across nearby phone widths instead of matching only one device.
+
+### Guardrails
+
+Do not blindly scale everything.
+
+After projection, UI Coder must enforce:
+
+- minimum readable text size
+- minimum touch target
+- safe-area requirements
+- maximum useful line length
+- no horizontal overflow
+- artwork safe area
+- maximum scale-up on large phones
+
+The required process is:
+
+```text
+measure
+→ normalize
+→ project to target viewport
+→ clamp/snap
+→ validate usability
+→ implement
+```
+
+### Limits of one mobile concept
+
+A mobile concept is authoritative for compact-mode proportions.
+
+It does NOT by itself define tablet or desktop composition.
+
+Tablet/desktop structure must come from Planner Responsive Spec or additional concepts. If that information is missing, UI Coder emits a Design/Planning Gap instead of inventing a large-screen layout.
+
+
 ## 10. Responsive normalization
 
 A single concept usually represents one layout mode, not every screen size.
