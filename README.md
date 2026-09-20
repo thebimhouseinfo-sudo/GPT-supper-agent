@@ -43,6 +43,7 @@ Source code remains in GitHub or an approved local workspace. Google Drive is us
 - [UI Specification Model](docs/architecture/UI-SPEC-MODEL-v0.1.md)
 - [Designer Harness](docs/architecture/DESIGNER-HARNESS-v0.1.md)
 - [Coder UI/UX Harness](docs/architecture/CODER-UIUX-HARNESS-v0.1.md)
+- [Concept Measurement & UI Normalization](docs/architecture/CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md)
 - [Execution & Review Model](docs/architecture/EXECUTION-AND-REVIEW-v0.1.md)
 - [Implementation Plan v0.1](docs/plans/IMPLEMENTATION-PLAN-v0.1.md)
 
