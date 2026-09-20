@@ -133,7 +133,8 @@ Implement:
 - UX/UI task ownership in execution plans
 - Concept Artwork reading skill for UI Coder
 - visual fidelity classification: MUST MATCH / INTENT MATCH / IMPLEMENTATION FLEXIBLE
-- render-and-compare loop
+- capability-gated render-and-compare loop
+- visual comparison capability resolver (runtime + browser/renderer + screenshot + concept access + visual analysis)
 - viewport-based visual QA
 - UX/UI joint QA
 - visual acceptance status/evidence
@@ -149,7 +150,7 @@ Implement:
 
 Coder writes only source repos.
 
-Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and demonstrate required visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
+Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and, only when the capability matrix supports it, demonstrate rendered visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
 
 ## Phase 7 — Reviewer Harness
 
