@@ -169,24 +169,88 @@ This reveals which visuals are truly required, which are better implemented as U
 
 ## 8. Numbered Asset Sheet
 
-Designer creates a numbered Asset Sheet from the selected concept. The Asset Sheet is a production blueprint, NOT a directory of generated files.
+Designer creates one actual image file, normally `ASSET-SHEET.png`, containing the visual assets extracted from the approved concept and laid out separately on a single canvas.
 
-Example:
+This is NOT merely a metadata list or a screenshot of the original UI concept.
+
+The required process is:
 
 ```text
-[01] App background scene
-[02] Math subject icon
-[03] Continue-learning character artwork
-[04] Addition topic artwork
-[05] Subtraction topic artwork
-[06] Geometry topic artwork
-[07] Completed-topic badge
-[08] Lesson illustration family
+Approved Concept Artwork
+  ↓
+Identify reusable visual elements
+  ↓
+Extract / redraw each visual element as an isolated asset candidate
+  ↓
+Remove surrounding UI chrome and unrelated elements
+  ↓
+Place each asset separately on one large sheet
+  ↓
+Add crop-safe spacing
+  ↓
+Number every asset outside its crop bounds
+  ↓
+Save as ASSET-SHEET.png
 ```
 
-When possible, the concept/contact sheet itself should carry visible numbered callouts so each item can be located immediately.
+The sheet should look approximately like:
 
-## 9. Asset record
+```text
++---------------------------------------------------------+
+| [01] Background scene                                  |
+|       <isolated wide background artwork>               |
+|                                                         |
+| [02] Math icon       [03] Continue artwork              |
+|     <asset>                <asset>                      |
+|                                                         |
+| [04] Addition        [05] Subtraction   [06] Geometry  |
+|     <asset>               <asset>            <asset>   |
+|                                                         |
+| [07] Complete badge   [08] Lesson illustration         |
+|     <asset>                <asset>                      |
++---------------------------------------------------------+
+```
+
+Rules:
+
+- every visual item is already visually separated from the UI composition;
+- assets MUST NOT overlap each other;
+- leave generous crop-safe padding around every item;
+- numbering/labels sit outside the intended crop area;
+- preserve the selected concept's style, palette, lighting, perspective, and shape language;
+- do not embed accidental UI text inside assets unless the asset itself intentionally contains text;
+- prefer a transparent PNG canvas when transparent extraction is useful;
+- opaque scene/background assets may keep their own full rectangular background;
+- the sheet should be generated at the highest practical resolution because it is also a usable extraction source.
+
+The user can download `ASSET-SHEET.png`, crop individual numbered regions, use those crops directly as provisional assets, or feed a crop back into image generation to regenerate that single asset at higher quality.
+
+The numbered sidecar specs and prompts explain each region, but the image sheet itself is the primary extraction artifact.
+
+## 9. Crop and regeneration workflow
+
+The expected downstream workflow is:
+
+```text
+ASSET-SHEET.png
+   ↓ download
+crop asset [NN]
+   ↓
+use crop directly if quality is sufficient
+OR
+   ↓
+use crop as visual reference + asset prompt
+   ↓
+regenerate one high-quality isolated asset
+   ↓
+place in repo using stable asset id/path
+```
+
+This intentionally avoids requiring the image model to generate dozens of independent final assets in one unattended process.
+
+A crop should preserve enough visual identity that a later regeneration can match the concept more reliably than a text-only prompt.
+
+## 10. Asset record
 
 Each numbered item must define:
 - number and stable id
@@ -226,7 +290,7 @@ prompt:
     - readable at small size
 ```
 
-## 10. Prompt architecture
+## 11. Prompt architecture
 
 Designer should not write dozens of unrelated prompts. Use:
 
@@ -240,7 +304,7 @@ OUTPUT CONSTRAINTS
 
 Assets belonging to the same family share palette, shape language, light direction, perspective, padding, background rule, and output conventions.
 
-## 11. Asset families
+## 12. Asset families
 
 Related assets should be grouped into families, for example:
 
@@ -258,7 +322,7 @@ Family B — Feedback artwork
 
 Each family has one shared style recipe plus item-specific subject prompts.
 
-## 12. What Designer is NOT required to do
+## 13. What Designer is NOT required to do
 
 Designer is NOT required to generate every final asset individually.
 
@@ -276,7 +340,7 @@ Actual asset generation may happen later manually, one-by-one with image generat
 
 The harness must not assume that large unattended batches of generated images will remain sufficiently consistent.
 
-## 13. Optional image generation
+## 14. Optional image generation
 
 If image-generation capability exists, Designer should prioritize it for:
 - concept artwork
@@ -286,7 +350,7 @@ If image-generation capability exists, Designer should prioritize it for:
 
 It should not be forced to generate the complete asset library merely because image generation is available.
 
-## 14. Designer workspace
+## 15. Designer workspace
 
 Designer writes no source code. Recommended Job workspace:
 
@@ -296,16 +360,16 @@ design/
   concepts/
     selected/
   asset-sheet/
-    ASSET-SHEET.md
-    ASSET-SHEET.png
-    ASSET-SPECS.json
-    PROMPTS.md
+    ASSET-SHEET.png      # primary visual extraction sheet
+    ASSET-SPECS.json     # numbered sidecar metadata
+    PROMPTS.md           # master style + per-asset prompts
+    ASSET-SHEET.md       # optional human-readable index
   reviews/
 ```
 
 No production asset directory is required at this phase.
 
-## 15. Design Review Gate
+## 16. Design Review Gate
 
 Reviewer checks:
 - concept reflects the use case
@@ -315,7 +379,9 @@ Reviewer checks:
 - responsive intent remains compatible
 - visual direction is coherent
 - concept does not invent product behavior
-- visual elements are completely decomposed
+- visual elements are completely decomposed into isolated crop-ready regions on ASSET-SHEET.png
+- assets do not overlap and have adequate crop-safe spacing
+- number labels sit outside intended crop bounds
 - asset numbering is unambiguous
 - every numbered asset has a usable spec
 - prompt families preserve consistency
@@ -330,7 +396,7 @@ ASSET_SHEET_INCOMPLETE
 DESIGN_PLANNING_GAP
 ```
 
-## 16. UI delivery pipeline
+## 17. UI delivery pipeline
 
 ```text
 User idea
@@ -364,12 +430,12 @@ Coder
   UI implementation
 ```
 
-## 17. Boundary with Coder
+## 18. Boundary with Coder
 
 Coder receives the UI specs, approved concept, numbered Asset Sheet, stable asset ids, target usage, and asset prompts/specifications.
 
 Coder does not reinterpret the concept. If a visual element is missing or impossible to implement without a design change, Coder emits a Design Gap.
 
-## 18. Core invariant
+## 19. Core invariant
 
 > Planner explains the product. Designer visualizes the product. The Concept Artwork becomes the visual source of truth, and the Asset Sheet explains how to reconstruct its reusable visual parts.
