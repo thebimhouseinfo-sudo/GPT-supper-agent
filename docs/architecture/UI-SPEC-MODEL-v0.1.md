@@ -615,8 +615,24 @@ DESIGN_CONCEPT_APPROVED
 
 before Coder begins the visual implementation.
 
-## 18. Core principle
+## 18. Coder UI/UX split
 
-> Planner defines the UI system and requirements; Designer turns them into an approved visual concept and asset-production blueprint; Coder builds the approved screens.
+After Planner and Designer artifacts are approved, implementation is divided into:
+
+```text
+UX Coder
+→ flow, state, interaction, accessibility behavior, responsive semantics
+
+UI Coder
+→ visual hierarchy, layout fidelity, typography, spacing, artwork integration, responsive visual composition
+```
+
+UI Coder must treat Concept Artwork as an implementation reference and use render-and-compare verification when runtime capability exists.
+
+See `CODER-UIUX-HARNESS-v0.1.md`.
+
+## 19. Core principle
+
+> Planner defines the product and UI requirements; Designer establishes the visual concept; UX Coder makes it behave correctly; UI Coder makes it visually match the approved intent.
 
 A screen is not an isolated page. It is one branch of a product-wide UI tree governed by shared tokens, shared components, device rules, interaction rules, and traceable requirements.
