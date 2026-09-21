@@ -1,230 +1,299 @@
-# GPT Super Agent — Implementation Plan v0.2
+# GPT Super Agent — Definition & Implementation Plan v0.3
 
 ## Goal
 
-Build the smallest testable harness, run it on a real small Job, observe product quality, then tighten the harness iteratively.
+First complete the conceptual definition of GPT Super Agent. Then decide which already-defined capabilities belong in v1, v2, v3, or later.
 
-The plan intentionally does NOT require every architecture module to be fully defined before the first run.
-
-## Development principle
+The theory and the release scope are separate concerns.
 
 ```text
-minimal definition
-→ minimal harness
-→ real run
-→ inspect actual output quality
-→ identify concrete failure
-→ tighten the responsible rule/gate/prompt
-→ add eval
-→ rerun
+Concept definition
+≠
+Release implementation scope
 ```
 
-A rule is strengthened because evidence shows a failure mode or a frozen invariant requires protection.
+A concept can be fully specified even when its implementation is deferred.
 
-Do not expand deferred modules while implementing unrelated work.
+## Principle
+
+```text
+FULL CONCEPT MODEL
+→ dependency map
+→ testable rules
+→ enforcement classification
+→ release-scope decision
+→ implementation
+→ real Jobs
+→ product-quality inspection
+→ harness tightening
+→ next release
+```
+
+The quality loop refines the harness after real use. It does not justify leaving core concepts undefined.
 
 ## Stage A — Consistency pass
 
-Fix current contradictions and clerical defects only.
+Resolve known contradictions and clerical defects before adding further definitions.
 
-Examples already identified:
+Current known items include:
 
 - duplicate workflow-state definitions
 - duplicate Job Lifecycle section number
 - duplicate capability entry
-- version-label mismatch
-- soft write-boundary claims presented as architectural guarantees
-- undefined Fast Path wording
-- duplicated Drive rationale
+- Designer version-label mismatch
+- role/write boundaries presented more strongly than their verified enforcement
+- undefined Fast Path/work classification
+- repeated Drive rationale
 
-Exit criterion: existing documents do not contradict each other on the MVP path.
+No new theory is added in this stage except where required to resolve a contradiction.
 
-## Stage B — Minimal definitions for first run
+## Stage B — Complete conceptual definitions
 
-Define only:
+Bring every relevant section in `SYSTEM-DEFINITION-SKELETON-v0.1.md` from PARTIAL/TO_DEFINE to DEFINED.
 
-1. minimal state machine
-2. work tiers
-3. minimal Project Memory schema
-4. capability/enforcement matrix
-5. QA/QC/Evidence minimum
-6. Planner contract
-7. Coder contract
-8. Reviewer contract
-9. handoff/reporting channel
-10. minimal command/status behavior
-11. Task + PR Definition of Done
-12. drift/freshness rule
-
-Exit criterion: one small non-UI T1 Job can be planned, implemented, reviewed, and truthfully completed.
-
-## Stage C — Minimal harness files
-
-Create only the role/rule files needed for that first run.
-
-Suggested first layout:
+At minimum, every component definition answers:
 
 ```text
-harness/
-  orchestrator.md
-  roles/
-    planner.md
-    coder.md
-    reviewer.md
-  rules/
-    clarification.md
-    boundaries.md
-    qa-qc-evidence.md
-    security.md
-  schemas/
-    job.schema.*
-    state.schema.json
-    evidence.schema.json
-  templates/
-    plan.md
-    handoff.md
-    review.md
-  evals/
+purpose
+scope / non-goals
+ownership
+inputs
+outputs
+rules / invariants
+statuses / failures
+dependencies
+observable violations
+enforcement classification
+verification / eval hooks
 ```
 
-Designer and UX/UI split remain extension paths unless the selected first Job requires them.
+Definition order follows dependency order, not release priority.
 
-## Stage D — Role evals
+### B1. Workflow foundations
 
-Test each role as soon as its contract exists.
+Define:
 
-At minimum include positive and negative scenarios.
+- one state machine
+- work classification / tiers
+- pause/resume/interruption
+- role handoffs
+- stale/drift transitions
 
-Examples:
+### B2. Memory and context
+
+Define:
+
+- canonical Project Memory model
+- mandatory vs lazy artifacts
+- artifact ownership
+- schemas
+- Context Builder
+- selective GitHub reading
+- freshness/drift behavior
+
+### B3. Capability and enforcement
+
+Define:
+
+- capability vocabulary
+- executor resolution
+- unknown capability rule
+- role permission/enforcement matrix
+- HARD / SOFT / UNKNOWN semantics
+- destructive-action approval behavior
+
+### B4. Quality model
+
+Define completely:
+
+- QA
+- QC
+- Verification/Evidence
+- evidence freshness
+- evidence invalidation
+- PASS / PARTIAL / BLOCKED semantics
+- objective evidence vs model judgement
+
+### B5. Role contracts
+
+Define complete contracts for:
+
+- Orchestrator
+- Planner
+- Designer
+- Coder
+- UX Coder
+- UI Coder
+- Reviewer
+
+A role may be omitted from v1 implementation later, but its conceptual boundary must still be understood before release scoping.
+
+### B6. Multi-repo model
+
+Define:
+
+- Repo Graph semantics
+- provider/consumer contracts
+- cross-repo impact
+- Master Plan / repo plan relationship
+- coordinated change-state model
+- integration review
+- multi-repo completion semantics
+
+### B7. Governance and safety
+
+Define:
+
+- artifact lifecycle
+- invalidation/revalidation
+- approvals
+- concurrency
+- trust boundaries
+- secrets
+- prompt injection handling
+- destructive actions
+
+### B8. User interaction and recovery
+
+Define:
+
+- command model under `@gsa` / `gsa/`
+- active Job semantics
+- status output
+- ambiguity behavior
+- failure/recovery
+- Definition of Done
+
+### B9. Harness quality loop
+
+Define how observed product-quality defects feed back into:
+
+- prompts
+- rules
+- gates
+- enforcement
+- evals
+- future versions
+
+Exit criterion for Stage B:
 
 ```text
-Planner
-- vague request → clarify
-- unavailable capability → CAPABILITY_BLOCKED
-- malicious README instruction → treat as data
-
-Coder
-- discovers scope-changing contract need → PLANNING_GAP
-- CI red → cannot claim complete
-- diff exceeds approved scope → stop/report
-
-Reviewer
-- claimed pass but evidence fails → CHANGES_REQUIRED
-- stale commit evidence → reject evidence
-- stale plan → STALE
-
-Orchestrator
-- requirement changes mid-work → invalidate affected work
-- external GitHub change → drift detected
+all required conceptual sections = DEFINED or FROZEN
+no unresolved contradiction blocks implementation scoping
+every material rule has an observable violation
+every enforcement claim is HARD / SOFT / UNKNOWN
 ```
 
-Exit criterion: minimum eval set passes before the real run.
+## Stage C — Release-scope matrix
 
-## Stage E — First real end-to-end run
+Only after Stage B is sufficiently complete, assign implementation scope.
 
-Choose one small, non-UI, single-repo T1 Job.
-
-Run:
+For each capability:
 
 ```text
-Job open
-→ Planner
-→ plan
-→ Coder
-→ implementation
-→ QA/QC evidence
-→ Reviewer
-→ completion decision
+name
+dependencies
+implementation complexity
+user value
+risk if deferred
+testability
+platform capability
+candidate release
 ```
 
-The purpose is not merely to finish the code change.
+Candidate release labels:
 
-The purpose is to inspect:
+```text
+v1
+v2
+v3
+later
+```
+
+No capability is assigned to a release merely because it was defined early.
+
+No release contents are frozen in this document yet.
+
+## Stage D — Implement selected v1
+
+Implement only the capabilities selected for v1.
+
+The harness must reflect the complete theory where relevant, but may leave later capabilities unimplemented behind explicit extension boundaries.
+
+No silent partial implementation.
+
+## Stage E — Evals
+
+Before and during implementation, derive positive/negative evals from each implemented contract.
+
+Every important rule should have an observable violation and at least one test hook where practical.
+
+## Stage F — Real Job validation
+
+Run real Jobs representative of the v1 scope.
+
+Inspect:
 
 - planning quality
 - scope accuracy
-- code quality
-- verification quality
+- implementation quality
+- QA/QC quality
+- evidence quality
 - review quality
+- user-visible product quality
 - unnecessary friction
-- missing safeguards
 - false confidence
-- user-visible result quality
+- recovery behavior
 
-## Stage F — Harness tightening loop
+## Stage G — Harness tightening
 
-For every meaningful defect observed:
-
-```text
-observe failure
-→ classify owner
-→ add the smallest effective rule/gate/template change
-→ tag HARD / SOFT / UNKNOWN
-→ define observable violation
-→ add eval reproducing the defect
-→ rerun affected role
-→ rerun full loop when necessary
-```
-
-Do not add broad rules for hypothetical problems unless risk is high enough to justify them before observation.
-
-## Stage G — Expand by need
-
-Only after the first loop is stable, pull in additional modules when a real Job requires them.
-
-Possible expansion order:
-
-- Designer
-- UX/UI Coder specialization
-- visual QA
-- multi-repo Change Sets
-- coordinated PRs
-- richer artifact invalidation
-- detailed failure/recovery
-- advanced browser/preview verification
-- concept measurement/normalization
-
-Each extension follows the same pattern:
+For each meaningful defect:
 
 ```text
-minimal definition
-→ real use
-→ inspect quality
-→ tighten
+observed defect
+→ map to owner definition
+→ decide: implementation bug / enforcement weakness / eval gap / theory gap
+→ smallest justified correction
+→ add/update eval
+→ rerun
 ```
 
-## Frozen implementation assumptions
+If a theory gap appears, update the conceptual definition.
+
+If a frozen invariant is contradicted by evidence, use a Foundation Amendment Proposal.
+
+## Stage H — Select v2 / v3 scope
+
+Use evidence from v1 plus the full conceptual model to select the next implementation scope.
+
+Version contents remain adaptable.
+
+```text
+v1 findings
++ user priorities
++ platform capabilities
++ dependency graph
+→ v2 scope
+
+v2 findings
+→ v3 scope
+```
+
+## Frozen assumptions
 
 - Plugin handle: `@gsa`
 - Command namespace: `gsa/`
 - one configured Drive root
 - one direct Drive folder per Job
-- `JOB.md` identifies the Job
+- `JOB.md` identifies a Job
 - Drive-first Job loading
 - GitHub is the online code environment
 - Job references 1..N repos
-- single-repo and multi-repo share one Job model
+- same Job model for single- and multi-repo
 - GPTWorker is separate offline/local agent
 
-## Initial non-goals
+## Current next step
 
-- fully specifying every skeleton section before first test
-- implementing Designer before a UI test needs it
-- implementing full multi-repo orchestration before a multi-repo test
-- universal recovery logic before real failure cases are observed
-- pretending SOFT prompt rules are HARD enforcement
-- claiming completion without objective evidence
+Complete Stage A consistency corrections, then continue Stage B definitions against the System Definition Skeleton.
 
-## First milestone
-
-```text
-one real T1 Job
-+ minimal Planner
-+ minimal Coder
-+ minimal Reviewer
-+ QA/QC/Evidence
-+ truthful status
-+ eval-backed harness revisions
-```
-
-Success means the first run gives us enough observable evidence to make the second harness version materially better.
+Do not decide v1/v2/v3 contents until enough of the conceptual model is DEFINED to make that decision coherently.
