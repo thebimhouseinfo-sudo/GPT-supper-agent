@@ -62,6 +62,8 @@ Exact Job/Run storage below the Project root is deferred to PROJECT-MEMORY-SCHEM
 
 User decision: QA/QC model accepted.
 
+User decision: insufficient objective evidence routes to `PASS_RETEST_REQUIRED`, not `PASS`. The missing practical verification must be represented by one or more persistent Retest IDs.
+
 
 Canonical check families:
 
