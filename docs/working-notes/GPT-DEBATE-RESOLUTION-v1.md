@@ -1353,6 +1353,67 @@ Under the current platform model, the user may open/invoke multiple chats manual
 
 Future automatic dispatch may coordinate the same model without changing the Project / Job / Task / Run architecture.
 
+## 4.13 Repository ownership is exclusive to one Project
+
+User decision:
+
+A GitHub repository is a source-code ownership unit and may be owned by only one GPT Super Agent Project.
+
+Do not model this as multiple Projects merely "referencing" the same writable repository.
+
+```text
+1 repo
+→ exactly 1 owning Project
+```
+
+A Project may own one or many repositories:
+
+```text
+Project A
+├── repo-1
+├── repo-2
+└── repo-3
+```
+
+but a repository must not appear as an owned repository of Project B at the same time.
+
+### Cross-project dependency
+
+If another Project depends on code produced by a repo owned elsewhere, model that as a Project-to-Project dependency, not shared repo ownership.
+
+Example:
+
+```text
+Project: Kid eSchool Hub
+owns:
+- Kideschool
+- Ke-kidenglish
+
+Project: Math Grade 1
+owns:
+- KE-Math-Grade1
+
+Kid eSchool Hub may depend on Math Grade 1,
+but it does not own KE-Math-Grade1.
+```
+
+If Project A requires a change inside a repository owned by Project B:
+
+```text
+Project A identifies dependency/change need
+→ create/route request to Project B
+→ Project B owns the code change workflow
+→ Project A consumes the resulting contract/release/integration outcome
+```
+
+This avoids two Projects maintaining competing memory, plans, assumptions, and write authority for the same source-of-truth repository.
+
+### Ownership rule
+
+The Project marker / Project Memory should maintain an explicit owned repository list.
+
+Repository ownership changes, splits, or transfers are governance events and require explicit human approval.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
