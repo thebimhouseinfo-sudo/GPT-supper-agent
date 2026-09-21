@@ -100,6 +100,8 @@ Candidate content:
 
 `CONTROL.json` is a derived/current control snapshot, not the sole historical source.
 
+It is a rebuildable materialized view/index. Durable entity records and causal history are authoritative if the snapshot becomes stale.
+
 ---
 
 ## 5. WORK/
@@ -153,7 +155,8 @@ KNOWLEDGE/
 ├── architecture/
 ├── decisions/
 ├── contracts/
-└── plans/
+├── plans/
+└── design/
 ```
 
 Purpose:
@@ -162,6 +165,8 @@ durable semantic truth that informs work.
 Do not create one folder per role.
 
 Planner/Designer/Reviewer outputs are stored by artifact meaning, not by agent identity.
+
+`KNOWLEDGE/design/` stores approved normative design intent/artifacts consumed by Coder/Reviewer.
 
 ---
 
@@ -345,3 +350,26 @@ Do not persist by default:
 8. Storage is lazily populated.
 9. Optimistic concurrency is required.
 10. Raw conversation is not durable memory.
+
+
+---
+
+## 20. Findings
+
+Findings are embedded in their owning Review record by default while retaining globally unique IDs.
+
+No separate findings collection is required initially.
+
+---
+
+## 21. Job deletion tombstones
+
+When Job deletion would otherwise break surviving durable references, preserve a minimal tombstone identity after deleting detailed Job-owned records.
+
+If no external durable references survive, full deletion is allowed.
+
+---
+
+## 22. Milestones/stages
+
+Milestones/stages remain structured fields inside Job topology. No `WORK/milestones/` or `WORK/phases/` collection is created initially.
