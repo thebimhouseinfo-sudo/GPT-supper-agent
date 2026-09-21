@@ -55,6 +55,8 @@ Drive is redundant for some single-repo Jobs because GitHub could technically st
 
 ## Architecture documents
 
+- [Frozen Foundation v0.1](docs/architecture/FROZEN-FOUNDATION-v0.1.md)
+- [System Definition Skeleton v0.1](docs/architecture/SYSTEM-DEFINITION-SKELETON-v0.1.md)
 - [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
 - [Clarification & Causal Readiness](docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md)
 - [Governance & Artifact Lifecycle](docs/architecture/GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md)
@@ -72,6 +74,6 @@ Drive is redundant for some single-repo Jobs because GitHub could technically st
 
 ## Status
 
-Current phase: architecture/specification.
+Current phase: foundation frozen; remaining behavioral modules are being defined against the System Definition Skeleton.
 
 The first implementation should focus on durable Project Memory, Planner Harness, agent write boundaries, capability resolution, and execution/review gates before adding more advanced executors or MCP features.
