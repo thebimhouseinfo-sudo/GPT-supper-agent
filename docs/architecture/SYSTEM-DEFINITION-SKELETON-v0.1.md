@@ -129,7 +129,7 @@ Do not enter Phase 2 until:
 - accepted peer fixes are complete;
 - capability/platform probes are classified;
 - consistency review passes;
-- human confirms Phase-1 close.
+- Claude peer review round 2 finds no unresolved material architecture gap (or findings are dispositioned/fixed);
 
 ## S29 Theory process
 Moved to THEORY-PROCESS-v1.md; it is not product foundation.
@@ -142,5 +142,6 @@ ACCEPTED_FIX_PASS = COMPLETE
 MISSING_CONTRACTS = COMPLETE
 PLATFORM_PROBES = PARTIALLY_CLASSIFIED / REMAINING PROBES OPEN
 CONSISTENCY_REVIEW = PASS_WITH_OPEN_PLATFORM_PROBES
+PEER_REVIEW_ROUND_2 = PENDING
 PHASE_2_ENTRY = BLOCKED
 ```
