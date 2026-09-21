@@ -209,3 +209,57 @@ surviving durable external references
 ```
 
 The tombstone is not Job ARCHIVED state and does not retain ordinary Job contents.
+
+
+---
+
+## 13. PAUSED execution semantics
+
+```text
+PAUSED
+→ durable state readable
+→ no new execution begins
+→ no pending Handoff consumed
+→ active Run stops at earliest safe boundary
+→ ACTIVE required to resume
+```
+
+---
+
+## 14. ARCHIVED execution semantics
+
+```text
+ARCHIVED
+→ history/status read allowed
+→ ordinary execution prohibited
+→ reactivate before work resumes
+```
+
+Normal work resume is `ARCHIVED → ACTIVE`.
+
+---
+
+## 15. WAITING vs BLOCKED
+
+```text
+WAITING
+= valid continuation path exists but known condition/handler/event is pending
+
+BLOCKED
+= no safe continuation path exists until blocker is resolved
+```
+
+---
+
+## 16. Result vocabulary
+
+Shared evaluation terms are contextual.
+
+A completed accepted Job normally records only:
+
+```text
+PASS
+PASS_RETEST_REQUIRED
+```
+
+`CHANGES_REQUIRED`, `BLOCKED`, and `HUMAN_REVIEW_REQUIRED` normally route nonterminal work rather than define accepted terminal Job result.
