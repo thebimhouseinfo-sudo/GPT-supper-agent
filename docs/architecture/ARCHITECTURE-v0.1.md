@@ -344,3 +344,31 @@ Theory must be coherent before real use.
 Initial operational harnesses/skills/loops/actions only need a good-enough baseline, then improve through real Project evidence.
 
 Reference systems such as Codex, Claude Code, Cursor, Copilot may inform Phase 2 patterns, but GSA synthesizes its own coherent model rather than copy-and-stack.
+
+
+---
+
+## 22. Phase 1 completion gate
+
+Internal theory completeness does not immediately authorize Phase 2.
+
+Required sequence:
+
+```text
+internal theory completeness review
+→ Claude peer review
+→ classify peer findings
+→ resolve accepted findings
+→ final reconciliation/freeze
+→ Phase 2 bootstrap
+```
+
+Peer review is independent challenge evidence, not automatic authority.
+
+Claude findings may be:
+- accepted;
+- accepted with modification;
+- rejected with reason;
+- deferred as Phase 2 calibration concern.
+
+Material accepted findings reopen the appropriate theory domain before Phase 2.
