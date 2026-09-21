@@ -193,4 +193,17 @@ Completed Job remains in Project history.
 
 No Job ARCHIVED state exists.
 
-Hard Job deletion is allowed as explicit user action; implementation must preserve referential integrity or warn/block when dependent durable records would be orphaned.
+Hard Job deletion is allowed as explicit user action.
+
+Deletion semantics:
+
+```text
+no surviving durable external references
+→ full deletion
+
+surviving durable external references
+→ delete detailed Job-owned records
+→ preserve minimal tombstone identity required by surviving references
+```
+
+The tombstone is not Job ARCHIVED state and does not retain ordinary Job contents.
