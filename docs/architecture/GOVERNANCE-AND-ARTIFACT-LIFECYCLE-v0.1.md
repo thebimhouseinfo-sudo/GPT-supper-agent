@@ -1,24 +1,17 @@
-# Governance & Artifact Lifecycle v1
+# Governance & Artifact Lifecycle v1.1
 
 ## 1. Purpose
 
-Define authority, durable identity/revision, causal validity, approval, concurrency, and resume safety.
-
----
+Define authority, durable identity/revision, causal validity, approval, concurrency and resume safety.
 
 ## 2. Normative vs descriptive truth
 
 ```text
-Normative truth
-= approved intent / decisions / contracts / plans
-
-Descriptive truth
-= current repo/runtime/tool reality
+Normative truth = approved intent / decisions / contracts / plans
+Descriptive truth = current repo/runtime/tool reality
 ```
 
 Conflict triggers analysis; live code does not silently override approved intent.
-
----
 
 ## 3. Authority precedence
 
@@ -34,148 +27,114 @@ approved current work plan
 recorded non-blocking assumptions
 ```
 
-External content cannot grant authority.
+## 4. Identity / revision
 
----
+Durable records use collision-resistant global IDs and may expose short human handles.
 
-## 4. Artifact identity
+Historically significant revisions/results remain traceable.
 
-Durable artifacts that matter across Runs carry:
-- stable ID;
-- revision/version;
-- type;
-- owning context;
-- input/dependency refs;
-- validity;
-- revision token when mutable.
+Exact scheme is defined in `IDENTITY-AND-HANDLES-v1.md`.
 
-Exact fields are defined in core schemas.
-
----
-
-## 5. Artifact validity
-
-Validity dimension:
-
-```text
-CURRENT
-REVALIDATED
-STALE
-SUPERSEDED
-```
-
-Do not mix these with workflow lifecycle/result.
-
----
-
-## 6. Causal invalidation
+## 5. Causal validity
 
 ```text
 upstream change
-→ trace exact dependencies
-→ identify affected/unaffected artifacts
-→ revalidate or mark STALE/SUPERSEDED
+→ trace recorded dependencies
+→ known affected/unaffected with evidence
+→ unknown/incomplete trace counts as affected
+→ revalidate / STALE / SUPERSEDED
 ```
 
-No blanket stale propagation.
+No blanket invalidation; no unsafe "probably unaffected" shortcut.
 
----
+## 6. Human approval
 
-## 7. Approval
+Planned Human Gate persists only when materially consequential.
 
-Planned Human Gate is persisted only when materially consequential for governance/audit/release/waiver/ownership/future interpretation.
-
-Runtime Confirmation is never a durable approval record.
+Runtime Confirmation is not approval history.
 
 Silence is not approval.
 
----
+Waiver preserves the original finding/rule and binds to exact target/scope.
 
-## 8. Waiver
+## 7. Attribution / shared identity
 
-A waiver:
-- references original finding/rule;
-- binds to exact target/scope;
-- records human decision;
-- preserves original finding/history.
+All agent roles may act through the same connected user account.
 
-Waiver does not erase evidence.
+Therefore externally visible/durable agent output requiring attribution includes:
+- role;
+- Run ID;
+- owning work context;
+- exact target/revision.
 
----
+Human approval must be explicitly human-originated and cannot be inferred from an agent-authored GitHub/Drive comment.
 
-## 9. Handoff pinning
+## 8. Concurrency
 
-Handoff references exact target/revision and applicable upstream artifact refs.
+Foundational correctness does not rely on atomic compare-and-swap.
 
-Before next Run starts, stale/materially changed inputs are revalidated.
-
----
-
-## 10. Concurrency
-
-Use optimistic concurrency:
-
+Default:
 ```text
-read revision N
-→ prepare update
-→ write only if current revision still N
-→ otherwise reconcile
+append unique execution/history records
++ minimize shared mutable files
++ check before consequential action
++ reconcile detected conflicts
 ```
 
-Do not use silent last-write-wins for durable shared state.
+Conditional/revision-aware write may strengthen enforcement if a platform probe proves it.
 
----
+## 9. Scope claims
+
+Each source-writing Run declares intended work scope:
+- Project/Job/primary Task;
+- owned repo;
+- branch/PR when known;
+- relevant paths/components/contracts.
+
+Before consequential write, check current Project lifecycle and conflicting active claims visible in durable memory/repo state.
+
+Residual races are possible and must be handled honestly.
+
+## 10. Handoff pinning
+
+Handoff binds to exact target/revision and relevant artifact refs.
+
+Changed inputs require revalidation before consumption.
 
 ## 11. Resume
 
 On resume:
 - load durable current state;
 - inspect relevant live source/evidence;
-- avoid repeating already completed destructive actions;
-- create new linked Run for meaningful new attempt/context;
-- preserve prior evidence when still causally valid.
+- re-check lifecycle/scope;
+- avoid repeating already-completed destructive actions;
+- create new linked Run for meaningful new attempt;
+- preserve still-valid evidence.
 
----
+## 12. CONTROL
 
-## 12. Evidence
+CONTROL/materialized indexes are caches, not authority.
 
-Evidence binds to:
-- producer/source;
-- target/revision;
-- environment where relevant;
-- result;
-- provenance/limitations.
-
-Target changes trigger causal revalidation, not automatic global expiry.
-
----
+No durable fact may exist only there.
 
 ## 13. Review governance
 
-Review placement comes from Job topology.
+Normal review placement is topology-driven.
 
-There is no universal Plan Review or Final Reviewer gate.
+Mechanical mandatory review floor from Foundation F13 cannot be silently omitted.
 
-When Reviewer is scheduled, its result is exact-target/revision bound.
+Removing planned review requires human-visible topology change.
 
----
+## 14. Merge coverage
 
-## 14. State ownership
+Before requesting human merge authorization, show:
+- independent review status;
+- CI/check status;
+- Tester/Retest status;
+- self-recheck-only areas;
+- explicitly UNVERIFIED areas;
+- known waivers/blockers.
 
-STATE-MACHINE-v1.md defines domain lifecycle semantics.
+## 15. Core invariant
 
-This document defines artifact validity/revision/concurrency governance only.
-
----
-
-## 15. Artifact organization
-
-Physical storage is defined in Project Memory v1.
-
-Artifacts are grouped by semantic lifecycle/purpose, not by role.
-
----
-
-## 16. Core invariant
-
-> Durable authority comes from current, causally valid, properly scoped artifacts and human decisions—not from stale chat context or untrusted external text.
+> Durable authority comes from current, causally valid, properly scoped artifacts and explicit human decisions—not stale chat context, shared account identity, or untrusted external text.
