@@ -30,7 +30,7 @@ Decision vocabulary:
 | P5 Mechanical checkpoint floor | MODIFY | Do not use LOW/STANDARD/HIGH work classes. Review requirements are selected directly from the Job workflow plus mechanically checkable change triggers. Mandatory review triggers may include shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, material dependency changes, and cross-repo contract impact. Removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
 | P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
 | P7 Job lifecycle core | MODIFY | Center STATE-MACHINE-v1 on Job lifecycle, but separate lifecycle from review/acceptance result. Candidate lifecycle: PLANNED -> READY -> IN_PROGRESS <-> PAUSED -> SUBMITTED -> CLOSED; side states BLOCKED, STALE, CANCELLED. A review result can route SUBMITTED -> IN_PROGRESS for revision or allow closure. Project has lifecycle status (for example active/archived), not a global workflow enum. Artifact status remains separate. |
-| P8 Designer on-demand asset service | MODIFY | Keep the upstream concept/style-anchor flow and add on-demand asset requests. A material design request creates a design Job. Placeholder-first is allowed only when the final asset is not acceptance-blocking. Asset persistence remains capability-gated and UNKNOWN until tested. |
+| P8 Asset requirement workflow | ACCEPT WITH MODIFICATION | Project maintains a persistent `asset-requirements/` backlog for all required non-code assets. Most visual assets are defined during UI Design, while UX/functional work may add assets such as MP3/audio. Coder may implement deterministic placeholders and continue. Each requirement fixes the final filename/path/spec so replacing the placeholder with the delivered asset requires no code rediscovery. Designer/audio generation may be invoked later according to capability and human dispatch. |
 | P9 Evidence and quality vocabulary | ACCEPT | Keep QA/QC as the canonical umbrella terms. QA = process assurance, primarily COMPLIANCE + evidence discipline. QC = output control, primarily CORRECTNESS + FIT. Evidence is commit-bound. Objective evidence is primary; model judgement is supplementary and clearly labelled. |
 | P10 Change impact and invalidation | MODIFY | An upstream change first triggers a causal change review. The system must identify affected artifacts/work, explain causal links, and propose one or more response options—including lower-impact alternatives when possible. Human chooses the intended response. Only then are the selected affected artifacts marked STALE/revised/revalidated. No blind global invalidation and no silent model-only impact decision. |
 | P11 Reviewer GitHub scope | ACCEPT | Reviewer may read GitHub and write signed PR comments/review comments, but MUST NOT write repository contents. Same-identity GitHub approval cannot be treated as independent approval. Fresh-chat independence plus observable evidence provides the review separation; user-controlled merge remains the human gate. |
@@ -234,6 +234,171 @@ Rules:
 - A materially different lower-impact workaround requires human approval.
 - If one option is objectively required by a hard constraint, the system may say so, but still explains the causal chain.
 - Retest obligations affected by the change must also be reviewed: keep, revise, supersede, or add new Retest IDs.
+
+## 4.4 Persistent Asset Requirements
+
+User decision:
+
+Assets are planned and tracked as durable Project requirements, not as ad-hoc chat requests.
+
+Most visual assets SHOULD be identified during UI Design. Additional functional/UX assets may be discovered later, including:
+
+- MP3 / spoken audio;
+- sound effects;
+- icons;
+- illustrations;
+- backgrounds;
+- animation/video;
+- other binary/static resources needed by the implemented experience.
+
+The Project has a persistent asset requirement store:
+
+```text
+<Project>/
+└── asset-requirements/
+    ├── AR-0001.md
+    ├── AR-0002.md
+    └── ...
+```
+
+An Asset Requirement is NOT automatically a Job. It is a durable requirement/backlog item. A Design Job or another future asset-production Job may be created when the work required to satisfy it warrants a separate workflow.
+
+### Requirement identity
+
+Each asset has a stable Asset Requirement ID.
+
+Recommended product-neutral pattern:
+
+```text
+AR-<sequence>
+```
+
+The requirement fixes the integration contract before the final asset exists.
+
+Minimum common fields:
+
+```text
+asset_id
+type
+purpose
+owning Job/Task
+status
+final_filename
+final_repo
+final_path
+placeholder strategy
+acceptance requirements
+generation/source instructions
+dependencies
+```
+
+### Visual asset example
+
+```text
+AR-0012
+type: image/icon
+purpose: Math topic icon
+final_filename: topic-fractions.png
+final_path: assets/images/topics/topic-fractions.png
+dimensions: 200x200 px
+format: PNG
+transparency: required
+style_reference: approved UI concept
+prompt: <generation prompt>
+status: PLACEHOLDER
+```
+
+Coder may temporarily use:
+
+- an existing compatible icon;
+- a generated neutral card/block;
+- a CSS placeholder;
+- another deterministic stand-in.
+
+The placeholder MUST preserve the intended layout footprint closely enough that later replacement does not require redesign.
+
+When the final asset is produced, it is saved with the exact required filename/path. Code should already reference that final path or a manifest key, so the placeholder can be swapped without rediscovering integration logic.
+
+### Audio asset example
+
+```text
+AR-0031
+type: audio
+purpose: narration for sentence X
+final_filename: <stable-audio-id>.mp3
+final_path: assets/audio/<stable-audio-id>.mp3
+language: vi-VN
+voice/style: <requirement>
+source_text: <exact text>
+format: MP3
+status: PLACEHOLDER | MISSING
+```
+
+The same principle applies:
+
+```text
+define ID/name/path/spec first
+→ code against the stable contract
+→ use placeholder/fallback where safe
+→ produce asset later
+→ place file at exact path
+→ application picks it up without structural code change
+```
+
+### Status vocabulary
+
+Candidate statuses:
+
+```text
+REQUIRED
+PLACEHOLDER
+READY_TO_GENERATE
+GENERATED
+DELIVERED
+VERIFIED
+BLOCKED
+SUPERSEDED
+```
+
+Exact schema/statuses are finalized later in the Asset Requirement contract.
+
+### Asset requirement sources
+
+An Asset Requirement may originate from:
+
+- UI Design;
+- UX specification;
+- Detailed Execution Plan;
+- Coder discovery;
+- Reviewer finding;
+- practical Retest result;
+- explicit user request.
+
+The originating role records the requirement; it does not silently invent material creative/product intent.
+
+### Placeholder rule
+
+Placeholder-first is the default when:
+
+- code/layout/flow can progress safely without the final binary asset; and
+- the final integration contract (ID, filename, path, dimensions/format where relevant) is already known.
+
+A missing asset blocks only the work that genuinely depends on the final asset.
+
+### Generation handoff
+
+Because current ChatGPT plugin orchestration is human-dispatched:
+
+```text
+Asset Requirement exists
+→ current agent reports pending asset(s)
+→ user invokes the suitable generation/design workflow
+→ asset is produced
+→ saved to the recorded destination
+→ requirement status advances
+```
+
+Future automatic handoff may automate this without changing the Asset Requirement model.
 
 ## 5. Review floor and acceptance result
 
