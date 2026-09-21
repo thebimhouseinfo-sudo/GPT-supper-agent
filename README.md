@@ -39,6 +39,26 @@ Project
 
 Drive is redundant for some single-repo Jobs because GitHub could technically store most planning/state artifacts there. Super Agent still keeps Drive as the canonical Job root so the same Job model continues to work unchanged when the project becomes multi-repo.
 
+## Invocation
+
+The user-facing identity is intentionally short and independent of the repository name:
+
+```text
+Plugin handle:     @gsa
+Command namespace: gsa/
+```
+
+Examples:
+
+```text
+@gsa
+gsa/job list
+gsa/job create ...
+gsa/status
+```
+
+The GitHub repository name is an implementation detail and may be renamed later without changing the user-facing command contract.
+
 ## Design principles
 
 - Conversation is UI, not memory.
