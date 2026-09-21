@@ -13,22 +13,32 @@ Build the smallest useful version of the harness that can persist project memory
 
 Exit criterion: architecture and schemas are stable enough to implement without inventing storage semantics during coding.
 
-## Phase 1 — Project Memory foundation
+## Phase 1 — Drive Root, Job Lifecycle & Project Memory
 
 Implement:
 
+- one-time configured Super Agent Google Drive root
+- root validation and writeability check
+- root children: registry.json / knowledge / jobs
 - Job registry
-- one Google Drive folder per Job
-- Job bootstrap
-- Project Memory folder creation
+- job create / open / list / update / archive lifecycle
+- automatic per-Job subfolder creation under jobs/<job-id>
+- transactional Job bootstrap
+- duplicate/id conflict handling
+- GitHub repo attachment during Job creation
+- Project Memory folder/file creation
 - Markdown/JSON templates
 - Project/repo relationship lookup
 - read/write abstraction for Project Memory
 - state versioning and validation
 
-Hard rule: Drive contains project memory only, never source code.
+Hard rules:
 
-Exit criterion: a Job can be created, reopened in another conversation, and its structured state restored.
+- Drive contains project memory only, never source code.
+- User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
+- Every Job defaults to online execution.
+
+Exit criterion: a Job can be created without a per-Job Drive link, auto-bootstrap its Project Memory below the configured root, register attached GitHub repos, reopen in another conversation, and restore structured state.
 
 ## Phase 2 — Project and repo profiling
 
@@ -256,20 +266,18 @@ Implement:
 
 Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
 
-## Phase 12 — Additional executors
+## Phase 12 — Online executor integrations
 
-Add GPTWorker/local execution after the core harness is stable.
+Extend online execution only where useful, for example:
 
-Route tasks by capability:
+- richer GitHub CI/workflow evidence
+- remote preview deployments
+- hosted browser/preview verification when available
+- other connected online coding/deployment services
 
-- local filesystem
-- shell
-- dev server
-- desktop application runtime
-- Revit/AutoCAD
-- local integration testing
+Local filesystem/shell/desktop-runtime execution is intentionally outside the Super Agent core scope. GPTWorker remains a separate offline/local coding agent.
 
-Do not duplicate planning logic in executor-specific code.
+Do not duplicate planning logic in executor-specific integrations.
 
 ## Phase 13 — Plugin packaging and UX
 
@@ -290,7 +298,7 @@ Natural-language requests remain supported; command grammar is an optional deter
 
 - Storing source code in Google Drive
 - Dumping full chat history into Project Memory
-- Building a universal shell before harness governance is stable
+- Building or owning a local shell/runtime
 - Allowing Coder to update project plans directly
 - Allowing Reviewer to fix source code
 - Assuming one task equals one PR
@@ -314,4 +322,4 @@ Job creation
 + Reviewer final report
 ```
 
-This is sufficient to validate the architecture before adding local execution or more advanced MCP functionality.
+This is sufficient to validate the online architecture before adding richer online executor integrations or more advanced MCP functionality.
