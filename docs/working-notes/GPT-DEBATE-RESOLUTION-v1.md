@@ -27,7 +27,7 @@ Decision vocabulary:
 | P2 Run separate from Job | ACCEPT | A Job is durable; a Run is one execution attempt/session attached to it. Revisions and re-review create new Runs, not automatically new Jobs. |
 | P3 Pull-based orchestration | ACCEPT | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
 | P4 Append-only Run records | MODIFY | Each Run gets a unique append-only record. Run records are the concurrency-safe history. A project-level STATE snapshot may exist as a derived/materialized cache and may be rebuilt by reconciliation; it is not the sole source of truth. Never rely on concurrent blind overwrite of one state file. |
-| P5 Mechanical checkpoint floor | MODIFY | Keep a mechanically checkable minimum review floor, but do not make every default-branch merge itself force an independent review Job. Mandatory review triggers: shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, and material dependency graph/version changes. Generated lockfile churn alone is not a trigger. Work class may rise automatically; lowering class or removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
+| P5 Mechanical checkpoint floor | MODIFY | Do not use LOW/STANDARD/HIGH work classes. Review requirements are selected directly from the Job workflow plus mechanically checkable change triggers. Mandatory review triggers may include shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, material dependency changes, and cross-repo contract impact. Removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
 | P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
 | P7 Job lifecycle core | MODIFY | Center STATE-MACHINE-v1 on Job lifecycle, but separate lifecycle from review/acceptance result. Candidate lifecycle: PLANNED -> READY -> IN_PROGRESS <-> PAUSED -> SUBMITTED -> CLOSED; side states BLOCKED, STALE, CANCELLED. A review result can route SUBMITTED -> IN_PROGRESS for revision or allow closure. Project has lifecycle status (for example active/archived), not a global workflow enum. Artifact status remains separate. |
 | P8 Designer on-demand asset service | MODIFY | Keep the upstream concept/style-anchor flow and add on-demand asset requests. A material design request creates a design Job. Placeholder-first is allowed only when the final asset is not acceptance-blocking. Asset persistence remains capability-gated and UNKNOWN until tested. |
@@ -87,30 +87,54 @@ QC = output control
 
 This keeps the user's QA/QC language while removing vocabulary drift between Coder and Reviewer.
 
-## 5. Review floor and work classification direction
+## 5. Review floor and acceptance result
 
-Candidate classes for STATE-MACHINE-v1:
+There is no LOW / STANDARD / HIGH work classification.
+
+Review topology is determined directly from:
+
+- Job type and Job-specific workflow;
+- actual change scope;
+- dependency/contract impact;
+- mechanically checkable review triggers;
+- evidence availability;
+- explicit user requirements.
+
+Mandatory checkpoints may be added whenever needed. Removing a mechanically required checkpoint needs explicit user acknowledgement.
+
+When review/verification has not passed, normal failure/routing states still apply, for example:
 
 ```text
-LOW
-STANDARD
-HIGH
+CHANGES_REQUIRED
+BLOCKED
+STALE
+UNVERIFIED
 ```
 
-Classification is rule-driven from observable triggers.
+Once a result has otherwise passed its required review, there are only two accepted-result forms:
 
-Rules:
+```text
+PASS
+= required review/evidence is sufficient;
+  no additional real-world retest is required for acceptance.
 
-- automatic escalation is allowed;
-- silent downgrade is forbidden;
-- downgrade/removal of a mandatory checkpoint requires explicit user acknowledgement;
-- adding a checkpoint is always allowed;
-- review checkpoints are represented as review Jobs/dependencies, not hidden workflow states;
-- LOW work may omit an independent final review when no mechanical trigger applies;
-- if LOW work is merged without independent review, status/evidence must say so explicitly;
-- STANDARD/HIGH work requires independent review according to the state-machine contract.
+PASS_RETEST_REQUIRED
+= required review/evidence is sufficient for the implementation to pass;
+  but a real practical test must still be performed because the available
+  online evidence cannot fully validate the real outcome.
+```
 
-The exact trigger table belongs in STATE-MACHINE-v1.
+`PASS_RETEST_REQUIRED` is not a lower quality tier and not a failure. It is a PASS with a remaining real-world verification obligation.
+
+Examples of why retest may remain:
+
+- no accessible runtime/preview;
+- real device/user interaction is required;
+- external system behavior cannot be reproduced by the available executor;
+- visual/physical/environment-dependent behavior needs practical confirmation;
+- deployment can be checked technically but the actual use case still needs a real test.
+
+The concrete retest target and expected result must be recorded, not merely the word “retest”.
 
 ## 6. Run and independence model
 
