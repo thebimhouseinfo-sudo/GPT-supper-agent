@@ -768,103 +768,120 @@ HARNESS-QUALITY-LOOP-v1
 
 ---
 
-# Iterative Harness Tightening
+# Definition Completeness vs Implementation Scope
 
-The skeleton is a map, not a requirement to fully specify every module before testing.
+The skeleton is the complete conceptual map of Super Agent.
 
-Development proceeds in rounds:
-
-```text
-ROUND N
-1. define only what the next real test needs
-2. build/update the minimal harness
-3. run it on a real Job/repo
-4. inspect the actual product and artifacts
-5. identify concrete quality failures
-6. classify the failure owner
-7. strengthen only that module
-8. add an eval that reproduces the failure
-9. rerun
-```
-
-Failure ownership examples:
+Before implementation scope is frozen, every section S0-S23 should reach one of:
 
 ```text
-wrong scope / wrong assumptions
-→ Planner or clarification rule
-
-poor implementation structure
-→ Coder contract / execution-plan rule
-
-working code but poor UX
-→ UX QC / acceptance
-
-visually poor result
-→ UI QC / Designer / concept interpretation
-
-unsupported completion claim
-→ Evidence / Reviewer
-
-cross-repo omission
-→ Repo Graph / multi-repo protocol
+FROZEN
+DEFINED
 ```
 
-A new rule SHOULD have:
+A section may be fully DEFINED but not implemented in the first release.
 
-- an observed or high-confidence failure mode
+Do not use `TO_DEFINE` or `PARTIAL` as a release-planning shortcut.
+
+Conceptual work answers:
+
+```text
+What is this component?
+Why does it exist?
+What does it own?
+What are its inputs?
+What are its outputs?
+What are its invariants?
+What are its failure/status results?
+How is violation observed?
+How can it be enforced?
+What depends on it?
+```
+
+Implementation planning answers a different question:
+
+```text
+Which already-defined concepts are implemented in v1?
+Which are deferred to v2/v3?
+Which are implemented partially behind an extension point?
+```
+
+## Harness tightening after implementation
+
+Full conceptual definition does not imply that the first harness will be perfect.
+
+After each real run:
+
+```text
+1. inspect actual plan/code/review/product quality
+2. identify concrete failure
+3. map failure to its already-defined owner/module
+4. determine whether the problem is:
+   - bad implementation of the definition
+   - insufficient enforcement
+   - missing eval
+   - genuine theory gap
+5. make the smallest justified correction
+6. add/strengthen an eval
+7. rerun
+```
+
+If a real run exposes a genuine conceptual gap, update the relevant definition. If it contradicts a frozen invariant, use the Foundation Amendment process.
+
+A new/changed rule should have:
+
+- a clear purpose
 - an observable violation
 - a clear owner
 - an enforcement level: HARD / SOFT / UNKNOWN
-- at least one eval or verification hook
+- at least one verification/eval hook
 
-Do not fully define deferred modules merely because they exist in this skeleton.
-
-## Minimal first-test definition set
-
-Before the first end-to-end test, define only enough for:
-
-```text
-Job open/list/create
-+ minimal STATE
-+ minimal work tier
-+ minimal Planner contract
-+ minimal Coder contract
-+ minimal QA/QC/Evidence
-+ minimal Reviewer contract
-+ handoff channel
-+ Task/PR Definition of Done
-+ drift/freshness check
-```
-
-Designer, UX/UI specialization, full multi-repo orchestration, detailed recovery, and sophisticated artifact invalidation may remain PARTIAL until a real test needs them.
+The quality loop strengthens the harness; it does not replace complete conceptual definition.
 
 # Recommended Definition Order
 
-Do not define everything at once.
-
-Recommended next sequence:
+Define the complete theory in dependency order before assigning release versions.
 
 ```text
 0. Consistency pass
-1. Minimal state machine + work tiers
-2. Minimal Project Memory schema
-3. Capability/enforcement matrix
-4. Minimal QA/QC/Evidence
-5. Minimal Planner contract
-6. Minimal Coder contract
-7. Minimal Reviewer contract
-8. Minimal commands/status
-9. Task + PR Definition of Done
-10. Drift/freshness
-11. First harness layout
-12. Evals
-13. One real end-to-end test
-14. Tighten only from observed failures
+1. State machine + work classification
+2. Project Memory model + schemas
+3. Capability/enforcement model
+4. QA
+5. QC
+6. Verification/Evidence
+7. Reviewer contract
+8. Planner contract
+9. Coder contract
+10. Designer contract
+11. UX Coder contract
+12. UI Coder contract
+13. Context Builder
+14. Multi-repo coordination
+15. Governance/artifact lifecycle
+16. Security/trust
+17. Commands/User UX
+18. Failure/recovery
+19. Completion model
+20. Harness quality loop
+21. Implementation architecture
+22. Release-scope matrix
 ```
 
-Reason:
+The goal of this sequence is conceptual completeness, not v1 bloat.
 
-The first objective is not theoretical completeness. It is the smallest coherent harness that can produce a real artifact and expose its own weaknesses. Later definitions are pulled in by evidence from those runs.
+After all required concepts are DEFINED, create a release-scope matrix:
+
+```text
+Concept / capability
+→ required dependencies
+→ implementation cost
+→ user value
+→ risk if deferred
+→ candidate release: v1 / v2 / v3 / later
+```
+
+Version allocation is not frozen yet. It is decided after the conceptual model is complete enough to expose dependencies and tradeoffs.
 
 ---
 
@@ -872,7 +889,7 @@ The first objective is not theoretical completeness. It is the smallest coherent
 
 From this point forward:
 
-> Freeze foundations; fill modules.
+> Freeze foundations; fully define modules; then scope releases.
 
 When a new requirement appears, first identify which skeleton section owns it.
 
