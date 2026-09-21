@@ -55,6 +55,9 @@ CodeAgent/
       reviews/
         REVIEW-0001.md
 
+      approvals/
+        APPROVAL-0001.json
+
       design/
         brief/
         concepts/
@@ -74,6 +77,8 @@ CodeAgent/
 ```
 
 Markdown is primarily human/agent-readable. JSON is primarily orchestrator-readable.
+
+Durable artifacts should carry id/version/status/input references so downstream artifacts can be invalidated or revalidated when upstream decisions change.
 
 The `design/` workspace may contain concept images and one crop-ready `ASSET-SHEET.png`. The Asset Sheet is a single image canvas containing concept-derived visual assets already separated from one another, numbered, and padded for manual cropping. It is intentionally not a complete directory of individually generated production assets. `ASSET-SPECS.json` and `PROMPTS.md` are sidecars that explain each numbered region and support later high-quality regeneration of individual assets.
 
