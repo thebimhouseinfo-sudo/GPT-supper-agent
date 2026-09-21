@@ -247,7 +247,9 @@ A repo-level plan MUST declare its parent master plan when one exists.
 
 ## 9. Agent write boundaries
 
-Write permissions are architectural boundaries, not prompt suggestions.
+The role scopes below are the intended ownership policy.
+
+Their enforcement strength is NOT implied by this diagram. Each boundary must be classified as `HARD`, `SOFT`, or `UNKNOWN` in the capability/enforcement definition. Until a concrete enforcement mechanism is verified, treat the boundary as `SOFT`, not as a hard architectural guarantee.
 
 ```text
 Planner
@@ -271,7 +273,7 @@ Orchestrator
   Repo: no write
 ```
 
-This prevents one role from defining the rule, implementing the rule, and grading itself.
+This separation is the target governance model. Whether a specific boundary is physically enforced or prompt-enforced is defined separately by the capability/enforcement matrix.
 
 ## 10. Governance, lifecycle, and trust
 
