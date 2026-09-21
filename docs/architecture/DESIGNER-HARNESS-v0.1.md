@@ -38,6 +38,8 @@ Designer owns visual interpretation:
 
 Designer must not silently change product behavior.
 
+Before concept generation, Designer applies the shared clarification protocol. If use case, target audience, hierarchy, device context, or visual constraints are missing in a way that would materially change the concept, Designer emits `DESIGN_CLARIFICATION_REQUIRED` instead of guessing.
+
 ## 3. Designer skill routing
 
 Designer must load relevant design skills before producing a concept. Typical skills include:
