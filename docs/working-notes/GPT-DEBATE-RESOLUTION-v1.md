@@ -1459,66 +1459,71 @@ Rules:
 - creating an owned derivative from referenced source must preserve provenance.
 
 
-## 4.14 Minimal Project skeleton — derive storage from finalized domain model
+## 4.14 Minimal Project skeleton — bootstrap first, workflow storage derived later
 
 User decision:
 
-Every Project should eventually have a minimal standard skeleton, but the actual folders/files MUST NOT be nominated in advance.
+Project storage has two different classes and they must not be confused.
 
-The storage schema is derived only after the core domain objects and workflows have been defined in sufficient detail, including at least:
+### A. Bootstrap artifacts
 
-- Agent / role;
-- Project;
-- Job;
-- Task;
-- Run;
-- handoff;
-- Asset Requirement;
-- Test Requirement;
-- Retest;
-- Review finding/evidence;
-- release/completion milestone;
-- decisions/governance records;
-- any other durable entity discovered during definition.
+Some artifacts exist because they define the Project itself.
 
-For each finalized entity, the schema-design pass must decide explicitly:
+The canonical example is:
 
 ```text
-Does this need:
-- its own folder?
-- one file per entity?
-- one shared/index file?
-- append-only log?
-- structured front matter?
-- only fields inside another artifact?
-- no durable storage at all?
+<Project>/
+└── PROJECT.md
 ```
 
-Only after this cross-check is complete should the canonical Project Memory tree be designed.
+`PROJECT.md` is the Project marker / identity document for the folder and may be frozen early because the Project cannot be reliably discovered or identified without it.
 
-Therefore the sequence is:
+Other bootstrap artifacts may be added later only if they are similarly fundamental to Project identity/control-plane operation.
+
+### B. Workflow-derived storage
+
+Everything else must be derived from the finalized behavior of Agents, Jobs, Tasks, Runs, reviews, tests, asset workflows, release workflows, and memo/write requirements.
+
+For example, when the Planner definition is finalized, ask:
 
 ```text
-define agents/jobs/tasks/runs/workflows
-→ identify durable entities and access patterns
-→ identify ownership/read-write boundaries
-→ identify lookup/query needs
-→ identify history/audit needs
-→ derive folders/files/indexes
-→ minimize and normalize the structure
-→ freeze Project Memory schema
+What durable memo/state must Planner write?
+Who reads it?
+How often does it change?
+Does it need history?
+Does it belong:
+- in PROJECT.md?
+- in a root memo file?
+- in a Job artifact?
+- in a dedicated folder?
+- in an append-only log?
 ```
 
-Known concepts such as Asset Requirements and Test/Retest requirements clearly need durable storage, but their exact physical representation is intentionally deferred until this schema-design pass.
+Apply the same analysis to Designer, Coder, Reviewer, Tester, Asset Requirements, Retests, release records, and other durable entities.
 
-The core rule is:
+Therefore:
 
 ```text
-semantic model first
-storage layout second
+bootstrap identity artifacts
+→ may be defined early
+
+workflow/memo storage
+→ define agent/job semantics first
+→ derive read/write needs
+→ then decide root file vs folder vs per-entity file vs embedded field
 ```
 
-Do not invent folders merely because a concept exists. Do not force multiple distinct concepts into one file merely to keep the tree small. The final skeleton should be the smallest structure that faithfully supports the finalized workflows.
+The final Project Memory structure is produced only after this cross-check.
+
+Core principle:
+
+```text
+Project identity first
+domain/workflow semantics second
+physical memo/storage layout last
+```
+
+Do not nominate directories merely because a concept exists, and do not force future agent memo requirements into a storage layout before those agents are fully defined.
 
 
 ## 5. Review floor and acceptance result
