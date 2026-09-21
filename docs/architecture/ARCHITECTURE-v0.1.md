@@ -131,19 +131,23 @@ Kid eSchool
   +-- ...
 ```
 
-When an agent opens a child repository, context resolution MUST first determine whether the repo belongs to a known project. If it does, project-level context is loaded before repo-local context.
+When a Job is selected/opened, context resolution MUST begin from its Drive memory. Drive determines the relevant project/repo relationships before live GitHub source is read.
+
+A repository is never the entry point for an existing Job; the Job in Drive is.
 
 Required load order:
 
 ```text
-PROJECT
+JOB (Drive)
+-> STATE
+-> PROJECT PROFILE
 -> ARCHITECTURE
 -> REPO GRAPH
--> RELEVANT CONTRACTS
--> RELEVANT DECISIONS
--> REPO METADATA
--> LIVE SOURCE CODE
--> CURRENT TASK
+-> RELEVANT CONTRACTS / DECISIONS / PLANS / TASKS
+-> CURRENT USER REQUEST
+-> RELEVANT REPO(S)
+-> RELEVANT SOURCE AREA(S)
+-> SELECTIVE LIVE GITHUB EVIDENCE
 ```
 
 ## 6. Change propagation
@@ -249,6 +253,8 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 12. User-facing coding separates UX behavior from UI visual implementation while preserving one coordinated execution plan.
 13. UI Coder must interpret approved Concept Artwork; autonomous render-and-compare is permitted only when the capability matrix confirms runtime/URL, browser or renderer, screenshot capture, concept access, and visual analysis.
 14. Plugin presence alone never implies render capability. Missing visual-verification capabilities must be reported explicitly rather than assumed to pass.
+15. Existing Job context is always Drive-first; GitHub source reads are selected from Drive state plus current request.
+16. Job list is sourced from Drive registry, not discovered from GitHub.
 
 
 ## 13. Online-first execution boundary
