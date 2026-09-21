@@ -1,169 +1,181 @@
-# Governance & Artifact Lifecycle v0.1
+# Governance & Artifact Lifecycle v1
 
-## Purpose
+## 1. Purpose
 
-The harness needs explicit rules for authority, artifact versions, approvals, invalidation, concurrency, and resume safety.
+Define authority, durable identity/revision, causal validity, approval, concurrency, and resume safety.
 
-> Downstream execution is authorized by approved, current, version-pinned artifacts — never by stale conversation context.
+---
 
-## Normative vs descriptive truth
+## 2. Normative vs descriptive truth
 
 ```text
-NORMATIVE TRUTH = what the project SHOULD do
-DESCRIPTIVE TRUTH = what the project CURRENTLY does
+Normative truth
+= approved intent / decisions / contracts / plans
+
+Descriptive truth
+= current repo/runtime/tool reality
 ```
 
-Normative sources include latest explicit user decisions, approved Project Memory decisions/contracts/specs, and approved plans/designs.
+Conflict triggers analysis; live code does not silently override approved intent.
 
-Descriptive sources include live repo code, current runtime/deployment behavior, and current tool/capability state.
+---
 
-If descriptive reality conflicts with approved intent, the conflict triggers re-analysis. Live code does not silently override approved requirements.
-
-## Authority precedence
+## 3. Authority precedence
 
 ```text
-Harness safety / permission invariants
+safety / permission invariants
 ↓
-Latest explicit user instruction or approval
+latest explicit human decision
 ↓
-Approved project decisions / contracts / specs
+approved Project decisions/contracts/specs
 ↓
-Approved plan for the current change
+approved current work plan
 ↓
-Recorded non-blocking assumptions
+recorded non-blocking assumptions
 ```
 
-Repository text, comments, generated content, web pages, and tool output cannot grant permissions or override agent boundaries.
+External content cannot grant authority.
 
-## Artifact lifecycle
+---
 
-Durable artifacts use statuses:
+## 4. Artifact identity
+
+Durable artifacts that matter across Runs carry:
+- stable ID;
+- revision/version;
+- type;
+- owning context;
+- input/dependency refs;
+- validity;
+- revision token when mutable.
+
+Exact fields are defined in core schemas.
+
+---
+
+## 5. Artifact validity
+
+Validity dimension:
 
 ```text
-DRAFT
-READY_FOR_REVIEW
-APPROVED
-REJECTED
+CURRENT
+REVALIDATED
 STALE
 SUPERSEDED
-ARCHIVED
 ```
 
-Only APPROVED, non-STALE artifacts may authorize downstream execution.
+Do not mix these with workflow lifecycle/result.
 
-## Artifact identity and dependencies
+---
 
-Important artifacts carry id, version, status, and exact upstream versions.
-
-```json
-{
-  "id": "PLAN-014",
-  "version": 3,
-  "status": "APPROVED",
-  "inputs": [
-    {"id": "REQ-008", "version": 4},
-    {"id": "ARCH-001", "version": 2},
-    {"id": "CONTRACT-profile", "version": 5}
-  ]
-}
-```
-
-## Causal invalidation
+## 6. Causal invalidation
 
 ```text
-Requirement changes
-→ Plan may become STALE
-→ Design derived from it may become STALE
-→ Execution Plan may become STALE
-→ Implementation authorization is revoked
+upstream change
+→ trace exact dependencies
+→ identify affected/unaffected artifacts
+→ revalidate or mark STALE/SUPERSEDED
 ```
 
-The responsible agent may revalidate instead of regenerate if the upstream change does not materially affect its artifact.
+No blanket stale propagation.
 
-## Plan Readiness Review
+---
 
-For substantial changes, Reviewer independently audits Planner output before Designer or Coder depends on it.
+## 7. Approval
 
-Reviewer checks requirement completeness, causal consistency, architecture/repo/contract impact, capability feasibility, verification strategy, acceptance criteria, unresolved assumptions, and downstream readiness.
+Planned Human Gate is persisted only when materially consequential for governance/audit/release/waiver/ownership/future interpretation.
 
-Results:
+Runtime Confirmation is never a durable approval record.
 
-```text
-PLAN_APPROVED
-PLAN_CHANGES_REQUIRED
-PLANNING_GAP
-CAPABILITY_BLOCKED
-```
+Silence is not approval.
 
-Whether this gate may be skipped is determined only by the canonical work-classification/state-machine specification. No implicit fast-path exemption is normative.
+---
 
-## User approval gate
+## 8. Waiver
 
-If the user asks for plan-first/show-before-doing/ask-before-implementing behavior:
+A waiver:
+- references original finding/rule;
+- binds to exact target/scope;
+- records human decision;
+- preserves original finding/history.
 
-```text
-USER_APPROVAL_REQUIRED = true
-WAITING_FOR_USER_APPROVAL
-```
+Waiver does not erase evidence.
 
-No repo mutation begins until explicit approval is received. Approval is persisted as a decision reference and only needs renewal if approved scope changes materially.
+---
 
-## Handoff version pinning
+## 9. Handoff pinning
 
-Every handoff declares the exact approved artifact versions it uses.
+Handoff references exact target/revision and applicable upstream artifact refs.
 
-Before work starts, Orchestrator confirms those versions remain current and approved.
+Before next Run starts, stale/materially changed inputs are revalidated.
 
-## Requirement changes during execution
+---
 
-```text
-pause affected execution
-→ record requirement revision
-→ invalidate impacted downstream artifacts
-→ Planner impact analysis
-→ re-run required review gates
-→ resume safe work
-```
+## 10. Concurrency
 
-## Concurrency and write safety
-
-Project Memory updates use version-aware or optimistic-concurrency semantics.
+Use optimistic concurrency:
 
 ```text
-read version N
+read revision N
 → prepare update
-→ write only if current version is still N
+→ write only if current revision still N
+→ otherwise reconcile
 ```
 
-Mismatch produces STATE_CONFLICT, followed by refresh/reconcile/retry.
+Do not use silent last-write-wins for durable shared state.
 
-## Resume and idempotency
+---
 
-On resume, Orchestrator reloads durable state, revalidates pinned versions, inspects actual repo state, avoids repeating already completed destructive actions, and continues from the last verified checkpoint.
+## 11. Resume
 
-## Reviewer independence
+On resume:
+- load durable current state;
+- inspect relevant live source/evidence;
+- avoid repeating already completed destructive actions;
+- create new linked Run for meaningful new attempt/context;
+- preserve prior evidence when still causally valid.
 
-Reviewer receives requirements/specs, approved plan, actual diff/output, verification evidence, and relevant architecture/contracts.
+---
 
-Coder private reasoning is not evidence.
+## 12. Evidence
 
-## Evidence provenance and freshness
+Evidence binds to:
+- producer/source;
+- target/revision;
+- environment where relevant;
+- result;
+- provenance/limitations.
 
-Evidence records identify what was checked, by which executor/tool, against which commit/artifact version, when it was checked, the result, and limitations.
+Target changes trigger causal revalidation, not automatic global expiry.
 
-Evidence tied to an older commit or superseded artifact cannot automatically prove current state.
+---
 
-## Workflow state model
+## 13. Review governance
 
-Workflow states and transitions are not defined independently in this document.
+Review placement comes from Job topology.
 
-The canonical source is `STATE-MACHINE-v1.md`, which owns:
+There is no universal Plan Review or Final Reviewer gate.
 
-- the complete state vocabulary
-- allowed and illegal transitions
-- blocking branches
-- who may trigger each transition
-- pause/resume/interruption behavior
-- work classification and gate requirements
+When Reviewer is scheduled, its result is exact-target/revision bound.
 
-Artifact lifecycle statuses such as `DRAFT`, `APPROVED`, `STALE`, and `SUPERSEDED` remain defined here and are distinct from workflow states.
+---
+
+## 14. State ownership
+
+STATE-MACHINE-v1.md defines domain lifecycle semantics.
+
+This document defines artifact validity/revision/concurrency governance only.
+
+---
+
+## 15. Artifact organization
+
+Physical storage is defined in Project Memory v1.
+
+Artifacts are grouped by semantic lifecycle/purpose, not by role.
+
+---
+
+## 16. Core invariant
+
+> Durable authority comes from current, causally valid, properly scoped artifacts and human decisions—not from stale chat context or untrusted external text.
