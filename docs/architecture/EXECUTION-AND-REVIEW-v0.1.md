@@ -2,16 +2,19 @@
 
 ## 1. Unit hierarchy
 
-The system distinguishes four units:
+The system distinguishes a hierarchy of work units:
 
 ```text
 Task
   < Review Unit
   < Pull Request
   < Change Set / Master Plan
+  < Job
 ```
 
 They are not interchangeable.
+
+A higher-level unit is not complete merely because its children were implemented. Completion must be promoted upward through review.
 
 ### Task
 
@@ -28,6 +31,109 @@ The smallest change that can be understood, verified, approved, and rolled back 
 ### Change Set
 
 A project-level change that may coordinate multiple PRs across one or many repositories.
+
+### Job
+
+The top durable work unit selected from Drive.
+
+A Job may contain one Change Set or several coherent work groups. It is the level at which Super Agent finally decides whether the requested work is accepted, must be reopened, or can be closed before the user moves on to another Job.
+
+## 2. Hierarchical completion and review promotion
+
+Core rule:
+
+> IMPLEMENTED IS NOT THE SAME AS APPROVED, AND APPROVED CHILDREN DO NOT AUTOMATICALLY COMPLETE THEIR PARENT.
+
+Every reviewable unit follows a maker/reviewer loop:
+
+```text
+OWNER WORKS
+→ owner marks READY_FOR_REVIEW
+→ Reviewer checks the artifact/result/evidence
+   ├── CHANGES_REQUIRED → return to the owning level
+   ├── ESCALATE → reopen a higher planning level
+   └── APPROVED → promote completion upward
+```
+
+Typical nested execution:
+
+```text
+PLAN
+↔ PLAN REVIEW
+
+DETAILED EXECUTION PLAN
+↔ EXECUTION PLAN REVIEW
+
+TASK 1
+↔ TASK REVIEW
+
+TASK 2
+↔ TASK REVIEW
+
+...
+
+REVIEW UNIT / PR
+↔ PR-READY REVIEW
+
+CHANGE SET
+↔ INTEGRATION REVIEW
+
+JOB
+↔ FINAL JOB REVIEW
+```
+
+A child unit can be `APPROVED` while its parent remains incomplete.
+
+A parent becomes eligible for its own review only when all required children are approved or explicitly waived by an approved rule.
+
+### Failure routing
+
+Review failure is routed to the lowest level that owns the defect:
+
+```text
+task implementation defect
+→ reopen current Task
+
+detailed execution-plan defect
+→ reopen Detailed Execution Plan
+
+plan / architecture / contract defect
+→ PLANNING_GAP
+→ reopen Planner level
+
+cross-repo integration defect
+→ reopen affected Change Set / repo work
+
+final Job incompleteness
+→ reopen the lowest affected unit(s)
+```
+
+Ancestors of a reopened unit can no longer remain `DONE`; they return to a non-final state until affected work is reviewed again.
+
+### Job completion gate
+
+A Job may be marked final only when:
+
+- all required child work is approved;
+- required integration/review gates have passed;
+- completion evidence is fresh;
+- no unresolved blocking finding remains;
+- the final Job-level review returns approval.
+
+The final Job review decides:
+
+```text
+JOB_APPROVED
+→ mark Job complete / ready to leave
+→ user may continue to another Job
+
+JOB_CHANGES_REQUIRED
+→ identify affected level
+→ reopen that level
+→ repeat the relevant review loop
+```
+
+Reviewer evaluates and routes; Reviewer does not repair the owner's work.
 
 ## 2. PR boundary rules
 
