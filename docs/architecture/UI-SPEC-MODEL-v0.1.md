@@ -1,637 +1,229 @@
-# UI Specification Model v0.1
+# UI Specification / Design Coverage Model v1
 
-## 1. Purpose
+## 1. Status
 
-For any app with a material user interface, Planner MUST produce a structured UI specification before Coder begins implementation.
+This document defines **design coverage obligations and a specialist reference model**, not a mandatory fixed set of files that Planner must always produce.
 
-The specification is not a loose collection of visual notes. It is a tree of user-facing surfaces with explicit requirements for every branch, governed by one shared visual system and one shared responsive/device model.
-
-Invariant:
-
-> Every material UI node must have requirements, states, responsive behavior, and acceptance criteria before implementation begins.
-
-## 2. UI Tree is mandatory
-
-Planner MUST first produce an application-level UI Tree.
-
-Example for a primary-school Math learning app:
+GSA core asks:
 
 ```text
-Math App
-│
-├── App Shell
-│   ├── Header
-│   │   ├── Logo / Subject identity
-│   │   ├── Back / navigation action
-│   │   ├── Progress summary
-│   │   └── Child profile
-│   └── Global background / scene
-│
+Are all known product surfaces/states covered enough for design/implementation?
+```
+
+Specialist UI design skills decide the detailed methodology and artifact shape.
+
+---
+
+## 2. Design Coverage Inventory
+
+Before detailed UI design for material UI-first work:
+
+```text
+requirements
++ content model
++ product flows
++ feature list
+→ Design Coverage Inventory
+→ detailed design
+→ DESIGN_READY
+```
+
+Coverage should identify known:
+- screens/surfaces;
+- flows;
+- shared shell/components;
+- loading/empty/error/success states;
+- selected/disabled/completed states;
+- responsive variants;
+- assessment/report states where applicable;
+- media/asset-heavy cases.
+
+---
+
+## 3. UI tree is a useful technique, not universal storage mandate
+
+A UI Tree is strongly useful for many apps, especially content-driven products.
+
+Example:
+
+```text
+App Shell
 ├── Home
-│   ├── Welcome / current grade
-│   ├── Continue learning
-│   ├── Topic grid
-│   │   ├── Topic card
-│   │   ├── Locked state
-│   │   ├── In-progress state
-│   │   └── Completed state
-│   └── Optional secondary cards
-│
 ├── Topic
-│   ├── Topic header
-│   ├── Lesson list
-│   │   ├── Lesson card
-│   │   ├── Progress
-│   │   └── Completion state
-│   └── Topic summary
-│
 ├── Lesson
-│   ├── Start state
-│   ├── Learning Canvas
-│   │   ├── Explanation
-│   │   ├── Example
-│   │   ├── Illustration / diagram
-│   │   └── Lesson-specific interaction
-│   ├── Previous / Next controls
-│   └── End-of-theory state
-│
 ├── Exercise
-│   ├── Question
-│   ├── Answer interaction
-│   ├── Correct feedback
-│   ├── Incorrect feedback
-│   ├── Automatic progression
-│   └── Progress indicator
-│
-├── Result
-│   ├── Score / performance
-│   ├── Mistake review
-│   ├── Learning summary
-│   └── Continue action
-│
-└── Shared States
-    ├── Loading
-    ├── Empty
-    ├── Offline / network error
-    ├── Permission / profile missing
-    └── Fatal error / recovery
+└── Result
 ```
 
-The exact tree differs by project. Planner derives it from product requirements and actual project architecture.
+But GSA theory does not require every product to persist a file named UI-TREE.md.
 
-## 3. Every UI Tree node gets a Node Spec
+The requirement is semantic coverage, not filename ceremony.
 
-Every material node in the UI Tree MUST have a corresponding requirement block.
+---
 
-Recommended schema:
+## 4. Node/surface specification obligations
 
-```yaml
-id: lesson.learning-canvas
-type: screen-region
-parent: lesson
-purpose: Present theory and interactive learning content
+Material surfaces should have enough definition for applicable:
+- purpose;
+- content;
+- hierarchy;
+- interaction;
+- states;
+- responsive behavior;
+- accessibility;
+- assets;
+- acceptance.
 
-users:
-  - primary learner
+These may live in one document, design tool, structured data, or specialist artifact set.
 
-entry_conditions:
-  - lesson selected
+---
 
-content:
-  required:
-    - lesson title
-    - learning content
-  optional:
-    - illustration
-    - audio
+## 5. Functional vs visual ownership
 
-layout:
-  hierarchy:
-    - content
-    - illustration
-    - controls
+Planner/product definition owns:
+- user goal;
+- flow/navigation;
+- content hierarchy;
+- behavioral state semantics;
+- responsive priority;
+- accessibility behavior;
+- acceptance intent.
 
-interaction:
-  primary_action: next
-  secondary_action: previous
+Designer owns:
+- visual hierarchy;
+- composition;
+- concrete visual system/tokens when not inherited;
+- artwork/icon language;
+- visual variants;
+- design coverage visualization.
 
-states:
-  - default
-  - loading
-  - content-error
-  - final-step
+Coder owns exact implementation HOW.
 
-responsive:
-  phone: ...
-  tablet: ...
-  desktop: ...
+---
 
-assets:
-  - lesson illustration where required
+## 6. Design system
 
-accessibility:
-  - keyboard focus order
-  - semantic heading structure
+Prefer existing Project design system.
 
-acceptance:
-  - ...
-```
+If absent or incomplete, Designer proposes shared visual language.
 
-Coder MUST be able to trace every implemented major screen/component back to a Node Spec or shared component spec.
+Do not require Planner to invent color/type/spacing values merely to fill a spec.
 
-## 4. Node requirement dimensions
+---
 
-For each node, Planner resolves applicable requirements in the following dimensions:
+## 7. Responsive coverage
 
-### 4.1 Purpose
+Specify intended behavior before implementation breakpoints.
 
-- why the node exists
-- user goal
-- system goal
+Applicable questions:
+- what reflows;
+- what hides;
+- what remains;
+- what grows/shrinks;
+- crop/contain strategy;
+- max-width behavior;
+- touchability;
+- large-screen use of space.
 
-### 4.2 Content
+Breakpoints remain implementation detail unless already fixed by design system.
 
-- required text/content
-- optional content
-- content priority
-- dynamic data
-- fallback content
+---
 
-### 4.3 Layout
+## 8. Representative variation
 
-- hierarchy
-- alignment
-- grouping
-- maximum/minimum width
-- density
-- scrolling behavior
+Coverage should include materially different content/state cases, not only average happy path.
 
-### 4.4 Interaction
+Examples:
+- very short/long text;
+- asset-heavy lesson;
+- audio;
+- interactive content;
+- assessment;
+- result/report;
+- error/recovery;
+- mobile/tablet/desktop where applicable.
 
-- primary action
-- secondary action
-- automatic behavior
-- hover/focus/tap behavior
-- disabled behavior
-- error recovery
+---
 
-### 4.5 States
-
-- default
-- loading
-- empty
-- active
-- selected
-- disabled
-- success
-- warning
-- error
-- complete
-
-### 4.6 Visual treatment
-
-- component style
-- typography role
-- color role
-- icon/artwork use
-- emphasis
-- background relationship
-
-### 4.7 Responsive behavior
-
-- phone
-- tablet
-- desktop
-- wide desktop when material
-
-### 4.8 Accessibility
-
-- semantic role
-- focus behavior
-- target size
-- contrast
-- reduced motion where relevant
-
-### 4.9 Acceptance
-
-- observable success criteria
-- screenshot/render expectations where useful
-- interaction verification
-- responsive verification
-
-## 5. Design Foundation must be defined before screen specs
-
-Planner MUST define functional Design Foundation constraints and inherited project tokens. If visual tokens are already approved, Designer inherits them. If they are not fixed, Designer proposes the concrete color/type/art treatment during concept design without changing functional requirements.
-
-The foundation contains:
+## 9. DESIGN_READY
 
 ```text
-DESIGN FOUNDATION
-├── Visual direction
-├── Color system
-├── Typography system
-├── Spacing system
-├── Radius / shape system
-├── Elevation system
-├── Icon / artwork language
-├── Motion rules
-├── Layout container rules
-└── Device / responsive model
+DESIGN_READY
+= known required design space covered enough that implementation should not routinely need redesign
 ```
 
-Screens consume this foundation; they do not invent their own unrelated style.
+Does not require:
+- every final production asset;
+- every pixel-perfect screen;
+- one mandatory file package.
 
-## 6. Color specification
+It does require:
+- no known major visual/flow state left undefined for dependent code.
 
-Planner MUST specify colors by semantic role, not by scattered hard-coded values.
+---
 
-Example:
+## 10. SHELL_READY
 
-```yaml
-color:
-  background:
-    app: <token>
-    surface: <token>
-    elevated: <token>
-
-  text:
-    primary: <token>
-    secondary: <token>
-    muted: <token>
-    inverse: <token>
-
-  action:
-    primary: <token>
-    primary-hover: <token>
-    primary-disabled: <token>
-
-  feedback:
-    success: <token>
-    warning: <token>
-    error: <token>
-
-  learning:
-    current: <token>
-    completed: <token>
-    locked: <token>
-```
-
-For an existing product, Planner SHOULD derive these tokens from the current shared design system rather than inventing a new palette.
-
-If artwork is used, Planner must specify how surrounding surfaces visually blend with the artwork rather than allowing isolated image blocks to appear unrelated to the UI.
-
-## 7. Typography specification
-
-Planner MUST specify:
-
-- font family
-- fallback stack
-- supported font weights
-- type scale
-- line heights
-- letter spacing where relevant
-- allowed responsive scaling
-
-Example:
-
-```yaml
-font:
-  family: <project-font>
-  fallback: <fallback-stack>
-
-type:
-  display:
-    size: ...
-    weight: ...
-    line_height: ...
-
-  page_title:
-    size: ...
-    weight: ...
-
-  section_title:
-    size: ...
-    weight: ...
-
-  body:
-    size: ...
-    weight: ...
-
-  label:
-    size: ...
-    weight: ...
-
-  caption:
-    size: ...
-    weight: ...
-```
-
-For child-facing apps, typography requirements should explicitly consider reading ability, visual clarity, short line lengths, and minimum usable text size.
-
-Coder MUST NOT choose arbitrary font sizes screen by screen.
-
-## 8. Spacing and sizing specification
-
-Planner defines a shared spacing scale and component sizing rules.
-
-Example:
-
-```yaml
-spacing:
-  xs: ...
-  sm: ...
-  md: ...
-  lg: ...
-  xl: ...
-
-controls:
-  min_touch_target: ...
-  button_height:
-    compact: ...
-    default: ...
-    large: ...
-
-container:
-  max_content_width: ...
-  page_gutter:
-    phone: ...
-    tablet: ...
-    desktop: ...
-```
-
-Exact values may come from the existing project design system or be introduced by the design skill.
-
-## 9. Device Matrix is mandatory
-
-Planner MUST define which device classes the app is designed for.
-
-Example:
+For content-driven apps:
 
 ```text
-DEVICE MATRIX
-
-Phone portrait
-- primary target: yes
-- touch: yes
-- expected use: learner
-
-Phone landscape
-- supported: yes
-- special layout: only where necessary
-
-Tablet portrait
-- primary target: yes
-
-Tablet landscape
-- primary target: yes
-
-Laptop / small desktop
-- supported: yes
-
-Large desktop
-- supported: yes
-- must use extra space intentionally rather than stretching mobile layouts
+DESIGN_READY
+→ shell implementation
+→ representative real-content pilot
+→ Tester
+→ SHELL_READY
+→ scale-out
 ```
 
-Device support is a product decision, not an implementation guess.
+SHELL_READY means normal future content should fit without routine shared-shell redesign.
 
-## 10. Responsive behavior is specified per UI Tree branch
+---
 
-A global Responsive Spec is necessary but insufficient.
+## 11. Reopening design
 
-Every major UI node MUST declare how it changes across device classes.
+After DESIGN_READY/SHELL_READY, design may reopen for:
+- genuinely missing capability;
+- extreme legitimate content case;
+- new media interaction;
+- accessibility/usability defect;
+- device/platform constraint.
 
-Example:
+Shared redesign goes through Causal Change Review.
+
+---
+
+## 12. Traceability
+
+Useful trace:
 
 ```text
-Topic Grid
-
-Phone
-- 1 column
-- artwork remains large enough to identify topic
-- title remains readable
-- optional secondary card hidden if vertical space is constrained
-
-Tablet
-- 2 columns
-- card artwork preserved
-- larger gutters
-
-Desktop
-- 3 or 4 columns based on available content width
-- content centered inside max-width container
-- do not stretch cards unnaturally
-
-Large desktop
-- may introduce an additional informational/artwork region
-- do not scale primary cards indefinitely
+product requirement
+→ design coverage item
+→ design artifact/reference
+→ implementation Task
+→ verification evidence
 ```
 
-Responsive rules should define behavior first. Breakpoints are then chosen by Coder to satisfy that behavior unless the project design system already defines exact breakpoints.
+Exact IDs/files are implementation/storage detail.
 
-## 11. Layout mode vs breakpoint
+---
 
-Planner specifies semantic layout modes:
+## 13. Asset Requirements
 
-```text
-COMPACT
-REGULAR
-WIDE
-```
+Visual assets are derived from approved design where practical.
 
-Each layout mode defines intended UI behavior.
+Stable Asset Requirement contracts may allow placeholder integration before final binaries are available.
 
-Implementation may map these modes to breakpoints.
+---
 
-This avoids specs that only say:
+## 14. Specialist delegation
 
-```css
-@media (max-width: 768px)
-```
+Detailed UI methodology—component audits, token systems, responsive checklists, visual QA, concept generation—belongs to specialist Designer/UI skills.
 
-without defining what should actually change.
+This document provides GSA-level coverage/readiness constraints only.
 
-## 12. Shared component specifications
+---
 
-Repeated UI elements get one shared component spec.
+## 15. Core principle
 
-Example:
-
-```text
-COMPONENT: TopicCard
-
-Purpose:
-Represent one learning topic.
-
-Variants:
-- available
-- in-progress
-- completed
-- locked
-
-Required content:
-- artwork
-- topic name
-
-Optional content:
-- progress
-
-Interaction:
-- entire card is interactive when available
-- locked variant is non-interactive
-
-Visual:
-- artwork is dominant
-- text is secondary
-- artwork must never be stretched
-- card must visually blend with page background
-
-Responsive:
-- dimensions may change
-- aspect relationship remains controlled
-```
-
-Screens reference this shared spec instead of redefining the card repeatedly.
-
-## 13. Example requirement map for a Math app
-
-```text
-Math App
-│
-├── Home
-│   ├── REQ-HOME-001: learner sees current grade
-│   ├── REQ-HOME-002: learner can continue most recent lesson
-│   ├── REQ-HOME-003: all available topics are visible
-│   └── REQ-HOME-004: layout adapts without stretching topic artwork
-│
-├── Topic
-│   ├── REQ-TOPIC-001: all lessons in topic are visible
-│   ├── REQ-TOPIC-002: lesson progress is visible
-│   └── REQ-TOPIC-003: locked/completed states are distinguishable
-│
-├── Lesson
-│   ├── REQ-LESSON-001: one learning step is visually primary
-│   ├── REQ-LESSON-002: previous/next navigation is clear
-│   ├── REQ-LESSON-003: exercise CTA appears only at correct stage
-│   └── REQ-LESSON-004: learning canvas remains usable on phone/tablet/desktop
-│
-└── Exercise
-    ├── REQ-EX-001: question starts immediately when exercise begins
-    ├── REQ-EX-002: answer is graded immediately
-    ├── REQ-EX-003: feedback is shown clearly
-    ├── REQ-EX-004: next question advances automatically when specified
-    └── REQ-EX-005: final report appears automatically on completion
-```
-
-Each REQ id links to acceptance criteria and relevant Node Spec.
-
-## 14. Recommended UI design artifacts
-
-For a significant app or redesign, Planner should produce:
-
-```text
-design/
-  UI-TREE.md
-  UI-REQUIREMENTS.json
-  DESIGN-FOUNDATION.md
-  DESIGN-TOKENS.json
-  DEVICE-MATRIX.md
-  RESPONSIVE-SPEC.md
-  COMPONENT-SPECS.md
-  SCREEN-SPECS/
-    HOME.md
-    TOPIC.md
-    LESSON.md
-    EXERCISE.md
-    RESULT.md
-  UX-FLOW.md
-  INTERACTION-SPEC.md
-  UI-ACCEPTANCE.md
-```
-
-Small changes may combine artifacts, but the same information obligations remain.
-
-## 15. Traceability
-
-Planner MUST establish:
-
-```text
-Product requirement
-  ↓
-UI Tree node
-  ↓
-Node requirement
-  ↓
-Screen/component spec
-  ↓
-Coder execution task
-  ↓
-Reviewer acceptance check
-```
-
-This allows Reviewer to detect:
-
-- implemented UI with no requirement
-- requirement with no implementation
-- responsive branch not implemented
-- component inconsistent with shared design tokens
-- screen state missing from test/review
-
-## 16. UI readiness gate
-
-For a new app or major UI redesign, implementation readiness requires:
-
-```text
-UI Tree complete
-Node requirements complete
-Design Foundation complete
-Color tokens resolved
-Typography resolved
-Spacing/sizing system resolved
-Device Matrix resolved
-Global responsive behavior resolved
-Per-node responsive behavior resolved
-Shared component specs resolved
-Asset strategy resolved
-Interaction states resolved
-UI acceptance criteria resolved
-Verification capability resolved
-```
-
-If any material branch of the UI Tree remains unspecified, Planner must not mark the UI implementation ready.
-
-## 17. Designer handoff
-
-For material UI work, Planner compiles a Design Brief from this UI specification. Designer uses that brief to create Concept Artwork, then decomposes the selected concept into a single crop-ready numbered `ASSET-SHEET.png`: each visual asset is isolated on the sheet with spacing for manual cropping. Sidecar specifications and prompts support later high-quality regeneration of each cropped asset, as defined in `DESIGNER-HARNESS-v0.1.md`.
-
-UI implementation readiness therefore requires both:
-
-```text
-PLANNER_UI_SPEC_READY
-AND
-DESIGN_CONCEPT_APPROVED
-```
-
-before Coder begins the visual implementation.
-
-## 18. Coder UI/UX split
-
-After Planner and Designer artifacts are approved, implementation is divided into:
-
-```text
-UX Coder
-→ flow, state, interaction, accessibility behavior, responsive semantics
-
-UI Coder
-→ visual hierarchy, layout fidelity, typography, spacing, artwork integration, responsive visual composition
-```
-
-UI Coder must treat Concept Artwork as an implementation reference. Before coding, it should measure and normalize concept geometry into proportions, constraints, and design-token candidates; render-and-compare verification is a separate capability-gated step after implementation.
-
-See `CODER-UIUX-HARNESS-v0.1.md`.
-
-## 19. Core principle
-
-> Planner defines the product and UI requirements; Designer establishes the visual concept; UX Coder makes it behave correctly; UI Coder makes it visually match the approved intent.
-
-A screen is not an isolated page. It is one branch of a product-wide UI tree governed by shared tokens, shared components, device rules, interaction rules, and traceable requirements.
+> Cover the known product space before coding, but do not confuse coverage obligations with a mandatory document tree or one universal UI methodology.
