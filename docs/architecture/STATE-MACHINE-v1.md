@@ -1,16 +1,14 @@
 ---
 id: STATE-MACHINE
-version: 1
+version: 1.1
 status: DEFINED
 depends_on:
   - FROZEN-FOUNDATION-v0.1
 ---
 
-# State Machine v1
+# State Model v1.1
 
 ## 1. Principle
-
-GSA does not use one universal overloaded status field.
 
 Separate:
 
@@ -20,9 +18,10 @@ result
 artifact validity
 delivery facts
 verification obligations
+derived work condition
 ```
 
----
+Do not use one universal status field.
 
 ## 2. Project lifecycle
 
@@ -34,7 +33,7 @@ ARCHIVED
 
 Delete is an operation, not a state.
 
----
+Project transition rules remain explicit because wrong transitions have governance impact.
 
 ## 3. Job lifecycle
 
@@ -42,31 +41,24 @@ Delete is an operation, not a state.
 DRAFT
 READY
 IN_PROGRESS
-WAITING
-BLOCKED
 COMPLETED
 CANCELLED
 SUPERSEDED
 ```
 
-Accepted successful Job results:
+Derived work condition may be:
+```text
+WAITING
+BLOCKED
+```
 
+WAITING/BLOCKED should be derived from a durable cause such as Handoff, Human Gate, dependency or blocker instead of duplicated as authoritative Job lifecycle whenever practical.
+
+Accepted terminal successful result:
 ```text
 PASS
 PASS_RETEST_REQUIRED
 ```
-
-Other evaluation/routing results may include:
-
-```text
-CHANGES_REQUIRED
-BLOCKED
-HUMAN_REVIEW_REQUIRED
-```
-
-A Job may be COMPLETED + PASS_RETEST_REQUIRED while durable Retest remains pending.
-
----
 
 ## 4. Task lifecycle
 
@@ -74,22 +66,22 @@ A Job may be COMPLETED + PASS_RETEST_REQUIRED while durable Retest remains pendi
 PLANNED
 READY
 IN_PROGRESS
-WAITING
-BLOCKED
 COMPLETED
 CANCELLED
 SUPERSEDED
 ```
 
-CHANGES_REQUIRED is an evaluation result/routing condition, not Task lifecycle state.
+WAITING/BLOCKED are derived conditions.
 
----
+A completed Task may be reactivated only while its parent Job is still nonterminal and remediation remains the same bounded objective.
+
+If parent Job is COMPLETED, later remediation uses a new linked Job.
 
 ## 5. Run lifecycle
 
+A Run exists when execution starts; avoid pre-execution CREATED/READY ceremony.
+
 ```text
-CREATED
-READY
 IN_PROGRESS
 WAITING_HUMAN
 BLOCKED
@@ -99,11 +91,12 @@ CANCELLED
 SUPERSEDED
 ```
 
-WAITING_HANDOFF is not a Run state.
+A meaningful new attempt/new chat after interruption creates a new linked Run.
 
-Once source execution ends, Run completes and a Handoff carries the pending transition.
-
----
+Child Run:
+- has separate lifecycle;
+- may execute in same chat when independence is not required;
+- preserves parent_run_id.
 
 ## 6. Handoff lifecycle
 
@@ -114,9 +107,7 @@ CONSUMED
 SUPERSEDED
 ```
 
-Consumed Handoff remains historical.
-
----
+Consumed handoff remains historical.
 
 ## 7. Retest lifecycle
 
@@ -128,25 +119,20 @@ FAIL
 SUPERSEDED
 ```
 
-Retest attempt history is append-preserving.
-
----
+Attempt history is append-preserving.
 
 ## 8. Asset Requirement lifecycle
 
+Keep compact:
+
 ```text
 DEFINED
-PLACEHOLDER_READY
-FINAL_PENDING
-FINAL_AVAILABLE
-INTEGRATED
+AVAILABLE
 VERIFIED
 SUPERSEDED
 ```
 
-Applicable intermediate states may be skipped.
-
----
+Placeholder/final/integrated status are fields/facts, not separate lifecycle states unless future evidence proves otherwise.
 
 ## 9. Artifact validity
 
@@ -157,13 +143,9 @@ STALE
 SUPERSEDED
 ```
 
-Validity changes through causal impact analysis, not blanket invalidation.
-
----
+Unknown/incomplete dependency trace is treated as affected until revalidated.
 
 ## 10. Delivery facts
-
-Separate facts/events:
 
 ```text
 accepted
@@ -174,96 +156,13 @@ deployment_verified
 
 These are not lifecycle states.
 
----
-
 ## 11. Transition ownership
 
-```text
-domain
-→ defines semantic state meanings and valid transitions
+Domains define semantic state meaning.
 
-Orchestrator
-→ validates/applies transitions
-→ persists control-plane state
-```
+Orchestrator/harness applies transition rules when invoked; there is no always-running state engine.
 
----
-
-## 12. Review topology
-
-Review does not create a universal state-machine gate.
-
-Detailed Execution Plan / milestone topology determines which checkpoints require:
-- Reviewer;
-- Tester;
-- Human Gate;
-- objective evidence;
-- combinations.
-
-There is no universal final Reviewer requirement for every Job.
-
----
-
-## 13. Resume/retry
-
-```text
-same uninterrupted execution context
-→ same Run may continue
-
-meaningful new attempt/new chat after interruption
-→ new linked Run
-```
-
-Completed historical records are not rewritten as though prior attempts never occurred.
-
----
-
-## 14. Reopen after later failure
-
-Examples:
-
-```text
-Retest FAIL
-→ reopen smallest relevant Task or create remediation Task
-→ preserve original Job/Run history
-
-post-release material defect
-→ normally create new linked Job
-→ do not rewrite old completed Job history
-```
-
----
-
-## 15. Illegal semantic collapses
-
-The following are invalid:
-
-```text
-merged = Job state
-STALE = review verdict
-Retest pending = Job must stay IN_PROGRESS
-review required = every PR/Task/Job
-delete = lifecycle state
-```
-
----
-
-## 16. State-machine invariants
-
-1. Project/Job/Task/Run/Handoff/Retest have distinct state spaces.
-2. Result is separate from lifecycle state.
-3. Validity is separate from result.
-4. Delivery facts are separate from lifecycle state.
-5. Orchestrator enforces transitions.
-6. Review topology determines gates.
-7. Historical attempts/results remain traceable.
-
-
----
-
-## 17. Legal transition matrix
-
-### Project
+## 12. Project legal transitions
 
 ```text
 ACTIVE → PAUSED
@@ -274,277 +173,82 @@ ARCHIVED → ACTIVE
 ARCHIVED → PAUSED
 ```
 
-Delete is permitted only through explicit destructive operation and is not a lifecycle transition.
+Delete remains explicit destructive operation.
 
-### Job
-
-```text
-DRAFT → READY
-DRAFT → CANCELLED
-DRAFT → SUPERSEDED
-
-READY → IN_PROGRESS
-READY → WAITING
-READY → BLOCKED
-READY → CANCELLED
-READY → SUPERSEDED
-
-IN_PROGRESS → WAITING
-IN_PROGRESS → BLOCKED
-IN_PROGRESS → COMPLETED
-IN_PROGRESS → CANCELLED
-IN_PROGRESS → SUPERSEDED
-
-WAITING → READY
-WAITING → IN_PROGRESS
-WAITING → BLOCKED
-WAITING → COMPLETED
-WAITING → CANCELLED
-WAITING → SUPERSEDED
-
-BLOCKED → READY
-BLOCKED → IN_PROGRESS
-BLOCKED → CANCELLED
-BLOCKED → SUPERSEDED
-```
-
-`COMPLETED`, `CANCELLED`, and `SUPERSEDED` are historical terminal states. Later work normally uses a new linked Job rather than moving the historical Job backward.
-
-### Task
+## 13. Job legal transitions
 
 ```text
-PLANNED → READY
-PLANNED → CANCELLED
-PLANNED → SUPERSEDED
-
-READY → IN_PROGRESS
-READY → WAITING
-READY → BLOCKED
-READY → CANCELLED
-READY → SUPERSEDED
-
-IN_PROGRESS → WAITING
-IN_PROGRESS → BLOCKED
-IN_PROGRESS → COMPLETED
-IN_PROGRESS → CANCELLED
-IN_PROGRESS → SUPERSEDED
-
-WAITING → READY
-WAITING → IN_PROGRESS
-WAITING → BLOCKED
-WAITING → COMPLETED
-WAITING → CANCELLED
-WAITING → SUPERSEDED
-
-BLOCKED → READY
-BLOCKED → IN_PROGRESS
-BLOCKED → CANCELLED
-BLOCKED → SUPERSEDED
+DRAFT → READY | CANCELLED | SUPERSEDED
+READY → IN_PROGRESS | CANCELLED | SUPERSEDED
+IN_PROGRESS → COMPLETED | CANCELLED | SUPERSEDED
 ```
 
-A completed Task may be explicitly reopened only when the remediation is still semantically the same bounded Task.
+A Job may display WAITING/BLOCKED while its lifecycle remains READY/IN_PROGRESS according to the blocking cause.
 
-The only direct reopen transition is:
+COMPLETED/CANCELLED/SUPERSEDED are historical terminal states.
+
+## 14. Smaller-domain safety rules
+
+Rather than large transition matrices:
+
+Task:
+- terminal CANCELLED/SUPERSEDED do not reactivate;
+- COMPLETED does not reopen after parent Job completion.
+
+Run:
+- terminal COMPLETED/FAILED/CANCELLED/SUPERSEDED do not reactivate;
+- retry creates new linked Run.
+
+Handoff:
+- CONSUMED/SUPERSEDED do not return to PENDING.
+
+Retest:
+- prior PASS/FAIL attempt history is never erased.
+
+Asset:
+- SUPERSEDED does not reactivate; create/revise current requirement explicitly.
+
+## 15. Retest failure
 
 ```text
-COMPLETED → READY
+Job not terminal
++ practical/test failure
+→ route to smallest relevant Task/work scope
+
+Job COMPLETED + PASS_RETEST_REQUIRED
++ later Retest FAIL
+→ preserve historical Job
+→ create linked remediation Job
 ```
 
-This forces current inputs/acceptance to be re-evaluated before new execution starts.
+Status views must surface pending/failed Retests adjacent to completed Jobs.
 
-Do not use `COMPLETED → IN_PROGRESS` directly.
+## 16. PAUSED/ARCHIVED realism
 
-If remediation introduces materially new scope/type/objective, create a new linked remediation Task instead.
+A running chat cannot be externally interrupted by another chat.
 
-### Run
+Therefore:
 
 ```text
-CREATED → READY
-CREATED → CANCELLED
-CREATED → SUPERSEDED
-
-READY → IN_PROGRESS
-READY → CANCELLED
-READY → SUPERSEDED
-
-IN_PROGRESS → WAITING_HUMAN
-IN_PROGRESS → BLOCKED
-IN_PROGRESS → COMPLETED
-IN_PROGRESS → FAILED
-IN_PROGRESS → CANCELLED
-IN_PROGRESS → SUPERSEDED
-
-WAITING_HUMAN → IN_PROGRESS
-WAITING_HUMAN → CANCELLED
-WAITING_HUMAN → SUPERSEDED
-
-BLOCKED → IN_PROGRESS
-BLOCKED → FAILED
-BLOCKED → CANCELLED
-BLOCKED → SUPERSEDED
+before consequential action
+→ re-read Project lifecycle
+→ if PAUSED/ARCHIVED, do not start that action
 ```
 
-`COMPLETED`, `FAILED`, `CANCELLED`, and `SUPERSEDED` Runs are historical terminal attempts. Retry creates a new linked Run.
+Already-issued indivisible external actions may settle if they cannot be cancelled.
 
-### Handoff
+Cross-chat consistency is eventual.
 
-```text
-PENDING → CONSUMED
-PENDING → BLOCKED
-PENDING → SUPERSEDED
+## 17. Consequential actions
 
-BLOCKED → PENDING
-BLOCKED → SUPERSEDED
-```
+Include:
+- owned source write;
+- destructive operation;
+- handoff consumption;
+- merge/deploy action;
+- material shared control-plane mutation.
 
-`CONSUMED` and `SUPERSEDED` are terminal historical Handoff states.
-
-### Retest
-
-```text
-PENDING → BLOCKED
-PENDING → PASS
-PENDING → FAIL
-PENDING → SUPERSEDED
-
-BLOCKED → PENDING
-BLOCKED → PASS
-BLOCKED → FAIL
-BLOCKED → SUPERSEDED
-```
-
-PASS/FAIL results are preserved in attempt history. A later practical verification attempt does not erase the earlier result.
-
----
-
-## 18. Transition triggers / authority
-
-Typical trigger ownership:
-
-```text
-Human
-→ Project lifecycle changes
-→ destructive delete
-→ material approval/waiver
-→ merge/release authorization
-
-Orchestrator
-→ validates/applies ordinary workflow transitions
-→ derives WAITING/BLOCKED from durable causes
-→ creates/consumes Handoffs
-
-Planner
-→ may propose Job/Task readiness/topology changes
-
-Coder / Designer / Reviewer / Tester
-→ emit structured results that request transition
-→ do not unilaterally override governance
-```
-
-A role result may request a transition; Orchestrator validates it against current durable state and topology.
-
----
-
-## 19. BLOCKED state vs BLOCKED result
-
-```text
-lifecycle BLOCKED
-= work currently cannot progress
-
-evaluation/result BLOCKED
-= an evaluator/execution could not complete judgement or required verification
-```
-
-One does not automatically imply the other.
-
----
-
-## 20. Invalid transition examples
-
-Invalid without explicit new-work semantics:
-
-```text
-COMPLETED Job → IN_PROGRESS
-COMPLETED Run → IN_PROGRESS
-CONSUMED Handoff → PENDING
-CANCELLED Job → READY
-SUPERSEDED Task → IN_PROGRESS
-```
-
-Use new linked Job/Task/Run when new work is actually being performed.
-
-
----
-
-## 21. Project PAUSED semantics
-
-```text
-Project PAUSED
-→ Project Memory remains readable
-→ no new Job/Task/Run execution begins
-→ no pending Handoff is consumed
-→ active work stops at earliest safe boundary
-→ resume execution requires Project ACTIVE
-```
-
-A currently issued indivisible external action may finish if the executor cannot cancel it safely.
-
-Its observed result must be persisted before stopping.
-
-PAUSED is therefore an execution freeze, not deletion or archive.
-
----
-
-## 22. Project ARCHIVED semantics
-
-```text
-Project ARCHIVED
-→ visible in Project Status
-→ hidden from normal Project Open
-→ history/read inspection allowed
-→ ordinary work execution prohibited
-```
-
-To resume ordinary work, reactivate the Project, normally:
-
-```text
-ARCHIVED → ACTIVE
-```
-
----
-
-## 23. WAITING vs BLOCKED
-
-```text
-WAITING
-= a valid continuation path exists,
-  but a known condition / handler / event has not occurred yet
-
-BLOCKED
-= no safe/current continuation path exists
-  until a blocker is actively resolved
-```
-
-Examples:
-
-```text
-WAITING
-→ next human-dispatched role is known
-→ known external completion is pending
-→ expected event has not occurred yet
-
-BLOCKED
-→ required permission unavailable
-→ architecture decision unresolved
-→ source inaccessible
-→ concurrency conflict unresolved
-```
-
----
-
-## 24. Shared evaluation vocabulary scope
-
-Shared evaluation vocabulary:
+## 18. Evaluation vocabulary
 
 ```text
 PASS
@@ -554,31 +258,17 @@ BLOCKED
 HUMAN_REVIEW_REQUIRED
 ```
 
-is contextual and is not a mandatory enum for every durable entity.
+These are contextual evaluation/routing results, not lifecycle states.
 
-For a completed accepted Job, the terminal accepted result is normally:
+## 19. Criterion verification vocabulary
 
-```text
-PASS
-or
-PASS_RETEST_REQUIRED
-```
-
-Other values are normally nonterminal evaluation/routing outcomes.
-
----
-
-## 25. Lifecycle change during active execution
-
-When a Project changes from ACTIVE to PAUSED or ARCHIVED while a Run is active:
+For Goal Recheck / criterion mapping:
 
 ```text
-record lifecycle change
-→ do not begin another consequential action
-→ allow already-issued indivisible action to settle if cancellation is unavailable
-→ persist observed result
-→ stop at earliest safe boundary
-→ keep subsequent Handoff/work pending
+MET
+PARTIAL
+NOT_MET
+UNVERIFIED
 ```
 
-Do not claim an external action was cancelled unless the executor confirms cancellation.
+UNVERIFIED is not equivalent to PASS.
