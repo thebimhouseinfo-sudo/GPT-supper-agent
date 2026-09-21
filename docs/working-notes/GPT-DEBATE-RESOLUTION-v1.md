@@ -3245,6 +3245,50 @@ Example:
 
 This exception does not justify prematurely inventing the rest of the Project tree.
 
+### Detail-stage nomination instead of interruption
+
+During the DETAIL pass, unresolved semantic/product/architecture questions do **not** automatically interrupt the user.
+
+Instead, GPT should:
+
+```text
+discover unresolved decision
+→ nominate the preferred option
+→ list viable alternatives
+→ explain rationale and trade-offs
+→ mark the item for REVIEW
+→ continue detailing
+```
+
+The purpose is to preserve momentum and avoid turning DETAIL into a sequence of micro-approval prompts.
+
+Human review is concentrated in the later REVIEW pass.
+
+Therefore:
+
+```text
+DETAIL
+= discover + reason + nominate
+
+COLLECT
+= gather all nominated/open decisions and structural requirements
+
+REVIEW
+= human examines the consequential nominations together
+
+SYNTHESIZE
+= convert reviewed decisions into coherent architecture
+```
+
+GPT may still interrupt immediately only when continuation would be impossible or dangerously misleading without a decision, for example when two mutually exclusive choices would cause substantially different downstream domain models and no safe provisional branch can be nominated.
+
+The default is:
+
+```text
+do not ask now
+→ nominate + defer to REVIEW
+```
+
 ### Relationship to Human/GPT decision boundary
 
 These meta-rules work together with the previously defined authority boundary:
