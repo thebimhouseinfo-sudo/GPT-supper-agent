@@ -73,6 +73,26 @@ The GitHub repository name is an implementation detail and may be renamed later 
 - Multi-repo changes begin with a master plan, not independent repo-local plans.
 - No agent may claim an action that its active executor cannot physically perform.
 
+## Harness evolution model
+
+Super Agent is not defined by writing a huge complete rulebook up front.
+
+The harness is tightened iteratively against real product output:
+
+```text
+minimal definitions
+→ small real Job
+→ inspect plan/code/review/product quality
+→ identify observable failure
+→ add or strengthen the smallest relevant rule/gate/eval
+→ rerun
+→ repeat
+```
+
+Rules are added because a real failure mode or necessary invariant justifies them, not because completeness looks desirable on paper.
+
+The goal is progressively better product quality with the smallest effective harness.
+
 ## Architecture documents
 
 - [Frozen Foundation v0.1](docs/architecture/FROZEN-FOUNDATION-v0.1.md)
