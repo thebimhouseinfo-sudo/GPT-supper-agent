@@ -3042,6 +3042,256 @@ GPT turns those decisions into complete, internally consistent system specificat
 
 Once the human decision space is exhausted, GPT should proceed with the detailed specification work without repeatedly asking about purely mechanical choices.
 
+## 4.22 Theory-construction meta-rules
+
+User decision:
+
+The theory-definition process itself is governed by a higher-level set of rules.
+
+These are **meta-rules for building GPT Super Agent theory**, not runtime rules for a specific Agent, Job, Task, Run, or Project.
+
+Their purpose is to prevent premature structure, ad-hoc nomination, fragmented review, and architecture drift while the system is still being defined.
+
+### Core loop
+
+The canonical theory-construction loop is:
+
+```text
+DETAIL
+→ COLLECT
+→ REVIEW
+→ SYNTHESIZE
+→ FIX
+→ COLLECT
+→ REVIEW
+→ SYNTHESIZE
+→ FIX
+→ ...
+```
+
+The loop repeats until the system definition is sufficiently complete and internally consistent.
+
+### 1. DETAIL
+
+Detail one or more domains deeply enough to reveal their real semantics, responsibilities, inputs/outputs, lifecycle, state, write/read needs, dependencies, and constraints.
+
+Examples of domains include:
+
+- Project;
+- Job;
+- Task;
+- Run;
+- Planner;
+- Designer;
+- Coder;
+- Reviewer;
+- Tester;
+- handoff;
+- approval;
+- testing;
+- Retest;
+- asset requirements;
+- release;
+- Project Memory;
+- CLI;
+- failure/recovery;
+- governance;
+- platform capability boundaries.
+
+The DETAIL phase is allowed to discover new needs.
+
+It must not immediately canonize every discovered need into a file, folder, command, schema, or new domain object.
+
+### 2. COLLECT
+
+After enough detailing has been done, collect all discovered requirements/candidates before reviewing or finalizing system structure.
+
+This step is mandatory because some structures can only be designed correctly after requirements from multiple domains are visible together.
+
+Examples of things that must be collected include:
+
+- storage candidates;
+- Project folder requirements;
+- root-file requirements;
+- per-entity file requirements;
+- memo/write requirements from Agents;
+- append-only/history needs;
+- indexing/lookup needs;
+- CLI command/subcommand candidates;
+- lifecycle/state requirements;
+- handoff requirements;
+- approval/gate requirements;
+- Test/Retest requirements;
+- Asset Requirement persistence needs;
+- release-history needs;
+- cross-domain dependencies;
+- ownership/read-write constraints;
+- unresolved semantic decisions;
+- duplicate concepts;
+- potential contradictions;
+- candidate shared schemas/contracts.
+
+COLLECT is not a decision step.
+
+Its purpose is to assemble the full evidence/requirement set needed for system-level reasoning.
+
+### 3. REVIEW
+
+Review happens **after collect**, not before.
+
+The review must inspect the collected system-level picture, not only isolated modules.
+
+The review asks questions such as:
+
+```text
+Are any concepts duplicated?
+Are any responsibilities overlapping?
+Are any states contradictory?
+Are there hidden ownership conflicts?
+Are read/write boundaries clear?
+Are there requirements that were nominated too early?
+Does a concept really need its own file/folder/command?
+Can multiple requirements share one structure?
+Would combining them lose semantics?
+Are any dependencies missing?
+Do any rules contradict previous decisions?
+Would implementation still need to invent architecture?
+```
+
+Review should actively search for cross-domain defects that cannot be seen when each module is examined alone.
+
+### 4. SYNTHESIZE
+
+Only after collection and review may the system synthesize shared structures.
+
+Examples include:
+
+- canonical Project folder structure;
+- root files;
+- storage layout;
+- file-per-entity vs shared-file choices;
+- indexes;
+- final CLI hierarchy;
+- shared state models;
+- common schemas;
+- cross-domain contracts;
+- durable memo locations;
+- final responsibility boundaries.
+
+Synthesis is where candidate requirements become coherent architecture.
+
+### 5. FIX
+
+Apply the approved corrections produced by review/synthesis.
+
+Fixes may:
+
+- modify definitions;
+- remove premature concepts;
+- merge duplicate concepts;
+- split overloaded concepts;
+- revise lifecycle/state;
+- change responsibility boundaries;
+- revise storage assumptions;
+- revise CLI candidates;
+- add missing failure/recovery behavior;
+- repair contradictions.
+
+After fixing, do not assume completeness.
+
+Return to COLLECT and REVIEW again.
+
+### No premature nomination
+
+A central meta-rule is:
+
+```text
+do not nominate structure before the requirements that justify it are known
+```
+
+Examples:
+
+```text
+Do not create asset-requirements/ merely because Asset Requirement exists.
+
+Do not create retests/ merely because Retest exists.
+
+Do not create a Job CLI command merely because Job exists.
+
+Do not create a Planner memo folder merely because Planner writes something.
+```
+
+Instead:
+
+```text
+detail semantics
+→ collect actual persistence/control needs
+→ review cross-domain needs
+→ synthesize the smallest correct structure
+```
+
+### Bootstrap exception
+
+Some bootstrap artifacts may be defined early when they are intrinsic to the existence/identity of the enclosing object.
+
+Example:
+
+```text
+<Project>/
+└── PROJECT.md
+```
+
+`PROJECT.md` may be defined early because it serves as the Project marker/identity artifact itself.
+
+This exception does not justify prematurely inventing the rest of the Project tree.
+
+### Relationship to Human/GPT decision boundary
+
+These meta-rules work together with the previously defined authority boundary:
+
+```text
+semantic/product/architecture decision
+→ Human
+
+mechanical/structural detailing after semantics are fixed
+→ GPT
+```
+
+During DETAIL/COLLECT/REVIEW/SYNTHESIZE, if a new unresolved semantic choice appears, it must be returned to the human.
+
+If the semantics are already fixed, GPT may complete the mechanical synthesis autonomously.
+
+### Completion criterion
+
+The theory loop ends only when repeated system-wide review no longer finds material unresolved issues such as:
+
+- semantic gaps;
+- contradictory rules;
+- undefined ownership;
+- missing lifecycle transitions;
+- missing handoffs;
+- undefined approval boundaries;
+- missing failure/recovery paths;
+- unresolved persistence requirements;
+- unresolved CLI requirements;
+- cross-domain inconsistencies;
+- implementation-critical questions that would force the Coder to invent architecture.
+
+At that point, theory may be considered complete enough to enter the next phase.
+
+### Core principle
+
+```text
+DETAIL reveals.
+COLLECT assembles.
+REVIEW challenges.
+SYNTHESIZE decides structure.
+FIX reconciles.
+Then repeat.
+```
+
+This is the governing process for constructing GPT Super Agent theory.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
