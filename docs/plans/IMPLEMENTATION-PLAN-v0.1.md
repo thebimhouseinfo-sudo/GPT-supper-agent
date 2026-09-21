@@ -7,7 +7,7 @@ Build the smallest useful version of the harness that can persist project memory
 ## Phase 0 — Repository foundation
 
 - Establish architecture/spec documents.
-- Define JSON schemas for Job, Project Profile, State, Repo Graph, Knowledge Profile, Capability Matrix, Task, Review, and Change Set.
+- Define `JOB.md` front-matter schema plus JSON schemas for Project Profile, State, Repo Graph, Knowledge Profile, Capability Matrix, Task, Review, and Change Set.
 - Define plugin naming and packaging conventions.
 - Define tests for harness state transitions.
 
@@ -21,14 +21,14 @@ Implement:
 - root validation and writeability check
 - job create / open / list / update / archive lifecycle
 - Drive-folder-driven job list/select/open semantics
-- JOB.json marker/metadata validation
+- JOB.md marker/metadata validation
 - automatic direct Job subfolder creation under <configured-root>/<job-id>
 - status-driven Job bootstrap (`bootstrapping` → `active`, failure → `incomplete`)
 - duplicate/id conflict handling
 - explicit GitHub code-environment model
 - attach 1..N GitHub repositories during Job creation
 - Project Memory folder/file creation
-- Markdown/JSON templates
+- Markdown/YAML-front-matter/JSON templates
 - Project/repo relationship lookup
 - request-driven repo/path relevance resolver
 - read/write abstraction for Project Memory
@@ -40,7 +40,7 @@ Hard rules:
 - User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
 - Every Job defaults to online execution.
 
-Exit criterion: a Job can be created as one direct Drive subfolder without a per-Job Drive link, appear in `job list` through direct-folder enumeration + JOB.json validation, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
+Exit criterion: a Job can be created as one direct Drive subfolder without a per-Job Drive link, appear in `job list` through direct-folder enumeration + JOB.md validation, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
 
 ## Phase 2 — Job Code Environment, Project and Repo Profiling
 
