@@ -257,3 +257,206 @@ delete = lifecycle state
 5. Orchestrator enforces transitions.
 6. Review topology determines gates.
 7. Historical attempts/results remain traceable.
+
+
+---
+
+## 17. Legal transition matrix
+
+### Project
+
+```text
+ACTIVE → PAUSED
+ACTIVE → ARCHIVED
+PAUSED → ACTIVE
+PAUSED → ARCHIVED
+ARCHIVED → ACTIVE
+ARCHIVED → PAUSED
+```
+
+Delete is permitted only through explicit destructive operation and is not a lifecycle transition.
+
+### Job
+
+```text
+DRAFT → READY
+DRAFT → CANCELLED
+DRAFT → SUPERSEDED
+
+READY → IN_PROGRESS
+READY → WAITING
+READY → BLOCKED
+READY → CANCELLED
+READY → SUPERSEDED
+
+IN_PROGRESS → WAITING
+IN_PROGRESS → BLOCKED
+IN_PROGRESS → COMPLETED
+IN_PROGRESS → CANCELLED
+IN_PROGRESS → SUPERSEDED
+
+WAITING → READY
+WAITING → IN_PROGRESS
+WAITING → BLOCKED
+WAITING → COMPLETED
+WAITING → CANCELLED
+WAITING → SUPERSEDED
+
+BLOCKED → READY
+BLOCKED → IN_PROGRESS
+BLOCKED → CANCELLED
+BLOCKED → SUPERSEDED
+```
+
+`COMPLETED`, `CANCELLED`, and `SUPERSEDED` are historical terminal states. Later work normally uses a new linked Job rather than moving the historical Job backward.
+
+### Task
+
+```text
+PLANNED → READY
+PLANNED → CANCELLED
+PLANNED → SUPERSEDED
+
+READY → IN_PROGRESS
+READY → WAITING
+READY → BLOCKED
+READY → CANCELLED
+READY → SUPERSEDED
+
+IN_PROGRESS → WAITING
+IN_PROGRESS → BLOCKED
+IN_PROGRESS → COMPLETED
+IN_PROGRESS → CANCELLED
+IN_PROGRESS → SUPERSEDED
+
+WAITING → READY
+WAITING → IN_PROGRESS
+WAITING → BLOCKED
+WAITING → COMPLETED
+WAITING → CANCELLED
+WAITING → SUPERSEDED
+
+BLOCKED → READY
+BLOCKED → IN_PROGRESS
+BLOCKED → CANCELLED
+BLOCKED → SUPERSEDED
+```
+
+A completed Task may be explicitly reopened only when the remediation is still semantically the same bounded Task. Otherwise create a new linked remediation Task.
+
+### Run
+
+```text
+CREATED → READY
+CREATED → CANCELLED
+CREATED → SUPERSEDED
+
+READY → IN_PROGRESS
+READY → CANCELLED
+READY → SUPERSEDED
+
+IN_PROGRESS → WAITING_HUMAN
+IN_PROGRESS → BLOCKED
+IN_PROGRESS → COMPLETED
+IN_PROGRESS → FAILED
+IN_PROGRESS → CANCELLED
+IN_PROGRESS → SUPERSEDED
+
+WAITING_HUMAN → IN_PROGRESS
+WAITING_HUMAN → CANCELLED
+WAITING_HUMAN → SUPERSEDED
+
+BLOCKED → IN_PROGRESS
+BLOCKED → FAILED
+BLOCKED → CANCELLED
+BLOCKED → SUPERSEDED
+```
+
+`COMPLETED`, `FAILED`, `CANCELLED`, and `SUPERSEDED` Runs are historical terminal attempts. Retry creates a new linked Run.
+
+### Handoff
+
+```text
+PENDING → CONSUMED
+PENDING → BLOCKED
+PENDING → SUPERSEDED
+
+BLOCKED → PENDING
+BLOCKED → SUPERSEDED
+```
+
+`CONSUMED` and `SUPERSEDED` are terminal historical Handoff states.
+
+### Retest
+
+```text
+PENDING → BLOCKED
+PENDING → PASS
+PENDING → FAIL
+PENDING → SUPERSEDED
+
+BLOCKED → PENDING
+BLOCKED → PASS
+BLOCKED → FAIL
+BLOCKED → SUPERSEDED
+```
+
+PASS/FAIL results are preserved in attempt history. A later practical verification attempt does not erase the earlier result.
+
+---
+
+## 18. Transition triggers / authority
+
+Typical trigger ownership:
+
+```text
+Human
+→ Project lifecycle changes
+→ destructive delete
+→ material approval/waiver
+→ merge/release authorization
+
+Orchestrator
+→ validates/applies ordinary workflow transitions
+→ derives WAITING/BLOCKED from durable causes
+→ creates/consumes Handoffs
+
+Planner
+→ may propose Job/Task readiness/topology changes
+
+Coder / Designer / Reviewer / Tester
+→ emit structured results that request transition
+→ do not unilaterally override governance
+```
+
+A role result may request a transition; Orchestrator validates it against current durable state and topology.
+
+---
+
+## 19. BLOCKED state vs BLOCKED result
+
+```text
+lifecycle BLOCKED
+= work currently cannot progress
+
+evaluation/result BLOCKED
+= an evaluator/execution could not complete judgement or required verification
+```
+
+One does not automatically imply the other.
+
+---
+
+## 20. Invalid transition examples
+
+Invalid without explicit new-work semantics:
+
+```text
+COMPLETED Job → IN_PROGRESS
+COMPLETED Run → IN_PROGRESS
+CONSUMED Handoff → PENDING
+CANCELLED Job → READY
+SUPERSEDED Task → IN_PROGRESS
+```
+
+Use new linked Job/Task/Run when new work is actually being performed.
