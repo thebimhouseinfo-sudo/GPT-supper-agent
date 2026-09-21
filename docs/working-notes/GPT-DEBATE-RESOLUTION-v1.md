@@ -1152,6 +1152,114 @@ Instead:
 The core therefore knows **when design must be complete and what gate must be satisfied**, while the UI specialist owns **how to perform professional UI design and what detailed design checks are required**.
 
 
+## 4.11 Project lifecycle vs release completion milestones
+
+User decision:
+
+For application projects, Project lifecycle state and product/release completion milestones are separate concepts.
+
+A Project can remain active while having completed one or more meaningful product milestones.
+
+### Project lifecycle state
+
+Recommended lifecycle state:
+
+```text
+ACTIVE
+PAUSED
+ARCHIVED
+```
+
+This answers:
+
+```text
+Is this Project currently being worked on?
+```
+
+### Release / product completion milestones
+
+The Project may additionally record versioned completion milestones such as:
+
+```text
+DONE_BETA
+DONE_V1
+DONE_EXE_V1
+DONE_MOBILE_V1
+DONE_WEB_V1
+DONE_V2
+```
+
+These answer:
+
+```text
+What product/release milestone has been completed?
+```
+
+The exact milestone vocabulary is project-specific and must not be hard-coded as a closed global enum.
+
+Examples:
+
+```text
+Project: CadGPT
+lifecycle: ACTIVE
+
+release milestones:
+- DONE_BETA
+- DONE_EXE_V1
+
+current work:
+- V1.1 fixes
+- plugin/runtime improvements
+```
+
+or:
+
+```text
+Project: Kid learning web app
+lifecycle: ACTIVE
+
+release milestones:
+- DONE_BETA
+- DONE_WEB_V1
+
+current work:
+- content scale-out
+- V1.1 UX improvements
+```
+
+Therefore:
+
+```text
+Project lifecycle
+≠ product completion level
+```
+
+A completed release does not force the Project into ARCHIVED.
+
+### Milestone records
+
+Each release completion milestone should be recorded with:
+
+```text
+milestone_id / label
+date
+scope/version
+source commit or release/tag when applicable
+acceptance result
+deployment/package target when applicable
+known limitations
+pending retests / deferred items
+human approval reference
+```
+
+This lets the Project preserve a durable history of what was actually considered complete at each release boundary.
+
+### Archive behavior
+
+A Project may move to `ARCHIVED` only when the user intentionally stops active development/maintenance.
+
+It may later return to `ACTIVE` without losing prior release milestones.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
