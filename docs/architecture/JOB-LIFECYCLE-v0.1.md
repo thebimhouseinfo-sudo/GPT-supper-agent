@@ -76,6 +76,13 @@ Project
 
 A Job may represent an ongoing project, a major change, a migration, a feature stream, or another coherent unit of work. Multiple Jobs may reference the same GitHub repository when governance permits.
 
+Single-repo note:
+
+- GitHub could technically persist much of the Job's planning material inside the repo.
+- Super Agent still keeps the Job folder in Drive as the canonical Job identity/control plane.
+- This guarantees zero storage-model migration when another repository is later attached.
+- Once the Job is multi-repo, Drive becomes the neutral cross-repo memory layer.
+
 Minimum identity:
 
 ```json
