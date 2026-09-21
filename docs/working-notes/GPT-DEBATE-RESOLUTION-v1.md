@@ -362,6 +362,87 @@ SUPERSEDED
 
 Exact schema/statuses are finalized later in the Asset Requirement contract.
 
+### Placeholder merge and asset fulfillment retest
+
+The purpose of the placeholder is to make implementation independent from final asset production timing.
+
+The code MUST be structured so that:
+
+```text
+stable asset contract exists first
+→ code integrates against stable ID/path/manifest key
+→ placeholder satisfies the same integration contract
+→ feature can be implemented, reviewed, and merged
+→ final asset is later produced
+→ final asset is copied/generated into the exact recorded destination
+→ no structural code rediscovery should be required
+→ practical Retest verifies the final asset integration
+```
+
+A placeholder is therefore not a temporary hack that requires later code surgery. It is an implementation substitute behind a stable asset contract.
+
+When code is merged before the final asset is available:
+
+```text
+code/review/evidence pass
++ placeholder integration works
++ final asset still pending
+→ PASS_RETEST_REQUIRED
+```
+
+The related Retest MUST reference the Asset Requirement ID.
+
+Example:
+
+```text
+AR-0012
+final_path: assets/images/topics/topic-fractions.png
+placeholder: generic topic icon
+
+RT-0042-03
+depends_on_asset: AR-0012
+Test after final asset delivery:
+1. copy/generate topic-fractions.png into the recorded path
+2. open the target screen
+3. verify the final icon appears
+4. verify dimensions/layout are correct
+5. verify no broken path/fallback/console/runtime issue appears
+Expected: final asset replaces placeholder without code modification
+```
+
+For audio:
+
+```text
+AR-0031
+final_path: assets/audio/<stable-id>.mp3
+
+RT-0042-04
+depends_on_asset: AR-0031
+Test after audio delivery:
+1. place the MP3 at the recorded path
+2. trigger the UX action that plays it
+3. verify the correct file is loaded
+4. verify playback/content/sequence behavior
+Expected: audio works through the already-merged code path without structural code changes
+```
+
+Asset Requirement status and Retest status are separate:
+
+```text
+Asset:
+PLACEHOLDER
+→ DELIVERED
+→ VERIFIED
+
+Retest:
+PENDING
+→ PASS | FAIL
+```
+
+An Asset Requirement is not considered fully verified merely because the file exists at the expected path. The practical Retest is what verifies that the real asset works correctly in the merged implementation.
+
+If the final asset requires code changes beyond replacing the placeholder through the predeclared contract, this is treated as an integration defect or an incomplete Asset Requirement contract and routes back to the owning Job/Task.
+
 ### Asset requirement sources
 
 An Asset Requirement may originate from:
