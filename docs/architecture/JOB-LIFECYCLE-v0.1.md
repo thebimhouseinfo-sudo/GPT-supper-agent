@@ -28,23 +28,24 @@ The configured root is infrastructure state, not project state.
 
 ## 3. Root layout
 
-Inside the configured Drive root:
+Inside the configured Drive root, every direct Job subfolder is one Job:
 
 ```text
-SuperAgent/
-├── registry.json
-├── knowledge/
-│   ├── engineering/
-│   ├── platforms/
-│   ├── domains/
-│   └── lessons/
-└── jobs/
-    ├── <job-id>/
-    ├── <job-id>/
-    └── ...
+<configured Super Agent Drive root>/
+├── kid-eschool/
+│   └── JOB.json
+├── stockmind/
+│   └── JOB.json
+├── another-project/
+│   └── JOB.json
+└── ...
 ```
 
-The exact Drive folder name chosen by the user does not matter. Super Agent treats the configured folder itself as the root.
+There is no Job registry and no required `jobs/` wrapper folder.
+
+The exact Drive root folder name chosen by the user does not matter. Super Agent treats its direct child folders as Job candidates.
+
+A valid Job folder is identified by a readable, valid `JOB.json` marker inside that folder.
 
 ## 4. Job identity
 
@@ -53,7 +54,7 @@ A Job is the durable unit of work managed by Super Agent.
 Its authoritative existence and state live in one Google Drive Job folder:
 
 ```text
-<configured-root>/jobs/<job-id>/
+<configured-root>/<job-id>/
 ```
 
 A Job is NOT a GitHub repository and is NOT defined by where the code lives.
@@ -82,7 +83,7 @@ Minimum identity:
   "id": "kid-eschool",
   "name": "Kid eSchool",
   "status": "active",
-  "memory_root": "jobs/kid-eschool",
+  "memory_root": "kid-eschool",
   "execution_mode": "online",
   "code_environment": {
     "type": "github",
@@ -94,7 +95,7 @@ Minimum identity:
 }
 ```
 
-Job id must be stable, URL/path safe, and unique within the registry.
+Job id must be stable, folder-safe, and unique among direct Job subfolders of the configured Drive root.
 
 ## 5. Job creation inputs
 
@@ -121,15 +122,15 @@ Validate configured Drive root
   ↓
 Resolve / normalize Job name + id
   ↓
-Check registry for duplicate/conflict
+Check direct Drive subfolders for Job id/name conflict
+  ↓
+Create Job subfolder with JOB.json status=bootstrapping
   ↓
 Resolve GitHub code environment (1..N repos)
   ↓
 Validate online read access for every attached repo
   ↓
-Create temporary Job root
-  ↓
-Create standard subfolders/files
+Create standard subfolders/files inside the Job folder
   ↓
 Profile repo/project topology
   ↓
@@ -137,9 +138,9 @@ Initialize capability matrix
   ↓
 Write initial Job/State/Profile records
   ↓
-Register Job in registry.json
+Validate bootstrap
   ↓
-Finalize Job root
+Set JOB.json status=active
   ↓
 Open Job
   ↓
@@ -153,7 +154,7 @@ The user is not asked for a Drive link during this flow.
 A new Job root is created automatically under:
 
 ```text
-<configured-root>/jobs/<job-id>/
+<configured-root>/<job-id>/
 ```
 
 Initial structure:
@@ -201,55 +202,35 @@ Additional GitHub repos may be attached later to the same Job. Attaching a repo 
 
 ## 9. Atomic creation behavior
 
-Job creation should be effectively transactional.
+Job creation is folder-driven and status-driven.
 
 Recommended sequence:
 
 ```text
-jobs/<job-id>.creating/
-  ↓ bootstrap succeeds
-registry update succeeds
+create <configured-root>/<job-id>/
   ↓
-rename/finalize as jobs/<job-id>/
+write JOB.json with status=bootstrapping
+  ↓
+create bootstrap files/subfolders
+  ↓
+validate attached GitHub code environment
+  ↓
+complete initial profiling
+  ↓
+set JOB.json status=active
 ```
 
-If creation fails before registration, the Job is not considered active.
+A folder whose `JOB.json` is missing, invalid, `bootstrapping`, or `incomplete` is not treated as an active Job.
 
-If cleanup is not possible, mark the temporary root as INCOMPLETE and exclude it from normal Job listing until repaired.
+If creation fails and cleanup is not possible, set `JOB.json.status = "incomplete"` so `job list` can show or ignore it according to command options without confusing it with a usable Job.
 
-## 10. Registry update
-
-Only after bootstrap succeeds is the Job added to `registry.json`.
-
-Example:
-
-```json
-{
-  "jobs": [
-    {
-      "id": "kid-eschool",
-      "name": "Kid eSchool",
-      "status": "active",
-      "memory_root": "jobs/kid-eschool",
-      "code_environment": {
-        "type": "github",
-        "repositories": [
-          "thebimhouseinfo-sudo/Kideschool"
-        ]
-      },
-      "execution_mode": "online"
-    }
-  ]
-}
-```
-
-## 11. Job list and selection
+## 10. Job list and selection
 
 `job list` is Drive-first.
 
-It reads `registry.json` from the configured Super Agent Drive root and lists the Jobs/projects persisted there.
+It enumerates the direct subfolders of the configured Super Agent Drive root, reads each folder's `JOB.json`, and lists the valid Jobs/projects persisted there.
 
-The list is therefore a view of Drive-managed Jobs, not a scan of GitHub repositories.
+The Drive folder tree itself is the Job index. There is no separate registry file. The list is therefore a view of Drive-managed Job folders, not a scan of GitHub repositories.
 
 Selecting a Job from the list is equivalent to opening that Drive Job.
 
@@ -258,8 +239,8 @@ Selecting a Job from the list is equivalent to opening that Drive Job.
 `job open <id>` always loads Drive state before reading source code:
 
 ```text
-resolve registry entry from Drive
-→ validate Job memory root
+resolve selected Drive subfolder
+→ validate JOB.json and Job memory root
 → read JOB.json
 → read STATE.json
 → read Project Profile
@@ -300,9 +281,9 @@ User asks for Job status
 
 Chat history is not required to reopen a Job.
 
-The command does not recursively scan all Drive folders unless registry recovery is required.
+The command only needs to enumerate direct child folders of the configured Drive root; it does not recursively scan arbitrary Drive content.
 
-## 13. Job update
+## 12. Job update
 
 Job metadata may be updated for:
 
@@ -314,7 +295,7 @@ Job metadata may be updated for:
 
 Adding/removing a repo triggers impact analysis and repo-graph refresh.
 
-## 14. Job archive
+## 13. Job archive
 
 Archive preserves Project Memory but removes the Job from the normal active workflow.
 
@@ -326,14 +307,14 @@ Archive does not delete GitHub code and does not delete durable Project Memory.
 
 Destructive Job deletion, if ever supported, is a separate explicit operation and is not equivalent to archive.
 
-## 15. Job creation states
+## 14. Job creation states
 
 ```text
 JOB_CREATE_REQUESTED
 ROOT_VALIDATED
+FOLDER_CREATED
 REPOS_RESOLVED
 BOOTSTRAPPING
-REGISTERING
 ACTIVE
 ```
 
@@ -345,11 +326,11 @@ DRIVE_ROOT_NOT_WRITABLE
 JOB_ID_CONFLICT
 REPO_ACCESS_BLOCKED
 BOOTSTRAP_FAILED
-REGISTRY_CONFLICT
+JOB_FOLDER_CONFLICT
 INCOMPLETE
 ```
 
-## 16. Online execution scope
+## 15. Online execution scope
 
 Every Super Agent Job defaults to:
 
@@ -361,15 +342,16 @@ Super Agent owns online coding orchestration around GitHub, remote CI, remote pr
 
 It does not require or create a local filesystem workspace as part of Job bootstrap.
 
-## 17. Core invariants
+## 16. Core invariants
 
 1. Drive root is configured once, not once per Job.
-2. Job folders are created automatically below the configured root.
+2. Each Job is one direct subfolder of the configured Drive root.
 3. A Job is a durable work entity stored in Drive, not a repository.
 4. Every active Job has an explicit GitHub code environment containing one or more attached repositories.
-5. A Job is not active until bootstrap and registry update succeed.
+5. A Job is not active until its bootstrap succeeds and JOB.json is marked active.
 6. Source code is never copied into Project Memory.
 7. Job reopen depends on durable Drive state + live GitHub state, not chat history.
 8. Job creation is online-first and does not assume a local executor.
 9. Job selection/open always reads Drive Project Memory before deciding what GitHub source to inspect.
 10. GitHub reads are demand-driven and scoped by the active request plus Drive context.
+11. There is no global Job registry; the Drive root's direct Job folders are the source of Job discovery.
