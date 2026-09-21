@@ -12,6 +12,8 @@ Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
 
 Project Delete is a destructive operation that removes Project Drive memory/control-plane state and does not imply GitHub repository deletion.
 
+Deleting a Project releases its GSA ownership associations for previously OWNED repositories. The repositories remain untouched and may later be explicitly attached to another Project.
+
 ---
 
 ## 2. Project creation
