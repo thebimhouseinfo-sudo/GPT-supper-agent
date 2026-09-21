@@ -33,11 +33,11 @@ Inside the configured Drive root, every direct Job subfolder is one Job:
 ```text
 <configured Super Agent Drive root>/
 ├── kid-eschool/
-│   └── JOB.json
+│   └── JOB.md
 ├── stockmind/
-│   └── JOB.json
+│   └── JOB.md
 ├── another-project/
-│   └── JOB.json
+│   └── JOB.md
 └── ...
 ```
 
@@ -45,7 +45,7 @@ There is no Job registry and no required `jobs/` wrapper folder.
 
 The exact Drive root folder name chosen by the user does not matter. Super Agent treats its direct child folders as Job candidates.
 
-A valid Job folder is identified by a readable, valid `JOB.json` marker inside that folder.
+A valid Job folder is identified by a readable `JOB.md` whose YAML front matter contains valid Job metadata.
 
 ## 4. Job identity
 
@@ -83,24 +83,25 @@ Single-repo note:
 - This guarantees zero storage-model migration when another repository is later attached.
 - Once the Job is multi-repo, Drive becomes the neutral cross-repo memory layer.
 
-Minimum identity:
+Minimum identity is stored in `JOB.md` using machine-readable YAML front matter plus human-readable Markdown:
 
-```json
-{
-  "id": "kid-eschool",
-  "name": "Kid eSchool",
-  "status": "active",
-  "memory_root": "kid-eschool",
-  "execution_mode": "online",
-  "code_environment": {
-    "type": "github",
-    "repositories": [
-      "thebimhouseinfo-sudo/Kideschool",
-      "thebimhouseinfo-sudo/KE-Math-Grade1"
-    ]
-  }
-}
+```markdown
+---
+id: kid-eschool
+name: Kid eSchool
+status: active
+execution_mode: online
+repositories:
+  - thebimhouseinfo-sudo/Kideschool
+  - thebimhouseinfo-sudo/KE-Math-Grade1
+---
+
+# Kid eSchool
+
+Durable Super Agent Job memory for the Kid eSchool project.
 ```
+
+The front matter is the minimal machine-readable Job metadata. The Markdown body is the human/agent-readable Job overview.
 
 Job id must be stable, folder-safe, and unique among direct Job subfolders of the configured Drive root.
 
@@ -131,7 +132,7 @@ Resolve / normalize Job name + id
   ↓
 Check direct Drive subfolders for Job id/name conflict
   ↓
-Create Job subfolder with JOB.json status=bootstrapping
+Create Job subfolder with JOB.md front matter `status: bootstrapping`
   ↓
 Resolve GitHub code environment (1..N repos)
   ↓
@@ -147,7 +148,7 @@ Write initial Job/State/Profile records
   ↓
 Validate bootstrap
   ↓
-Set JOB.json status=active
+Set JOB.md front matter `status: active`
   ↓
 Open Job
   ↓
@@ -168,7 +169,7 @@ Initial structure:
 
 ```text
 <job-id>/
-├── JOB.json
+├── JOB.md
 ├── PROJECT.md
 ├── PROJECT-PROFILE.json
 ├── ARCHITECTURE.md
@@ -216,7 +217,7 @@ Recommended sequence:
 ```text
 create <configured-root>/<job-id>/
   ↓
-write JOB.json with status=bootstrapping
+write JOB.md with front matter `status: bootstrapping`
   ↓
 create bootstrap files/subfolders
   ↓
@@ -224,18 +225,18 @@ validate attached GitHub code environment
   ↓
 complete initial profiling
   ↓
-set JOB.json status=active
+set JOB.md front matter `status: active`
 ```
 
-A folder whose `JOB.json` is missing, invalid, `bootstrapping`, or `incomplete` is not treated as an active Job.
+A folder whose `JOB.md` is missing, has invalid front matter, or has status `bootstrapping`/`incomplete` is not treated as an active Job.
 
-If creation fails and cleanup is not possible, set `JOB.json.status = "incomplete"` so `job list` can show or ignore it according to command options without confusing it with a usable Job.
+If creation fails and cleanup is not possible, set `JOB.md.status = "incomplete"` so `job list` can show or ignore it according to command options without confusing it with a usable Job.
 
 ## 10. Job list and selection
 
-`job list` is Drive-first.
+`job list` is Drive-first and Markdown-driven.
 
-It enumerates the direct subfolders of the configured Super Agent Drive root, reads each folder's `JOB.json`, and lists the valid Jobs/projects persisted there.
+It enumerates the direct subfolders of the configured Super Agent Drive root, reads each folder's `JOB.md`, and lists the valid Jobs/projects persisted there.
 
 The Drive folder tree itself is the Job index. There is no separate registry file. The list is therefore a view of Drive-managed Job folders, not a scan of GitHub repositories.
 
@@ -247,8 +248,8 @@ Selecting a Job from the list is equivalent to opening that Drive Job.
 
 ```text
 resolve selected Drive subfolder
-→ validate JOB.json and Job memory root
-→ read JOB.json
+→ validate JOB.md and Job memory root
+→ read JOB.md
 → read STATE.json
 → read Project Profile
 → read Repo Graph
@@ -355,7 +356,7 @@ It does not require or create a local filesystem workspace as part of Job bootst
 2. Each Job is one direct subfolder of the configured Drive root.
 3. A Job is a durable work entity stored in Drive, not a repository.
 4. Every active Job has an explicit GitHub code environment containing one or more attached repositories.
-5. A Job is not active until its bootstrap succeeds and JOB.json is marked active.
+5. A Job is not active until its bootstrap succeeds and JOB.md is marked active.
 6. Source code is never copied into Project Memory.
 7. Job reopen depends on durable Drive state + live GitHub state, not chat history.
 8. Job creation is online-first and does not assume a local executor.
