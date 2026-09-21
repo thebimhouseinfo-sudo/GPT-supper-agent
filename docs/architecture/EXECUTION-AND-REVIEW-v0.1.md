@@ -135,7 +135,9 @@ create branch
 
 GitHub repository write capability does not imply local shell, localhost, desktop application, Revit, AutoCAD, or local filesystem capability.
 
-If verification requires those, the Execution Plan Audit must route that review unit to an executor such as GPTWorker or another local runtime.
+Super Agent is online-first. If a task requires a local-only runtime, the Execution Plan Audit records `LOCAL_EXECUTION_REQUIRED` / `CAPABILITY_BLOCKED` for that step rather than silently routing it to a built-in local executor.
+
+GPTWorker is a separate offline/local coding agent and is outside the Super Agent core execution lifecycle.
 
 ## 6. Draft PR model
 
@@ -163,14 +165,14 @@ Example:
   "requires": [
     "repo_read",
     "repo_write",
-    "shell",
-    "dev_server"
+    "repo_write",
+    "remote_ci"
   ],
-  "executor": "gptworker"
+  "executor": "github-online"
 }
 ```
 
-Planner and Reviewer must reject a plan when no known executor can provide all required capabilities.
+Planner and Reviewer must reject or scope-limit a plan when no configured online executor can provide the required capabilities. Local-only requirements are reported explicitly as outside the Super Agent execution boundary.
 
 ## 8. Completion evidence
 
