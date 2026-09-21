@@ -88,7 +88,7 @@ Implement:
 - evidence provenance/freshness
 - prompt-injection/trust boundaries
 - secret handling
-- absolute workspace-path enforcement
+- GitHub repository/branch write-scope enforcement
 
 Exit criterion: stale/conflicting artifacts cannot authorize execution and untrusted project content cannot elevate permissions.
 
