@@ -2653,6 +2653,248 @@ for harness rules and workflow loops.
 Those findings then feed the next harness/skill revision.
 
 
+## 4.20 Phase 2 — bootstrap by reference, then empirical calibration
+
+User decision:
+
+Phase 2 should not spend excessive effort trying to perfect every GSA harness, skill, loop, or action before real use.
+
+The purpose of Phase 2 is to create a **good-enough operational baseline** that can be tested seriously on real Projects.
+
+### Phase boundary
+
+The distinction is:
+
+```text
+Phase 1
+= theory/system definition must be complete enough that implementation does not invent architecture while operating
+
+Phase 2
+= build the first usable operational harness/skill/loop/action layer from that theory
+
+Phase 3+
+= use real Projects to discover strengths, weaknesses, unnecessary friction and missing behavior
+→ calibrate iteratively
+```
+
+Theory completeness is required before real use.
+
+Harness/skill/loop/action perfection is not.
+
+### Learn from existing systems instead of reinventing everything
+
+Phase 2 should study existing strong agentic coding/design systems such as:
+
+- Codex;
+- Claude Code;
+- Cursor;
+- GitHub Copilot;
+- relevant specialist UI/design/testing skills and harnesses;
+- other mature systems when useful.
+
+The goal is not to copy whole products.
+
+Each system has its own architecture, runtime assumptions, tool model, workflow philosophy, and strengths.
+
+The correct process is:
+
+```text
+study each system
+→ understand what its harness/skill/loop is trying to achieve
+→ identify why a pattern works
+→ separate generic patterns from runtime-specific assumptions
+→ compare with GSA theory
+→ choose what fits
+→ adapt or redesign it into a coherent GSA-native model
+```
+
+Do not define an agent as a mechanical sum such as:
+
+```text
+GSA Coder
+= Codex + Claude Code + Cursor + Copilot
+```
+
+Instead, the result should be explainable entirely in GSA terms:
+
+```text
+GSA Coder
+= this role contract
++ this workflow
++ these quality rules
++ this tool policy
++ this verification loop
++ these boundaries
+```
+
+External systems are references used during synthesis, not the identity of the final agent.
+
+### What may be copied directly
+
+Some patterns are standard enough that copying/adapting them directly is reasonable.
+
+Examples include broadly applicable discipline such as:
+
+```text
+read before write
+preserve explicit user intent
+do not silently expand scope
+verify after change
+bind review to the exact revision being reviewed
+distinguish observation from inference
+record blockers explicitly
+avoid destructive changes without sufficient confirmation
+```
+
+When a pattern is generic, proven, and compatible with GSA architecture, there is no requirement to rewrite it merely for originality.
+
+### What must be adapted
+
+Patterns that depend on a specific runtime must not be copied blindly.
+
+Examples may include:
+
+- automatic agent spawning;
+- IDE-native context;
+- local terminal assumptions;
+- sandbox/worktree management;
+- proprietary session management;
+- product-specific PR automation;
+- hidden tool-routing behavior.
+
+For these:
+
+```text
+extract the methodology
+→ discard incompatible runtime assumptions
+→ map the useful principle to actual ChatGPT/plugin/connector capability
+```
+
+### Phase 2 effort level
+
+Phase 2 is intentionally a bootstrap phase.
+
+The working objective is:
+
+```text
+learn enough
+→ synthesize enough
+→ build enough
+→ begin serious real-world testing
+```
+
+Do not spend disproportionate effort trying to prove theoretically that the first Coder/Designer/Reviewer/Tester harness is optimal.
+
+That cannot be known reliably before practical use.
+
+The first versions should be coherent, safe, and consistent with Phase 1 theory, but they are expected to evolve.
+
+### Real-world calibration is the main optimization loop
+
+After Phase 2, use real Projects—starting with KE Math Grade 1—to evaluate actual behavior.
+
+The system should observe practical outcomes such as:
+
+- requirement drift;
+- repeated rework;
+- accidental scope expansion;
+- UI/design fidelity problems;
+- missed states;
+- poor review findings;
+- Tester-discovered defects;
+- Retest failures;
+- excessive manual correction;
+- unnecessary workflow delay;
+- duplicated work;
+- weak tool usage;
+- actions that should exist but do not;
+- loops that add ceremony without improving results;
+- quality gains caused by specific harness/skill rules.
+
+The calibration rule is:
+
+```text
+too loose + poor quality
+→ tighten
+
+too strict + high friction + no meaningful quality gain
+→ relax
+
+missing capability/action
+→ add
+
+ineffective loop
+→ revise or remove
+
+strong useful pattern
+→ preserve / strengthen
+```
+
+### What may evolve after real testing
+
+The calibrated surface includes at least:
+
+- skills;
+- harnesses;
+- loops;
+- actions;
+- tool-use rules;
+- handoff behavior;
+- review behavior;
+- testing behavior;
+- quality gates;
+- evidence requirements;
+- specialist procedures.
+
+These may be revised repeatedly as real evidence accumulates.
+
+### GSA is not a standalone coded runtime
+
+GSA should not be treated as if it has its own internal software error telemetry that automatically tells the team what is wrong.
+
+It is primarily:
+
+```text
+theory
++ instructions
++ harnesses
++ skills
++ workflow/loops
++ connected platform capabilities
+```
+
+Therefore quality must be validated through practical outcomes, artifacts, reviews, user corrections, tests and Retests.
+
+Examples of useful evidence include:
+
+```text
+"Requirement was explicit but Coder changed it anyway."
+"Reviewer failed to catch a regression."
+"Tester found a responsive edge case."
+"User had to request the same UI correction ten times."
+"This verification loop added significant time but caught nothing."
+"This asset-placeholder contract worked perfectly and prevented blocking."
+```
+
+These are the signals used to refine GSA.
+
+### Core rule
+
+```text
+Phase 1:
+complete theory first.
+
+Phase 2:
+build a coherent, reference-informed, GSA-native baseline quickly.
+
+Phase 3+:
+let real usage determine where to invest effort.
+```
+
+The long-term goal is not the most elaborate process.
+
+It is the smallest set of harnesses, skills, loops, actions and rules that reliably produces high-quality results.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
