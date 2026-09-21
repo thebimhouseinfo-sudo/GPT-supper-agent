@@ -1,922 +1,422 @@
-# System Definition Skeleton v0.1
+# System Definition Skeleton v1
 
 ## Purpose
 
-This is the working map for completing GPT Super Agent theory.
-
-The frozen foundation is defined in `FROZEN-FOUNDATION-v0.1.md`.
-
-From this point forward, architecture work should fill the sections below instead of repeatedly redefining the foundation.
+This file is the current map of GPT Super Agent theory after DETAIL → COLLECT → REVIEW → SYNTHESIZE Pass 01.
 
 Status vocabulary:
 
 ```text
 FROZEN
-= decided; change requires explicit architecture revision
+= foundationally accepted
 
 DEFINED
-= sufficiently specified for implementation
+= theory sufficiently specified for implementation/harness work
 
-PARTIAL
-= direction exists but obligations/checklists/schemas are incomplete
-
-TO_DEFINE
-= intentionally not yet specified
+CALIBRATION
+= operational harness/skill/loop behavior expected to evolve from real use
 ```
 
 ---
 
 ## S0. Product boundary — FROZEN
 
-Reference: `FROZEN-FOUNDATION-v0.1.md`
-
-Need no further definition unless scope changes.
+Defined in:
+- FROZEN-FOUNDATION-v0.1.md
+- ARCHITECTURE-v0.1.md
 
 ---
 
-## S1. Job / Drive model — FROZEN
+## S1. Project / Drive model — FROZEN
 
-Includes:
+Defined:
+- configured Drive root;
+- Project as direct child folder;
+- PROJECT.md marker;
+- Project lifecycle;
+- Drive-first open;
+- 0..N owned repos;
+- 0..N referenced repos;
+- Project delete semantics.
 
-- configured Drive root
-- direct Job subfolders
-- `JOB.md`
-- no Job registry
-- Job discovery/list
-- Drive-first open
-- single/multi-repo consistency
+References:
+- FROZEN-FOUNDATION-v0.1.md
+- PROJECT-MEMORY-v0.1.md
+- JOB-LIFECYCLE-v0.1.md
+
+---
+
+## S2. Work hierarchy — DEFINED
+
+```text
+Project
+→ Job
+→ Task
+→ Run
+```
+
+Run uses one execution scope:
+- Job-level; or
+- one primary Task;
+- plus optional affected Task refs.
+
+References:
+- STATE-MACHINE-v1.md
+- synthesized core schemas.
+
+---
+
+## S3. Repository model — DEFINED
+
+Defined:
+- OWNED vs REFERENCED;
+- one owning Project per repo;
+- referenced repos read-only;
+- copied/forked derived source becomes owned destination;
+- Job/Task scope cannot exceed Project ownership.
+
+---
+
+## S4. Project Memory / storage — DEFINED
+
+Canonical model:
+
+```text
+<Project>/
+├── PROJECT.md
+├── CONTROL.json
+├── WORK/
+├── KNOWLEDGE/
+└── ARTIFACTS/
+```
+
+Subcollections are derived from persistence/query requirements.
 
 Reference:
-
-- `FROZEN-FOUNDATION-v0.1.md`
-- `JOB-LIFECYCLE-v0.1.md`
-- `PROJECT-MEMORY-v0.1.md`
+- PROJECT-MEMORY-v0.1.md
 
 ---
 
-## S2. GitHub code environment — FROZEN / PARTIAL
+## S5. State model — DEFINED
 
-Frozen:
+Separate:
+- lifecycle;
+- result;
+- validity;
+- delivery facts;
+- verification obligations.
 
-- GitHub is the code environment
-- one Job references 1..N repos
-- code is not stored in Drive
-- relevant repo/source is selected after Drive context is loaded
-
-Still define:
-
-- repo attach/detach rules
-- default branch resolution
-- working branch policy
-- draft PR policy
-- commit policy
-- merge authority
-- repo permission failure behavior
-- repository freshness checks
-- how repo metadata is stored in Drive
+Reference:
+- STATE-MACHINE-v1.md
 
 ---
 
-## S3. Project Memory contents — PARTIAL
+## S6. Orchestrator — DEFINED
 
-Already defined broadly:
+Owns:
+- transition governance;
+- current work routing;
+- handoff persistence;
+- Human Gate routing;
+- conflict detection;
+- capability coordination;
+- status views.
 
-- architecture
-- decisions
-- contracts
-- plans
-- tasks
-- reviews
-- approvals
-- design workspace
-- repo graph
-- state
-- capability information
-
-Still define:
-
-- which artifacts are mandatory at Job creation
-- which are lazy-created
-- ownership of each artifact
-- update rules
-- versioning rules
-- retention/archive rules
-- Markdown vs JSON schema rules
-- artifact naming conventions
-- canonical folder tree v1
-
-Deliverable:
-
-```text
-PROJECT-MEMORY-SCHEMA-v1
-```
+Does not implement source.
 
 ---
 
-## S4. Context Builder — PARTIAL
+## S7. Planner — DEFINED
 
-Known flow:
+Owns:
+- intent/scope;
+- architecture/impact;
+- Job topology;
+- acceptance/verification strategy;
+- role ordering;
+- specialist readiness;
+- Causal Change Review support.
 
-```text
-Drive Job
-→ relevant durable context
-→ current user request
-→ repo/path resolver
-→ selective GitHub evidence
-→ role-specific packet
-```
-
-Still define:
-
-- minimum context packet per role
-- relevance scoring/rules
-- stale context detection
-- maximum context policy
-- when to refresh GitHub
-- when Drive alone is sufficient
-- cross-repo context expansion rule
-- context packet schema
-
-Deliverable:
-
-```text
-CONTEXT-PACKET-SPEC-v1
-```
+Coder refines exact live-source HOW.
 
 ---
 
-## S5. Orchestrator — PARTIAL
+## S8. Designer — DEFINED
 
-Already known:
+Owns:
+- visual interpretation;
+- design coverage;
+- concept/design system;
+- responsive visual intent;
+- Asset Requirement design semantics.
 
-- owns workflow state
-- coordinates roles/gates
-- does not implement source code
-
-Still define:
-
-- exact state machine
-- allowed transitions
-- illegal transitions
-- pause/resume behavior
-- user interruption handling
-- stale artifact invalidation
-- failed agent retry policy
-- role handoff protocol
-- when user approval is required
-- when work can continue automatically
-
-Deliverables:
-
-```text
-STATE-MACHINE-v1
-HANDOFF-PROTOCOL-v1
-```
+Specialist methodology belongs in Designer skills/harness, not core GSA theory.
 
 ---
 
-## S6. Planner — PARTIAL
+## S9. Coder — DEFINED
 
-Already known:
+Owns:
+- exact source implementation HOW;
+- approved owned repo writes;
+- continuous self QA/QC;
+- smallest causally sufficient change;
+- honest verification;
+- fix/re-review loop.
 
-- clarification-first
-- architecture/repo/contract analysis
-- capability resolution
-- impact analysis
-- implementation planning
-- Project Memory write only
-
-Still define exactly:
-
-### Inputs
-- what Planner MUST read from Drive
-- what GitHub evidence it MUST inspect
-- what knowledge it may acquire
-- what questions it may ask
-
-### Outputs
-- Product/Project Spec
-- Architecture
-- Repo Graph updates
-- Contract definitions
-- Master Plan
-- repo plans
-- acceptance criteria
-- verification strategy
-- risk register
-- Design Brief
-- asset requirements
-- capability/executor requirements
-
-### Gates
-- what makes planning complete
-- what creates `PLANNING_GAP`
-- when user approval is required
-- what Reviewer checks in Plan Readiness Review
-
-Deliverable:
-
-```text
-PLANNER-CONTRACT-v1
-```
+UX/UI Coder are specializations.
 
 ---
 
-## S7. Designer — PARTIAL
+## S10. Reviewer — DEFINED
 
-Already known:
+Owns:
+- independent objective evaluation;
+- exact target/revision binding;
+- findings;
+- severity;
+- re-review;
+- HUMAN_REVIEW_REQUIRED routing.
 
-- visual concept agent
-- reads Planner brief/UI tree/audience
-- produces Concept Artwork
-- decomposes approved concept into Asset Sheet
-- does not write source code
-
-Still define:
-
-- required inputs
-- optional inputs
-- concept count policy
-- approval workflow
-- design token proposal rules
-- Asset Sheet schema
-- asset naming/path handoff
-- responsive concept policy
-- when one concept is enough
-- design QA checklist
-- Design Review checklist
-- `DESIGN_GAP` conditions
-
-Deliverable:
-
-```text
-DESIGNER-CONTRACT-v1
-```
+Reviewer is topology-driven, not universally mandatory.
 
 ---
 
-## S8. UX Coder — PARTIAL
+## S11. Tester — DEFINED
 
-Known responsibility:
+Owns:
+- scripted practical testing;
+- exploratory testing;
+- Retest execution where possible;
+- discovery of unforeseen realistic failures.
 
-- behavior
-- user flow
-- state transitions
-- accessibility behavior
-- responsive semantics
-- data/state wiring
-
-Still define:
-
-- exact input contract
-- UX implementation checklist
-- state/error/loading requirements
-- navigation verification
-- keyboard/touch requirements
-- accessibility baseline
-- regression policy
-- UX handoff evidence
-- `UX_PLANNING_GAP` criteria
-
-Deliverable:
-
-```text
-UX-CODER-CONTRACT-v1
-```
+Tester is distinct from Reviewer.
 
 ---
 
-## S9. UI Coder — PARTIAL
-
-Known responsibility:
-
-- visual implementation
-- Concept Artwork interpretation
-- concept measurement/normalization
-- design-token application
-- asset integration
-- responsive visual composition
-
-Still define:
-
-- exact concept measurement algorithm
-- token snapping/clamping rules
-- typography inference constraints
-- one-concept-to-responsive rules
-- asset fallback behavior
-- visual evidence requirements
-- no-render fallback
-- screenshot comparison process
-- visual acceptance thresholds
-- `UI_DESIGN_GAP` criteria
-
-Deliverable:
+## S12. QA / QC — DEFINED
 
 ```text
-UI-CODER-CONTRACT-v1
+QA = COMPLIANCE/process assurance
+QC = CORRECTNESS + FIT/output quality
 ```
+
+Layered across Coder / Reviewer / Tester.
 
 ---
 
-## S10. QA — TO_DEFINE
+## S13. Handoff — DEFINED
 
-Goal:
+Handoff transfers responsibility between Runs.
 
-Define **process correctness** during implementation.
-
-Questions to settle:
-
-- What must be checked continuously?
-- What is checked per task?
-- What is checked per Review Unit?
-- What is checked before PR-ready?
-- Which checks are mandatory vs contextual?
-- What constitutes scope drift?
-- How is plan compliance checked?
-- How are unauthorized changes detected?
-- How are skipped tests/checks recorded?
-- What evidence must QA produce?
-- Who owns QA: Coder, Reviewer, or both at different levels?
-
-Initial boundary candidate:
-
+Current platform:
 ```text
-QA
-= Are we building it through the correct process,
-  within approved scope and constraints?
+human-dispatched
++ durable transition state
 ```
 
-Possible categories to define:
-
-- plan compliance
-- scope integrity
-- role/write-boundary compliance
-- dependency/change-impact compliance
-- test-process compliance
-- migration/process compliance
-- diff hygiene
-- security/process checks
-- evidence completeness
-
-Deliverable:
-
-```text
-QA-PROTOCOL-v1
-```
+Future automatic dispatch is an extension point.
 
 ---
 
-## S11. QC — TO_DEFINE
-
-Goal:
-
-Define **product/output correctness**.
-
-Questions to settle:
-
-- What proves the change actually works?
-- What checks are universal?
-- Which are stack-specific?
-- What is required for backend/frontend/UI/data changes?
-- How are acceptance criteria mapped to evidence?
-- How are regressions detected?
-- What does visual QC require?
-- What happens if runtime verification is unavailable?
-- What constitutes PASS / PARTIAL / BLOCKED?
-
-Initial boundary candidate:
+## S14. Context Builder — DEFINED
 
 ```text
-QC
-= Did we build the correct result,
-  and does the result satisfy acceptance?
+Project Memory
++ current work/request
++ relevant live evidence
+→ minimum sufficient role-specific packet
 ```
 
-Possible categories to define:
-
-- targeted functional tests
-- regression tests
-- build/type/lint
-- runtime behavior
-- contract compatibility
-- data correctness
-- UX behavior
-- UI fidelity
-- responsive behavior
-- integration behavior
-- acceptance criteria
-
-Deliverable:
-
-```text
-QC-PROTOCOL-v1
-```
+No fixed theory token quota.
 
 ---
 
-## S12. Verification & Evidence — TO_DEFINE
+## S15. Human Gate / Approval — DEFINED
 
-Need define:
+Planned Human Gate and Runtime Confirmation are distinct.
 
-- evidence types
-- evidence provenance
-- commit/version binding
-- freshness
-- confidence
-- unavailable evidence
-- manual evidence
-- CI evidence
-- screenshot evidence
-- user verification evidence
-- evidence expiry after code changes
+Runtime Confirmation is never a durable approval record.
 
-Potential schema:
-
-```text
-EVIDENCE.json
-```
-
-Deliverable:
-
-```text
-VERIFICATION-AND-EVIDENCE-v1
-```
+Material governance/waiver/release decisions may persist.
 
 ---
 
-## S13. Reviewer — PARTIAL
+## S16. Verification / Evidence — DEFINED
 
-Known:
+Evidence:
+- provenance-aware;
+- exact target/revision-bound;
+- causally revalidated;
+- categorical provenance, not numeric confidence.
 
-- independent of the work owner being reviewed
-- Project Memory write
-- source read-only
-- provides reusable review modes rather than a hard-coded gate sequence
-- review checkpoints are selected only after phases/tasks/dependencies are sufficiently known
-- final Job acceptance is independently reviewed
-
-Still define:
-
-- rules for selecting review checkpoints from the Work Map
-- reviewer mode selection per checkpoint
-- exact review checklist per review mode
-- finding severity
-- blocking vs non-blocking findings
-- evidence requirements
-- re-review policy
-- approval semantics
-- partial approval
-- review unit boundaries
-- how Reviewer detects stale plans/designs
-- whether Reviewer can request specific tests/evidence
-
-Deliverable:
-
-```text
-REVIEWER-CONTRACT-v1
-```
+Unavailable verification may create PASS_RETEST_REQUIRED.
 
 ---
 
-## S14. Capability & Executor Resolution — PARTIAL
+## S17. Capability / Executor — DEFINED
 
-Known:
-
-- unknown capability = unavailable
-- no fake execution
-- Super Agent online-first
-
-Still define:
-
-- capability vocabulary
-- detection/refresh
-- executor matching
-- required vs optional capability
-- degraded modes
-- `CAPABILITY_BLOCKED`
-- online browser/preview capabilities
-- GitHub permissions
-- CI capabilities
-- image/design capabilities
-
-Deliverables:
+Capability state:
 
 ```text
-CAPABILITY-SCHEMA-v1
-EXECUTOR-ROUTER-v1
+AVAILABLE
+UNAVAILABLE
+UNKNOWN
 ```
+
+Derived execution mode may be NORMAL / DEGRADED / BLOCKED.
+
+Unknown is treated operationally as unavailable.
 
 ---
 
-## S15. Multi-repo coordination — PARTIAL
+## S18. Multi-repo coordination — DEFINED
 
-Known:
+Change Set is used only when one logical change truly spans/coordin­ates repos.
 
-- Drive is cross-repo control plane
-- Repo Graph
-- Master Plan
-- shared contracts
-- cross-repo impact analysis
-
-Still define:
-
-- provider/consumer schema
-- contract version/migration model
-- change-set structure
-- dependency ordering
-- coordinated PR states
-- partial repo completion
-- rollback coordination
-- integration evidence
-- completion gate
-
-Deliverable:
-
-```text
-MULTI-REPO-PROTOCOL-v1
-```
+Repo completion does not imply integrated completion.
 
 ---
 
-## S16. Governance & artifact lifecycle — PARTIAL
+## S19. Governance / artifact lifecycle — DEFINED
 
-Known:
-
-- versioned artifacts
-- stale/superseded
-- user approval gate
-- dependency pinning
-- optimistic concurrency concept
-
-Still define:
-
-- exact artifact metadata schema
-- invalidation algorithm
-- revalidation rules
-- approval schema
-- conflict resolution
-- concurrent conversation behavior
-- archival policy
-
-Deliverable:
-
-```text
-ARTIFACT-LIFECYCLE-SCHEMA-v1
-```
+Defined:
+- stable IDs/revisions;
+- causal invalidation;
+- optimistic concurrency;
+- revision lineage;
+- no blanket stale;
+- no last-write-wins.
 
 ---
 
-## S17. Security & trust — PARTIAL
+## S20. Security / trust — DEFINED
 
-Known:
-
-- repo/web/tool content is data, not authority
-- role/write boundaries
-- secret handling
-- GitHub repo scope enforcement
-
-Still define:
-
-- prompt-injection handling procedure
-- destructive GitHub actions
-- secret redaction
-- external workflow risks
-- third-party connector trust
-- permission escalation
-- user confirmation thresholds
-
-Deliverable:
-
-```text
-SECURITY-PROTOCOL-v1
-```
+Defined:
+- external content is data, not authority;
+- no inferred permission escalation;
+- destructive confirmations proportional to blast radius;
+- secrets not copied unnecessarily;
+- OWNED/REFERENCED as trust boundary.
 
 ---
 
-## S18. Commands / User UX — PARTIAL
+## S21. Asset Requirement — DEFINED
 
-Frozen naming:
+Stable integration contract may precede final binary asset.
 
-- Plugin handle: `@gsa`
-- Command namespace: `gsa/`
-- Repository name is not part of the user-facing interface.
-
-Current candidates:
-
-```text
-gsa/job list
-gsa/job create
-gsa/job open
-gsa/job update
-gsa/job archive
-
-gsa/status
-gsa/plan
-gsa/continue
-gsa/review
-```
-
-Need define:
-
-- exact minimal command set
-- natural-language equivalence
-- active Job behavior
-- selection UI
-- ambiguity handling
-- destructive commands
-- approval UI
-- status summary format
-
-Deliverable:
-
-```text
-COMMAND-SPEC-v1
-```
+Placeholder/final/integration/verification are separate concepts.
 
 ---
 
-## S19. Failure & recovery — TO_DEFINE
+## S22. Retest — DEFINED
 
-Need define behavior for:
+Retest is durable practical verification obligation.
 
-- Drive unavailable
-- Job folder incomplete
-- JOB.md invalid
-- GitHub repo unavailable
-- permission loss
-- CI failure
-- stale plan
-- state conflict
-- interrupted execution
-- partial multi-repo completion
-- failed merge/deploy
-- unavailable visual verification
+Status:
+PENDING / BLOCKED / PASS / FAIL / SUPERSEDED.
 
-Deliverable:
-
-```text
-FAILURE-RECOVERY-v1
-```
+History is append-preserving.
 
 ---
 
-## S20. Completion model — PARTIAL
+## S23. Release / completion — DEFINED
 
-Known core rules:
+Project lifecycle is separate from release milestones.
 
-```text
-work produced
-≠ independently accepted
-≠ Job complete
-```
+Job completion is topology-driven.
 
-Work is first decomposed:
-
-```text
-Job
-→ Phase
-→ Task
-```
-
-Review is then overlaid dynamically after phase/task/dependency structure is known.
-
-There is NO hard rule that every Task, Phase, Review Unit, PR, or Change Set receives its own independent review.
-
-A Work Map / Review Topology determines the useful checkpoints.
-
-A Job does require final independent acceptance before it is marked complete or the workflow moves on.
-
-Need answer:
-
-- exact Work Map / Review Topology schema and owner
-- exact status vocabulary for working / checkpoint-ready / accepted / changes-required / done
-- When is a Task done?
-- When is a Review Unit done?
-- When is a PR done?
-- When is a Change Set done?
-- When is a Job done/archived?
-- Which evidence is mandatory?
-- What can be complete-but-unverified?
-- Is PARTIAL completion allowed?
-
-Deliverable:
-
-```text
-DEFINITION-OF-DONE-v1
-```
+Delivery facts:
+accepted / merged / deployed / deployment_verified.
 
 ---
 
-## S21. Schemas — TO_DEFINE
+## S24. Command / User UX — DEFINED
 
-Need formal schema for at least:
-
-- JOB.md front matter
-- STATE.json
-- PROJECT-PROFILE.json
-- REPO-GRAPH.json
-- CAPABILITY-MATRIX.json
-- PLAN metadata
-- TASK
-- REVIEW
-- APPROVAL
-- EVIDENCE
-- CHANGE-SET
-- Design/Asset sidecars
-
-Deliverable:
+Outer surface:
 
 ```text
-schemas/
+PROJECT
+DIRECT AGENT
+HELP
 ```
+
+Deep CLI synthesized minimally from recurring needs.
+
+Natural language remains equivalent.
 
 ---
 
-## S22. Implementation architecture — TO_DEFINE
+## S25. Failure / recovery — DEFINED
 
-Only after behavioral theory is stable:
+Recover at smallest causal scope.
 
-- plugin/app packaging
-- Drive adapter
-- GitHub adapter
-- orchestrator runtime
-- role prompt/harness loading
-- artifact store abstraction
-- schema validation
-- state machine engine
-- testing strategy
-- deployment topology
+Interrupted meaningful retry creates new linked Run.
 
-Deliverable:
-
-```text
-IMPLEMENTATION-ARCHITECTURE-v1
-```
+Partial effects are observed/reconciled rather than assumed rolled back.
 
 ---
 
-## S23. Harness Quality Loop — PARTIAL
+## S26. Harness Quality Loop — DEFINED / CALIBRATION
 
-Purpose:
+Theory is defined.
 
-Continuously improve the harness by evaluating the quality of actual outputs rather than trying to predict every failure in advance.
-
-Each recorded harness defect should include:
-
-```text
-observed_output
-expected_output
-failure_class
-owner_module
-current_rule_gap
-proposed_smallest_fix
-enforcement_level
-eval_case
-rerun_result
-```
-
-The harness itself may have software logs where implementation code exists, but behavioral quality is primarily judged through observable artifacts:
-
-- quality of plans
-- quality of code/diffs
-- correctness of scope
-- CI/test evidence
-- Reviewer findings
-- UX/UI result
-- user acceptance
-- cross-repo completeness
-
-Deliverable:
-
-```text
-HARNESS-QUALITY-LOOP-v1
-```
+Operational skills/harnesses/loops/actions are reference-informed baseline in Phase 2, then calibrated using real Project output evidence.
 
 ---
 
-# Definition Completeness vs Implementation Scope
+## S27. Schemas — DEFINED
 
-The skeleton is the complete conceptual map of Super Agent.
+Core semantic schemas synthesized for:
+- Project;
+- Job;
+- Task;
+- Run;
+- Handoff;
+- Human Gate;
+- Review/Finding;
+- Evidence;
+- Retest;
+- Asset Requirement;
+- Capability;
+- Release;
+- CONTROL.
 
-Before implementation scope is frozen, every section S0-S23 should reach one of:
-
-```text
-FROZEN
-DEFINED
-```
-
-A section may be fully DEFINED but not implemented in the first release.
-
-Do not use `TO_DEFINE` or `PARTIAL` as a release-planning shortcut.
-
-Conceptual work answers:
-
-```text
-What is this component?
-Why does it exist?
-What does it own?
-What are its inputs?
-What are its outputs?
-What are its invariants?
-What are its failure/status results?
-How is violation observed?
-How can it be enforced?
-What depends on it?
-```
-
-Implementation planning answers a different question:
-
-```text
-Which already-defined concepts are implemented in v1?
-Which are deferred to v2/v3?
-Which are implemented partially behind an extension point?
-```
-
-## Harness tightening after implementation
-
-Full conceptual definition does not imply that the first harness will be perfect.
-
-After each real run:
-
-```text
-1. inspect actual plan/code/review/product quality
-2. identify concrete failure
-3. map failure to its already-defined owner/module
-4. determine whether the problem is:
-   - bad implementation of the definition
-   - insufficient enforcement
-   - missing eval
-   - genuine theory gap
-5. make the smallest justified correction
-6. add/strengthen an eval
-7. rerun
-```
-
-If a real run exposes a genuine conceptual gap, update the relevant definition. If it contradicts a frozen invariant, use the Foundation Amendment process.
-
-A new/changed rule should have:
-
-- a clear purpose
-- an observable violation
-- a clear owner
-- an enforcement level: HARD / SOFT / UNKNOWN
-- at least one verification/eval hook
-
-The quality loop strengthens the harness; it does not replace complete conceptual definition.
-
-# Recommended Definition Order
-
-Define the complete theory in dependency order before assigning release versions.
-
-```text
-0. Consistency pass
-1. State machine + work classification
-2. Project Memory model + schemas
-3. Capability/enforcement model
-4. QA
-5. QC
-6. Verification/Evidence
-7. Reviewer contract
-8. Planner contract
-9. Coder contract
-10. Designer contract
-11. UX Coder contract
-12. UI Coder contract
-13. Context Builder
-14. Multi-repo coordination
-15. Governance/artifact lifecycle
-16. Security/trust
-17. Commands/User UX
-18. Failure/recovery
-19. Completion model
-20. Harness quality loop
-21. Implementation architecture
-22. Release-scope matrix
-```
-
-The goal of this sequence is conceptual completeness, not v1 bloat.
-
-After all required concepts are DEFINED, create a release-scope matrix:
-
-```text
-Concept / capability
-→ required dependencies
-→ implementation cost
-→ user value
-→ risk if deferred
-→ candidate release: v1 / v2 / v3 / later
-```
-
-Version allocation is not frozen yet. It is decided after the conceptual model is complete enough to expose dependencies and tradeoffs.
+Exact machine validation syntax belongs to implementation detail.
 
 ---
 
-# Working rule
+## S28. Implementation architecture — NEXT AFTER THEORY STABILIZATION
 
-From this point forward:
+GSA is primarily theory + instructions + harnesses + skills + connected platform capabilities, not a standalone runtime product that requires a large custom engine first.
 
-> Freeze foundations; fully define modules; then scope releases.
+Phase 2 implementation architecture should therefore focus on:
+- plugin/harness packaging;
+- skill loading;
+- tool/action routing;
+- Drive/GitHub connector use;
+- schema/template handling where needed;
+- user-facing fake CLI/control surface.
 
-When a new requirement appears, first identify which skeleton section owns it.
+Do not prematurely design a heavy runtime.
 
-Only revise the Frozen Foundation if the requirement truly changes a foundational invariant.
+---
+
+## S29. Theory process — FROZEN META-RULE
+
+```text
+DETAIL
+→ COLLECT
+→ REVIEW
+→ SYNTHESIZE
+→ FIX
+→ repeat
+```
+
+After this FIX pass:
+```text
+COLLECT PASS 02
+→ REVIEW PASS 02
+```
+
+The goal is to detect contradictions introduced by synthesis/fix before declaring theory complete.
