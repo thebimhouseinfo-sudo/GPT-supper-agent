@@ -1,286 +1,221 @@
-# Agent Harnesses v0.1
+# Agent Contracts v1
 
-## Shared clarification rule
-
-Planner, Designer, UX Coder, and UI Coder apply `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md` before their own stage. They distinguish known facts, evidence-backed inference, blocking unknowns, and harmless implementation details.
-
-## 1. Planner Harness
-
-Planner is responsible for preparing a project or change so that implementation can start safely.
-
-Planner writes only to Google Drive Project Memory.
-
-Planner may read:
-
-- Project Memory
-- Knowledge Base
-- GitHub source repositories, read-only and scoped to the current request
-- platform/tool metadata
-- capability information
-
-Planner may not modify source repositories.
-
-Planner owns the broadest clarification pass and resolves blocking product/scope/architecture unknowns before publishing a plan.
-
-### 1.1 Planner causal pipeline
+## 1. Shared role model
 
 ```text
-P0 Intent Resolution
-P1 Project Classification
-P2 Domain & Technology Detection
-P3 Knowledge Requirements
-P4 Knowledge Gap Resolution
-P5 Architecture Reconstruction
-P6 Dependency / Contract Analysis
-P7 Tool & Capability Resolution
-P8 Impact Analysis
-P9 Execution Design
-P10 Plan Compilation
-P11 Plan Validation
+Role
+= responsibility + authority + boundaries + outputs
+
+Run
+= one execution attempt with one active role
+
+Agent
+= user-facing/specialist harness implementing a role
 ```
 
-The stages are causal. Missing upstream knowledge reduces or blocks downstream certainty.
-
-Example:
+Current roles:
 
 ```text
-missing Revit 2026 API knowledge
-  -> architecture assumptions unresolved
-  -> verification design unresolved
-  -> final implementation plan cannot be published
+Orchestrator
+Planner
+Designer
+Coder
+  ├── UX Coder
+  └── UI Coder
+Reviewer
+Tester
 ```
 
-### 1.2 Planner responsibilities
+---
 
-Planner MUST prepare material that was reasonably knowable before implementation, including:
-
-- project profile
-- domain and platform knowledge requirements
-- architecture
-- repo graph
-- shared contracts
-- relevant decisions
-- master plan when multi-repo
-- repo-level plans
-- acceptance criteria
-- verification strategy
-- executor assignment
-- capability feasibility
-- implementation ordering
-- known risks and constraints
-- project delivery roadmap
-- required specialist skill routing
-- product/UX functional specification and Design Brief when the change is user-facing
-- responsive and interaction specifications where applicable
-- planned asset requirements where applicable
-
-For user-facing work, Planner owns design readiness. See `PLANNER-SCOPE-AND-UIUX-v0.1.md`.
-
-Principle:
-
-> Coder should never be the first agent to discover information that was reasonably knowable before implementation began.
-
-### 1.3 Planning evidence
-
-Every planning decision should have:
-
-- upstream evidence
-- causal explanation
-- downstream consequences
-
-No unexplained architectural decisions.
-No execution step without an executor.
-No untracked dependency impact.
-No material UI/UX decision deferred to Coder when it could be resolved during planning.
-
-## 2. Designer Harness
-
-Designer is the visual-concept agent for user-facing work.
-
-Designer reads use cases, target audience, UI Tree, Planner requirements, existing visuals, and relevant design skills; then creates Concept Artwork and derives a numbered Asset Sheet with specifications and generation prompts.
-
-Designer writes only to the Project Memory / Design Workspace and never modifies source repositories.
-
-For details, see `DESIGNER-HARNESS-v0.1.md`.
-
-Material UI work may receive an independent Design Review when the Work Map places a checkpoint there. Review placement is determined from the actual phase/task/dependency topology rather than by a universal fixed gate. Designer is not required to generate a complete production asset library.
-
-Designer requests clarification when missing use-case, audience, hierarchy, or visual constraints would materially change the concept.
-
-## 3. Coder Harness
-
-For material user-facing work, Coder is internally split into two specialized execution roles:
+## 2. Shared authority rule
 
 ```text
-UX Coder
-+ UI Coder
+tool capability
+≠ role authority
 ```
 
-UX Coder owns functional experience, interaction, state, accessibility behavior, and responsive semantics. UX Coder must not invent unresolved product behavior.
-
-UI Coder owns visual implementation and must interpret the approved Concept Artwork, design tokens, and Asset Sheet to achieve the required visual fidelity. Material visual ambiguity becomes a design gap.
-
-See `CODER-UIUX-HARNESS-v0.1.md`.
-
-Coder writes only to the GitHub repositories and branches/PR surfaces explicitly attached to the active Job.
-
-Coder reads approved Project Memory materials but does not edit them.
-
-When Coder needs to report a durable event such as `PLANNING_GAP`, deviation, completion handoff, or verification result, Coder emits a structured role result. Orchestrator is responsible for persisting that result into Project Memory/state when persistence is required. The exact transport/schema is owned by the future `HANDOFF-PROTOCOL-v1`.
-
-### 3.1 Coder flow
+Effective authority:
 
 ```text
-RECEIVE ASSIGNED WORK
-→ RESOLVE REQUIRED MATERIALS
-→ PULL CONTEXT PACKET
-→ INSPECT LIVE REPO
-→ REFINE IMPLEMENTATION DETAIL
-→ FOLLOW WORK MAP / REVIEW TOPOLOGY
-→ IMPLEMENT UNTIL NEXT CHECKPOINT
-→ SELF QA/QC
-→ VERIFY
-→ HANDOFF WHEN A SCHEDULED CHECKPOINT IS REACHED
+Project policy
+∩ Job scope
+∩ Task scope
+∩ role boundary
+∩ Run target
+∩ human approvals
+∩ actual executor capability
 ```
 
-Planner decides WHAT, WHY, constraints, architecture, and acceptance.
+---
 
-Coder decides the exact HOW inside those boundaries.
+## 3. Planner
 
-### 3.2 Detailed Execution Plan
+Planner:
+- reads Project Memory and selective live source;
+- writes durable planning/knowledge artifacts;
+- does not modify source;
+- defines objective/scope/architecture/dependencies;
+- defines Job/milestone topology;
+- defines acceptance/verification;
+- coordinates specialist readiness;
+- supports Causal Change Review.
 
-Coder translates an approved implementation plan into a concrete execution plan based on live source reality.
+Planner uses causal planning logic, not mandatory P0–P11 ceremony.
 
-For user-facing work, the detailed plan MUST label tasks as UX, UI, or joint UX/UI QA and establish their execution order.
+---
 
-Typical steps include:
+## 4. Designer
 
-- locate actual implementation points
-- identify tests
-- create regression tests
-- verify failing condition
-- implement minimum change
-- verify targeted checks
-- migrate local consumers
-- clean legacy path if approved
-- run broader checks
-- inspect diff
-- verify acceptance criteria
+Designer:
+- reads product/design context and relevant source evidence;
+- writes design artifacts/Asset Requirements;
+- does not modify source;
+- owns visual interpretation and design coverage;
+- uses specialist design skills/harness;
+- does not silently change product behavior.
 
-The detailed execution information feeds the Work Map / Review Topology. Reviewer may audit it before coding when the selected topology requires that checkpoint; this is not universally hard-coded.
+Concept-first is the normal default, not universal law.
 
-### 3.3 Coder deviation levels
+---
+
+## 5. Coder
+
+Coder:
+- reads approved Project context;
+- writes approved Project-owned source;
+- refines exact implementation HOW;
+- performs continuous self QA/QC;
+- may make local implementation/local plan adjustments within boundaries;
+- escalates material scope/architecture/contract changes;
+- fixes Reviewer findings;
+- does not infer merge authority.
+
+UX/UI Coder are Coder specializations, not separate Jobs by default.
+
+---
+
+## 6. Reviewer
+
+Reviewer:
+- uses fresh chat when independent review is required;
+- reads exact target/revision and applicable evidence;
+- source implementation is read-only;
+- may use normal PR review/comment surfaces;
+- produces findings/results;
+- does not fix source.
+
+Reviewer is inserted only where topology requires independent review.
+
+No universal final Reviewer gate exists.
+
+---
+
+## 7. Tester
+
+Tester:
+- practically exercises the product;
+- runs scripted and exploratory testing;
+- seeks unforeseen realistic failures;
+- source implementation is read-only;
+- may execute Retests when capability allows;
+- reports subjective usability observations without converting them into binding objective failure unless an approved rule is violated.
+
+Fresh chat is selective, not universal.
+
+---
+
+## 8. Orchestrator
+
+Orchestrator:
+- owns routing/transition governance;
+- persists handoffs/control-plane state;
+- coordinates Human Gates/capabilities/conflicts;
+- does not implement source;
+- is an implicit system role, not ordinary Direct Agent.
+
+---
+
+## 9. Direct Agent
+
+Initial outer Direct Agents:
 
 ```text
-Level 1 — implementation detail
-Coder handles directly.
-
-Level 2 — local plan adjustment
-Coder handles and reports in handoff.
-
-Level 3 — architecture / contract / scope change
-Coder stops affected work and emits PLANNING_GAP.
+Planner
+Designer
+Coder
+Reviewer
 ```
 
-Coder MUST NOT silently expand cross-repo scope or alter shared contracts.
+Direct Agent work:
+- no automatic Project creation;
+- ephemeral by default;
+- may be promoted/persisted when work grows;
+- Direct Coder requires clearly authorized repo target.
 
-### 3.4 Self QA/QC
+Tester and Orchestrator are not outer entries initially.
 
-Coder performs continuous checks, not only end-of-task verification.
+---
 
-QA asks:
+## 10. Context discipline
 
-- Did execution follow approved plan?
-- Is scope still correct?
-- Are required process rules followed?
-- Were unrelated changes introduced?
+Each role receives minimum sufficient context.
 
-QC asks:
+Do not indiscriminately load:
+- full Project;
+- full repo;
+- full chat history.
 
-- Does the implementation work?
-- Do relevant tests/build/type/lint pass?
-- Are contracts preserved?
-- Are acceptance criteria satisfied?
-- Were regressions introduced?
-- For UX work, do flow/state/interaction requirements pass?
-- For UI work, does rendered output satisfy approved visual acceptance?
+Reviewer/Tester context may be deliberately isolated for independence.
 
-Coder maintains an ephemeral execution checklist for progress and resume. This checklist is not automatically part of durable Project Memory.
+---
 
-## 4. Reviewer Harness
+## 11. Handoff
 
-Reviewer reads Project Memory, repo state, diffs, CI/test evidence, and relevant knowledge.
+Roles cooperate via durable Handoff when work crosses Runs.
 
-Reviewer writes only to Google Drive Project Memory.
+Handoff includes enough to identify:
+- owning work;
+- source Run;
+- next role;
+- exact target/revision;
+- completed/remaining work;
+- blocker/gate;
+- expected next outcome.
 
-Reviewer does not fix source code.
+---
 
-Reviewer provides reusable review modes rather than a universal fixed gate sequence.
+## 12. Evidence discipline
 
-The Work Map / Review Topology decides which review modes are needed and where they occur.
+Important outputs are attributable to:
 
-Possible modes include:
+```text
+role
++ Run
++ owning work context
++ exact target/revision
+```
 
-1. Plan Readiness Review.
-2. Design Review.
-3. Detailed Execution Plan Review.
-4. Architecture / Contract Review.
-5. Implementation / PR Review.
-6. Integration Review.
-7. Final Job Acceptance.
+No role may claim unavailable verification.
 
-A simple Job may use only a few checkpoints; a risky multi-repo Job may use many.
+---
 
-Final Job Acceptance is the only universal completion requirement: the current work owner cannot mark the Job complete without independent acceptance.
+## 13. Human authority
 
-### 4.1 Plan Readiness Review
+Human owns:
+- material product behavior;
+- architecture direction;
+- governance/authority;
+- major trade-offs;
+- subjective acceptance;
+- merge/release authorization when required.
 
-Reviewer checks Planner output for requirement completeness, causal consistency, architecture/contract impact, capability feasibility, verification strategy, acceptance criteria, and unresolved assumptions.
+Roles may analyze/recommend/nominate but do not silently convert recommendation into human decision.
 
-### 4.2 Design Review Gate
+---
 
-Reviewer verifies that the concept satisfies Planner requirements and target audience needs, and that the numbered Asset Sheet completely decomposes the visual elements Coder will depend on.
+## 14. Phase 2 harness maturity
 
-### 4.3 Execution Plan Audit
+These contracts define semantics.
 
-Reviewer checks:
-
-- task size
-- dependency order
-- PR boundaries
-- review checkpoints
-- cross-repo impact
-- capability feasibility
-- verification feasibility
-- missing evidence
-- unnecessary scope
-
-When this review mode is scheduled, the result can approve the detailed execution topology or require restructuring before dependent work continues.
-
-### 4.4 Implementation review
-
-Reviewer evaluates:
-
-- plan compliance
-- architecture compliance
-- contract compatibility
-- code quality
-- QA/QC evidence
-- test/build/CI evidence
-- scope integrity
-- completion claims
-- cross-repo obligations
-
-Reviewer records findings in durable Project Memory.
-
-## 5. Orchestrator
-
-Orchestrator owns workflow state, not technical implementation.
-
-The single canonical workflow state list, allowed transitions, blocking branches, pause/resume behavior, and work classification are owned by `STATE-MACHINE-v1.md`.
-
-This document MUST NOT maintain a second workflow state list.
-
-Until `STATE-MACHINE-v1.md` is approved, any state names found in older documents are non-normative.
-
-Orchestrator may update state/governance records but does not write source implementation.
+Exact prompts, skills, loops, actions, tool-use procedures belong to Phase 2 and will be calibrated from real Projects.
