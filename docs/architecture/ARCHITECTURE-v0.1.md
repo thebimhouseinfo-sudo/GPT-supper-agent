@@ -70,7 +70,7 @@ Chat history is not a source of truth. It is an interaction surface.
 
 ## 4. Job model
 
-Super Agent is configured once with a Google Drive root. Every new Job automatically receives a dedicated Project Memory subfolder under `<configured-root>/jobs/<job-id>/` before project work starts.
+Super Agent is configured once with a Google Drive root. Every new Job automatically receives one dedicated direct subfolder under `<configured-root>/<job-id>/` before project work starts.
 
 Invariant:
 
@@ -80,18 +80,15 @@ A Job is a durable work entity stored in its Google Drive Job folder. It is sepa
 
 Each Job references a GitHub code environment containing one or more repositories. A Job is therefore not identical to a repo and does not have to equal the logical Project context inferred by Planner.
 
-The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
+The Drive folder tree is the Job index; no registry file is required. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
 
 Example:
 
 ```text
 <configured Super Agent Drive root>/
-  registry.json
-  knowledge/
-  jobs/
-    kid-eschool/
-    revit-mep-tools/
-    cad-mcp/
+  kid-eschool/
+  revit-mep-tools/
+  cad-mcp/
 ```
 
 ## 5. Code environment and multi-repo model
@@ -254,7 +251,7 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 13. UI Coder must interpret approved Concept Artwork; autonomous render-and-compare is permitted only when the capability matrix confirms runtime/URL, browser or renderer, screenshot capture, concept access, and visual analysis.
 14. Plugin presence alone never implies render capability. Missing visual-verification capabilities must be reported explicitly rather than assumed to pass.
 15. Existing Job context is always Drive-first; GitHub source reads are selected from Drive state plus current request.
-16. Job list is sourced from Drive registry, not discovered from GitHub.
+16. Job list is sourced by enumerating direct Job subfolders in the configured Drive root, not from a registry file and not from GitHub.
 
 
 ## 13. Online-first execution boundary
