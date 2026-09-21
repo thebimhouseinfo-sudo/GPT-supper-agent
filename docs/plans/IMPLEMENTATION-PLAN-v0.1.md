@@ -61,7 +61,23 @@ Hard rule: unknown capability is unavailable until verified.
 
 Exit criterion: Planner can determine whether a proposed implementation step has enough knowledge and a valid executor.
 
-## Phase 4 — Planner Harness
+## Phase 4 — Clarification & Causal Readiness
+
+Implement:
+
+- known / inferred / unknown classification
+- blocking vs non-blocking ambiguity classification
+- ask-or-infer rule
+- grouped clarification packets
+- assumption recording
+- causal trace
+- STRICT_CLARIFICATION_MODE
+- FAST_PATH guardrails
+- role-specific gap statuses
+
+Exit criterion: agents stop on materially missing information without over-questioning harmless details.
+
+## Phase 5 — Planner Harness
 
 Implement Planner causal pipeline:
 
@@ -99,7 +115,7 @@ For UI/UX work, readiness additionally requires resolved product intent, user fl
 
 Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
 
-## Phase 5 — Designer Harness
+## Phase 6 — Designer Harness
 
 Implement:
 
@@ -124,7 +140,7 @@ Designer writes only to Project Memory / Design Workspace.
 
 Exit criterion: material UI work cannot enter coding until the visual concept is approved and its reusable visual parts have been decomposed into a complete numbered Asset Sheet. Final individual assets do not need to be generated at this stage.
 
-## Phase 6 — Coder Harness
+## Phase 7 — Coder Harness
 
 Implement:
 
@@ -156,7 +172,7 @@ Coder writes only source repos.
 
 Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and, only when the capability matrix supports it, demonstrate rendered visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
 
-## Phase 7 — Reviewer Harness
+## Phase 8 — Reviewer Harness
 
 Implement reviewer modes:
 
@@ -185,7 +201,7 @@ Reviewer writes only Project Memory.
 
 Exit criterion: Coder cannot begin before audit approval and cannot complete before independent implementation review.
 
-## Phase 8 — GitHub remote execution
+## Phase 9 — GitHub remote execution
 
 Use GitHub as the first code executor.
 
@@ -205,7 +221,7 @@ Do not infer shell/local-runtime capabilities from GitHub access.
 
 Exit criterion: a repo with sufficient GitHub Actions can complete a full remote code/review loop.
 
-## Phase 9 — Multi-repo Change Sets
+## Phase 10 — Multi-repo Change Sets
 
 Implement:
 
@@ -218,7 +234,7 @@ Implement:
 
 Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
 
-## Phase 10 — Additional executors
+## Phase 11 — Additional executors
 
 Add GPTWorker/local execution after the core harness is stable.
 
@@ -233,7 +249,7 @@ Route tasks by capability:
 
 Do not duplicate planning logic in executor-specific code.
 
-## Phase 11 — Plugin packaging and UX
+## Phase 12 — Plugin packaging and UX
 
 Expose a concise user interaction model, for example:
 
