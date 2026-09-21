@@ -596,43 +596,56 @@ Accepted:
 
 ```text
 Project
-→ may own 1..N repositories
+→ may own 0..N repositories
 → may reference 0..N repositories
 ```
 
-One unresolved semantic edge remains:
+A Project may legitimately exist before it owns any repository.
+
+Typical case:
 
 ```text
-Can a Project temporarily exist with 0 owned repositories?
+project new
+→ planning / product definition / design work
+→ no GitHub write required yet
+→ repository may be created/attached later
 ```
 
-This matters for:
+This is especially valid because planning itself does not require writing to GitHub.
 
-- a brand-new product before its repository exists;
-- planning/design-first Projects;
-- Projects whose source repository will be created later outside GSA;
-- non-code planning contexts that may later become coding Projects.
+A Project with zero owned repositories is therefore not incomplete merely for lacking a code environment.
 
-This is a product/architecture decision and must be resolved by the human rather than silently chosen during schema design.
+When implementation later requires source writes, the necessary owned repository relationship must exist before the corresponding Code Job can execute.
 
 ---
 
-## 18. Project lifecycle edge — PAUSED visibility
+## 18. Project open visibility
 
-Another semantic edge to confirm:
+Accepted behavior:
 
 ```text
-Should project open show:
-A. ACTIVE only
-or
-B. ACTIVE + PAUSED
+project open
+→ show every Project except ARCHIVED
 ```
 
-The existing decision clearly excludes ARCHIVED Projects from `project open`.
+Therefore:
 
-The exact PAUSED behavior has not yet been stated as clearly as ACTIVE/ARCHIVED behavior.
+```text
+ACTIVE
+→ visible
 
-Do not resolve this mechanically.
+PAUSED
+→ visible
+
+ARCHIVED
+→ hidden from Open
+```
+
+`PAUSED` means work is intentionally not progressing right now, but the Project remains directly accessible from the everyday Open surface.
+
+`ARCHIVED` is the state used to remove a Project from that everyday list.
+
+The complete Project registry/history remains available through `project status`.
 
 ---
 
@@ -649,7 +662,7 @@ Do not resolve this mechanically.
 9. A repository has at most one owning Project.
 10. Referenced repositories are read-only.
 11. Referenced source may be copied/forked into Project-owned source with provenance.
-12. Project may own multiple repositories.
+12. Project may own zero, one, or multiple repositories.
 13. Project may have multiple Jobs active in parallel when topology/dependencies allow.
 14. Opening an existing Project is Drive-first and GitHub-selective.
 15. Chat history is not durable Project state.
