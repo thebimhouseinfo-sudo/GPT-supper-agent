@@ -20,12 +20,27 @@ Orchestrator
    +-- Reviewer -> audits design/plan/code; writes Project Memory
 ```
 
-Source code remains in GitHub. Google Drive is used as durable Project Memory and does not contain source code. Super Agent is designed primarily for online coding/orchestration.
+Each Job is a durable work entity stored in Google Drive. Its code environment is GitHub and may contain one or more repositories. Source code never moves into Drive. Super Agent is designed primarily for online coding/orchestration.
+
+## Core entity model
+
+```text
+Job
+= durable work state in Google Drive
+
+Code Environment
+= one or more GitHub repositories attached to the Job
+
+Project
+= logical product/system context inferred or recorded for planning
+```
+
+**Job ≠ Repo.** A Job may use one repo or many repos.
 
 ## Design principles
 
 - Conversation is UI, not memory.
-- Super Agent is configured once with one Google Drive root; each Job automatically gets its own subfolder under `jobs/`.
+- Super Agent is configured once with one Google Drive root; each Job is persisted as its own subfolder under `jobs/`.
 - Shared project knowledge lives once at project level; repositories reference it instead of duplicating it.
 - Planner prepares all material reasonably knowable before implementation begins.
 - Planner plans only work that has a known executor and verified capabilities.
