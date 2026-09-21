@@ -189,11 +189,15 @@ Orchestrator
 
 This prevents one role from defining the rule, implementing the rule, and grading itself.
 
-## 9. Clarification and causal readiness
+## 9. Governance, lifecycle, and trust
+
+Artifact authority, versioning, invalidation, approvals, concurrency, and trust boundaries are defined in `GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md` and `SECURITY-AND-TRUST-BOUNDARIES-v0.1.md`.
+
+## 10. Clarification and causal readiness
 
 Before planning, design, or implementation, each role applies `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`. Blocking unknowns are resolved before the downstream stage; safe non-blocking assumptions may be inferred and recorded.
 
-## 10. Project readiness gate
+## 11. Project readiness gate
 
 Coder MUST NOT start until the project or change is ready for implementation.
 
@@ -207,12 +211,12 @@ PROJECT_READY_FOR_IMPLEMENTATION =
   AND executors assigned
   AND impact analysis complete
   AND implementation plan prepared
-  AND design package approved when required
+  AND design concept + asset sheet approved when required
   AND verification strategy prepared
   AND acceptance criteria prepared
 ```
 
-## 11. Core invariants
+## 12. Core invariants
 
 1. Conversation is UI, not memory.
 2. Shared project knowledge lives once at project level.
