@@ -1,5 +1,14 @@
 # GPT Super Agent — Architecture v0.1
 
+## 0. Foundation status
+
+The foundational Job/Drive/GitHub/product-boundary decisions are frozen in `FROZEN-FOUNDATION-v0.1.md`.
+
+All remaining theory work should be tracked through `SYSTEM-DEFINITION-SKELETON-v0.1.md`.
+
+A later module must not silently redefine a frozen foundation invariant.
+
+
 ## 1. Purpose
 
 GPT Super Agent is a coding-agent harness for ChatGPT. Its purpose is not merely to add coding skills. It provides persistent project state, grounded planning, execution routing, multi-repository awareness, agent separation, QA/QC, and review governance.
