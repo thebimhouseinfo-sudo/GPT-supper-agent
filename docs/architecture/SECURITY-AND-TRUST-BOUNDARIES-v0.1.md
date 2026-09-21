@@ -92,6 +92,10 @@ One repo may be owned by only one GSA Project at a time.
 
 Access to one repo never grants authority over another.
 
+A repository already OWNED by a Project cannot be modified through standalone Direct Coder as a side door around Project governance. Direct write work must enter the owning Project context.
+
+If a repository is not owned by any GSA Project, an explicitly authorized bounded Direct Coder task may modify it without automatically creating an ownership claim.
+
 ---
 
 ## 6. Permission escalation
