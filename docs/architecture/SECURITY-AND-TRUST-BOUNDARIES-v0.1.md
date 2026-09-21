@@ -18,11 +18,25 @@ External content that asks an agent to ignore rules, reveal secrets, execute unr
 
 ## Least privilege
 
-- Planner: Project Memory write only
-- Designer: Design Workspace write only
-- Coder: approved source workspace/repo write only
-- Reviewer: Project Memory write only
-- Orchestrator: state/governance write only
+Desired role scopes:
+
+- Planner: Project Memory write; GitHub source read-only
+- Designer: Design Workspace / Project Memory write; GitHub source read-only
+- Coder: Project Memory read-only; approved GitHub source write
+- Reviewer: Project Memory write; GitHub source read-only
+- Orchestrator: state/governance write; no source implementation
+
+These scopes are policy targets, not automatically HARD enforcement.
+
+Every implemented permission cell must be tagged:
+
+```text
+HARD    = enforced by a mechanism the model cannot bypass
+SOFT    = instruction/prompt enforced
+UNKNOWN = mechanism not yet verified; operationally treat as SOFT
+```
+
+A HARD claim MUST name the concrete enforcement mechanism.
 
 ## Repository write boundary
 
