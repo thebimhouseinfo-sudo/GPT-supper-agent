@@ -641,6 +641,52 @@ This is a workflow gate, not a requirement that every visual detail be perfect. 
 
 If a later content case reveals a genuine missing shell capability, use Causal Change Review before changing the shared shell, because the change may affect all existing content.
 
+### Post-SHELL_READY UI change rule
+
+After `SHELL_READY`, ordinary content production MUST NOT trigger routine UI redesign.
+
+The intended operating model is:
+
+```text
+normal new content
+→ fits existing shell
+→ no UI redesign
+```
+
+UI/shell changes are reopened only when real content exposes a case that was not reasonably covered by the pilot, such as:
+
+- a missing functional capability required by a legitimate content type;
+- content that is materially shorter or longer than representative pilot cases and breaks layout/composition;
+- responsive behavior failing at a real device/viewport/content combination;
+- an interaction/media/asset case not represented by the shell contract;
+- a genuine accessibility or usability defect revealed by real usage.
+
+Examples:
+
+```text
+normal lesson variation
+→ content/data change only
+
+unexpected very short lesson leaves unusable blank composition
+→ UI/responsive issue may be reopened
+
+unexpected very long lesson causes overflow/navigation failure
+→ UI/responsive issue may be reopened
+
+new legitimate content type requires a control the shell never had
+→ missing shell capability may be reopened
+```
+
+Even in these cases, the system does not immediately patch the shared UI. It first uses Causal Change Review to determine:
+
+- whether the problem is truly a shared-shell deficiency;
+- whether a content-level solution is sufficient;
+- the lowest-impact correction;
+- which existing content/components need retest.
+
+Therefore `SHELL_READY` means the shell is stable for expected content variation, not that future change is forbidden.
+
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
