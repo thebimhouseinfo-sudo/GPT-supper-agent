@@ -249,7 +249,7 @@ design/
   INTERACTION-SPEC.md
   DESIGN-SYSTEM.md
   CONTENT-SPEC.md
-  ASSET-MANIFEST.json
+  ASSET-REQUIREMENTS.md
   UI-ACCEPTANCE.md
   UI-TREE.md
   UI-REQUIREMENTS.json
@@ -259,6 +259,12 @@ design/
 ```
 
 These may be combined for small tasks, but the information obligations remain. For new apps and major redesigns, the UI Tree and Design Foundation are mandatory. See `UI-SPEC-MODEL-v0.1.md`.
+
+Visual ownership rule:
+
+- Planner defines functional hierarchy, device/responsive requirements, inherited design-system constraints, and any visual rules already fixed by the project.
+- Designer owns new visual interpretation where the project has not already fixed it, including proposed palette/type treatment, artwork language, and concrete visual tokens.
+- Planner provides asset needs/roles before design; Designer derives the actual numbered asset set from the approved concept.
 
 ## 7. Product Spec
 
