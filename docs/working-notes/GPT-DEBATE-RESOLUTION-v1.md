@@ -1526,6 +1526,115 @@ physical memo/storage layout last
 Do not nominate directories merely because a concept exists, and do not force future agent memo requirements into a storage layout before those agents are fully defined.
 
 
+## 4.15 Two classes of Human Approval
+
+User decision:
+
+Human approval is not one generic mechanism. The architecture distinguishes two classes.
+
+### A. Planned Human Gate
+
+This is a governance/decision point intentionally declared in the Detailed Execution Plan or milestone topology.
+
+Examples:
+
+```text
+Design milestone
+→ Human must choose/approve the design direction
+
+Causal Change Review
+→ Human chooses Option A vs Option B
+
+Release milestone
+→ Human approves merge/release
+
+Subjective acceptance
+→ Human decides because Reviewer cannot objectively decide
+```
+
+A Planned Human Gate is part of the Job topology.
+
+It answers:
+
+```text
+At which milestone must work stop and wait for a human decision?
+```
+
+The plan should record:
+
+- gate purpose;
+- decision/approval required;
+- artifacts/evidence the human must see;
+- downstream work blocked by the gate;
+- exact scope/version being approved.
+
+The gate remains pending until the human gives an explicit decision.
+
+### B. Runtime Confirmation
+
+This is not necessarily a pre-planned milestone.
+
+It occurs inside a live ChatGPT session/Run when GPT needs explicit human confirmation before performing or continuing a concrete runtime action.
+
+Examples:
+
+```text
+GPT is about to perform a consequential write/action
+→ asks for confirmation
+→ human approves/rejects in the active chat
+→ runtime continues/stops
+```
+
+or:
+
+```text
+unexpected ambiguity appears
+→ GPT cannot safely choose on its own
+→ requests a runtime decision
+→ human confirms
+→ Run resumes
+```
+
+Runtime confirmation is local to the current action/context unless explicitly promoted into a durable Project decision.
+
+It answers:
+
+```text
+May this specific action continue right now?
+```
+
+### Key distinction
+
+```text
+Planned Human Gate
+= workflow governance
+= known in milestone topology
+= durable decision boundary
+
+Runtime Confirmation
+= execution-time authorization/clarification
+= arises in a specific Run/chat
+= usually narrow and action-scoped
+```
+
+A runtime confirmation does not automatically satisfy a planned milestone gate unless the confirmation explicitly addresses that gate's required decision and target.
+
+Likewise, a planned gate approval does not grant blanket permission for unrelated future runtime actions.
+
+### Common approval requirements
+
+Both classes must be:
+
+- explicit;
+- attributable to the human;
+- scoped to a concrete action/decision;
+- bound to the relevant target/revision/context;
+- not inferred from silence.
+
+The system should preserve durable records for Planned Human Gates.
+
+Runtime Confirmations should be persisted only when they materially affect Project state, governance, future assumptions, evidence, or auditability.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
