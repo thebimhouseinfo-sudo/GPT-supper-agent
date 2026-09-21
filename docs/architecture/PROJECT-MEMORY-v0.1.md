@@ -210,7 +210,6 @@ knowledge/
     github/
     google-drive/
     vercel/
-    gptworker/
 
   domains/
     revit/
@@ -274,6 +273,7 @@ Negative knowledge is valuable and should be retained when durable, e.g.:
 
 - GitHub repository write does not imply shell execution.
 - A cloud repo connector does not imply localhost access.
+- Super Agent does not assume ownership of local/offline execution.
 - A tool cannot claim runtime verification it cannot physically perform.
 
 ## 13. Context Builder
