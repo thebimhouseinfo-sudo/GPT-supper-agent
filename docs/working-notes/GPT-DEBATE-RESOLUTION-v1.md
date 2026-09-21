@@ -31,7 +31,7 @@ Decision vocabulary:
 | P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
 | P7 Job lifecycle core | MODIFY | Center STATE-MACHINE-v1 on Job lifecycle, but separate lifecycle from review/acceptance result. Candidate lifecycle: PLANNED -> READY -> IN_PROGRESS <-> PAUSED -> SUBMITTED -> CLOSED; side states BLOCKED, STALE, CANCELLED. A review result can route SUBMITTED -> IN_PROGRESS for revision or allow closure. Project has lifecycle status (for example active/archived), not a global workflow enum. Artifact status remains separate. |
 | P8 Designer on-demand asset service | MODIFY | Keep the upstream concept/style-anchor flow and add on-demand asset requests. A material design request creates a design Job. Placeholder-first is allowed only when the final asset is not acceptance-blocking. Asset persistence remains capability-gated and UNKNOWN until tested. |
-| P9 Evidence and quality vocabulary | MODIFY | Do not delete QA/QC. Stabilize them using three canonical check families: COMPLIANCE, CORRECTNESS, FIT. QA is the process-assurance umbrella, primarily compliance/evidence integrity. QC is the output-quality umbrella, primarily correctness + fit. Evidence is commit-bound. Objective evidence is primary; model judgement is supplementary and clearly labelled. |
+| P9 Evidence and quality vocabulary | ACCEPT | Keep QA/QC as the canonical umbrella terms. QA = process assurance, primarily COMPLIANCE + evidence discipline. QC = output control, primarily CORRECTNESS + FIT. Evidence is commit-bound. Objective evidence is primary; model judgement is supplementary and clearly labelled. |
 | P10 Conservative invalidation | ACCEPT | Upstream normative change makes dependent artifacts STALE by default. Cheap revalidation may restore them. The model does not silently prove descendants unaffected. |
 | P11 Reviewer GitHub scope | ACCEPT | Reviewer may read GitHub and write signed PR comments/review comments, but MUST NOT write repository contents. Same-identity GitHub approval cannot be treated as independent approval. Fresh-chat independence plus observable evidence provides the review separation; user-controlled merge remains the human gate. |
 | P12 Merge/deploy completion | ACCEPT | Accepted, merged, and deployed are separate facts/events. Acceptance never implies merge or deploy. Merge authority belongs to the user. Deployment verification is recorded separately when applicable. |
@@ -59,6 +59,9 @@ The current JOB.md and PROJECT.md concepts should collapse into PROJECT.md.
 Exact Job/Run storage below the Project root is deferred to PROJECT-MEMORY-SCHEMA-v1.
 
 ## 4. Quality vocabulary
+
+User decision: QA/QC model accepted.
+
 
 Canonical check families:
 
