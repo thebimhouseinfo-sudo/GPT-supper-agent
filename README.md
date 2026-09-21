@@ -40,6 +40,7 @@ Project
 ## Design principles
 
 - Conversation is UI, not memory.
+- **Drive first, GitHub second:** selecting/opening a Job always loads its Drive memory before deciding which repo/path to inspect.
 - Super Agent is configured once with one Google Drive root; each Job is persisted as its own subfolder under `jobs/`.
 - Shared project knowledge lives once at project level; repositories reference it instead of duplicating it.
 - Planner prepares all material reasonably knowable before implementation begins.
