@@ -625,28 +625,49 @@ Do not canonize these names until lifecycle requirements from Task/Run/Agent/Tes
 
 ---
 
-## 22. Job deletion/archive — unresolved semantic area
+## 22. Job history / deletion semantics
 
-The Project-level CLI already defines Project archive/delete behavior.
+Accepted:
 
-Job-level lifecycle management has not yet been fully decided.
+```text
+completed Job
+→ remains in Project history
 
-Open semantic questions include:
+Job-level ARCHIVED state
+→ not needed
 
-1. Does a completed Job remain permanently visible in Project history?
-2. Does Job need an explicit ARCHIVED state, or is completion/history enough?
-3. Is hard Job deletion ever allowed?
-4. If Job deletion is allowed, what happens to linked Retests, review evidence, release history, approvals and Run attribution?
-5. Should abandoned work use CANCELLED, SUPERSEDED, ARCHIVED, or another concept?
+hard Job delete
+→ allowed
+```
 
-These are product/governance decisions and must not be resolved mechanically.
+A completed Job is historical Project memory and remains visible/recoverable through Project history unless explicitly deleted.
+
+Job archive is unnecessary because Project lifecycle already provides ACTIVE / PAUSED / ARCHIVED at the enclosing level, while Job completion itself provides the normal historical boundary.
+
+Hard deletion is permitted for Jobs that the user considers obsolete or unwanted.
+
+The exact deletion-safety mechanics are intentionally deferred. Later COLLECT/REVIEW must determine how deletion interacts with:
+
+- linked Retests;
+- review evidence;
+- approvals;
+- release history;
+- Run attribution;
+- Task history;
+- cross-Job references;
+- audit/provenance needs.
+
+Deletion must not silently orphan required durable obligations.
+
+Abandoned/superseded/cancelled semantics remain to be synthesized later from the full lifecycle model; do not introduce Job-level ARCHIVED merely to represent them.
 
 ---
 
-## 23. Job identity — unresolved semantic area
+## 23. Job identity scope
 
 A Job needs durable identity across:
 
+- Projects;
 - Runs;
 - Tasks;
 - reviews;
@@ -655,22 +676,21 @@ A Job needs durable identity across:
 - release/evidence references;
 - later chat reopen.
 
-The exact ID format is mechanical and can be designed later.
-
-One semantic question remains:
+Accepted semantic scope:
 
 ```text
-Should Job identity be globally unique across all Projects,
-or only unique inside its owning Project?
+Job ID
+→ globally / universally unique
+→ not merely unique inside one Project
 ```
 
-This affects cross-Project references and human readability.
+This allows a Job reference to remain unambiguous even when copied into cross-Project evidence, Retest references, logs, handoff records, or future tooling.
 
-The human should decide the semantic scope; GPT can later design the exact ID syntax.
+The exact ID syntax remains a mechanical detailing decision and is intentionally deferred.
 
 ---
 
-## 24. Job type change — unresolved semantic area
+## 24. Job type mutability — nominated candidate for later review
 
 Current baseline types:
 
@@ -681,14 +701,41 @@ design
 review
 ```
 
-A semantic question remains:
+Nominated candidate:
 
 ```text
-Can an existing Job change type after creation,
-or is type immutable and a materially different workflow requires a new Job?
+Job type is immutable after creation.
 ```
 
-This affects lifecycle/history clarity and must be explicitly decided.
+Rationale:
+
+- type selects the Job's workflow contract;
+- immutable type preserves historical readability;
+- changing type mid-stream can blur what completion/review/evidence rules applied earlier;
+- when the work materially changes nature, creating a new Job gives a clearer causal/history boundary.
+
+Candidate behavior:
+
+```text
+same finite objective, workflow evolves within same type
+→ update milestone topology
+
+work materially changes into a different Job type
+→ create a new Job
+→ link it causally to the prior Job when useful
+```
+
+This is NOT frozen yet.
+
+Mark for later:
+
+```text
+COLLECT
+→ REVIEW
+→ confirm or revise Job-type immutability
+```
+
+The later system-wide review must check whether any real workflow requires safe type transition without creating a new Job.
 
 ---
 
@@ -714,6 +761,10 @@ This affects lifecycle/history clarity and must be explicitly decided.
 18. Job must remain traceable across Tasks/Runs/reviews/retests/handoffs.
 19. Job does not silently expand Project architecture or source ownership.
 20. Exact lifecycle enum remains to be synthesized after related domains are detailed.
+21. Completed Jobs remain in Project history unless explicitly hard-deleted.
+22. Job-level ARCHIVED state is not required.
+23. Job identity is globally/universally unique.
+24. Job-type immutability is currently nominated, not frozen.
 
 ---
 
@@ -767,10 +818,17 @@ Need later detail from:
 - state machine;
 - CLI.
 
-### Human decisions currently required
+### Resolved / nominated decisions
 
-1. Job archive/delete/history semantics.
-2. Job ID uniqueness scope: global vs Project-local.
-3. Whether Job type can change after creation.
+Resolved:
 
-Do not proceed to final lifecycle/storage synthesis until these semantics are resolved or intentionally deferred.
+1. Completed Jobs remain in Project history.
+2. Job-level ARCHIVED state is not needed.
+3. Hard Job deletion is allowed.
+4. Job ID scope is globally/universally unique.
+
+Nominated for later COLLECT/REVIEW:
+
+5. Job type is immutable after creation; materially different workflow creates a new linked Job.
+
+Do not freeze the nominated type-mutability rule until the later system-wide review confirms it.
