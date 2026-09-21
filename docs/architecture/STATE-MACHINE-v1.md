@@ -37,6 +37,15 @@ Older state lists in `AGENT-HARNESSES-v0.1.md` and `GOVERNANCE-AND-ARTIFACT-LIFE
 - gate requirements by work class
 - upward reclassification rules
 - stale/drift transitions
+- hierarchical work levels: Task → Review Unit → PR → Change Set → Job
+- nested owner/reviewer loops at each applicable level
+- READY_FOR_REVIEW vs APPROVED vs DONE semantics
+- upward completion promotion rules
+- child-approved / parent-incomplete behavior
+- review-failure routing to the lowest owning level
+- escalation from task/detail-plan defects to Planner when architecture/scope changes
+- ancestor reopening/invalidation when a child is reopened
+- final Job review and JOB_APPROVED / JOB_CHANGES_REQUIRED outcomes
 - terminal/completion states
 - observable transition violations
 - enforcement classification
