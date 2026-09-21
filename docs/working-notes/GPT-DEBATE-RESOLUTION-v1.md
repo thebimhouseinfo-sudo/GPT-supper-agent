@@ -1459,6 +1459,53 @@ Rules:
 - creating an owned derivative from referenced source must preserve provenance.
 
 
+## 4.14 Minimal Project skeleton
+
+User decision:
+
+Every Project should start from a **minimal standard skeleton**, but the exact file/folder schema must be defined later as a dedicated design task.
+
+The core theory only freezes the following:
+
+```text
+Project initialization
+→ creates a small canonical structure
+→ enough to identify the Project, hold durable control-plane state,
+  and provide stable homes for known persistent requirement queues
+→ avoids generating a large tree of speculative empty artifacts
+```
+
+Known persistent areas already justified by the architecture include at least:
+
+- Project marker / identity and ownership metadata;
+- Job / Task / Run state storage;
+- Asset Requirements;
+- test / practical verification requirements and Retest records;
+- release/completion milestone records;
+- durable decisions / handoff information as required.
+
+The exact naming, file boundaries, front matter, indexes, IDs, and folder hierarchy are **NOT frozen yet**.
+
+For example, concepts currently known to need durable homes include:
+
+```text
+asset-requirements/
+test-requirements/ or equivalent
+retests/ or equivalent
+jobs/ or equivalent
+releases/ or equivalent
+```
+
+The final schema may combine or rename some of these if a cleaner design preserves all required semantics.
+
+Rule:
+
+```text
+freeze the need for a minimal skeleton now
+→ design the exact Project Memory schema later
+→ avoid premature folder-by-folder canonization
+```
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
