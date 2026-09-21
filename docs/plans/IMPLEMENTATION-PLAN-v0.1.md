@@ -1,333 +1,230 @@
-# GPT Super Agent — Implementation Plan v0.1
+# GPT Super Agent — Implementation Plan v0.2
 
 ## Goal
 
-Build the smallest useful version of the harness that can persist project memory, prepare grounded plans, enforce role boundaries, and coordinate GitHub coding with independent review.
-
-## Phase 0 — Repository foundation
-
-- Establish architecture/spec documents.
-- Define `JOB.md` front-matter schema plus JSON schemas for Project Profile, State, Repo Graph, Knowledge Profile, Capability Matrix, Task, Review, and Change Set.
-- Define plugin naming and packaging conventions.
-- Define tests for harness state transitions.
-
-Exit criterion: architecture and schemas are stable enough to implement without inventing storage semantics during coding.
-
-## Phase 1 — Drive Root, Job Lifecycle & Project Memory
+Build the smallest testable harness, run it on a real small Job, observe product quality, then tighten the harness iteratively.
+
+The plan intentionally does NOT require every architecture module to be fully defined before the first run.
+
+## Development principle
+
+```text
+minimal definition
+→ minimal harness
+→ real run
+→ inspect actual output quality
+→ identify concrete failure
+→ tighten the responsible rule/gate/prompt
+→ add eval
+→ rerun
+```
+
+A rule is strengthened because evidence shows a failure mode or a frozen invariant requires protection.
+
+Do not expand deferred modules while implementing unrelated work.
 
-Implement:
+## Stage A — Consistency pass
 
-- one-time configured Super Agent Google Drive root
-- root validation and writeability check
-- job create / open / list / update / archive lifecycle
-- Drive-folder-driven job list/select/open semantics
-- JOB.md marker/metadata validation
-- automatic direct Job subfolder creation under <configured-root>/<job-id>
-- status-driven Job bootstrap (`bootstrapping` → `active`, failure → `incomplete`)
-- duplicate/id conflict handling
-- explicit GitHub code-environment model
-- attach 1..N GitHub repositories during Job creation
-- Project Memory folder/file creation
-- Markdown/YAML-front-matter/JSON templates
-- Project/repo relationship lookup
-- request-driven repo/path relevance resolver
-- read/write abstraction for Project Memory
-- state versioning and validation
-
-Hard rules:
-
-- Drive contains project memory only, never source code.
-- User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
-- Every Job defaults to online execution.
-
-Exit criterion: a Job can be created as one direct Drive subfolder without a per-Job Drive link, appear in `job list` through direct-folder enumeration + JOB.md validation, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
-
-## Phase 2 — Job Code Environment, Project and Repo Profiling
-
-Implement:
-
-- Job ↔ GitHub code-environment relationship
-- single-repo / multi-repo classification
-- repo metadata
-- repo graph
-- shared contract representation
-- project architecture reference
-- relevant-context resolution for child repos
-
-Exit criterion: opening a child repo resolves the parent project and loads inherited shared context without duplicating files into every repo.
-
-## Phase 3 — Knowledge and capability system
-
-Implement:
-
-- Knowledge Profile
-- Knowledge requirement detection
-- domain/platform/engineering knowledge categories
-- provenance/freshness metadata
-- knowledge-gap representation
-- executor registry
-- capability matrix
-- negative capability knowledge
-- session-level capability refresh
-
-Hard rule: unknown capability is unavailable until verified.
-
-Exit criterion: Planner can determine whether a proposed implementation step has enough knowledge and a valid executor.
-
-## Phase 4 — Governance, Artifact Lifecycle & Trust
-
-Implement:
-
-- normative vs descriptive truth
-- source-of-truth precedence
-- artifact id/version/status
-- dependency/version pinning
-- causal invalidation / STALE propagation
-- Plan Readiness Review
-- explicit user approval gates
-- optimistic concurrency / STATE_CONFLICT
-- resume/idempotency
-- reviewer evidence independence
-- evidence provenance/freshness
-- prompt-injection/trust boundaries
-- secret handling
-- GitHub repository/branch write-scope enforcement
-
-Exit criterion: stale/conflicting artifacts cannot authorize execution and untrusted project content cannot elevate permissions.
-
-## Phase 5 — Clarification & Causal Readiness
-
-Implement:
-
-- known / inferred / unknown classification
-- blocking vs non-blocking ambiguity classification
-- ask-or-infer rule
-- grouped clarification packets
-- assumption recording
-- causal trace
-- STRICT_CLARIFICATION_MODE
-- FAST_PATH guardrails
-- role-specific gap statuses
-
-Exit criterion: agents stop on materially missing information without over-questioning harmless details.
-
-## Phase 6 — Planner Harness
-
-Implement Planner causal pipeline:
-
-1. intent resolution
-2. project classification
-3. domain/stack detection
-4. knowledge requirements
-5. knowledge gap resolution
-6. architecture reconstruction
-7. dependency/contract analysis
-8. capability resolution
-9. impact analysis
-10. execution design
-11. plan compilation
-12. plan validation
-
-Planner writes only Project Memory.
-
-Outputs:
-
-- Project Start Package
-- project delivery roadmap
-- Master Plan where needed
-- repo plans
-- specialist skill routing record
-- acceptance criteria
-- verification strategy
-- executor assignment
-- impact report
-- UI/UX Design Package for material user-facing changes
-- responsive/interaction specs where applicable
-- asset requirements where applicable
-
-For UI/UX work, readiness additionally requires resolved product intent, user flow, screen hierarchy, responsive behavior, interaction states, design-system relationship, asset requirements, UI acceptance criteria, and a feasible UI verification path.
-
-Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
-
-## Phase 7 — Designer Harness
-
-Implement:
-
-- Planner-to-Designer Design Brief
-- use-case and target-audience interpretation
-- design-skill routing
-- Concept Artwork
-- selected visual direction
-- key-screen concept artifacts where needed
-- artwork/icon direction
-- concept-derived asset decomposition
-- numbered Asset Sheet
-- asset specifications
-- master style prompt
-- per-asset generation prompts
-- design QA
-- Design Review Gate
-- DESIGN_PLANNING_GAP escalation
-- design executor/capability routing
-
-Designer writes only to Project Memory / Design Workspace.
-
-Exit criterion: material UI work cannot enter coding until the visual concept is approved and its reusable visual parts have been decomposed into a complete numbered Asset Sheet. Final individual assets do not need to be generated at this stage.
-
-## Phase 8 — Coder Harness
-
-Implement:
-
-- UX Coder specialization
-- UI Coder specialization
-- UX/UI task ownership in execution plans
-- Concept Artwork reading skill for UI Coder
-- concept geometry measurement
-- normalized layout model
-- repeated-value/token inference
-- measurement confidence model
-- visual fidelity classification: MUST MATCH / INTENT MATCH / IMPLEMENTATION FLEXIBLE
-- capability-gated render-and-compare loop
-- visual comparison capability resolver (runtime + browser/renderer + screenshot + concept access + visual analysis)
-- viewport-based visual QA
-- UX/UI joint QA
-- visual acceptance status/evidence
-- UX_UI_CONFLICT escalation
-- context packet pull
-- live repo inspection
-- detailed execution plan generation
-- ephemeral execution checklist
-- QA/QC loop
-- deviation classification
-- PLANNING_GAP escalation
-- structured handoff
-
-Coder writes only source repos.
-
-Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and, only when the capability matrix supports it, demonstrate rendered visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
-
-## Phase 9 — Reviewer Harness
-
-Implement reviewer modes:
-
-1. Plan Readiness Review for substantial changes
-2. Design Review Gate when applicable
-3. Execution Plan Audit
-4. Implementation Review
-
-Execution Plan Audit decides:
-
-- task grouping
-- review units
-- PR boundaries
-- architectural checkpoints
-- executor feasibility
-- verification feasibility
-
-Implementation Review records:
-
-- critical/important/minor findings
-- plan compliance
-- architecture/contract compliance
-- evidence quality
-- cross-repo obligations
-
-Reviewer writes only Project Memory.
-
-Exit criterion: Coder cannot begin before audit approval and cannot complete before independent implementation review.
-
-## Phase 10 — GitHub remote execution
-
-Use GitHub as the first code executor.
-
-Support:
-
-- branch creation
-- file changes
-- commits
-- draft PR
-- PR diff inspection
-- CI/workflow evidence
-- fixes
-- formal review
-- merge decision
-
-Do not infer shell/local-runtime capabilities from GitHub access.
-
-Exit criterion: a repo with sufficient GitHub Actions can complete a full remote code/review loop.
-
-## Phase 11 — Multi-repo Change Sets
-
-Implement:
-
-- master plan to repo-plan mapping
-- coordinated PR tracking
-- contract migration order
-- cross-repo obligations
-- integration review
-- Change Set completion gate
-
-Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
-
-## Phase 12 — Online executor integrations
-
-Extend online execution only where useful, for example:
-
-- richer GitHub CI/workflow evidence
-- remote preview deployments
-- hosted browser/preview verification when available
-- other connected online coding/deployment services
-
-Local filesystem/shell/desktop-runtime execution is intentionally outside the Super Agent core scope. GPTWorker remains a separate offline/local coding agent.
-
-Do not duplicate planning logic in executor-specific integrations.
-
-## Phase 13 — Plugin packaging and UX
-
-User-facing naming is independent of the repository name.
+Fix current contradictions and clerical defects only.
+
+Examples already identified:
+
+- duplicate workflow-state definitions
+- duplicate Job Lifecycle section number
+- duplicate capability entry
+- version-label mismatch
+- soft write-boundary claims presented as architectural guarantees
+- undefined Fast Path wording
+- duplicated Drive rationale
+
+Exit criterion: existing documents do not contradict each other on the MVP path.
+
+## Stage B — Minimal definitions for first run
+
+Define only:
+
+1. minimal state machine
+2. work tiers
+3. minimal Project Memory schema
+4. capability/enforcement matrix
+5. QA/QC/Evidence minimum
+6. Planner contract
+7. Coder contract
+8. Reviewer contract
+9. handoff/reporting channel
+10. minimal command/status behavior
+11. Task + PR Definition of Done
+12. drift/freshness rule
+
+Exit criterion: one small non-UI T1 Job can be planned, implemented, reviewed, and truthfully completed.
+
+## Stage C — Minimal harness files
+
+Create only the role/rule files needed for that first run.
+
+Suggested first layout:
+
+```text
+harness/
+  orchestrator.md
+  roles/
+    planner.md
+    coder.md
+    reviewer.md
+  rules/
+    clarification.md
+    boundaries.md
+    qa-qc-evidence.md
+    security.md
+  schemas/
+    job.schema.*
+    state.schema.json
+    evidence.schema.json
+  templates/
+    plan.md
+    handoff.md
+    review.md
+  evals/
+```
+
+Designer and UX/UI split remain extension paths unless the selected first Job requires them.
+
+## Stage D — Role evals
+
+Test each role as soon as its contract exists.
+
+At minimum include positive and negative scenarios.
+
+Examples:
+
+```text
+Planner
+- vague request → clarify
+- unavailable capability → CAPABILITY_BLOCKED
+- malicious README instruction → treat as data
+
+Coder
+- discovers scope-changing contract need → PLANNING_GAP
+- CI red → cannot claim complete
+- diff exceeds approved scope → stop/report
+
+Reviewer
+- claimed pass but evidence fails → CHANGES_REQUIRED
+- stale commit evidence → reject evidence
+- stale plan → STALE
+
+Orchestrator
+- requirement changes mid-work → invalidate affected work
+- external GitHub change → drift detected
+```
+
+Exit criterion: minimum eval set passes before the real run.
+
+## Stage E — First real end-to-end run
+
+Choose one small, non-UI, single-repo T1 Job.
+
+Run:
+
+```text
+Job open
+→ Planner
+→ plan
+→ Coder
+→ implementation
+→ QA/QC evidence
+→ Reviewer
+→ completion decision
+```
+
+The purpose is not merely to finish the code change.
+
+The purpose is to inspect:
+
+- planning quality
+- scope accuracy
+- code quality
+- verification quality
+- review quality
+- unnecessary friction
+- missing safeguards
+- false confidence
+- user-visible result quality
+
+## Stage F — Harness tightening loop
+
+For every meaningful defect observed:
+
+```text
+observe failure
+→ classify owner
+→ add the smallest effective rule/gate/template change
+→ tag HARD / SOFT / UNKNOWN
+→ define observable violation
+→ add eval reproducing the defect
+→ rerun affected role
+→ rerun full loop when necessary
+```
+
+Do not add broad rules for hypothetical problems unless risk is high enough to justify them before observation.
+
+## Stage G — Expand by need
+
+Only after the first loop is stable, pull in additional modules when a real Job requires them.
+
+Possible expansion order:
+
+- Designer
+- UX/UI Coder specialization
+- visual QA
+- multi-repo Change Sets
+- coordinated PRs
+- richer artifact invalidation
+- detailed failure/recovery
+- advanced browser/preview verification
+- concept measurement/normalization
+
+Each extension follows the same pattern:
+
+```text
+minimal definition
+→ real use
+→ inspect quality
+→ tighten
+```
+
+## Frozen implementation assumptions
 
 - Plugin handle: `@gsa`
 - Command namespace: `gsa/`
-
-Expose a concise user interaction model, for example:
-
-```text
-gsa/job create ...
-gsa/job open ...
-gsa/status
-gsa/plan ...
-gsa/continue
-gsa/review
-```
-
-Natural-language requests remain supported; command grammar is an optional deterministic control surface.
+- one configured Drive root
+- one direct Drive folder per Job
+- `JOB.md` identifies the Job
+- Drive-first Job loading
+- GitHub is the online code environment
+- Job references 1..N repos
+- single-repo and multi-repo share one Job model
+- GPTWorker is separate offline/local agent
 
 ## Initial non-goals
 
-- Storing source code in Google Drive
-- Dumping full chat history into Project Memory
-- Building or owning a local shell/runtime
-- Allowing Coder to update project plans directly
-- Allowing Reviewer to fix source code
-- Assuming one task equals one PR
-- Assuming one repo equals one project
+- fully specifying every skeleton section before first test
+- implementing Designer before a UI test needs it
+- implementing full multi-repo orchestration before a multi-repo test
+- universal recovery logic before real failure cases are observed
+- pretending SOFT prompt rules are HARD enforcement
+- claiming completion without objective evidence
 
-## First implementation milestone
-
-The recommended first milestone is:
+## First milestone
 
 ```text
-Job creation
-+ Drive Project Memory
-+ repo/project profiling
-+ Planner Harness
-+ capability matrix
-+ Designer Harness for UI work
-+ Design Review Gate
-+ Coder detailed execution plan
-+ Reviewer execution-plan audit
-+ GitHub source write
-+ Reviewer final report
+one real T1 Job
++ minimal Planner
++ minimal Coder
++ minimal Reviewer
++ QA/QC/Evidence
++ truthful status
++ eval-backed harness revisions
 ```
 
-This is sufficient to validate the online architecture before adding richer online executor integrations or more advanced MCP functionality.
+Success means the first run gives us enough observable evidence to make the second harness version materially better.
