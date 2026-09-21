@@ -570,6 +570,77 @@ Generic Coder → Reviewer
 
 The system must not "figure it out as it goes". Ordering is part of the approved Detailed Execution Plan before implementation starts, while still remaining revisable through the causal change review if new facts emerge.
 
+## 4.6 Shell-readiness gate before content scale-out
+
+User decision / observed failure mode:
+
+KE Math Grade 1 exposed an important anti-pattern: implementation proceeded topic-by-topic while the application shell was still incomplete and insufficiently detailed. As content was added, missing shell decisions kept surfacing, forcing repeated redesign/rework.
+
+The system must prevent this pattern in future projects.
+
+For content-driven applications, large-scale content implementation MUST NOT begin until the reusable application shell reaches an explicit readiness gate.
+
+```text
+requirements/content model
+→ UI tree / navigation model
+→ application shell
+→ representative real-content pilot
+→ shell-readiness review
+→ only then scale out content/topics
+```
+
+The shell-readiness review verifies, as applicable:
+
+- global navigation and page hierarchy;
+- lesson/topic entry and exit flows;
+- start/end states;
+- content container / learning canvas behavior;
+- progress/report behavior;
+- common controls and shared components;
+- responsive rules;
+- empty/loading/error states;
+- asset slots and placeholder contracts;
+- audio/media integration points;
+- shared data contracts;
+- representative long/short content cases;
+- representative interactive content cases;
+- mobile/tablet/desktop behavior where applicable.
+
+A shell is not considered ready merely because the landing page renders.
+
+### Representative pilot rule
+
+Before mass-producing content, implement enough real representative content to stress the shell.
+
+The pilot should intentionally include materially different cases, for example:
+
+```text
+simple lesson
+long lesson
+interactive lesson
+asset-heavy lesson
+audio lesson
+assessment/report flow
+```
+
+The exact pilot set is project-specific and defined in the Detailed Execution Plan.
+
+The purpose is to discover shell deficiencies before dozens of topics inherit them.
+
+### Scale-out gate
+
+```text
+SHELL_NOT_READY
+→ content scale-out blocked
+
+SHELL_READY
+→ reusable content production may begin
+```
+
+This is a workflow gate, not a requirement that every visual detail be perfect. Known non-blocking polish may remain, but structural shell behavior and reusable contracts must be stable enough that adding a new content unit is primarily data/content work rather than redesigning the application.
+
+If a later content case reveals a genuine missing shell capability, use Causal Change Review before changing the shared shell, because the change may affect all existing content.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
