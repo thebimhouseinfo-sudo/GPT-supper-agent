@@ -168,6 +168,8 @@ These are extensible after real evidence.
 
 Job ID is globally unique.
 
+All durable entities intended for detached reference use globally unique identity, including Project, Task, Run, Handoff, Review/Finding, Evidence, Retest, Asset Requirement, Human Gate, and Release records.
+
 Completed Jobs remain in Project history unless explicitly deleted.
 
 No Job-level ARCHIVED state is required.
@@ -382,3 +384,24 @@ Exact deep command grammar is defined separately.
 11. Merge requires explicit human authorization.
 12. State/result/validity/delivery facts remain separate.
 13. GPTWorker remains separate offline/local tooling.
+
+
+---
+
+## F24. Control-plane materialized view
+
+`CONTROL.json` is a rebuildable current-state index/materialized view.
+
+Durable entity/history records remain the source for historical reconstruction.
+
+---
+
+## F25. Milestone/stage topology
+
+Milestones/stages are Job topology structures, not a new ownership hierarchy between Job and Task.
+
+The durable hierarchy remains:
+
+```text
+Project → Job → Task → Run
+```
