@@ -1260,6 +1260,99 @@ A Project may move to `ARCHIVED` only when the user intentionally stops active d
 
 It may later return to `ACTIVE` without losing prior release milestones.
 
+## 4.12 Parallel Jobs inside one Project
+
+User decision:
+
+A Project may have multiple `READY` / `IN_PROGRESS` Jobs at the same time.
+
+ChatGPT supports multiple conversations, so independent work may proceed in parallel across chats when the approved milestone/dependency topology allows it.
+
+Example:
+
+```text
+Chat A
+→ Coder continues implementation
+
+Chat B
+→ Designer generates pending assets
+
+Chat C
+→ Reviewer inspects a different completed milestone
+```
+
+Parallelism is allowed only when work does not create an unresolved dependency or write conflict.
+
+The Detailed Execution Plan / milestone topology must determine:
+
+- which Jobs or Tasks may run in parallel;
+- which ones must wait;
+- which artifacts are shared dependencies;
+- which scopes/repositories/files may be written concurrently;
+- which handoffs must complete before downstream work starts.
+
+Therefore:
+
+```text
+parallel if independent
+sequential if causally dependent
+blocked if write-conflicting
+```
+
+The system must not serialize all Jobs merely because they belong to one Project.
+
+It also must not assume that two active chats are safe simply because they are separate conversations.
+
+### Conflict rules
+
+Before starting or continuing parallel work, the harness should check for material overlap such as:
+
+- same branch;
+- same files/components;
+- same shared contract/schema;
+- same migration/data structure;
+- same release-critical artifact;
+- one Job changing assumptions consumed by another.
+
+If overlap is harmless, work may continue.
+
+If overlap may change behavior or invalidate assumptions:
+
+```text
+parallel work
+→ conflict detected
+→ pause affected branch of work
+→ Causal Change Review or explicit coordination
+→ human decides when needed
+```
+
+### Asset-production example
+
+A Code Job may continue using a stable placeholder contract while a Design/Asset-producing Job proceeds in parallel:
+
+```text
+Code Job
+→ implements against AR-0012 contract
+→ placeholder works
+
+Design/Asset Job
+→ produces final AR-0012 asset
+
+both may run in parallel
+→ final asset delivery
+→ practical Retest
+```
+
+This is a primary intended use of Project-level parallelism.
+
+### No autonomous scheduler requirement
+
+Parallel Jobs do not imply that the plugin is an autonomous scheduler.
+
+Under the current platform model, the user may open/invoke multiple chats manually. Each Run persists its own role attribution and Job/Task linkage while sharing the same durable Project state.
+
+Future automatic dispatch may coordinate the same model without changing the Project / Job / Task / Run architecture.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
