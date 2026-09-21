@@ -1,0 +1,191 @@
+---
+id: GPT-DEBATE-RESOLUTION
+version: 1
+status: READY_FOR_USER_DECISION
+canonical: false
+source: CLAUDE-DEBATE-RESPONSE-AND-AGREED-DECISIONS
+---
+
+# GPT Debate Resolution v1
+
+## 1. Purpose
+
+This working note resolves the PROPOSED items in the Claude debate package without silently changing the Frozen Foundation.
+
+Decision vocabulary:
+
+- ACCEPT — promote after any required Foundation Amendment is approved.
+- MODIFY — keep the intent with the changes stated here.
+- REJECT — do not promote.
+- USER_APPROVAL — architecture editor recommends a result, but Frozen Foundation cannot change without explicit user approval.
+
+## 2. Resolved proposed items
+
+| Item | Decision | Resolution |
+| --- | --- | --- |
+| P1 One Job = one role owner | ACCEPT | A Job is a typed finite work unit owned by one role: plan, code, design, or review. Cross-role work is another Job. Ownership is SOFT attribution/policy unless a future mechanism hardens it. |
+| P2 Run separate from Job | ACCEPT | A Job is durable; a Run is one execution attempt/session attached to it. Revisions and re-review create new Runs, not automatically new Jobs. |
+| P3 Pull-based orchestration | MODIFY | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
+| P4 Append-only Run records | MODIFY | Each Run gets a unique append-only record. Run records are the concurrency-safe history. A project-level STATE snapshot may exist as a derived/materialized cache and may be rebuilt by reconciliation; it is not the sole source of truth. Never rely on concurrent blind overwrite of one state file. |
+| P5 Mechanical checkpoint floor | MODIFY | Keep a mechanically checkable minimum review floor, but do not make every default-branch merge itself force an independent review Job. Mandatory review triggers: shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, and material dependency graph/version changes. Generated lockfile churn alone is not a trigger. Work class may rise automatically; lowering class or removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
+| P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
+| P7 Job lifecycle core | MODIFY | Center STATE-MACHINE-v1 on Job lifecycle, but separate lifecycle from review/acceptance result. Candidate lifecycle: PLANNED -> READY -> IN_PROGRESS <-> PAUSED -> SUBMITTED -> CLOSED; side states BLOCKED, STALE, CANCELLED. A review result can route SUBMITTED -> IN_PROGRESS for revision or allow closure. Project has lifecycle status (for example active/archived), not a global workflow enum. Artifact status remains separate. |
+| P8 Designer on-demand asset service | MODIFY | Keep the upstream concept/style-anchor flow and add on-demand asset requests. A material design request creates a design Job. Placeholder-first is allowed only when the final asset is not acceptance-blocking. Asset persistence remains capability-gated and UNKNOWN until tested. |
+| P9 Evidence and quality vocabulary | MODIFY | Do not delete QA/QC. Stabilize them using three canonical check families: COMPLIANCE, CORRECTNESS, FIT. QA is the process-assurance umbrella, primarily compliance/evidence integrity. QC is the output-quality umbrella, primarily correctness + fit. Evidence is commit-bound. Objective evidence is primary; model judgement is supplementary and clearly labelled. |
+| P10 Conservative invalidation | ACCEPT | Upstream normative change makes dependent artifacts STALE by default. Cheap revalidation may restore them. The model does not silently prove descendants unaffected. |
+| P11 Reviewer GitHub scope | ACCEPT | Reviewer may read GitHub and write signed PR comments/review comments, but MUST NOT write repository contents. Same-identity GitHub approval cannot be treated as independent approval. Fresh-chat independence plus observable evidence provides the review separation; user-controlled merge remains the human gate. |
+| P12 Merge/deploy completion | ACCEPT | Accepted, merged, and deployed are separate facts/events. Acceptance never implies merge or deploy. Merge authority belongs to the user. Deployment verification is recorded separately when applicable. |
+
+## 3. Additional proposal embedded in A1
+
+### Project marker file
+
+Decision: ACCEPT AS PART OF FA-1.
+
+If the durable Drive container is renamed from Job to Project, keeping a file named JOB.md as its marker would preserve the old ambiguity.
+
+Recommended structure:
+
+```text
+<configured-root>/<project-id>/
+├── PROJECT.md        # marker + overview + front matter
+├── state/ or STATE.json (schema to define)
+├── jobs/
+└── ...
+```
+
+The current JOB.md and PROJECT.md concepts should collapse into PROJECT.md.
+
+Exact Job/Run storage below the Project root is deferred to PROJECT-MEMORY-SCHEMA-v1.
+
+## 4. Quality vocabulary
+
+Canonical check families:
+
+```text
+COMPLIANCE
+= did the work stay inside approved scope, rules, permissions, plan,
+  dependency obligations, and evidence process?
+
+CORRECTNESS
+= does the result build/test/behave correctly against acceptance criteria?
+
+FIT
+= does the result fit the product/system coherently, including UX/UI,
+  architecture consistency, and integration expectations?
+```
+
+Umbrellas:
+
+```text
+QA = process assurance
+   = primarily COMPLIANCE + evidence discipline
+
+QC = output control
+   = primarily CORRECTNESS + FIT
+```
+
+This keeps the user's QA/QC language while removing vocabulary drift between Coder and Reviewer.
+
+## 5. Review floor and work classification direction
+
+Candidate classes for STATE-MACHINE-v1:
+
+```text
+LOW
+STANDARD
+HIGH
+```
+
+Classification is rule-driven from observable triggers.
+
+Rules:
+
+- automatic escalation is allowed;
+- silent downgrade is forbidden;
+- downgrade/removal of a mandatory checkpoint requires explicit user acknowledgement;
+- adding a checkpoint is always allowed;
+- review checkpoints are represented as review Jobs/dependencies, not hidden workflow states;
+- LOW work may omit an independent final review when no mechanical trigger applies;
+- if LOW work is merged without independent review, status/evidence must say so explicitly;
+- STANDARD/HIGH work requires independent review according to the state-machine contract.
+
+The exact trigger table belongs in STATE-MACHINE-v1.
+
+## 6. Run and independence model
+
+```text
+Project
+└── Job J-0042 (type=code, owner=coder)
+    ├── Task J-0042.T1
+    ├── Task J-0042.T2
+    └── Runs
+        ├── R-0042.1
+        └── R-0042.2
+```
+
+A Run records:
+
+- run id
+- project id
+- job id
+- role
+- started/ended timestamps when available
+- input artifact versions
+- target repo/commit/PR when applicable
+- result/status
+- evidence refs
+- next transition/request
+
+A review requiring independence starts in a fresh chat.
+
+## 7. Capability spike — surface inspection only
+
+The current connected tool surface exposes the following operations:
+
+### GitHub surface present
+
+- create branch / commit / PR
+- PR comments and review comments
+- merge PR action
+- create blob with UTF-8 or base64 content
+- workflow-run lookup
+- workflow jobs/steps/logs
+- workflow artifacts
+
+This establishes only TOOL SURFACE PRESENT. It does not prove repository permission, protected-main behavior, confirmation behavior, or independent identity.
+
+### Google Drive surface present
+
+- list folder
+- create folder
+- upload raw file
+- update raw file bytes
+- fetch raw/readable file
+- fetch file revision
+- read/write comments
+
+This establishes only TOOL SURFACE PRESENT. It does not yet prove the exact behavior in the configured Project root, conditional writes, or safe concurrent mutation semantics.
+
+Still UNKNOWN until an explicit non-destructive spike or controlled test:
+
+- protected-main direct push behavior
+- merge confirmation behavior
+- binary image commit end-to-end
+- raw .md/.json create-update roundtrip in the configured Drive root
+- Drive revision/conditional-write usefulness
+- generated-image persistence into Drive/GitHub without manual movement
+
+## 8. Promotion rule
+
+Nothing in this file changes FROZEN-FOUNDATION-v0.1.md.
+
+FA-1, FA-2, and FA-3 must be explicitly approved before the affected canonical definitions are rewritten.
+
+After approval:
+
+1. apply Foundation Amendments in one consistency pass;
+2. rename old Job-as-container references to Project;
+3. draft STATE-MACHINE-v1 using the resolved P3/P4/P5/P7/P9/P12 model;
+4. define the first-run D2 contracts;
+5. keep all other skeleton modules at least D1.
