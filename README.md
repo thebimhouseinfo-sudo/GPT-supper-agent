@@ -37,7 +37,7 @@ Project
 
 **Job ≠ Repo.** A Job may use one repo or many repos.
 
-Drive is redundant for some single-repo Jobs because GitHub could technically store most planning/state artifacts there. Super Agent still keeps Drive as the canonical Job root so the same Job model continues to work unchanged when the project becomes multi-repo.
+The canonical rationale for keeping Drive as the Job control plane for both single- and multi-repo work is defined in `ARCHITECTURE-v0.1.md` §6.
 
 ## Invocation
 
@@ -105,10 +105,25 @@ real run
 
 Release scope is decided after conceptual dependencies are understood, not by leaving concepts undefined.
 
+## Documentation authority
+
+| Area | Canonical document | Status |
+| --- | --- | --- |
+| Frozen product/Job invariants | `FROZEN-FOUNDATION-v0.1.md` | FROZEN |
+| Definition map | `SYSTEM-DEFINITION-SKELETON-v0.1.md` | WORKING |
+| Definition workflow | `docs/plans/DEFINITION-COMPLETION-WORKFLOW-v1.md` | WORKING |
+| Overall architecture/rationale | `ARCHITECTURE-v0.1.md` | WORKING |
+| Workflow states | `STATE-MACHINE-v1.md` | DRAFT / TO DEFINE |
+| Release implementation planning | `IMPLEMENTATION-PLAN-v0.1.md` (content v0.3) | WORKING |
+
+Individual architecture files keep their current version labels until explicitly revised.
+
 ## Architecture documents
 
 - [Frozen Foundation v0.1](docs/architecture/FROZEN-FOUNDATION-v0.1.md)
 - [System Definition Skeleton v0.1](docs/architecture/SYSTEM-DEFINITION-SKELETON-v0.1.md)
+- [Definition Completion Workflow v1](docs/plans/DEFINITION-COMPLETION-WORKFLOW-v1.md)
+- [State Machine v1 — draft](docs/architecture/STATE-MACHINE-v1.md)
 - [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
 - [Clarification & Causal Readiness](docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md)
 - [Governance & Artifact Lifecycle](docs/architecture/GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md)
@@ -128,4 +143,4 @@ Release scope is decided after conceptual dependencies are understood, not by le
 
 Current phase: foundation frozen; remaining behavioral modules are being defined against the System Definition Skeleton.
 
-The first implementation should focus on durable Project Memory, Planner Harness, agent write boundaries, capability resolution, and execution/review gates before adding more advanced executors or MCP features.
+Current work is definition completion and consistency. Release contents for v1/v2/v3 are intentionally not assigned until the conceptual model is sufficiently DEFINED.
