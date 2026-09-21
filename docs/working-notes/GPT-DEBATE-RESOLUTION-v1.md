@@ -1039,6 +1039,57 @@ only discovered through real implementation/content/device behavior
 → legitimate later discovery
 ```
 
+## 4.10 Specialist-skill delegation for UI design
+
+User decision:
+
+The core GPT Super Agent theory must not accumulate an ad-hoc, incomplete UI/UX methodology.
+
+Core architecture defines only the orchestration contract:
+
+- when UI-first planning is required;
+- when a Design Coverage Inventory is required;
+- the existence of DESIGN_READY and SHELL_READY gates;
+- which role owns each stage;
+- what artifacts must exist before the next stage;
+- when Tester/Human/Causal Change Review is required.
+
+The detailed design methodology must come from a dedicated UI design skill/harness selected or developed for that purpose.
+
+Therefore:
+
+```text
+Super Agent core
+= orchestration + lifecycle + gates + handoff contracts
+
+UI design skill/harness
+= concrete design methodology
+  + coverage checklist
+  + responsive rules
+  + component/state audit
+  + visual system guidance
+  + design QA
+```
+
+The core must reference the specialist contract rather than duplicate its methodology.
+
+Example:
+
+```text
+Planner determines:
+"This Job is UI-first and requires DESIGN_READY."
+
+→ UI Design agent/skill is invoked
+→ specialist skill determines the concrete UI coverage process
+→ produces the required design artifacts/evidence
+→ Super Agent checks whether the DESIGN_READY contract is satisfied
+→ implementation may proceed
+```
+
+This keeps the theory coherent and allows the UI methodology to improve independently without rewriting the Project / Job / Task / Run architecture.
+
+The same principle should apply to other specialist domains when appropriate: the core orchestrator owns lifecycle/governance, while specialist skills own domain methodology.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
