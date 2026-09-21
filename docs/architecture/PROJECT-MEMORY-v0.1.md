@@ -81,45 +81,55 @@ The `design/` workspace may contain concept images and one crop-ready `ASSET-SHE
 
 ## 3. Configured Drive root
 
-Super Agent stores one stable root folder reference in its configuration. Job commands operate relative to that root.
+Super Agent stores one stable Google Drive root folder reference in its configuration. Job commands operate relative to that root.
 
 The user is not asked for a Drive folder link during normal `job create`.
 
-Required root children are created/validated automatically:
-
-```text
-registry.json
-knowledge/
-jobs/
-```
-
-## 4. Global registry
-
-`registry.json` indexes Jobs without duplicating their durable Job state.
-
-A Job entry may also summarize its attached GitHub code environment, but the Job itself remains the Drive-persisted work entity.
+The root itself is the Job container. Each direct child folder that contains a valid `JOB.json` is one Job.
 
 Example:
 
+```text
+<configured Super Agent Drive root>/
+├── kid-eschool/
+│   ├── JOB.json
+│   └── ...
+├── stockmind/
+│   ├── JOB.json
+│   └── ...
+└── another-job/
+    ├── JOB.json
+    └── ...
+```
+
+There is no global Job registry and no required `jobs/` wrapper.
+
+## 4. Job folder as discovery unit
+
+The Job folder itself is both the durable memory root and the discovery record.
+
+`job list` enumerates only the direct child folders of the configured Drive root and reads each folder's `JOB.json`.
+
+A valid `JOB.json` provides at least:
+
 ```json
 {
-  "jobs": [
-    {
-    "id": "kid-eschool",
-    "name": "Kid eSchool",
-    "status": "active",
-    "memory_root": "jobs/kid-eschool",
-    "code_environment": {
-      "type": "github",
-      "repositories": [
-        "thebimhouseinfo-sudo/Kideschool",
-        "thebimhouseinfo-sudo/KE-Math-Grade1"
-      ]
-    }
-    }
-  ]
+  "id": "kid-eschool",
+  "name": "Kid eSchool",
+  "status": "active",
+  "code_environment": {
+    "type": "github",
+    "repositories": [
+      "thebimhouseinfo-sudo/Kideschool",
+      "thebimhouseinfo-sudo/KE-Math-Grade1"
+    ]
+  }
 }
 ```
+
+Folders without a valid `JOB.json` are not treated as active Jobs.
+
+Global reusable knowledge, if persisted externally, is logically separate from Job discovery and MUST NOT require a Job registry.
 
 ## 5. Job, Project, and repo knowledge
 
