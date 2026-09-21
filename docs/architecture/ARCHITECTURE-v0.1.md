@@ -62,6 +62,10 @@ Project
 
 One repo has at most one owning Project.
 
+Standalone Direct Coder cannot bypass that owning Project. Project hard-delete releases the GSA ownership association without deleting the repository.
+
+Cross-Project references are provenance/weak references rather than strong dependencies on another Project's internal memory.
+
 ---
 
 ## 5. Project Memory
