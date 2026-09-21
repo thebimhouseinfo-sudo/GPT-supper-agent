@@ -298,9 +298,29 @@ Negative knowledge is valuable and should be retained when durable, e.g.:
 - Super Agent does not assume ownership of local/offline execution.
 - A tool cannot claim runtime verification it cannot physically perform.
 
-## 13. Context Builder
+## 13. Drive-first Context Builder
 
-Agents MUST NOT receive the entire project memory or chat history by default.
+Context construction always starts from the active Job's Drive memory.
+
+```text
+Job selected
+→ Drive Job Memory
+→ current state / plans / decisions / repo graph
+→ current user request
+→ repo/path relevance resolution
+→ selective GitHub read
+→ role-specific context packet
+```
+
+The attached GitHub repositories are code environments, not the first context source.
+
+Super Agent should avoid broad repo scans when Drive already narrows the relevant repository/subsystem.
+
+For status/planning/history questions, Drive may be sufficient and GitHub reading may be unnecessary.
+
+## 14. Context packet composition
+
+Agents MUST NOT receive the entire project memory, entire GitHub codebase, or chat history by default.
 
 A context packet should be assembled from:
 
