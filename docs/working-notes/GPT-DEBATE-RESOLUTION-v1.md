@@ -123,6 +123,45 @@ The Reviewer may still provide observations and recommendations, but they are ad
 
 If the user has previously approved a concrete subjective rubric or reference artifact, that rubric/reference becomes an acceptance rule and the Reviewer may evaluate against it as far as observable evidence supports.
 
+## 4.2 Finding severity
+
+User decision: severity model accepted.
+
+```text
+CRITICAL
+= must be fixed before the workflow can continue;
+  cannot be waived into PASS by the Reviewer.
+
+IMPORTANT
+= blocks PASS unless the user explicitly waives it.
+
+MINOR
+= non-blocking; should be fixed when reasonable.
+```
+
+Every Reviewer finding MUST include:
+
+- severity;
+- observable evidence or acceptance rule;
+- affected scope;
+- required action or recommended action;
+- whether human waiver is allowed.
+
+Rules:
+
+```text
+CRITICAL
+→ always blocking
+
+IMPORTANT
+→ blocking unless explicit human waiver is recorded
+
+MINOR
+→ non-blocking
+```
+
+Subjective findings still follow the separate Human Review rule and do not become blocking merely by assigning a severity label.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
