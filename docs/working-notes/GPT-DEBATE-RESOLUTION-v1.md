@@ -92,6 +92,37 @@ QC = output control
 
 This keeps the user's QA/QC language while removing vocabulary drift between Coder and Reviewer.
 
+## 4.1 Objective vs subjective review
+
+User decision:
+
+A Reviewer may make blocking decisions only from criteria that can be evaluated against observable evidence or an explicitly defined acceptance rule.
+
+If a criterion is inherently subjective or cannot be evaluated objectively with the available evidence, the Reviewer must not convert its own judgement into PASS/FAIL authority.
+
+Instead:
+
+```text
+objective / evidence-backed criterion
+→ Reviewer may decide PASS / CHANGES_REQUIRED
+
+subjective / judgement-only criterion
+→ HUMAN_REVIEW_REQUIRED
+→ present the artifact, context, and Reviewer observations
+→ user decides
+```
+
+Examples that normally require human judgement when no objective rule exists:
+
+- whether a visual direction "feels right";
+- whether wording/tone is aesthetically preferable;
+- whether a subjective UX choice is acceptable when no agreed acceptance criterion exists;
+- whether an architectural trade-off is preferable when multiple options satisfy all objective constraints.
+
+The Reviewer may still provide observations and recommendations, but they are advisory until the user decides.
+
+If the user has previously approved a concrete subjective rubric or reference artifact, that rubric/reference becomes an acceptance rule and the Reviewer may evaluate against it as far as observable evidence supports.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
