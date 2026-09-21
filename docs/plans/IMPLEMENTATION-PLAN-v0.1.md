@@ -61,7 +61,28 @@ Hard rule: unknown capability is unavailable until verified.
 
 Exit criterion: Planner can determine whether a proposed implementation step has enough knowledge and a valid executor.
 
-## Phase 4 — Clarification & Causal Readiness
+## Phase 4 — Governance, Artifact Lifecycle & Trust
+
+Implement:
+
+- normative vs descriptive truth
+- source-of-truth precedence
+- artifact id/version/status
+- dependency/version pinning
+- causal invalidation / STALE propagation
+- Plan Readiness Review
+- explicit user approval gates
+- optimistic concurrency / STATE_CONFLICT
+- resume/idempotency
+- reviewer evidence independence
+- evidence provenance/freshness
+- prompt-injection/trust boundaries
+- secret handling
+- absolute workspace-path enforcement
+
+Exit criterion: stale/conflicting artifacts cannot authorize execution and untrusted project content cannot elevate permissions.
+
+## Phase 5 — Clarification & Causal Readiness
 
 Implement:
 
@@ -77,7 +98,7 @@ Implement:
 
 Exit criterion: agents stop on materially missing information without over-questioning harmless details.
 
-## Phase 5 — Planner Harness
+## Phase 6 — Planner Harness
 
 Implement Planner causal pipeline:
 
@@ -109,13 +130,13 @@ Outputs:
 - impact report
 - UI/UX Design Package for material user-facing changes
 - responsive/interaction specs where applicable
-- asset manifest where applicable
+- asset requirements where applicable
 
 For UI/UX work, readiness additionally requires resolved product intent, user flow, screen hierarchy, responsive behavior, interaction states, design-system relationship, asset requirements, UI acceptance criteria, and a feasible UI verification path.
 
 Exit criterion: PROJECT_READY_FOR_IMPLEMENTATION gate can be evaluated deterministically from structured artifacts.
 
-## Phase 6 — Designer Harness
+## Phase 7 — Designer Harness
 
 Implement:
 
@@ -140,7 +161,7 @@ Designer writes only to Project Memory / Design Workspace.
 
 Exit criterion: material UI work cannot enter coding until the visual concept is approved and its reusable visual parts have been decomposed into a complete numbered Asset Sheet. Final individual assets do not need to be generated at this stage.
 
-## Phase 7 — Coder Harness
+## Phase 8 — Coder Harness
 
 Implement:
 
@@ -172,13 +193,14 @@ Coder writes only source repos.
 
 Exit criterion: Coder can work from Planner/Designer material without modifying planning memory; UX Coder can satisfy behavior acceptance; UI Coder can interpret approved Concept Artwork and, only when the capability matrix supports it, demonstrate rendered visual fidelity at target device classes; both can stop correctly on planning/design conflicts.
 
-## Phase 8 — Reviewer Harness
+## Phase 9 — Reviewer Harness
 
 Implement reviewer modes:
 
-1. Design Review Gate when applicable
-2. Execution Plan Audit
-3. Implementation Review
+1. Plan Readiness Review for substantial changes
+2. Design Review Gate when applicable
+3. Execution Plan Audit
+4. Implementation Review
 
 Execution Plan Audit decides:
 
@@ -201,7 +223,7 @@ Reviewer writes only Project Memory.
 
 Exit criterion: Coder cannot begin before audit approval and cannot complete before independent implementation review.
 
-## Phase 9 — GitHub remote execution
+## Phase 10 — GitHub remote execution
 
 Use GitHub as the first code executor.
 
@@ -221,7 +243,7 @@ Do not infer shell/local-runtime capabilities from GitHub access.
 
 Exit criterion: a repo with sufficient GitHub Actions can complete a full remote code/review loop.
 
-## Phase 10 — Multi-repo Change Sets
+## Phase 11 — Multi-repo Change Sets
 
 Implement:
 
@@ -234,7 +256,7 @@ Implement:
 
 Exit criterion: a project like Kid eSchool can change a shared contract without relying on the conversation to remember which repos are affected.
 
-## Phase 11 — Additional executors
+## Phase 12 — Additional executors
 
 Add GPTWorker/local execution after the core harness is stable.
 
@@ -249,7 +271,7 @@ Route tasks by capability:
 
 Do not duplicate planning logic in executor-specific code.
 
-## Phase 12 — Plugin packaging and UX
+## Phase 13 — Plugin packaging and UX
 
 Expose a concise user interaction model, for example:
 
