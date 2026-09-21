@@ -22,6 +22,7 @@ Implement:
 - root children: registry.json / knowledge / jobs
 - Job registry
 - job create / open / list / update / archive lifecycle
+- Drive-first job list/select/open semantics
 - automatic per-Job subfolder creation under jobs/<job-id>
 - transactional Job bootstrap
 - duplicate/id conflict handling
@@ -30,6 +31,7 @@ Implement:
 - Project Memory folder/file creation
 - Markdown/JSON templates
 - Project/repo relationship lookup
+- request-driven repo/path relevance resolver
 - read/write abstraction for Project Memory
 - state versioning and validation
 
@@ -39,7 +41,7 @@ Hard rules:
 - User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
 - Every Job defaults to online execution.
 
-Exit criterion: a Job can be created without a per-Job Drive link, persist its durable state below the configured Drive root, attach an explicit GitHub code environment of one or more repositories, reopen in another conversation, and restore structured state.
+Exit criterion: a Job can be created without a per-Job Drive link, persist its durable state below the configured Drive root, appear in `job list`, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
 
 ## Phase 2 — Job Code Environment, Project and Repo Profiling
 
