@@ -1,260 +1,161 @@
-# Execution and Review Model v1
+# Execution and Review Model v1.1
 
 ## 1. Work hierarchy
 
 ```text
-Project
-→ Job
-→ Task
-→ Run
+Project → Job → Task → Run
 ```
 
-Milestones/stages are topology elements inside Job planning, not required storage hierarchy nodes.
+Milestones/stages are topology elements, not hierarchy nodes.
 
----
+Job = finite primary objective, not one role.
 
-## 2. Review/delivery packaging
+## 2. Topology
 
-Work entities and delivery/review packaging are distinct.
-
-```text
-Tasks
-→ may contribute to Review Unit
-→ may be delivered through PR
-→ may participate in multi-repo Change Set
-```
-
-No one-to-one rule exists between Task and PR/Review Unit.
-
----
-
-## 3. Detailed Execution Plan / topology
-
-Planner defines enough topology to specify:
-
+Planner defines:
 ```text
 Milestone | Stage | Handler | Output | Depends on | Next | Review? | Tester? | Human Gate?
 ```
 
-Coder refines exact source-level execution detail after live-source inspection.
+Coder refines exact source-level HOW.
 
-Topology may be revised through Causal Change Review.
+A standalone `review` Job is used only when review itself is the objective; review checkpoints inside another Job do not become separate review Jobs automatically.
 
----
+## 3. Review placement
 
-## 4. Review placement
+Normal work:
+> Review is placed where topology requires independent evaluation.
 
-Core rule:
+Not every Task/PR/milestone/Job receives Reviewer.
 
-> REVIEW IS PLACED WHERE THE WORK TOPOLOGY REQUIRES INDEPENDENT EVALUATION, NOT WHERE THE HIERARCHY HAPPENS TO HAVE A NODE.
+## 4. Mandatory review floor
 
-Therefore:
-- not every Task is reviewed;
-- not every PR is reviewed;
-- not every milestone is reviewed;
-- not every Job requires Reviewer;
-- review may occur multiple times when risk/dependency justifies it.
+Independent fresh-chat review is mandatory when mechanically detectable change classes include:
+- shared contracts/interfaces/schema;
+- persisted-data migrations/formats;
+- auth/permissions/security-sensitive logic;
+- CI/CD/workflow/deployment config;
+- destructive operations;
+- dependency manifests/lockfiles when runtime/build dependency state changes.
 
----
+The Planner cannot silently remove these checkpoints.
+
+If a previously planned non-mandatory review is removed/merged, the topology change is shown to the human.
 
 ## 5. Review loop
 
-When Reviewer is scheduled:
-
 ```text
 owner works
-→ exact checkpoint/target reached
+→ exact checkpoint target
 → Reviewer evaluates exact revision
 → PASS / PASS_RETEST_REQUIRED
-   OR CHANGES_REQUIRED / BLOCKED / HUMAN_REVIEW_REQUIRED
-→ route to next topology step
-```
-
-If changes are required:
-
-```text
-finding
-→ lowest causally owning scope
-→ Coder/Designer/Planner fixes
-→ new revision
-→ re-review
+   or CHANGES_REQUIRED / BLOCKED / HUMAN_REVIEW_REQUIRED
+→ route according to topology
 ```
 
 Reviewer does not repair source.
 
----
-
 ## 6. Finding severity
 
 ```text
-CRITICAL
-→ always blocking
-
-IMPORTANT
-→ blocking unless explicit human waiver
-
-MINOR
-→ non-blocking
+CRITICAL = always blocking
+IMPORTANT = blocking unless explicit human waiver
+MINOR = non-blocking
 ```
 
-Subjective findings route to human where no objective rubric exists.
+## 7. Coder Goal Recheck
 
----
+Before handoff/PR-ready:
+- map each applicable acceptance criterion to actual diff/evidence;
+- mark MET / PARTIAL / NOT_MET / UNVERIFIED;
+- identify changes not traceable to approved scope;
+- identify missing implied requirement without inventing it;
+- fix or escalate PARTIAL/NOT_MET.
 
-## 7. Final Job completion
+Goal Recheck is judgement-based self-check evidence, not independent proof of runtime correctness.
 
-There is no universal final Reviewer gate.
+## 8. Capability-backed evidence
 
-Job completion is defined by its approved topology.
+Objective checks run only when capability exists.
 
 Examples:
-
-```text
-Plan Job
-→ Planner completion criteria
-→ PASS
-
-Code Job
-→ Coder
-→ Reviewer
-→ PASS
-
-UI shell Job
-→ Coder
-→ Tester
-→ Reviewer
-→ PASS_RETEST_REQUIRED
-
-Design Job
-→ Designer
-→ Human Gate
-→ PASS
-```
-
----
-
-## 8. Evidence requirement
-
-No completion claim is valid merely because work was produced.
-
-Required evidence is topology/context dependent.
-
-Possible evidence:
-- static inspection;
-- tests/build/type/lint;
 - CI;
-- runtime/preview;
-- screenshots;
-- integration checks;
-- Tester evidence;
-- user Retest evidence.
+- build/test/lint;
+- deploy/preview;
+- runtime/browser;
+- screenshot.
 
-Unavailable capability must be explicit.
+Unavailable checks are UNVERIFIED, not PASS.
 
----
+## 9. Tester
 
-## 9. PASS_RETEST_REQUIRED
+Tester practical execution is capability-gated.
 
+If unavailable:
 ```text
-required online evidence sufficient
-+ practical verification unavailable
-→ PASS_RETEST_REQUIRED
-→ create durable Retest
+GSA prepares Retest
+→ human executes practical steps
+→ GSA records evidence/result
 ```
 
-Job may become COMPLETED while Retest remains pending.
+## 10. Completion
 
----
+Job completion follows approved topology plus mandatory review floor.
 
-## 10. PR model
+No universal final Reviewer gate.
 
-PR is a delivery unit, not a lifecycle root.
+PASS_RETEST_REQUIRED may complete a Job while Retest remains pending.
 
-Draft PR may be opened when useful code/diff exists.
+Later Retest FAIL after completion creates a new linked remediation Job.
 
-Opening PR does not itself trigger Reviewer.
+## 11. Merge authorization coverage
 
-Merge requires explicit human authorization.
+Before requesting merge authorization, show:
+```text
+Independent review : status / none
+CI/checks          : status / unavailable
+Tester             : status / unavailable
+Retest             : pending / none
+Self-recheck only  : scopes
+UNVERIFIED         : explicit list
+Waivers            : explicit list
+```
 
----
+Then human explicitly authorizes merge.
 
-## 11. Multi-repo Change Set
+## 12. PR / Change Set
 
-Use Change Set when one logical change coordinates multiple repos/PRs.
+PR is delivery surface, not lifecycle root.
 
-One repo-level pass does not imply Change Set completion.
+Change Set exists only when one logical change coordinates multiple repos.
 
-Dependency/compatibility/integration evidence determine completion.
+## 13. Run attribution
 
----
-
-## 12. Run attribution
-
-Run uses:
-
+Run:
 ```text
 one execution scope
-= Job-level
-  OR one primary Task
-
-+ optional affected_task_refs[]
+= Job-level OR one primary Task
++ affected_task_refs[]
 ```
 
-This preserves clear attribution while allowing shared edits to affect multiple Tasks.
+Child Run has `parent_run_id`.
 
----
+Source-writing Run includes scope claim.
 
-## 13. Causal failure routing
-
-Examples:
+## 14. Causal failure routing
 
 ```text
-implementation defect
-→ owning Task
-
-design defect
-→ Designer/design artifact
-
-architecture/contract/scope defect
-→ Causal Change Review / Planner
-
-practical Retest failure
-→ smallest relevant remediation scope
+implementation defect → owning active Task/work
+design defect → Designer/design artifact
+architecture/contract/scope defect → Causal Change Review
+post-completion Retest FAIL → new linked remediation Job
 ```
 
-Do not blanket-invalidate unrelated downstream work.
-
----
-
-## 14. Capability-aware execution
-
-Capability state:
-
-```text
-AVAILABLE
-UNAVAILABLE
-UNKNOWN
-```
-
-Derived execution/verification mode:
-
-```text
-NORMAL
-DEGRADED
-BLOCKED
-```
-
-Unknown is not assumed available.
-
----
-
-## 15. Current handoff mode
+## 15. Current handoff
 
 ```text
 Run completes
-→ durable Handoff if needed
-→ user invokes next role
+→ pending Handoff if needed
+→ user selects/takes Handoff
 → next Run starts
 ```
-
-Future automatic handoff may use same semantics.
