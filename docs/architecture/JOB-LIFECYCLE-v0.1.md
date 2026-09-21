@@ -112,9 +112,9 @@ A Job can be created from natural language or a deterministic command.
 Examples:
 
 ```text
-@SuperAgent job create Kid eSchool
-@SuperAgent job create Kid eSchool repo thebimhouseinfo-sudo/Kideschool
-@SuperAgent job create Kid eSchool repos <repo-a> <repo-b> ...
+gsa/job create Kid eSchool
+gsa/job create Kid eSchool repo thebimhouseinfo-sudo/Kideschool
+gsa/job create Kid eSchool repos <repo-a> <repo-b> ...
 ```
 
 The minimum user-supplied information is the Job identity plus enough GitHub repository context to establish its code environment.
