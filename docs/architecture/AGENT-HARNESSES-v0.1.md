@@ -1,5 +1,9 @@
 # Agent Harnesses v0.1
 
+## Shared clarification rule
+
+Planner, Designer, UX Coder, and UI Coder apply `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md` before their own stage. They distinguish known facts, evidence-backed inference, blocking unknowns, and harmless implementation details.
+
 ## 1. Planner Harness
 
 Planner is responsible for preparing a project or change so that implementation can start safely.
@@ -15,6 +19,8 @@ Planner may read:
 - capability information
 
 Planner may not modify source repositories.
+
+Planner owns the broadest clarification pass and resolves blocking product/scope/architecture unknowns before publishing a plan.
 
 ### 1.1 Planner causal pipeline
 
@@ -99,6 +105,8 @@ For details, see `DESIGNER-HARNESS-v0.1.md`.
 
 Material UI work requires an independent Design Concept Review before Coder implementation begins. Designer is not required to generate a complete production asset library.
 
+Designer requests clarification when missing use-case, audience, hierarchy, or visual constraints would materially change the concept.
+
 ## 3. Coder Harness
 
 For material user-facing work, Coder is internally split into two specialized execution roles:
@@ -108,9 +116,9 @@ UX Coder
 + UI Coder
 ```
 
-UX Coder owns functional experience, interaction, state, accessibility behavior, and responsive semantics.
+UX Coder owns functional experience, interaction, state, accessibility behavior, and responsive semantics. UX Coder must not invent unresolved product behavior.
 
-UI Coder owns visual implementation and must interpret the approved Concept Artwork, design tokens, and Asset Sheet to achieve the required visual fidelity.
+UI Coder owns visual implementation and must interpret the approved Concept Artwork, design tokens, and Asset Sheet to achieve the required visual fidelity. Material visual ambiguity becomes a design gap.
 
 See `CODER-UIUX-HARNESS-v0.1.md`.
 
