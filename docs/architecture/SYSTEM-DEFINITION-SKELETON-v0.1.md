@@ -386,7 +386,7 @@ Exact machine validation syntax belongs to implementation detail.
 
 ---
 
-## S28. Implementation architecture — NEXT AFTER THEORY STABILIZATION
+## S28. Implementation architecture — BLOCKED BY EXTERNAL PEER REVIEW
 
 GSA is primarily theory + instructions + harnesses + skills + connected platform capabilities, not a standalone runtime product that requires a large custom engine first.
 
@@ -420,3 +420,38 @@ COLLECT PASS 02
 ```
 
 The goal is to detect contradictions introduced by synthesis/fix before declaring theory complete.
+
+
+---
+
+## S30. Phase 1 internal completeness status
+
+```text
+INTERNAL_THEORY_STATUS = COMPLETE
+EXTERNAL_PEER_REVIEW = PENDING
+PHASE_2_ENTRY = BLOCKED
+```
+
+The current theory has completed:
+
+```text
+DETAIL
+→ COLLECT
+→ REVIEW
+→ SYNTHESIZE
+→ FIX
+→ repeated consistency/completeness passes
+```
+
+No known material semantic gap remains in the internal review.
+
+Before Phase 2:
+
+```text
+Claude peer review
+→ review findings
+→ disposition
+→ fix/reconcile accepted material findings
+→ final human check
+→ Phase 2
+```
