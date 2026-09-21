@@ -122,7 +122,7 @@ UI Coder owns visual implementation and must interpret the approved Concept Artw
 
 See `CODER-UIUX-HARNESS-v0.1.md`.
 
-Coder writes only to the source repository or approved local source workspace.
+Coder writes only to the GitHub repositories and branches/PR surfaces explicitly attached to the active Job.
 
 Coder reads approved Project Memory materials but does not edit them.
 
