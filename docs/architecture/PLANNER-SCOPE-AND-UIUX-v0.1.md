@@ -436,35 +436,25 @@ Do not duplicate design-system files into every repo merely to give Coder contex
 
 ## 13. Asset Planning
 
-Planner must decide whether UI requires:
+Planner decides which UI branches need visual assets and why.
 
-- icons
-- illustrations
-- backgrounds
-- characters
-- screenshots
-- diagrams
-- audio/video assets
+Planner records requirements such as:
 
-`ASSET-MANIFEST.json` should provide stable asset identities before code is written when possible.
+- asset role
+- screen/component usage
+- visual function
+- whether artwork is required or optional
+- responsive visibility/priority
+- accessibility/content constraints
+- whether the asset must be reusable
 
-Example:
+Typical categories include icons, illustrations, backgrounds, characters, screenshots, diagrams, and audio/video artwork.
 
-```json
-{
-  "assets": [
-    {
-      "id": "math-grade-1-icon",
-      "type": "image",
-      "path": "assets/images/math-grade-1.webp",
-      "usage": "subject card icon",
-      "status": "required"
-    }
-  ]
-}
-```
+Planner does NOT pre-invent the final asset inventory or filenames before concept design.
 
-Coder should consume planned asset identities rather than inventing filenames or placeholders that later break integration.
+The actual numbered asset set is derived by Designer from the approved Concept Artwork and recorded in the crop-ready Asset Sheet plus sidecar specs/prompts.
+
+Only after that design step should stable asset ids/target paths be handed to Coder.
 
 ## 14. UI acceptance criteria
 
