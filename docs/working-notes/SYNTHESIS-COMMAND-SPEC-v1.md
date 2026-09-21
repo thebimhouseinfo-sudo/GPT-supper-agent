@@ -139,6 +139,8 @@ job new
 
 only as an advanced/manual action, not primary landing-page entry.
 
+`job new` requests a bounded Job and then enters normal Orchestrator/Planner normalization/readiness. It does not bypass planning or topology rules.
+
 Reason:
 most Jobs should emerge from Project work planning.
 
@@ -235,10 +237,13 @@ If work grows:
 ```text
 offer promotion
 → create/open Project
-→ persist necessary context
+→ create appropriate Job when needed
+→ persist only useful accepted context/artifacts/target refs
 ```
 
 Do not silently promote.
+
+Do not dump the entire Direct Agent conversation into Project Memory during promotion.
 
 ---
 
