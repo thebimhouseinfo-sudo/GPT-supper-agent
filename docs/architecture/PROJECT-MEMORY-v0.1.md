@@ -99,7 +99,9 @@ jobs/
 
 ## 4. Global registry
 
-`registry.json` indexes Jobs without duplicating their project state.
+`registry.json` indexes Jobs without duplicating their durable Job state.
+
+A Job entry may also summarize its attached GitHub code environment, but the Job itself remains the Drive-persisted work entity.
 
 Example:
 
@@ -110,15 +112,35 @@ Example:
       "id": "kid-eschool",
       "name": "Kid eSchool",
       "status": "active",
-      "memory_root": "jobs/kid-eschool"
+      "memory_root": "jobs/kid-eschool",
+      "code_environment": {
+        "type": "github",
+        "repositories": [
+          "thebimhouseinfo-sudo/Kideschool",
+          "thebimhouseinfo-sudo/KE-Math-Grade1"
+        ]
+      }
     }
   ]
 }
 ```
 
-## 5. Project vs repo knowledge
+## 5. Job, Project, and repo knowledge
 
-Project-level artifacts contain shared truth.
+These concepts are distinct:
+
+```text
+Job
+= durable work state stored in Drive
+
+Project
+= logical system/product context for planning
+
+Repo
+= one GitHub source repository inside the Job's code environment
+```
+
+Project-level artifacts contain shared truth across the repos relevant to the Job.
 
 Example:
 
