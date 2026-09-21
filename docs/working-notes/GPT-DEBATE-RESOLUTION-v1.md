@@ -1738,110 +1738,283 @@ important durable output
 → attributable to role + Run + owning work context + exact target/revision
 ```
 
-## 4.17 Fake CLI outer control surface
+## 4.17 Fake CLI outer control surface — detailed decision
 
 User decision:
 
-The fake CLI is an explicit trigger/control surface for GPT Super Agent. It is not a real shell and it does not replace natural-language conversation.
+GPT Super Agent will expose a **fake CLI / conversational command surface**.
 
-Its value is that a short explicit command can reliably select the intended GPT Super Agent harness/skill when multiple plugins/skills are available, and can load a pre-defined execution procedure without requiring the user to restate a long prompt.
+This is not a real terminal, not a shell parser, and not a replacement for natural-language conversation.
+
+Its purpose is to provide a short, explicit, low-ambiguity way to select GPT Super Agent itself, select a known harness/agent, and enter a known control flow without requiring the user to repeatedly restate the full procedural prompt.
+
+This matters because the same ChatGPT environment may have many plugins, skills, tools, and connected systems available at the same time. A natural-language request may be interpreted without the intended GPT Super Agent harness being activated. The fake CLI gives the user a precise trigger.
 
 Conceptually:
 
 ```text
-short explicit command
-→ select GPT Super Agent
-→ select harness / specialist role
-→ load the relevant skills + workflow + quality rules
-→ execute the requested work
+user enters a short explicit command
+→ GPT identifies GPT Super Agent as the intended harness
+→ GPT selects the requested control flow / specialist agent
+→ relevant skills, procedural rules and quality constraints are loaded
+→ work continues through normal conversation and connected tools
 ```
 
-The same underlying model may produce different quality/consistency depending on whether it is operating under the specialist harness and procedural instructions.
+The fake CLI therefore acts as a **harness selector and control surface**, not as a substitute for reasoning.
 
-### Outer landing page
+The same underlying frontier model may behave differently depending on whether it is operating under:
 
-Only the outer control surface is nominated now.
+```text
+generic conversational behavior
+vs
+specialist harness + skill + procedural workflow
+```
+
+This distinction is intentional.
+
+For example, a user may ask ChatGPT directly to write or edit a small piece of code. ChatGPT can often do that successfully, but the result may be less consistent because the generic request does not necessarily invoke the Coder's complete quality procedure.
+
+By invoking the Coder directly through GPT Super Agent, the user is effectively saying:
+
+```text
+Use the Coder harness.
+Use the Coder's coding skill.
+Use the Coder's review/verification discipline.
+Then perform this small task.
+```
+
+The user therefore does not need to repeat a long prompt that manually describes every coding step.
+
+The same applies to Designer, Planner, Reviewer, and future specialist agents.
+
+---
+
+### 4.17.1 Outer landing page only
+
+At this stage, only the **outer control surface / landing page** is being defined.
+
+Do NOT attempt to design the complete future command tree yet.
+
+Current outer structure:
 
 ```text
 GPT SUPER AGENT
+│
 ├── PROJECT
+│   ├── new
+│   ├── open
+│   ├── status
+│   └── delete
+│
 ├── DIRECT AGENT
+│   ├── Planner
+│   ├── Designer
+│   ├── Coder
+│   └── Reviewer
+│
 └── HELP / INSTRUCTION
 ```
 
-The deeper CLI tree is intentionally deferred until Agents, Jobs, Runs, tests, assets, releases and other domains are defined in detail.
+The exact visual formatting, wording, aliases, and final command syntax may change later.
 
-### PROJECT commands
+The semantics below are what matter.
 
-The Project namespace currently has four commands:
+---
+
+### 4.17.2 PROJECT — outer Project management
+
+The four currently nominated Project commands are all **Project-level controls**.
+
+They do not manage Jobs directly.
+
+#### A. `project new`
+
+Purpose:
+
+Create a new Project.
+
+Conceptually:
 
 ```text
 project new
-project open
-project status
-project delete
+→ start Project creation flow
+→ create the Project's Drive folder
+→ create the required bootstrap identity artifact(s)
+→ establish initial ownership/context
+→ enter the new Project
 ```
 
-#### `project new`
+At this stage, only the existence and purpose of the command are defined.
 
-Creates a new Project.
+The exact Project bootstrap sequence, required fields, folder schema, repository ownership setup, and initialization prompts must be derived later from the finalized Project model.
 
-The exact bootstrap flow is deferred until the canonical Project schema is defined.
+Do not prematurely encode those details into the CLI command itself.
 
-#### `project open`
+---
 
-Shows only Projects that are currently active/running and lets the user choose one to continue.
+#### B. `project open`
 
-Archived Projects are intentionally hidden from this everyday working list so it stays short and useful.
+Purpose:
+
+Show only the Projects that are currently part of the user's active working set.
+
+`project open` is intentionally **not** a full Project history browser.
 
 Conceptually:
 
 ```text
 project open
-→ list active/running Projects only
-→ user selects Project
-→ resume work in that Project
+→ list currently active/running Projects only
+→ exclude archived Projects
+→ user selects a Project
+→ GPT loads that Project's durable context
+→ work continues inside that Project
 ```
 
-#### `project status`
+The main product reason is usability.
 
-Shows the complete Project list, including archived Projects.
+A user may accumulate many Projects over time. Some are old, paused indefinitely, completed enough to no longer need day-to-day work, or retained only for history.
 
-This is the management/history view and may be used to bring an old archived Project back into active work.
+If every old Project appeared in the normal Open list, the working list would become unnecessarily long and difficult to use.
+
+Therefore:
+
+```text
+OPEN
+= short daily working set
+```
+
+Example:
+
+```text
+PROJECT OPEN
+
+1. CadGPT
+2. Kid eSchool
+3. GPT Super Agent
+4. Audio Library
+5. SMPS
+```
+
+An older Project that has been archived should not appear here.
+
+If the user later wants to resume an archived Project, that is handled through `project status`, not `project open`.
+
+---
+
+#### C. `project status`
+
+Purpose:
+
+Show the complete Project registry/history, including Projects that are no longer in the normal working set.
 
 Conceptually:
 
 ```text
 project status
 → list all Projects
-→ show lifecycle state
-→ user selects Project
-→ inspect/change state when allowed
+→ include active/running Projects
+→ include archived Projects
+→ include other lifecycle states if they are defined later
+→ show each Project's current lifecycle state
+→ user may select a Project
+→ inspect or change its lifecycle state when permitted
 ```
 
-Typical intent:
+This is the place where the user can recover an old Project.
+
+Example:
+
+```text
+PROJECT STATUS
+
+CadGPT                ACTIVE
+KE Math Grade 1       ACTIVE
+Old CAD Converter     ARCHIVED
+StockMind v1          ARCHIVED
+Legacy Prototype      ARCHIVED
+```
+
+The user may decide:
+
+```text
+Old CAD Converter
+ARCHIVED
+→ ACTIVE
+```
+
+and then continue working on it again.
+
+Therefore:
 
 ```text
 OPEN
-= short daily work list
+= current work list
 
 STATUS
 = complete Project registry/history
 ```
 
-#### `project delete`
+This distinction is intentional and should remain visible in the UX.
 
-Deletes the Project itself, including its Google Drive Project folder.
+The exact final Project lifecycle state vocabulary is still defined elsewhere. The CLI should consume that lifecycle model rather than invent its own independent states.
 
-This is for Projects that the user has intentionally decided to remove permanently, for example when an obsolete source repository/version has already been discarded and the corresponding Project memory no longer has value.
+---
 
-Deletion safety/confirmation rules are defined later with the Project persistence model.
+#### D. `project delete`
 
-### DIRECT AGENT
+Purpose:
 
-The landing page also exposes direct access to specialist agents for small or independent work that does not justify creating or opening a Project/Job.
+Permanently remove a Project that the user no longer wants to keep.
 
-Currently nominated direct agents:
+This command operates on the **Project**, not on a Job.
+
+Conceptually:
+
+```text
+project delete
+→ show/select Project
+→ confirm destructive intent according to future deletion policy
+→ delete the Project's Google Drive folder
+→ remove the Project from GPT Super Agent's Project registry/control plane
+```
+
+The user explicitly wants true deletion to be possible.
+
+Reasoning:
+
+A Project may correspond to an obsolete source repository or an old version of a product that has already been replaced.
+
+For example:
+
+```text
+old source repo deleted
+→ old Project has no future operational value
+→ no reason to keep its Drive Project folder forever
+→ delete Project
+```
+
+This is different from archive:
+
+```text
+ARCHIVE
+= keep Project memory, hide from normal active work
+
+DELETE
+= intentionally remove Project memory/folder
+```
+
+Exact destructive confirmation rules, recovery behavior if any, and Drive deletion semantics must be defined later with the Project persistence/safety model.
+
+Do not infer that archive and delete are interchangeable.
+
+---
+
+### 4.17.3 DIRECT AGENT — bypass Project orchestration for small standalone work
+
+The landing page also needs a way to invoke a specialist agent directly.
+
+Current nominated direct agents:
 
 ```text
 Planner
@@ -1850,84 +2023,296 @@ Coder
 Reviewer
 ```
 
-Example:
+The purpose is to support small or independent tasks that do not justify creating a Project, opening a Project, creating a Job, and running the full Project lifecycle.
+
+This is an explicit product feature.
+
+Example — direct Designer:
 
 ```text
-Direct Agent → Designer
-→ load Designer harness + design skills + quality procedure
-→ perform a standalone asset/design task
+DIRECT AGENT
+→ Designer
+
+User:
+"Create a small set of assets for this concept."
 ```
 
-or:
+The important behavior is not merely "ChatGPT generates an image."
+
+Instead:
 
 ```text
-Direct Agent → Coder
-→ load Coder harness + coding skills + verification procedure
-→ implement a small standalone code task
+Designer selected
+→ Designer harness is active
+→ Designer skill/methodology is active
+→ Designer quality rules are active
+→ task is executed
 ```
 
-The purpose is to reuse the quality/process advantages of the specialist harness even when the work is too small or independent to deserve a full Project/Job lifecycle.
+Example — direct Coder:
 
-Direct Agent invocation does not automatically create a Project.
+```text
+DIRECT AGENT
+→ Coder
 
-### HELP / INSTRUCTION
+User:
+"Write a small utility that transforms this file."
+```
 
-The landing page includes a help/instruction entry for new users.
+This task may be too small to deserve:
 
-It should explain, at a high level:
+```text
+new Project
+→ repo setup
+→ Job
+→ milestone topology
+→ full Project governance
+```
+
+but the user still wants the quality benefits of the coding harness.
+
+The Direct Agent path therefore provides:
+
+```text
+small standalone task
++ specialist harness quality
+- unnecessary Project overhead
+```
+
+A Direct Agent invocation does **not** automatically create a Project.
+
+If work later grows large enough to deserve a Project, promotion/migration into Project workflow may be defined later.
+
+Do not invent that promotion flow yet.
+
+---
+
+### 4.17.4 Why Direct Agent is not equivalent to a normal prompt
+
+The architecture should explicitly preserve the following idea:
+
+A skill/harness may ultimately be implemented as structured instructions/prompts, but that does not make it unnecessary.
+
+The value of a skill/harness is precisely that the user does not need to manually restate those long instructions every time.
+
+Conceptually:
+
+```text
+without specialist harness:
+user must describe task
++ planning expectations
++ verification rules
++ quality constraints
++ preservation rules
++ review discipline
++ output format
++ many other procedural details
+
+with specialist harness:
+user selects Coder/Designer/etc.
++ gives the actual task
+→ the harness supplies the reusable procedure
+```
+
+This is similar to using a specialized coding or design environment: the model may be the same, but the procedure, constraints, tools, and workflow around it materially affect consistency.
+
+Therefore Direct Agent is not merely a cosmetic alias for natural language.
+
+It is the short trigger for a pre-defined specialist execution environment.
+
+---
+
+### 4.17.5 HELP / INSTRUCTION
+
+The outer landing page also includes a Help / Instruction entry intended for new or infrequent users.
+
+Its purpose is orientation, not workflow execution.
+
+It should explain at least:
 
 - what GPT Super Agent is;
+- what the fake CLI is;
 - what a Project is;
-- when to create/open a Project;
-- when to use Direct Agent;
-- the available outer commands;
-- basic lifecycle usage such as open/archive/delete.
+- when to use `project new`;
+- how `project open` differs from `project status`;
+- what archive means;
+- what delete means;
+- when to use Direct Agent instead of a Project;
+- which Direct Agents currently exist;
+- how normal conversation continues after selecting a command/agent.
 
-The exact wording/UI is defined later.
+The final help text should be concise enough to use as a landing page guide, while linking or expanding to more detailed instructions when needed.
 
-### Deeper CLI structure is deferred
+Exact UI/wording is deferred.
 
-Do not nominate a complete CLI tree now.
+---
 
-When each domain is defined in detail, evaluate whether it needs explicit CLI commands or subcommands:
+### 4.17.6 No complete second-level CLI tree yet
+
+The CLI must not be fully designed in advance.
+
+At the moment, only the outer landing page and outer Project management semantics are nominated.
+
+The system has not yet finished defining:
+
+- Planner;
+- Designer;
+- Coder;
+- Reviewer;
+- Tester;
+- Job lifecycle;
+- Task lifecycle;
+- Run lifecycle;
+- Handoff;
+- Asset Requirements;
+- Test Requirements;
+- Retests;
+- Release milestones;
+- review/evidence workflows;
+- other future domain objects.
+
+As each domain is defined in detail, ask:
+
+```text
+Does this domain genuinely need a CLI command/subcommand?
+```
+
+Examples:
 
 ```text
 detail Planner
-→ identify any real CLI need
+→ inspect whether any Planner-specific CLI command is useful
 
 detail Designer
-→ identify any real CLI need
+→ inspect whether any Designer-specific CLI command is useful
 
 detail Coder
-→ identify any real CLI need
+→ inspect whether any Coder-specific CLI command is useful
 
-detail Reviewer
-→ identify any real CLI need
+detail Job
+→ inspect whether Job management needs commands
 
-detail Job / Run / Test / Retest / Asset / Release / ...
-→ identify any real CLI need
+detail Test / Retest
+→ inspect whether test management needs commands
+
+detail Release
+→ inspect whether release management needs commands
 ```
 
-Record only justified command requirements.
+If a real CLI need is discovered, record it as a candidate requirement.
 
-After the domain model is complete:
+Do not immediately canonize the command.
+
+After the domain model is sufficiently complete:
 
 ```text
-collect CLI requirements
+collect all discovered CLI needs
+→ compare overlapping needs
 → remove duplicates
-→ organize hierarchy
+→ decide which actions belong in natural conversation instead
+→ organize remaining commands into a coherent hierarchy
 → define commands/subcommands
+→ review usability
 → freeze final CLI tree
 ```
+
+This prevents the CLI from becoming a large collection of speculative commands.
 
 Core principle:
 
 ```text
-semantics first
-CLI structure second
+domain semantics first
+CLI information architecture second
 ```
 
-Do not invent commands in advance merely because a domain concept exists.
+The CLI must be derived from the real system rather than forcing the system to fit an invented command tree.
+
+---
+
+### 4.17.7 Relationship to natural language
+
+Natural conversation remains fully supported.
+
+For example, a user can still say:
+
+```text
+"Open CadGPT."
+"Show me my archived projects."
+"Use the Coder to write this utility."
+```
+
+The fake CLI exists because explicit commands are useful when the user wants:
+
+- deterministic harness selection;
+- low ambiguity;
+- a discoverable landing page;
+- short reusable triggers;
+- consistent workflow entry;
+- reduced risk that ChatGPT selects the wrong plugin/skill in a multi-plugin environment.
+
+Therefore:
+
+```text
+natural language
+= always valid interaction surface
+
+fake CLI
+= explicit, discoverable, low-ambiguity harness/control surface
+```
+
+Neither replaces the other.
+
+---
+
+### 4.17.8 Current freeze/defer boundary
+
+Currently frozen at concept level:
+
+```text
+outer CLI exists
+
+PROJECT:
+- new
+- open
+- status
+- delete
+
+DIRECT AGENT:
+- Planner
+- Designer
+- Coder
+- Reviewer
+
+HELP / INSTRUCTION exists
+
+project open hides archived Projects
+
+project status shows all Projects and supports lifecycle management
+
+project delete is true Project deletion, including the Drive Project folder
+
+Direct Agent is for standalone work that should still benefit from specialist harness/skills
+
+deeper CLI design is postponed until the underlying domains are defined
+```
+
+Still deferred:
+
+```text
+exact final command syntax
+aliases
+visual layout
+whether commands use slash, space, or another notation
+second-level command tree
+Job-level commands
+Run-level commands
+Retest/Asset/Release commands
+exact delete confirmation UX
+exact help text
+Direct Agent promotion into Project workflow
+```
+
+Do not treat deferred items as already decided.
 
 ## 5. Review floor and acceptance result
 
