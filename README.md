@@ -37,6 +37,8 @@ Project
 
 **Job ≠ Repo.** A Job may use one repo or many repos.
 
+Drive is redundant for some single-repo Jobs because GitHub could technically store most planning/state artifacts there. Super Agent still keeps Drive as the canonical Job root so the same Job model continues to work unchanged when the project becomes multi-repo.
+
 ## Design principles
 
 - Conversation is UI, not memory.
