@@ -103,7 +103,7 @@ Designer writes only to the Project Memory / Design Workspace and never modifies
 
 For details, see `DESIGNER-HARNESS-v0.1.md`.
 
-Material UI work requires an independent Design Concept Review before Coder implementation begins. Designer is not required to generate a complete production asset library.
+Material UI work may receive an independent Design Review when the Work Map places a checkpoint there. Review placement is determined from the actual phase/task/dependency topology rather than by a universal fixed gate. Designer is not required to generate a complete production asset library.
 
 Designer requests clarification when missing use-case, audience, hierarchy, or visual constraints would materially change the concept.
 
@@ -131,17 +131,16 @@ When Coder needs to report a durable event such as `PLANNING_GAP`, deviation, co
 ### 3.1 Coder flow
 
 ```text
-RECEIVE TASK
--> RESOLVE REQUIRED MATERIALS
--> PULL CONTEXT PACKET
--> INSPECT LIVE REPO
--> DETAIL EXECUTION PLAN
--> WAIT FOR EXEC PLAN AUDIT
--> IMPLEMENT
--> SELF QA/QC
--> UPDATE LOCAL CHECKLIST
--> VERIFY
--> HANDOFF TO REVIEWER
+RECEIVE ASSIGNED WORK
+→ RESOLVE REQUIRED MATERIALS
+→ PULL CONTEXT PACKET
+→ INSPECT LIVE REPO
+→ REFINE IMPLEMENTATION DETAIL
+→ FOLLOW WORK MAP / REVIEW TOPOLOGY
+→ IMPLEMENT UNTIL NEXT CHECKPOINT
+→ SELF QA/QC
+→ VERIFY
+→ HANDOFF WHEN A SCHEDULED CHECKPOINT IS REACHED
 ```
 
 Planner decides WHAT, WHY, constraints, architecture, and acceptance.
@@ -168,7 +167,7 @@ Typical steps include:
 - inspect diff
 - verify acceptance criteria
 
-This detailed plan is audited by Reviewer before source modifications begin.
+The detailed execution information feeds the Work Map / Review Topology. Reviewer may audit it before coding when the selected topology requires that checkpoint; this is not universally hard-coded.
 
 ### 3.3 Coder deviation levels
 
@@ -216,14 +215,23 @@ Reviewer writes only to Google Drive Project Memory.
 
 Reviewer does not fix source code.
 
-Reviewer has four distinct jobs when substantial UI/design work is involved:
+Reviewer provides reusable review modes rather than a universal fixed gate sequence.
 
-1. Plan Readiness Review after Planner for substantial changes.
-2. Design Review Gate after Designer when applicable.
-3. Execution Plan Audit before coding.
-4. Implementation Review after coding.
+The Work Map / Review Topology decides which review modes are needed and where they occur.
 
-For non-visual work, the Design Review Gate is skipped. Any other gate-skipping rule must come from the canonical work-classification/state-machine definition; no implicit "fast path" is normative.
+Possible modes include:
+
+1. Plan Readiness Review.
+2. Design Review.
+3. Detailed Execution Plan Review.
+4. Architecture / Contract Review.
+5. Implementation / PR Review.
+6. Integration Review.
+7. Final Job Acceptance.
+
+A simple Job may use only a few checkpoints; a risky multi-repo Job may use many.
+
+Final Job Acceptance is the only universal completion requirement: the current work owner cannot mark the Job complete without independent acceptance.
 
 ### 4.1 Plan Readiness Review
 
@@ -247,7 +255,7 @@ Reviewer checks:
 - missing evidence
 - unnecessary scope
 
-The result can approve the plan or require restructuring before coding begins.
+When this review mode is scheduled, the result can approve the detailed execution topology or require restructuring before dependent work continues.
 
 ### 4.4 Implementation review
 
