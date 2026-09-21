@@ -1738,6 +1738,82 @@ important durable output
 → attributable to role + Run + owning work context + exact target/revision
 ```
 
+## 4.17 Minimal fake CLI
+
+User decision:
+
+The fake CLI must stay extremely small. It is only a convenient conversational control surface for basic Project/Job management, not a second workflow language and not a wrapper around GitHub operations.
+
+Initial command set:
+
+```text
+gsa/new
+gsa/open
+gsa/status
+gsa/delete
+```
+
+### `gsa/new`
+
+Creates a new Project.
+
+The exact initialization flow and bootstrap fields will be defined later together with the canonical Project schema.
+
+### `gsa/open`
+
+Opens the current Project work view in chat and lists the Jobs that are currently active/running so the user can choose what to continue.
+
+Conceptually:
+
+```text
+gsa/open
+→ show active/running Jobs
+→ user selects Job
+→ chat resumes that Job context
+```
+
+Do not overload this command with planning/review-specific behavior.
+
+### `gsa/status`
+
+Shows the Project's full Job list and each Job's lifecycle state, including at minimum whether it is active/running or archived.
+
+The user may select a Job from this view and change its lifecycle state.
+
+Conceptually:
+
+```text
+gsa/status
+→ show all Jobs
+→ show state
+→ user selects Job
+→ change state when requested
+```
+
+The exact Job state vocabulary is defined later with the Job lifecycle model.
+
+### `gsa/delete`
+
+Shows the Job list and lets the user select a Job to delete.
+
+Deletion semantics, confirmation rules, and whether deletion means hard-delete vs tombstone/archive are intentionally deferred until Job persistence and audit requirements are defined.
+
+### Explicit non-goals
+
+Do NOT create fake CLI commands merely for:
+
+- planning;
+- review;
+- next-step calculation;
+- coder/designer/tester role selection;
+- commit/push/PR/merge/deploy;
+- milestone handoff;
+- release approval.
+
+Those actions belong to normal conversation, the approved workflow topology, and connected tool execution.
+
+The fake CLI is an alias/UI convenience layer and must remain replaceable without changing the underlying Project / Job / Task / Run architecture.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
