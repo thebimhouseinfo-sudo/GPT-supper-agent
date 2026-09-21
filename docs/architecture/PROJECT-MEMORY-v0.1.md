@@ -25,56 +25,52 @@ Raw chat transcripts, temporary reasoning, tool chatter, and intermediate guesse
 
 ```text
 <configured Super Agent Drive root>/
-  registry.json
-  knowledge/
+  <job-id>/
+    JOB.json
+    PROJECT.md
+    PROJECT-PROFILE.json
+    ARCHITECTURE.md
+    STATE.json
+    REPO-GRAPH.json
+    KNOWLEDGE-PROFILE.json
+    CAPABILITY-MATRIX.json
 
-  jobs/
-    <job-id>/
-      JOB.json
-      PROJECT.md
-      PROJECT-PROFILE.json
-      ARCHITECTURE.md
-      STATE.json
-      REPO-GRAPH.json
-      KNOWLEDGE-PROFILE.json
-      CAPABILITY-MATRIX.json
+    decisions/
+      ADR-0001.md
+      ADR-0002.md
 
-      decisions/
-        ADR-0001.md
-        ADR-0002.md
+    contracts/
+      <contract>.json
 
-      contracts/
-        <contract>.json
+    plans/
+      MASTER-0001.md
+      MASTER-0001.json
 
-      plans/
-        MASTER-0001.md
-        MASTER-0001.json
+    tasks/
+      TASK-0001.json
 
-      tasks/
-        TASK-0001.json
+    reviews/
+      REVIEW-0001.md
 
+    approvals/
+      APPROVAL-0001.json
+
+    design/
+      brief/
+      concepts/
+        selected/
+      asset-sheet/
+        ASSET-SHEET.png
+        ASSET-SPECS.json
+        PROMPTS.md
+        ASSET-SHEET.md
       reviews/
-        REVIEW-0001.md
 
-      approvals/
-        APPROVAL-0001.json
+    lessons/
+      LESSONS.md
 
-      design/
-        brief/
-        concepts/
-          selected/
-        asset-sheet/
-          ASSET-SHEET.png
-          ASSET-SPECS.json
-          PROMPTS.md
-          ASSET-SHEET.md
-        reviews/
-
-      lessons/
-        LESSONS.md
-
-      repos/
-        <repo>.json
+    repos/
+      <repo>.json
 ```
 
 Markdown is primarily human/agent-readable. JSON is primarily orchestrator-readable.
@@ -109,17 +105,17 @@ Example:
 {
   "jobs": [
     {
-      "id": "kid-eschool",
-      "name": "Kid eSchool",
-      "status": "active",
-      "memory_root": "jobs/kid-eschool",
-      "code_environment": {
-        "type": "github",
-        "repositories": [
-          "thebimhouseinfo-sudo/Kideschool",
-          "thebimhouseinfo-sudo/KE-Math-Grade1"
-        ]
-      }
+    "id": "kid-eschool",
+    "name": "Kid eSchool",
+    "status": "active",
+    "memory_root": "jobs/kid-eschool",
+    "code_environment": {
+      "type": "github",
+      "repositories": [
+        "thebimhouseinfo-sudo/Kideschool",
+        "thebimhouseinfo-sudo/KE-Math-Grade1"
+      ]
+    }
     }
   ]
 }
