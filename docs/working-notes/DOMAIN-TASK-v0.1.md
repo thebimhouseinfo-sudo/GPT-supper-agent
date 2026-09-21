@@ -715,19 +715,125 @@ Need later detail from:
 - storage model;
 - CLI/user UX.
 
-### Human decisions currently required
+### Nominated decisions for later COLLECT/REVIEW
 
-1. Task ID uniqueness scope:
-   - globally unique;
-   - or unique within globally unique Job.
+#### 1. Task ID uniqueness scope
 
-2. Task hard-delete policy:
-   - allowed;
-   - disallowed;
-   - or allowed only before any durable references exist.
+**Nomination: globally unique Task ID.**
 
-### Nominated for later COLLECT/REVIEW
+Preferred:
 
-3. Distinguish CANCELLED from SUPERSEDED at Task level.
+```text
+Task ID
+→ globally unique across GSA
+```
 
-Do not freeze the final Task lifecycle until related Run/Review/Test/Evidence domains are detailed and collected.
+Rationale:
+
+- Task references may appear outside the immediate Job context;
+- review, Retest, evidence, handoff and future cross-Project tooling become unambiguous;
+- users can quote one Task ID without also supplying Job ID;
+- the exact syntax can still encode or derive Job relationship if useful.
+
+Alternative:
+
+```text
+Task ID unique only within globally unique Job
+```
+
+Benefit:
+- shorter/local identifiers may be easier to read.
+
+Cost:
+- any detached reference must carry both Job ID + Task ID.
+
+Mark:
+```text
+REVIEW_REQUIRED
+```
+
+#### 2. Task hard-delete policy
+
+**Nomination: hard-delete allowed only while no durable references depend on the Task; otherwise preserve and cancel/supersede instead.**
+
+Preferred:
+
+```text
+unreferenced planned Task
+→ may hard-delete
+
+Task with Run/evidence/retest/review/approval/dependency history
+→ do not hard-delete normally
+→ use CANCELLED / SUPERSEDED / retained history
+```
+
+Rationale:
+
+- preserves referential integrity;
+- avoids orphaning Runs, Retests, evidence and findings;
+- still allows cleanup of accidental/empty Tasks created before execution.
+
+Alternative A:
+
+```text
+hard-delete always allowed
+```
+
+Benefit:
+- simplest user control.
+
+Cost:
+- can destroy causal/audit history and orphan references.
+
+Alternative B:
+
+```text
+hard-delete never allowed
+```
+
+Benefit:
+- strongest historical integrity.
+
+Cost:
+- unnecessary clutter from accidental/unstarted Tasks.
+
+Mark:
+```text
+REVIEW_REQUIRED
+```
+
+#### 3. CANCELLED vs SUPERSEDED
+
+**Nomination: keep them distinct.**
+
+```text
+CANCELLED
+= intentionally stopped; no replacement implied
+
+SUPERSEDED
+= replaced by newer work/decision
+```
+
+Rationale:
+- they carry different causal meaning;
+- SUPERSEDED supports lineage to replacement work;
+- CANCELLED cleanly represents intentional abandonment.
+
+Alternative:
+
+```text
+single terminal state: CANCELLED
+```
+
+Benefit:
+- simpler lifecycle.
+
+Cost:
+- loses replacement lineage semantics.
+
+Mark:
+```text
+REVIEW_REQUIRED
+```
+
+Do not freeze the final Task lifecycle until related Run/Review/Test/Evidence domains are detailed, collected and reviewed.
