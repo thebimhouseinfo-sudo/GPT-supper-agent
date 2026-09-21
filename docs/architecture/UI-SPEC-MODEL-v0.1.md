@@ -221,7 +221,7 @@ For each node, Planner resolves applicable requirements in the following dimensi
 
 ## 5. Design Foundation must be defined before screen specs
 
-Planner MUST define the functional Design Foundation requirements before specifying individual branches in detail. Designer then realizes the approved visual direction, concrete treatments, concept art, and assets without changing functional requirements.
+Planner MUST define functional Design Foundation constraints and inherited project tokens. If visual tokens are already approved, Designer inherits them. If they are not fixed, Designer proposes the concrete color/type/art treatment during concept design without changing functional requirements.
 
 The foundation contains:
 
@@ -546,7 +546,6 @@ design/
     RESULT.md
   UX-FLOW.md
   INTERACTION-SPEC.md
-  ASSET-MANIFEST.json
   UI-ACCEPTANCE.md
 ```
 
