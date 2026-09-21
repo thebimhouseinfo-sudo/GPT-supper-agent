@@ -23,7 +23,7 @@ Decision vocabulary:
 
 | Item | Decision | Resolution |
 | --- | --- | --- |
-| P1 One Job = one role owner | ACCEPT | A Job is a typed finite work unit owned by one role: plan, code, design, or review. Cross-role work is another Job. Ownership is SOFT attribution/policy unless a future mechanism hardens it. |
+| P1 One Job = one role owner | MODIFY | A Job is a finite work unit that may be executed by one agent or by multiple cooperating agents. The Job owns the work objective and workflow; agents are participants with explicit responsibilities/runs. Do not force cross-role collaboration into separate Jobs unless the Job workflow requires it. |
 | P2 Run separate from Job | ACCEPT | A Job is durable; a Run is one execution attempt/session attached to it. Revisions and re-review create new Runs, not automatically new Jobs. |
 | P3 Pull-based orchestration | MODIFY | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
 | P4 Append-only Run records | MODIFY | Each Run gets a unique append-only record. Run records are the concurrency-safe history. A project-level STATE snapshot may exist as a derived/materialized cache and may be rebuilt by reconciliation; it is not the sole source of truth. Never rely on concurrent blind overwrite of one state file. |
@@ -116,13 +116,17 @@ The exact trigger table belongs in STATE-MACHINE-v1.
 
 ```text
 Project
-└── Job J-0042 (type=code, owner=coder)
+└── Job J-0042 (type=code)
+    ├── participants: [coder, reviewer?, designer?]
     ├── Task J-0042.T1
     ├── Task J-0042.T2
     └── Runs
-        ├── R-0042.1
-        └── R-0042.2
+        ├── R-0042.1 role=coder
+        ├── R-0042.2 role=designer
+        └── R-0042.3 role=reviewer
 ```
+
+A Job may be single-agent or multi-agent. Each Run still has one active role so attribution, context, permissions, and evidence remain clear.
 
 A Run records:
 
@@ -138,6 +142,30 @@ A Run records:
 - next transition/request
 
 A review requiring independence starts in a fresh chat.
+
+## 6.1 Job type baseline and evolution
+
+Current promoted baseline Job types:
+
+```text
+plan
+code
+design
+review
+```
+
+These four types are a starting taxonomy, not a permanently closed enum.
+
+Rules:
+
+- promote these four as the initial basic Job types;
+- study real projects and real Job traces before adding, removing, splitting, or merging types;
+- each Job type must eventually have an explicit workflow contract;
+- new Job types are added only when repeated real work demonstrates materially different lifecycle, participants, evidence, or completion semantics;
+- Job-type evolution must preserve historical readability of existing Project memory;
+- do not invent speculative Job types merely for symmetry.
+
+This replaces the earlier assumption that cross-role work must always become a separate Job.
 
 ## 7. Capability spike — surface inspection only
 
