@@ -91,21 +91,24 @@ This keeps the user's QA/QC language while removing vocabulary drift between Cod
 
 Review is NOT required for every PR.
 
-After the Detailed Execution Plan is sufficiently concrete, the system produces a work-assignment / review-topology table that states which Tasks, work groups, or PRs require Reviewer participation.
+After the Detailed Execution Plan is sufficiently concrete, the system produces a milestone/stage handoff table that states who owns each stage, what output is expected, which agent receives the work next, and whether review is required at that checkpoint.
 
 Conceptual example:
 
 ```text
-Work item | Owner | Output/PR | Review required | Reviewer mode | Depends on
-T1        | Coder | PR #21    | NO              | -             | Plan
-T2        | Coder | PR #22    | YES             | implementation| T1
-T3        | Design| artifact  | YES             | design        | Plan
+Milestone | Stage              | Owner    | Output        | Next handler | Review?
+M1        | Detailed planning  | Planner  | exec plan     | Coder        | NO
+M2        | Core implementation| Coder    | branch/PR     | Reviewer     | YES
+M3        | Minor follow-up    | Coder    | patch commit  | Merge-ready  | NO
+M4        | Final verification | Reviewer | PASS/result   | User         | YES
 ```
+
+The table is effectively the handoff map for the Job: at each milestone, the system knows who has the work now and who must receive it next.
 
 Therefore:
 
 - PR existence alone does not imply review;
-- review placement follows the approved Detailed Execution Plan / Review Topology;
+- review placement and role handoff follow the approved Detailed Execution Plan / milestone handoff topology;
 - Reviewer is inserted only where the topology requires it or where a later discovered condition causes the topology to be updated;
 - a PR marked no-review may proceed according to its workflow once its own required QA/QC/evidence passes;
 - if new information makes review necessary, the topology may be revised before merge.
@@ -369,6 +372,22 @@ Attempts
 Do not erase a previous FAIL when a later attempt passes.
 
 A Project may be archived with unresolved Retests only after the user is shown the outstanding list and explicitly accepts that they remain unverified.
+
+## 5.3 Merge authority
+
+Merge occurs only after the work has satisfied the completion conditions defined for its current milestone/stage.
+
+Merge requires explicit user instruction/authorization.
+
+```text
+stage complete
+→ required review/evidence satisfied
+→ PASS or PASS_RETEST_REQUIRED
+→ user authorizes merge
+→ merge
+```
+
+A Reviewer PASS does not itself execute merge.
 
 ## 6. Run and independence model
 
