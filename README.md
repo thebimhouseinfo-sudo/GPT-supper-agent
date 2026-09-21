@@ -9,7 +9,7 @@ PHASE 1 THEORY       = FIX PASS AFTER PEER REVIEW
 PEER REVIEW          = DISPOSITIONED
 ACCEPTED FIXES       = APPLIED
 PLATFORM PROBES      = PARTIALLY CLASSIFIED / SOME STILL PENDING
-CONSISTENCY REVIEW   = IN PROGRESS
+CONSISTENCY REVIEW   = PASS WITH OPEN PLATFORM PROBES
 PHASE 2              = BLOCKED
 ```
 
@@ -140,7 +140,8 @@ accepted peer fixes
 → missing contracts
 → platform capability classification/probes
 → consistency review
-→ human Phase-1 confirmation
+→ Claude peer review round 2
+→ disposition/fix any material round-2 findings
 → Phase 2
 ```
 
