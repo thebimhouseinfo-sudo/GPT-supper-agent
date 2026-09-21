@@ -2,7 +2,7 @@
 
 ## 1. Project Memory purpose
 
-Google Drive is the durable memory store owned logically by the plugin for each Job.
+Google Drive is the durable memory store. One Super Agent root folder is configured once; each Job receives an automatically created subfolder beneath that root.
 
 It does NOT contain source code.
 
@@ -24,8 +24,9 @@ Raw chat transcripts, temporary reasoning, tool chatter, and intermediate guesse
 ## 2. Suggested Job layout
 
 ```text
-CodeAgent/
+<configured Super Agent Drive root>/
   registry.json
+  knowledge/
 
   jobs/
     <job-id>/
@@ -82,7 +83,21 @@ Durable artifacts should carry id/version/status/input references so downstream 
 
 The `design/` workspace may contain concept images and one crop-ready `ASSET-SHEET.png`. The Asset Sheet is a single image canvas containing concept-derived visual assets already separated from one another, numbered, and padded for manual cropping. It is intentionally not a complete directory of individually generated production assets. `ASSET-SPECS.json` and `PROMPTS.md` are sidecars that explain each numbered region and support later high-quality regeneration of individual assets.
 
-## 3. Global registry
+## 3. Configured Drive root
+
+Super Agent stores one stable root folder reference in its configuration. Job commands operate relative to that root.
+
+The user is not asked for a Drive folder link during normal `job create`.
+
+Required root children are created/validated automatically:
+
+```text
+registry.json
+knowledge/
+jobs/
+```
+
+## 4. Global registry
 
 `registry.json` indexes Jobs without duplicating their project state.
 
@@ -101,7 +116,7 @@ Example:
 }
 ```
 
-## 4. Project vs repo knowledge
+## 5. Project vs repo knowledge
 
 Project-level artifacts contain shared truth.
 
@@ -134,7 +149,7 @@ Example:
 }
 ```
 
-## 5. Repo graph
+## 6. Repo graph
 
 `REPO-GRAPH.json` models providers, consumers, roles, and shared contracts.
 
@@ -142,7 +157,7 @@ Its purpose is causal impact analysis, not merely documentation.
 
 If a shared provider or contract changes, the graph identifies all consumers that must be considered.
 
-## 6. Contracts
+## 7. Contracts
 
 Shared interfaces across repositories are first-class Project Memory.
 
@@ -157,7 +172,7 @@ A contract should identify at least:
 
 A contract change can invalidate a single-repo implementation plan.
 
-## 7. Decisions
+## 8. Decisions
 
 Decision logs capture durable project decisions and their scope.
 
@@ -171,7 +186,7 @@ Decision scope may be:
 
 Agents load only relevant decisions into working context.
 
-## 8. Knowledge Base
+## 9. Knowledge Base
 
 Project Memory answers:
 
@@ -206,7 +221,7 @@ knowledge/
   lessons/
 ```
 
-## 9. Knowledge profiles
+## 10. Knowledge profiles
 
 Each Job declares required knowledge profiles.
 
@@ -225,7 +240,7 @@ Example:
 
 Planner determines these profiles from actual project evidence and user intent.
 
-## 10. Knowledge metadata
+## 11. Knowledge metadata
 
 Knowledge items should carry provenance and freshness information where relevant.
 
@@ -244,7 +259,7 @@ Example:
 
 Platform knowledge may become stale and must be refreshed contextually.
 
-## 11. Capability knowledge
+## 12. Capability knowledge
 
 The system must distinguish:
 
@@ -261,7 +276,7 @@ Negative knowledge is valuable and should be retained when durable, e.g.:
 - A cloud repo connector does not imply localhost access.
 - A tool cannot claim runtime verification it cannot physically perform.
 
-## 12. Context Builder
+## 13. Context Builder
 
 Agents MUST NOT receive the entire project memory or chat history by default.
 
