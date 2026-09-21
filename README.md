@@ -73,25 +73,37 @@ The GitHub repository name is an implementation detail and may be renamed later 
 - Multi-repo changes begin with a master plan, not independent repo-local plans.
 - No agent may claim an action that its active executor cannot physically perform.
 
-## Harness evolution model
+## Definition and release model
 
-Super Agent is not defined by writing a huge complete rulebook up front.
-
-The harness is tightened iteratively against real product output:
+The architecture should define the full conceptual model before implementation versions are scoped.
 
 ```text
-minimal definitions
-→ small real Job
-→ inspect plan/code/review/product quality
-→ identify observable failure
-→ add or strengthen the smallest relevant rule/gate/eval
-→ rerun
-→ repeat
+complete concepts
+→ resolve contradictions
+→ make rules testable
+→ classify HARD / SOFT / UNKNOWN
+→ choose implementation scope for v1
+→ run real Jobs
+→ inspect product quality
+→ tighten harness
+→ choose/adjust v2, v3 ...
 ```
 
-Rules are added because a real failure mode or necessary invariant justifies them, not because completeness looks desirable on paper.
+"Fully defined" does not mean "fully implemented in v1".
 
-The goal is progressively better product quality with the smallest effective harness.
+A concept may be completely specified while its implementation is assigned to a later version.
+
+The harness is then tightened iteratively from real output quality:
+
+```text
+real run
+→ observable defect
+→ identify owning concept/rule
+→ strengthen prompt/gate/enforcement/eval
+→ rerun
+```
+
+Release scope is decided after conceptual dependencies are understood, not by leaving concepts undefined.
 
 ## Architecture documents
 
