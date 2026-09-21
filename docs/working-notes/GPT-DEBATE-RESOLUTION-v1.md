@@ -25,7 +25,7 @@ Decision vocabulary:
 | --- | --- | --- |
 | P1 One Job = one role owner | MODIFY | A Job is a finite work unit that may be executed by one agent or by multiple cooperating agents. The Job owns the work objective and workflow; agents are participants with explicit responsibilities/runs. Do not force cross-role collaboration into separate Jobs unless the Job workflow requires it. |
 | P2 Run separate from Job | ACCEPT | A Job is durable; a Run is one execution attempt/session attached to it. Revisions and re-review create new Runs, not automatically new Jobs. |
-| P3 Pull-based orchestration | MODIFY | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
+| P3 Pull-based orchestration | ACCEPT | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
 | P4 Append-only Run records | MODIFY | Each Run gets a unique append-only record. Run records are the concurrency-safe history. A project-level STATE snapshot may exist as a derived/materialized cache and may be rebuilt by reconciliation; it is not the sole source of truth. Never rely on concurrent blind overwrite of one state file. |
 | P5 Mechanical checkpoint floor | MODIFY | Keep a mechanically checkable minimum review floor, but do not make every default-branch merge itself force an independent review Job. Mandatory review triggers: shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, and material dependency graph/version changes. Generated lockfile churn alone is not a trigger. Work class may rise automatically; lowering class or removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
 | P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
@@ -141,7 +141,7 @@ A Run records:
 - evidence refs
 - next transition/request
 
-A review requiring independence starts in a fresh chat.
+A review requiring independence starts in a fresh chat. This is now an agreed baseline rule, not merely a proposed default.
 
 ## 6.1 Job type baseline and evolution
 
