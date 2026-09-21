@@ -32,7 +32,7 @@ Decision vocabulary:
 | P7 Job lifecycle core | MODIFY | Center STATE-MACHINE-v1 on Job lifecycle, but separate lifecycle from review/acceptance result. Candidate lifecycle: PLANNED -> READY -> IN_PROGRESS <-> PAUSED -> SUBMITTED -> CLOSED; side states BLOCKED, STALE, CANCELLED. A review result can route SUBMITTED -> IN_PROGRESS for revision or allow closure. Project has lifecycle status (for example active/archived), not a global workflow enum. Artifact status remains separate. |
 | P8 Designer on-demand asset service | MODIFY | Keep the upstream concept/style-anchor flow and add on-demand asset requests. A material design request creates a design Job. Placeholder-first is allowed only when the final asset is not acceptance-blocking. Asset persistence remains capability-gated and UNKNOWN until tested. |
 | P9 Evidence and quality vocabulary | ACCEPT | Keep QA/QC as the canonical umbrella terms. QA = process assurance, primarily COMPLIANCE + evidence discipline. QC = output control, primarily CORRECTNESS + FIT. Evidence is commit-bound. Objective evidence is primary; model judgement is supplementary and clearly labelled. |
-| P10 Conservative invalidation | ACCEPT | Upstream normative change makes dependent artifacts STALE by default. Cheap revalidation may restore them. The model does not silently prove descendants unaffected. |
+| P10 Change impact and invalidation | MODIFY | An upstream change first triggers a causal change review. The system must identify affected artifacts/work, explain causal links, and propose one or more response options—including lower-impact alternatives when possible. Human chooses the intended response. Only then are the selected affected artifacts marked STALE/revised/revalidated. No blind global invalidation and no silent model-only impact decision. |
 | P11 Reviewer GitHub scope | ACCEPT | Reviewer may read GitHub and write signed PR comments/review comments, but MUST NOT write repository contents. Same-identity GitHub approval cannot be treated as independent approval. Fresh-chat independence plus observable evidence provides the review separation; user-controlled merge remains the human gate. |
 | P12 Merge/deploy completion | ACCEPT | Accepted, merged, and deployed are separate facts/events. Acceptance never implies merge or deploy. Merge authority belongs to the user. Deployment verification is recorded separately when applicable. |
 
@@ -161,6 +161,79 @@ MINOR
 ```
 
 Subjective findings still follow the separate Human Review rule and do not become blocking merely by assigning a severity label.
+
+## 4.3 Causal change review
+
+User decision:
+
+When an approved upstream requirement, plan, contract, design, or architecture changes, the system must NOT immediately invalidate all descendants and must NOT silently choose the affected scope by itself.
+
+It first performs a causal change review.
+
+```text
+change request
+→ identify what changed
+→ trace causal dependencies
+→ identify likely affected Jobs / Tasks / artifacts / repos
+→ identify unaffected areas with reasoning
+→ propose response options
+→ include lower-impact alternatives when possible
+→ present impact trade-offs to the human
+→ human chooses the response
+→ update the affected plan/topology
+→ only then mark specific artifacts STALE / REVALIDATE / SUPERSEDE
+→ execute the approved change
+```
+
+The causal review must answer:
+
+- What exactly changed?
+- Why does that change affect each identified downstream item?
+- What breaks if nothing is changed?
+- What is the minimum necessary fix?
+- Is there an alternative approach with lower impact?
+- Does the alternative preserve the user's actual intent?
+- Which Jobs/Tasks/PRs/retests/evidence become stale under each option?
+- What new review/retest obligations would each option create?
+
+Example:
+
+```text
+Requested change:
+change shared profile contract
+
+Option A
+→ update shared contract
+→ update 5 consumers
+→ higher cross-repo impact
+
+Option B
+→ add compatibility adapter in provider
+→ update 1 repo
+→ lower immediate impact
+→ leaves temporary compatibility debt
+
+Human chooses A or B.
+```
+
+Only after the human chooses does the system apply lifecycle effects.
+
+Possible artifact outcomes:
+
+```text
+UNCHANGED
+REVALIDATED
+STALE
+SUPERSEDED
+```
+
+Rules:
+
+- STALE is a consequence of an approved impact decision, not an automatic blanket reaction.
+- The model may recommend the smallest-impact option, but it must not optimize away the user's intended behavior.
+- A materially different lower-impact workaround requires human approval.
+- If one option is objectively required by a hard constraint, the system may say so, but still explains the causal chain.
+- Retest obligations affected by the change must also be reviewed: keep, revise, supersede, or add new Retest IDs.
 
 ## 5. Review floor and acceptance result
 
