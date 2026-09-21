@@ -1,20 +1,14 @@
-# Agent Contracts v1
+# Agent Contracts v1.1
 
 ## 1. Shared role model
 
 ```text
-Role
-= responsibility + authority + boundaries + outputs
-
-Run
-= one execution attempt with one active role
-
-Agent
-= user-facing/specialist harness implementing a role
+Role = responsibility + authority + boundaries + outputs
+Run = one execution attempt with one active role
+Agent = user-facing/specialist harness implementing a role
 ```
 
-Current roles:
-
+Roles:
 ```text
 Orchestrator
 Planner
@@ -26,58 +20,38 @@ Reviewer
 Tester
 ```
 
----
+All roles may act through the user's same connected platform identity; role attribution therefore comes from explicit Run signatures, not account identity.
 
-## 2. Shared authority rule
-
-```text
-tool capability
-≠ role authority
-```
-
-Effective authority:
+## 2. Shared authority
 
 ```text
-Project policy
-∩ Job scope
-∩ Task scope
-∩ role boundary
-∩ Run target
-∩ human approvals
-∩ actual executor capability
+tool capability ≠ role authority
 ```
 
----
+Effective authority is intersection of Project/Job/Task/role/Run/human/capability boundaries.
 
 ## 3. Planner
 
 Planner:
 - reads Project Memory and selective live source;
-- writes durable planning/knowledge artifacts;
-- does not modify source;
+- writes planning/knowledge;
 - defines objective/scope/architecture/dependencies;
-- defines Job/milestone topology;
-- defines acceptance/verification;
-- coordinates specialist readiness;
+- defines topology and completion/evidence requirements;
+- schedules normal review/test/human checkpoints;
+- must also apply mandatory review triggers;
 - supports Causal Change Review.
-
-Planner uses causal planning logic, not mandatory P0–P11 ceremony.
-
----
 
 ## 4. Designer
 
 Designer:
-- reads product/design context and relevant source evidence;
-- writes design artifacts/Asset Requirements;
-- does not modify source;
-- owns visual interpretation and design coverage;
-- uses specialist design skills/harness;
+- source read-only;
+- owns visual interpretation/design coverage;
+- writes design/asset requirement outputs;
 - does not silently change product behavior.
 
-Concept-first is the normal default, not universal law.
+Concept-first is normal default.
 
----
+Designer may be invoked as a child Run from Coder when non-independent specialist asset/design work is needed.
 
 ## 5. Coder
 
@@ -85,61 +59,72 @@ Coder:
 - reads approved Project context;
 - writes approved Project-owned source;
 - refines exact implementation HOW;
-- performs continuous self QA/QC;
-- may make local implementation/local plan adjustments within boundaries;
-- escalates material scope/architecture/contract changes;
+- performs self QA/QC;
+- escalates material scope/architecture/contract change;
 - fixes Reviewer findings;
 - does not infer merge authority.
 
-UX/UI Coder are Coder specializations, not separate Jobs by default.
+Before handoff/PR-ready, Coder performs Goal Recheck:
+```text
+goal + acceptance + non-goals + plan/contracts + actual diff + available evidence
+→ MET / PARTIAL / NOT_MET / UNVERIFIED per criterion
+```
 
----
+Any source-changing Run declares a scope claim.
 
 ## 6. Reviewer
 
-Reviewer:
-- uses fresh chat when independent review is required;
-- reads exact target/revision and applicable evidence;
-- source implementation is read-only;
-- may use normal PR review/comment surfaces;
+Independent Reviewer:
+- uses fresh chat;
+- reads exact target/revision and applicable requirements/evidence;
+- source implementation read-only;
+- may comment/review;
 - produces findings/results;
 - does not fix source.
 
-Reviewer is inserted only where topology requires independent review.
+Reviewer derives judgement independently from target + requirements + evidence; Coder self-recheck is secondary evidence, not authority.
 
-No universal final Reviewer gate exists.
-
----
+Reviewer is topology-driven except mechanical mandatory review triggers.
 
 ## 7. Tester
 
 Tester:
-- practically exercises the product;
-- runs scripted and exploratory testing;
-- seeks unforeseen realistic failures;
-- source implementation is read-only;
-- may execute Retests when capability allows;
-- reports subjective usability observations without converting them into binding objective failure unless an approved rule is violated.
+- performs scripted/exploratory practical testing only when runtime/product capability is observed AVAILABLE;
+- source implementation read-only;
+- may execute Retests when capability exists;
+- otherwise provides/plans test steps while human performs practical Retest and GSA records evidence.
 
-Fresh chat is selective, not universal.
-
----
+Tester remains a semantic role even if initial Phase-2 execution is human-backed.
 
 ## 8. Orchestrator
 
-Orchestrator:
-- owns routing/transition governance;
-- persists handoffs/control-plane state;
-- coordinates Human Gates/capabilities/conflicts;
-- does not implement source;
-- is an implicit system role, not ordinary Direct Agent.
+Orchestrator is an implicit harness responsibility set, not an always-running process.
 
----
+Core duties:
+- route current work;
+- apply/check transition rules when invoked;
+- surface pending Handoffs/Human Gates/Retests;
+- coordinate capability lookup;
+- perform conflict/scope checks at dispatch/consequential-action boundaries;
+- produce status views.
 
-## 9. Direct Agent
+It does not implement source.
 
-Initial outer Direct Agents:
+## 9. Child Runs
 
+When independence is not required:
+```text
+parent Run pauses/yields
+→ child Run with another role may execute in same chat
+→ child result attributed separately
+→ parent Run resumes
+```
+
+Independent review remains a fresh-chat Run.
+
+## 10. Direct Agent
+
+Outer Direct Agents:
 ```text
 Planner
 Designer
@@ -147,77 +132,48 @@ Coder
 Reviewer
 ```
 
-Direct Agent work:
-- no automatic Project creation;
-- ephemeral by default;
-- may be promoted/persisted when work grows;
-- Direct Coder requires clearly authorized repo target.
-- If the target repo is already OWNED by a Project, Direct Coder must route into that owning Project instead of writing standalone.
-- If the repo is unowned by GSA, Direct Coder may perform an explicitly authorized bounded one-off change without automatically claiming ownership.
+Direct work is ephemeral by default.
 
-Tester and Orchestrator are not outer entries initially.
+Promotion creates a new Project/Job from a promotion packet.
 
----
+Direct Coder:
+- requires explicit repo target;
+- cannot bypass an existing owning Project.
 
-## 10. Context discipline
+Tester/Orchestrator are not outer entries initially.
 
-Each role receives minimum sufficient context.
+## 11. Context discipline
 
-Do not indiscriminately load:
-- full Project;
-- full repo;
-- full chat history.
+Use minimum sufficient role context.
 
-Reviewer/Tester context may be deliberately isolated for independence.
+Do not load entire Project/repo/chat indiscriminately.
 
----
+Reviewer/Tester may receive deliberately isolated context.
 
-## 11. Handoff
+## 12. Handoff
 
-Roles cooperate via durable Handoff when work crosses Runs.
+Cross-Run transition uses durable handoff with owning work, source Run, next role, exact target/revision, completed/remaining work, blocker/gate and expected next outcome.
 
-Handoff includes enough to identify:
-- owning work;
-- source Run;
-- next role;
-- exact target/revision;
-- completed/remaining work;
-- blocker/gate;
-- expected next outcome.
+## 13. Attribution
 
----
-
-## 12. Evidence discipline
-
-Important outputs are attributable to:
-
+Important externally visible/durable role outputs include product-neutral signature:
 ```text
 role
-+ Run
-+ owning work context
-+ exact target/revision
+Run ID
+owning work context
+exact target/revision
 ```
 
-No role may claim unavailable verification.
+Unsigned content is not treated as human approval.
 
----
+## 14. Human authority
 
-## 13. Human authority
+Human owns material product/architecture/governance/subjective acceptance and merge/release decisions.
 
-Human owns:
-- material product behavior;
-- architecture direction;
-- governance/authority;
-- major trade-offs;
-- subjective acceptance;
-- merge/release authorization when required.
+Agent-authored comments under the user's account are still agent outputs.
 
-Roles may analyze/recommend/nominate but do not silently convert recommendation into human decision.
+## 15. Phase 2
 
----
+This document defines semantics.
 
-## 14. Phase 2 harness maturity
-
-These contracts define semantics.
-
-Exact prompts, skills, loops, actions, tool-use procedures belong to Phase 2 and will be calibrated from real Projects.
+Exact prompts/skills/loops/tool procedures are Phase-2 work after Phase-1 entry gate is satisfied.
