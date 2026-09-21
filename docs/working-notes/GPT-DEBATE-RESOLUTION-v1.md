@@ -2457,6 +2457,202 @@ implementation second
 
 The system should not intentionally leave architecture gaps for implementation to discover later.
 
+## 4.19 First real pilot — KE Math Grade 1
+
+User decision:
+
+The first real validation Project for GPT Super Agent will use the existing **KE Math Grade 1** application/repository as the pilot environment.
+
+The purpose is not merely to prove that GPT Super Agent can execute a workflow once.
+
+The pilot is intended to calibrate and progressively harden:
+
+- agent harnesses;
+- specialist skills;
+- planning discipline;
+- design workflow;
+- coding workflow;
+- review loop;
+- testing loop;
+- human gates;
+- Project Memory behavior;
+- handoff rules;
+- evidence/retest behavior;
+- practical workflow friction.
+
+### Why KE Math Grade 1 is suitable
+
+KE Math Grade 1 is a useful pilot because it is a real single-repository application with known historical pain points that directly exercise the architecture being defined.
+
+Relevant characteristics include:
+
+- UI-first application behavior;
+- content-driven scale-out;
+- app-shell maturity requirements;
+- known risk of designing/coding "as we go";
+- responsive requirements;
+- multiple lesson/exercise states;
+- asset requirements;
+- possible audio/media requirements;
+- practical testing needs;
+- subjective UI decisions that require human input;
+- clear opportunity to test DESIGN_READY and SHELL_READY gates;
+- realistic Planner → Designer → Coder → Reviewer → Tester → Human coordination.
+
+The pilot should use a representative but bounded scope rather than trying to finish all Grade 1 content at once.
+
+A suitable pilot scope may include:
+
+```text
+current shell assessment
+→ design coverage review
+→ one representative topic/lesson path
+→ theory flow
+→ correct/incorrect states
+→ exercises
+→ scoring/report
+→ responsive behavior
+→ at least one asset placeholder/integration case
+→ review
+→ practical testing
+→ human acceptance where subjective judgement is required
+```
+
+The exact pilot scope is chosen after theory completion.
+
+### Calibration principle
+
+The pilot is explicitly allowed to reveal that the first version of the harness is either too loose or too strict.
+
+The calibration rule is:
+
+```text
+if workflow is too loose
+and real output quality is poor / inconsistent / error-prone
+→ tighten the relevant harness, skill, gate, checklist, or loop
+
+if workflow is too strict
+and adds substantial time/friction
+without measurable quality improvement
+→ relax or simplify the relevant rule
+
+if a rule improves quality materially
+→ keep or strengthen it
+
+if a rule creates ceremony without value
+→ reduce/remove it
+```
+
+The goal is not maximum process.
+
+The goal is the **minimum process that reliably produces high-quality results**.
+
+### Evidence-driven adjustment
+
+Changes to harness strictness should be based on observed pilot behavior, not preference alone.
+
+Useful signals include:
+
+- repeated implementation mistakes;
+- requirement drift;
+- UI/UX regressions;
+- unnecessary rework;
+- missed states;
+- poor review findings;
+- tester-discovered defects;
+- retest failures;
+- excessive manual correction;
+- repeated user frustration;
+- excessive workflow latency;
+- duplicated review effort;
+- gates that consistently add no useful information.
+
+Example:
+
+```text
+Coder repeatedly changes approved UI details
+→ coding harness is too permissive
+→ strengthen preservation / design-fidelity rules
+```
+
+Example:
+
+```text
+Reviewer requires a long evidence ritual
+but never catches additional defects
+and materially slows iteration
+→ simplify the evidence/review requirement
+```
+
+Example:
+
+```text
+Asset contract + placeholder workflow
+prevents blocking and integrates cleanly later
+→ preserve that rule
+```
+
+### Progressive hardening
+
+The intended evolution is:
+
+```text
+complete theory
+→ implement first harness version
+→ run real KE Math pilot
+→ observe failures/friction
+→ tighten or relax specific rules
+→ rerun
+→ stabilize
+→ freeze mature harness/skill/loop versions
+```
+
+This is **not** permission to leave theory incomplete before implementation.
+
+The distinction is:
+
+```text
+theory must be complete before implementation
+
+but
+empirical calibration of strictness/efficiency
+happens through real usage
+```
+
+Architecture and semantics should not be invented during the pilot.
+
+The pilot is used to tune how strongly the already-defined architecture is enforced.
+
+### Pilot success criteria
+
+The pilot is successful when GPT Super Agent demonstrates that it can:
+
+- preserve approved requirements across multiple Runs;
+- use the correct agent/harness at each milestone;
+- avoid uncontrolled UI/architecture invention during coding;
+- produce useful design/coding/review/test artifacts;
+- coordinate human gates correctly;
+- handle asset placeholders and later retest;
+- recover from findings without losing Project context;
+- keep parallel work safe when applicable;
+- produce materially better consistency than generic ad-hoc prompting;
+- do so without unnecessary process overhead.
+
+The pilot should produce a concrete list of:
+
+```text
+KEEP
+TIGHTEN
+RELAX
+REMOVE
+ADD
+```
+
+for harness rules and workflow loops.
+
+Those findings then feed the next harness/skill revision.
+
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
