@@ -300,13 +300,9 @@ User asks for Job status
 
 Chat history is not required to reopen a Job.
 
-## 13. Job list command behavior
+The command does not recursively scan all Drive folders unless registry recovery is required.
 
-`job list` reads Drive `registry.json` and shows active/paused/archived Jobs plus their high-level state. Each entry may show attached GitHub repos as metadata, but GitHub is not the source of the Job list.
-
-It does not recursively scan all Drive folders unless registry recovery is required.
-
-## 14. Job update
+## 13. Job update
 
 Job metadata may be updated for:
 
@@ -318,7 +314,7 @@ Job metadata may be updated for:
 
 Adding/removing a repo triggers impact analysis and repo-graph refresh.
 
-## 15. Job archive
+## 14. Job archive
 
 Archive preserves Project Memory but removes the Job from the normal active workflow.
 
@@ -330,7 +326,7 @@ Archive does not delete GitHub code and does not delete durable Project Memory.
 
 Destructive Job deletion, if ever supported, is a separate explicit operation and is not equivalent to archive.
 
-## 16. Job creation states
+## 15. Job creation states
 
 ```text
 JOB_CREATE_REQUESTED
@@ -353,7 +349,7 @@ REGISTRY_CONFLICT
 INCOMPLETE
 ```
 
-## 17. Online execution scope
+## 16. Online execution scope
 
 Every Super Agent Job defaults to:
 
@@ -365,7 +361,7 @@ Super Agent owns online coding orchestration around GitHub, remote CI, remote pr
 
 It does not require or create a local filesystem workspace as part of Job bootstrap.
 
-## 18. Core invariants
+## 17. Core invariants
 
 1. Drive root is configured once, not once per Job.
 2. Job folders are created automatically below the configured root.
