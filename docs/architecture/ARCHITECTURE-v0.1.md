@@ -189,7 +189,11 @@ Orchestrator
 
 This prevents one role from defining the rule, implementing the rule, and grading itself.
 
-## 9. Project readiness gate
+## 9. Clarification and causal readiness
+
+Before planning, design, or implementation, each role applies `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`. Blocking unknowns are resolved before the downstream stage; safe non-blocking assumptions may be inferred and recorded.
+
+## 10. Project readiness gate
 
 Coder MUST NOT start until the project or change is ready for implementation.
 
@@ -208,7 +212,7 @@ PROJECT_READY_FOR_IMPLEMENTATION =
   AND acceptance criteria prepared
 ```
 
-## 10. Core invariants
+## 11. Core invariants
 
 1. Conversation is UI, not memory.
 2. Shared project knowledge lives once at project level.
