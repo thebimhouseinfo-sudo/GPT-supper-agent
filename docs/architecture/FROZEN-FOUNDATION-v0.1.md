@@ -405,3 +405,21 @@ The durable hierarchy remains:
 ```text
 Project → Job → Task → Run
 ```
+
+
+---
+
+## F26. External peer review before Phase 2
+
+After internal Phase 1 theory completeness:
+
+```text
+Claude peer review
+→ disposition findings
+→ reconcile accepted material issues
+→ only then enter Phase 2
+```
+
+Peer review does not replace human authority and does not automatically change frozen theory.
+
+The human retains final acceptance of material architecture/product/governance changes.
