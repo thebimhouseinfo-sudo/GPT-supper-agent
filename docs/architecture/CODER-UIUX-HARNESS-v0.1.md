@@ -1,24 +1,20 @@
-# Coder UX/UI Specialization v1
+# Coder UX/UI Specialization v1.1
 
 ## 1. Purpose
 
-UX Coder and UI Coder are specializations of Coder used when user-facing work benefits from distinct behavioral and visual implementation focus.
+UX Coder and UI Coder are Coder specializations for behavioral and visual implementation focus.
 
-They are not automatically separate Jobs.
-
----
+They are not separate Jobs by default.
 
 ## 2. Shared authority
 
-Both may write only approved Project-owned source within Job/Task scope.
+Both write only approved Project-owned source within Job/Task scope.
 
-They read Planner/Designer artifacts but do not edit durable Project theory/spec/review history directly.
-
----
+Every source-writing Run declares a scope claim and rechecks Project lifecycle/target before consequential writes.
 
 ## 3. UX Coder
 
-UX Coder focuses on:
+Focus:
 - navigation/flow;
 - state transitions;
 - loading/empty/error/success;
@@ -29,16 +25,14 @@ UX Coder focuses on:
 - progression/recovery;
 - data/state wiring.
 
-UX Coder must not invent unresolved product behavior.
-
----
+No unresolved product behavior may be invented.
 
 ## 4. UI Coder
 
-UI Coder focuses on:
+Focus:
 - composition;
 - hierarchy;
-- relative scale;
+- scale;
 - spacing/density;
 - typography;
 - visual tokens;
@@ -47,127 +41,89 @@ UI Coder focuses on:
 - state appearance;
 - responsive visual composition.
 
-UI Coder treats approved design artifacts as implementation constraints, not decorative inspiration.
-
----
+Approved design is implementation constraint, not decorative inspiration.
 
 ## 5. Ordering
 
-There is no fixed UX→UI or UI→UX sequence.
+No fixed UX→UI or UI→UX order.
 
-Detailed Execution Plan chooses causal ordering.
-
-Examples:
-
-```text
-UI-first content app
-→ shell/composition first
-→ UX behavior on shell
-→ joint verification
-
-interaction-first system
-→ UX/state model first
-→ visual treatment later
-```
-
----
+Detailed Execution Plan chooses causal order.
 
 ## 6. Design fidelity
 
-Applicable requirements may be classified as:
-
+Specialist harness may classify:
 ```text
 MUST MATCH
 INTENT MATCH
 IMPLEMENTATION FLEXIBLE
 ```
 
-Exact classification belongs to specialist harness and approved design context.
-
-Coder may choose implementation-flexible details but must escalate material design gaps.
-
----
+Material design gaps escalate.
 
 ## 7. Render/compare capability
 
-Autonomous visual verification requires actual capabilities such as:
+Autonomous visual verification requires actual:
 - runnable app/preview;
 - browser/renderer;
 - screenshot capture;
-- design reference access;
+- reference access;
 - visual analysis.
 
-Capability state is:
-
+If unavailable:
 ```text
-AVAILABLE
-UNAVAILABLE
-UNKNOWN
+criterion/result = UNVERIFIED where applicable
+verification mode = DEGRADED or BLOCKED
 ```
 
-If required capabilities are missing, verification mode becomes DEGRADED or BLOCKED.
+Do not claim visual runtime verification without capability.
 
-Do not claim render comparison without actual capability.
+## 8. Missing assets / child Designer
 
----
-
-## 8. Missing assets
-
-Stable placeholder integration is allowed when approved.
+Stable placeholder integration is allowed:
 
 ```text
 stable asset contract
 → placeholder
 → source integration
-→ final asset later
-→ Retest
+→ final asset
+→ practical verification
 ```
 
-Missing final asset does not automatically block implementation or DESIGN_READY.
-
----
+If Coder needs non-independent Designer assistance:
+```text
+Coder parent Run
+→ Designer child Run
+→ attributed design/asset output
+→ Coder parent resumes
+```
 
 ## 9. UX/UI conflict
 
-If visual implementation would break approved behavior, or behavior makes approved design impossible:
-
+Material conflict:
 ```text
 do not silently compromise
-→ identify conflict
-→ route through Causal Change Review / Planner / Designer as appropriate
+→ Causal Change Review / Planner / Designer
 ```
-
----
 
 ## 10. Self QA/QC
 
 UX/UI Coder performs:
 - scope/plan compliance;
-- behavioral checks;
-- visual checks where possible;
-- responsive checks;
-- asset integration checks;
-- regression checks;
-- diff inspection.
+- applicable behavioral/visual/static checks;
+- capability-backed checks;
+- regression/diff inspection;
+- Coder Goal Recheck per `CODER-GOAL-RECHECK-v1.md`.
 
-Independent Reviewer/Tester only where topology requires them.
-
----
+Self QA/QC does not replace mandatory or topology-scheduled independent review.
 
 ## 11. Evidence
 
-Where capability exists, handoff may include:
-- screenshots;
-- viewport labels;
-- behavior test evidence;
-- known deviations;
-- asset status;
-- CI/build/test refs.
+Handoff records only evidence actually available.
 
-Unavailable evidence must be stated honestly.
+Unavailable checks remain explicit UNVERIFIED.
 
----
+Practical UI verification may become human Retest when Tester/runtime capability is unavailable.
 
 ## 12. Core invariant
 
-> UX/UI specializations improve implementation focus without turning their preferred internal method into a universal Job topology.
+> UX/UI specialization improves implementation focus without inventing unavailable verification or turning specialist methodology into universal Job topology.
