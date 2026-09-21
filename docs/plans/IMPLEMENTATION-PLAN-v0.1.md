@@ -284,15 +284,20 @@ Do not duplicate planning logic in executor-specific integrations.
 
 ## Phase 13 — Plugin packaging and UX
 
+User-facing naming is independent of the repository name.
+
+- Plugin handle: `@gsa`
+- Command namespace: `gsa/`
+
 Expose a concise user interaction model, for example:
 
 ```text
-@SuperAgent job create ...
-@SuperAgent job open ...
-@SuperAgent status
-@SuperAgent plan ...
-@SuperAgent continue
-@SuperAgent review
+gsa/job create ...
+gsa/job open ...
+gsa/status
+gsa/plan ...
+gsa/continue
+gsa/review
 ```
 
 Natural-language requests remain supported; command grammar is an optional deterministic control surface.
