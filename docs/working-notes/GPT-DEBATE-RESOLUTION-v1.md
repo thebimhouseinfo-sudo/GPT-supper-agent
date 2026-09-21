@@ -224,6 +224,131 @@ A code change after a failed Retest invalidates the old pending verification tar
 
 The exact storage schema is defined later in the Project Memory / Evidence contract.
 
+## 5.2 Persistent Retest Queue
+
+Retest obligations MUST survive chat boundaries and user delay.
+
+A Project therefore has a durable Retest store in Drive:
+
+```text
+<Project>/
+└── retests/
+    ├── RT-0042-01.md
+    ├── RT-0042-02.md
+    └── ...
+```
+
+Each Retest file is the canonical record for one practical verification obligation.
+
+Recommended Markdown + YAML front matter:
+
+```markdown
+---
+id: RT-0042-01
+project_id: kid-eschool
+job_id: J-0042
+task_ids:
+  - J-0042.T3
+status: PENDING
+source_commit_sha: abc123
+merged_commit_sha: def456
+environment: iPhone Safari
+created_by_run: R-0042.3
+---
+
+# RT-0042-01
+
+## What to test
+Open lesson 1, answer question 1 correctly.
+
+## Expected result
+- answer is graded;
+- feedback appears;
+- next question opens automatically.
+
+## Why practical retest is required
+The online executor cannot validate the real mobile runtime before merge.
+
+## Related implementation
+- LessonPlayer
+- progression state
+- relevant files/components if known
+
+## How to report
+Reply with:
+
+RT-0042-01 PASS
+
+or:
+
+RT-0042-01 FAIL
+<what actually happened>
+```
+
+Status vocabulary:
+
+```text
+PENDING
+= not tested yet
+
+BLOCKED
+= user wants to test but the required environment/device/deployment is not currently available
+
+PASS
+= practical verification succeeded
+
+FAIL
+= practical verification failed and must route back to the owning work
+
+SUPERSEDED
+= replaced by a newer Retest obligation because the target/change materially changed
+```
+
+A user being busy, away from the required device, or choosing not to test now does NOT block the Project or force rediscovery. The Retest remains durable as `PENDING` (or `BLOCKED` when there is a concrete environment blocker).
+
+Status surfaces MUST expose outstanding obligations.
+
+Minimum status summary:
+
+```text
+Retests:
+  pending: 3
+  blocked: 1
+
+Next practical tests:
+  RT-0042-01  iPhone Safari  Lesson progression
+  RT-0048-02  Production     Login redirect
+  RT-0051-01  iPad           Responsive layout
+```
+
+The user can later ask for pending Retests without remembering prior conversations.
+
+Recommended user-facing operation (exact command grammar to be finalized in COMMAND-SPEC-v1):
+
+```text
+gsa/retests
+→ list PENDING + BLOCKED Retests for the open Project
+
+gsa/retest RT-0042-01
+→ show complete test instructions + expected result + reporting format
+```
+
+The Retest file may update its current status, but attempt history is append-only.
+
+Example:
+
+```text
+Attempts
+1. PENDING — created after merge def456
+2. FAIL — user observed no auto-advance
+3. PENDING — fix merged ghi789, retest revision requested
+4. PASS — user confirmed correct behavior
+```
+
+Do not erase a previous FAIL when a later attempt passes.
+
+A Project may be archived with unresolved Retests only after the user is shown the outstanding list and explicitly accepts that they remain unverified.
+
 ## 6. Run and independence model
 
 ```text
