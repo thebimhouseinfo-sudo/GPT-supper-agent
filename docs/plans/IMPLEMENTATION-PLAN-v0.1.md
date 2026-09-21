@@ -25,7 +25,8 @@ Implement:
 - automatic per-Job subfolder creation under jobs/<job-id>
 - transactional Job bootstrap
 - duplicate/id conflict handling
-- GitHub repo attachment during Job creation
+- explicit GitHub code-environment model
+- attach 1..N GitHub repositories during Job creation
 - Project Memory folder/file creation
 - Markdown/JSON templates
 - Project/repo relationship lookup
@@ -38,12 +39,13 @@ Hard rules:
 - User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
 - Every Job defaults to online execution.
 
-Exit criterion: a Job can be created without a per-Job Drive link, auto-bootstrap its Project Memory below the configured root, register attached GitHub repos, reopen in another conversation, and restore structured state.
+Exit criterion: a Job can be created without a per-Job Drive link, persist its durable state below the configured Drive root, attach an explicit GitHub code environment of one or more repositories, reopen in another conversation, and restore structured state.
 
-## Phase 2 — Project and repo profiling
+## Phase 2 — Job Code Environment, Project and Repo Profiling
 
 Implement:
 
+- Job ↔ GitHub code-environment relationship
 - single-repo / multi-repo classification
 - repo metadata
 - repo graph
