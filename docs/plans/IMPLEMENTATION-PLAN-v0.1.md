@@ -31,21 +31,20 @@ FULL CONCEPT MODEL
 
 The quality loop refines the harness after real use. It does not justify leaving core concepts undefined.
 
-## Stage A — Consistency pass
+## Stage A — Consistency pass — COMPLETE
 
-Resolve known contradictions and clerical defects before adding further definitions.
+The initial consistency defects have been normalized:
 
-Current known items include:
+- workflow states now point to one canonical `STATE-MACHINE-v1.md` definition instead of competing lists;
+- Job Lifecycle section numbering is unique;
+- duplicate capability example entry is fixed;
+- Designer file/header version mismatch is fixed;
+- role/write scopes are explicitly separated from enforcement strength;
+- implicit Fast Path wording is removed pending formal work classification;
+- Drive-over-GitHub rationale is canonicalized in `ARCHITECTURE-v0.1.md` §6;
+- Coder handoff/gap reporting is separated from durable Project Memory writes.
 
-- duplicate workflow-state definitions
-- duplicate Job Lifecycle section number
-- duplicate capability entry
-- Designer version-label mismatch
-- role/write boundaries presented more strongly than their verified enforcement
-- undefined Fast Path/work classification
-- repeated Drive rationale
-
-No new theory is added in this stage except where required to resolve a contradiction.
+Further contradictions found during definition work are handled as normal consistency fixes.
 
 ## Stage B — Complete conceptual definitions
 
@@ -294,6 +293,6 @@ v2 findings
 
 ## Current next step
 
-Complete Stage A consistency corrections, then continue Stage B definitions against the System Definition Skeleton.
+Continue Stage B definitions against the System Definition Skeleton, using the Definition Completion Workflow. The next canonical definition package is the workflow state machine and work classification.
 
 Do not decide v1/v2/v3 contents until enough of the conceptual model is DEFINED to make that decision coherently.
