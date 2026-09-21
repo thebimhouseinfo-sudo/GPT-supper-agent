@@ -1631,9 +1631,20 @@ Both classes must be:
 - bound to the relevant target/revision/context;
 - not inferred from silence.
 
-The system should preserve durable records for Planned Human Gates.
+Durable logging is selective:
 
-Runtime Confirmations should be persisted only when they materially affect Project state, governance, future assumptions, evidence, or auditability.
+```text
+Planned Human Gate
+→ may be logged when the decision is important for governance, audit, future assumptions,
+  release history, waivers, ownership, or another durable Project concern.
+
+Runtime Confirmation
+→ not persisted as a durable approval log.
+```
+
+Do not create approval logs merely because the human answered a routine runtime confirmation.
+
+Even for Planned Human Gates, logging is not automatic. Persist only when the decision needs to remain part of durable Project memory or later evidence.
 
 ## 5. Review floor and acceptance result
 
