@@ -239,23 +239,25 @@ VISUAL_BLOCKED_BY_BROWSER
 
 A user-provided screenshot may still be visually compared with the concept even when the plugin cannot launch/render the app itself, but that is manual evidence rather than autonomous rendering.
 
-### 9.1 Executor examples
+### 9.1 Online executor examples
 
 ```text
 GitHub connector only
 → edit/PR/CI capable
-→ autonomous localhost render: NO by default
+→ autonomous visual render: NO by default
 
 GitHub connector + deployed preview URL + browser capability
-→ browser render may be possible
+→ browser render/compare may be possible
 
-Desktop Work/Codex + local project + browser/runtime permission
-→ local development render may be possible
+GitHub Actions producing screenshots/artifacts
+→ screenshot evidence may be reviewable if artifacts are accessible
 
-GPTWorker + dev server, but no browser/screenshot tool
-→ app runtime possible
-→ autonomous visual compare still incomplete
+User-supplied screenshot
+→ visual comparison is possible
+→ this is manual evidence, not autonomous rendering
 ```
+
+Local dev servers and offline runtimes are outside the Super Agent core execution model.
 
 The capability matrix, not the executor name, is authoritative.
 
