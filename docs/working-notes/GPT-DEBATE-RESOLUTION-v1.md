@@ -481,6 +481,95 @@ Asset Requirement exists
 
 Future automatic handoff may automate this without changing the Asset Requirement model.
 
+## 4.5 UX/UI specialization ordering
+
+User decision:
+
+UX Coder and UI Coder are specializations, but their ordering is NOT fixed.
+
+The Detailed Execution Plan must derive the sequence from the nature of the Job and the product's primary interaction model.
+
+Do NOT hard-code:
+
+```text
+UX → UI
+```
+
+or:
+
+```text
+UI → UX
+```
+
+as a universal workflow.
+
+Instead:
+
+```text
+analyze Job/product
+→ identify the primary source of interaction structure
+→ choose the correct first specialization
+→ define downstream handoff topology
+```
+
+### Web/content-driven applications
+
+For many web applications, the content/information architecture determines the visible structure first.
+
+Typical pattern:
+
+```text
+content / requirements
+→ UI tree / screen hierarchy / component structure
+→ UI implementation skeleton
+→ UX behavior mapped onto that structure
+→ refinement / integration
+```
+
+In these Jobs, UI may legitimately precede UX because the interface tree provides the working structure that later interactions attach to.
+
+### Interaction-first systems
+
+For systems whose primary experience is behavior/protocol rather than visual composition, UX may precede UI.
+
+Example: CadGPT.
+
+```text
+command model
+→ conversation / action flow
+→ state / error / confirmation behavior
+→ UX contract
+→ fake CLI presentation later
+```
+
+Because the visible UI is only a thin/fake CLI over a deeper interaction model, designing visual structure first would invert the real dependency.
+
+### Planning rule
+
+The Planner / Detailed Execution Plan must explicitly state, per Job:
+
+- whether UI or UX leads;
+- why that ordering is causally appropriate;
+- what artifact the first stage produces;
+- what the next specialization consumes;
+- where iteration back is allowed;
+- whether one specialization can be skipped entirely.
+
+Examples:
+
+```text
+Web app:
+Content → UI Tree → UI Coder → UX Coder → Reviewer
+
+CadGPT:
+UX model → UX Coder → fake CLI/UI Coder → Reviewer
+
+Small functional patch:
+Generic Coder → Reviewer
+```
+
+The system must not "figure it out as it goes". Ordering is part of the approved Detailed Execution Plan before implementation starts, while still remaining revisable through the causal change review if new facts emerge.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
