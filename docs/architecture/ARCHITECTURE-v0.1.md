@@ -1,335 +1,336 @@
-# GPT Super Agent — Architecture v0.1
+# GPT Super Agent — Architecture v0.2
 
-## 0. Foundation status
-
-The foundational Job/Drive/GitHub/product-boundary decisions are frozen in `FROZEN-FOUNDATION-v0.1.md`.
-
-All remaining theory work should be tracked through `SYSTEM-DEFINITION-SKELETON-v0.1.md`.
-
-A later module must not silently redefine a frozen foundation invariant.
-
-
-## 1. Purpose
-
-GPT Super Agent is a coding-agent harness for ChatGPT. Its purpose is not merely to add coding skills. It provides persistent project state, grounded planning, execution routing, multi-repository awareness, agent separation, QA/QC, and review governance.
-
-The system must continue to understand a project across new chats, model changes, context compaction, and long-running multi-repository development.
-
-## 2. Sources of truth
-
-The system separates four concerns:
+## 1. System model
 
 ```text
+Conversation
+= interaction UI
+
+Google Drive Project Memory
+= durable Project state / control plane
+
 GitHub
 = source-code truth
 
-Google Drive Project Memory
-= durable project-state truth
-
-Knowledge Base
-= reusable engineering/platform/domain knowledge
-
-Plugin / Harness
-= workflow, role, capability, and quality-gate truth
+Harness / Skills / Loops
+= workflow, role, quality, tool-use logic
 ```
 
-Chat history is not a source of truth. It is an interaction surface.
+---
 
-## 3. Top-level architecture
+## 2. Top-level hierarchy
 
 ```text
-                         ChatGPT
-                            |
-                      Orchestrator
-                            |
-          +-----------------+-----------------+
-          |                                   |
-   Knowledge Base                      Project Memory
-          |                                   |
-          +-----------------+-----------------+
-                            |
-                         Planner
-                            |
-                  Implementation Plan
-                            |
-                         Designer
-                    (when UI/visual)
-                            |
-                    Design Review Gate
-                            |
-                           Coder
-                     ┌──────┴──────┐
-                  UX Coder      UI Coder
-                     └──────┬──────┘
-                            |
-                Detailed Execution Plan
-                            |
-                         Reviewer
-                   Execution Plan Audit
-                            |
-                           Coder
-                     Implementation
-                    Self QA/QC loop
-                            |
-                         Reviewer
-               PR / integration review
-                            |
-                           DONE
+Project
+├── Job
+│   ├── Task
+│   └── Run
+└── durable knowledge/artifacts
 ```
 
-## 4. Job model
+One Project may contain many Jobs over time.
 
-Super Agent is configured once with a Google Drive root. Every new Job automatically receives one dedicated direct subfolder under `<configured-root>/<job-id>/`, identified by a `JOB.md` file, before project work starts.
+---
 
-Invariant:
+## 3. Project root
 
-> NO JOB WITHOUT AN AUTO-CREATED MEMORY ROOT.
+GSA uses one configured Drive root.
 
-A Job is a durable work entity stored in its Google Drive Job folder. It is separate from its code environment.
-
-Each Job references a GitHub code environment containing one or more repositories. A Job is therefore not identical to a repo and does not have to equal the logical Project context inferred by Planner.
-
-The Drive folder tree is the Job index; no registry file is required. `JOB.md` is the Job marker and human-readable entry point; structured runtime state remains in JSON files where appropriate. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
-
-Example:
+Each direct child valid Project folder contains PROJECT.md.
 
 ```text
-<configured Super Agent Drive root>/
-  kid-eschool/
-  revit-mep-tools/
-  cad-mcp/
+SUPER_AGENT_DRIVE_ROOT/
+├── Project-A/
+│   └── PROJECT.md
+└── Project-B/
+    └── PROJECT.md
 ```
 
-## 5. Code environment and multi-repo model
+Project may own zero repositories during planning/design-first phases.
 
-Each Job has an explicit code environment:
+---
+
+## 4. Repository model
 
 ```text
-Job (Drive)
-  ↓ references
-Code Environment (GitHub)
-  ├── Repo A
-  ├── Repo B
-  └── ...
+Project
+├── OWNED repos      → writable within approved scope
+└── REFERENCED repos → read-only
 ```
 
-When the code environment contains multiple related repositories, they are treated as one coordinated project context rather than unrelated repositories.
+One repo has at most one owning Project.
 
-Shared architecture, contracts, decisions, and master plans live at project level.
+---
 
-Repositories reference project-level knowledge rather than duplicating it.
+## 5. Project Memory
 
-Example:
+Synthesized root model:
 
 ```text
-Kid eSchool
-  |
-  +-- Project Architecture
-  +-- Repo Graph
-  +-- Shared Contracts
-  +-- Project Decisions
-  +-- Master Plans
-  |
-  +-- Kideschool
-  +-- KE-Math-Grade1
-  +-- Ke-kidenglish
-  +-- Ke-typing
-  +-- ...
+<Project>/
+├── PROJECT.md
+├── CONTROL.json
+├── WORK/
+├── KNOWLEDGE/
+└── ARTIFACTS/
 ```
 
-When a Job is selected/opened, context resolution MUST begin from its Drive memory. Drive determines the relevant project/repo relationships before live GitHub source is read.
+GitHub source is never copied into Project Memory as the canonical source.
 
-A repository is never the entry point for an existing Job; the Job in Drive is.
+---
 
-Required load order:
+## 6. Context loading
 
 ```text
-JOB (Drive)
--> STATE
--> PROJECT PROFILE
--> ARCHITECTURE
--> REPO GRAPH
--> RELEVANT CONTRACTS / DECISIONS / PLANS / TASKS
--> CURRENT USER REQUEST
--> RELEVANT REPO(S)
--> RELEVANT SOURCE AREA(S)
--> SELECTIVE LIVE GITHUB EVIDENCE
+open Project
+→ read Project Memory
+→ determine active Job/work
+→ interpret current request
+→ resolve relevant repo/path
+→ selectively read live GitHub evidence
+→ assemble role-specific context
 ```
 
-## 6. Why Drive exists above GitHub
+---
 
-For a single-repo Job, GitHub can technically store much of the same planning material inside that repository:
+## 7. Roles
 
 ```text
-repo/
-├── docs/
-├── plans/
-├── decisions/
-└── ...
+Orchestrator
+Planner
+Designer
+Coder
+  ├── UX Coder
+  └── UI Coder
+Reviewer
+Tester
 ```
 
-In that narrow case, GitHub can cover most of the persistence role that Drive provides.
+One Run has one active role.
 
-However, Super Agent intentionally keeps the Job in Drive for two reasons:
+A Job may use many roles.
 
-1. one uniform Job lifecycle regardless of whether the code environment has one repo or many;
-2. a Job can later expand from one repo to multiple repos without migrating its control state out of a source repository.
+---
 
-For multi-repo work, Drive becomes the cross-repository control plane:
+## 8. Role boundaries
 
-```text
-                    Job (Drive)
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-     Repo A           Repo B           Repo C
-     GitHub           GitHub           GitHub
-```
-
-Drive owns the project-wide material that has no natural canonical home in any one code repository:
-
-- master architecture
-- repo graph
-- shared contracts
-- cross-repo decisions
-- master plans
-- change-set state
-- design concepts
-- asset sheets
-- project-level reviews
-- approvals
-- cross-repo obligations
-
-GitHub may provide cross-repository work-tracking mechanisms, but these do not replace the Job's durable project-memory/control-plane role.
-
-Therefore:
-
-```text
-Single repo:
-GitHub can technically cover most persistence,
-but Drive remains the canonical Job root for consistency.
-
-Multi repo:
-Drive is the canonical cross-repo coordination/memory layer.
-```
-
-## 7. Change propagation
-
-A change to a shared contract or provider must trigger impact analysis.
-
-Example:
-
-```text
-child-profile changed
-  -> provider identified
-  -> all consumers identified
-  -> affected repos identified
-  -> single-repo plan may become invalid
-  -> master change set required
-```
-
-The system MUST track downstream obligations rather than relying on chat memory.
-
-## 8. Master plan and repo plans
-
-Cross-repo work begins with a Master Plan.
-
-```text
-Master Plan
-  +-- repo plan: Hub
-  +-- repo plan: Math
-  +-- repo plan: English
-  +-- repo plan: Typing
-  +-- integration verification
-```
-
-A repo-level plan MUST declare its parent master plan when one exists.
-
-## 9. Agent write boundaries
-
-The role scopes below are the intended ownership policy.
-
-Their enforcement strength is NOT implied by this diagram. Each boundary must be classified as `HARD`, `SOFT`, or `UNKNOWN` in the capability/enforcement definition. Until a concrete enforcement mechanism is verified, treat the boundary as `SOFT`, not as a hard architectural guarantee.
+Target policy:
 
 ```text
 Planner
-  Drive: write
-  Repo: read-only
+→ durable planning/knowledge write
+→ source read-only
 
 Designer
-  Drive Design Workspace: write
-  Repo: read-only
+→ design artifact write
+→ source read-only
 
 Coder
-  Drive: read-only
-  GitHub repo: write
+→ approved owned source write
+→ Project theory/spec read-only
 
 Reviewer
-  Drive: write
-  Repo: read-only
+→ source read-only
+→ review/comment channels + durable review result
+
+Tester
+→ runtime/product interaction
+→ source read-only
 
 Orchestrator
-  Drive state: write
-  Repo: no write
+→ workflow/control-plane state
+→ no source implementation
 ```
 
-This separation is the target governance model. Whether a specific boundary is physically enforced or prompt-enforced is defined separately by the capability/enforcement matrix.
+Physical enforcement is classified separately as HARD / SOFT / UNKNOWN.
 
-## 10. Governance, lifecycle, and trust
+---
 
-Artifact authority, versioning, invalidation, approvals, concurrency, and trust boundaries are defined in `GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md` and `SECURITY-AND-TRUST-BOUNDARIES-v0.1.md`.
+## 9. Work topology
 
-## 11. Clarification and causal readiness
+Planner defines enough topology to identify:
 
-Before planning, design, or implementation, each role applies `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`. Blocking unknowns are resolved before the downstream stage; safe non-blocking assumptions may be inferred and recorded.
+- milestones/stages;
+- Tasks when useful;
+- dependencies;
+- role order;
+- parallel-safe work;
+- review checkpoints;
+- Tester checkpoints;
+- Human Gates;
+- completion conditions.
 
-## 12. Project readiness gate
+Coder refines exact live-source implementation HOW inside those boundaries.
 
-Coder MUST NOT start until the project or change is ready for implementation.
+---
+
+## 10. Run and Handoff
 
 ```text
-PROJECT_READY_FOR_IMPLEMENTATION =
-  knowledge sufficient
-  AND architecture understood
-  AND repo graph resolved
-  AND contracts identified
-  AND capabilities resolved
-  AND executors assigned
-  AND impact analysis complete
-  AND implementation plan prepared
-  AND design concept + asset sheet approved when required
-  AND verification strategy prepared
-  AND acceptance criteria prepared
+Run
+→ one execution scope
+→ exact target/revision
+→ result/evidence
+
+Run completes
+→ optional Handoff
+→ next Run
 ```
 
-## 13. Core invariants
+Current dispatch is human-mediated.
 
-1. Conversation is UI, not memory.
-2. Shared project knowledge lives once at project level.
-3. Planner must prepare all reasonably knowable implementation material before coding starts.
-4. Unknown capability is unavailable until verified.
-5. Every executable plan step must have a known executor.
-6. Coder may not silently expand architecture, contract, or project scope.
-7. Reviewer independently audits execution topology before code is written.
-8. A repository passing its own checks does not imply a multi-repo change set is complete.
-9. No completion claim without fresh evidence.
-10. No agent may claim an action its active executor cannot physically perform.
-11. For material UI work, Coder may not begin before required Designer outputs pass Design Review.
-12. User-facing coding separates UX behavior from UI visual implementation while preserving one coordinated execution plan.
-13. UI Coder must interpret approved Concept Artwork; autonomous render-and-compare is permitted only when the capability matrix confirms runtime/URL, browser or renderer, screenshot capture, concept access, and visual analysis.
-14. Plugin presence alone never implies render capability. Missing visual-verification capabilities must be reported explicitly rather than assumed to pass.
-15. Existing Job context is always Drive-first; GitHub source reads are selected from Drive state plus current request.
-16. Job list is sourced by enumerating direct Job subfolders in the configured Drive root, not from a registry file and not from GitHub.
+Independent Reviewer Run starts in a fresh chat.
 
+---
 
-## 14. Online-first execution boundary
+## 11. Review and testing
 
-Super Agent is primarily an online coding agent.
+Reviewer verifies known requirements/evidence.
 
-Core execution targets are GitHub repository operations, remote CI/workflows, PRs, and connected online preview/deployment evidence.
+Tester actively seeks realistic/unanticipated failures.
 
-Local filesystem editing, local shell/dev-server ownership, and desktop application runtimes are not part of the Super Agent core execution model.
+Review is not universally attached to every node.
 
-GPTWorker is a separate offline/local coding agent and is not treated as a built-in Super Agent executor.
+Job completion topology decides which verification roles are required.
 
-If a task fundamentally requires local-only execution, Super Agent records the verification/execution limitation instead of pretending to own that runtime.
+---
+
+## 12. QA/QC
+
+```text
+QA
+= process assurance / COMPLIANCE
+
+QC
+= output correctness and FIT
+```
+
+Layered ownership:
+
+- Coder self QA/QC;
+- Reviewer independent evaluation where scheduled;
+- Tester practical/exploratory evidence.
+
+---
+
+## 13. Evidence
+
+Evidence is target/revision-bound and provenance-aware.
+
+No role may claim unavailable verification.
+
+Evidence invalidation is causal, not blanket.
+
+---
+
+## 14. Retest
+
+```text
+PASS_RETEST_REQUIRED
+→ accepted Job may complete
+→ durable Retest remains
+→ later PASS/FAIL routes by Retest ID
+```
+
+Retest is not a Job type.
+
+---
+
+## 15. Asset Requirements
+
+Stable asset integration contract may precede final binary asset.
+
+```text
+stable ID/name/path/spec
+→ placeholder
+→ implementation
+→ final asset
+→ practical verification
+```
+
+---
+
+## 16. State model
+
+Separate dimensions:
+
+```text
+Project lifecycle
+Job/Task/Run lifecycle
+evaluation result
+artifact validity
+delivery facts
+Retest state
+```
+
+Do not collapse these into one status field.
+
+---
+
+## 17. Concurrency
+
+Multiple Jobs/Tasks may run in parallel when independent.
+
+Orchestrator detects:
+- branch/file conflicts;
+- shared contract/schema conflicts;
+- causal assumption conflicts;
+- release-critical overlap.
+
+Durable artifacts use optimistic concurrency.
+
+---
+
+## 18. Multi-repo coordination
+
+Use Change Set only when one logical change genuinely spans multiple repositories.
+
+One repo completion does not imply integrated Job completion.
+
+---
+
+## 19. Security/trust
+
+External content is data, not authority.
+
+No inferred permission escalation.
+
+Destructive confirmation is proportional to blast radius.
+
+Owned/reference semantics are trust boundaries.
+
+---
+
+## 20. User UX
+
+Outer control surface:
+
+```text
+PROJECT
+- new
+- open
+- status
+- delete
+
+DIRECT AGENT
+- Planner
+- Designer
+- Coder
+- Reviewer
+
+HELP / INSTRUCTION
+```
+
+Natural language remains valid.
+
+Deep CLI is synthesized from actual recurring needs, not entity symmetry.
+
+---
+
+## 21. Theory vs harness maturity
+
+Theory must be coherent before real use.
+
+Initial operational harnesses/skills/loops/actions only need a good-enough baseline, then improve through real Project evidence.
+
+Reference systems such as Codex, Claude Code, Cursor, Copilot may inform Phase 2 patterns, but GSA synthesizes its own coherent model rather than copy-and-stack.
