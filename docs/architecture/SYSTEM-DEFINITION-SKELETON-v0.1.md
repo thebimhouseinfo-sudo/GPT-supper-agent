@@ -1,457 +1,146 @@
-# System Definition Skeleton v1
+# System Definition Skeleton v1.1
 
 ## Purpose
 
-This file is the current map of GPT Super Agent theory after DETAIL → COLLECT → REVIEW → SYNTHESIZE Pass 01.
+Current map after internal review + external peer review disposition + Phase-1 fix pass.
 
 Status vocabulary:
 
 ```text
 FROZEN
-= foundationally accepted
+= foundational semantic invariant accepted
 
 DEFINED
-= theory sufficiently specified for implementation/harness work
+= semantic boundary and required contract exist
+
+SYNTHESIZED
+= implementation-relevant record/interface details are specified enough that Phase 2 should not invent product/architecture semantics
+
+PROBE_REQUIRED
+= platform behavior must be observed before claiming capability/enforcement
 
 CALIBRATION
-= operational harness/skill/loop behavior expected to evolve from real use
+= harness operational quality intentionally evolves from real use
 ```
 
----
+## S0 Product boundary — FROZEN
+Foundation/Architecture.
 
-## S0. Product boundary — FROZEN
+## S1 Project/Drive model — FROZEN
+Project root, PROJECT.md, lifecycle, repo ownership/reference.
 
-Defined in:
-- FROZEN-FOUNDATION-v0.1.md
-- ARCHITECTURE-v0.1.md
-
----
-
-## S1. Project / Drive model — FROZEN
-
-Defined:
-- configured Drive root;
-- Project as direct child folder;
-- PROJECT.md marker;
-- Project lifecycle;
-- Drive-first open;
-- 0..N owned repos;
-- 0..N referenced repos;
-- Project delete semantics.
-
-References:
-- FROZEN-FOUNDATION-v0.1.md
-- PROJECT-MEMORY-v0.1.md
-- JOB-LIFECYCLE-v0.1.md
-
----
-
-## S2. Work hierarchy — DEFINED
-
+## S2 Work hierarchy — FROZEN
 ```text
-Project
-→ Job
-→ Task
-→ Run
+Project → Job → Task → Run
 ```
+Job may use multiple role Runs.
 
-Run uses one execution scope:
-- Job-level; or
-- one primary Task;
-- plus optional affected Task refs.
+## S3 Repository model — DEFINED
+Structured OWNED/REFERENCED claims; duplicate OWNED claim is human-governed conflict.
 
-References:
-- STATE-MACHINE-v1.md
-- synthesized core schemas.
+## S4 Project Memory — SYNTHESIZED
+Simplified Drive model:
+- Job embeds Tasks/topology by default;
+- Runs separate append-only;
+- verification storage may consolidate semantic kinds;
+- CONTROL is rebuildable cache;
+- no initial tombstone machinery.
 
----
+## S5 State model — SYNTHESIZED
+Lifecycle/result/validity/facts separated.
+Detailed transition enforcement only where valuable.
+WAITING/BLOCKED primarily derived.
 
-## S3. Repository model — DEFINED
+## S6 Orchestrator — DEFINED
+Implicit harness responsibility set; no always-running process.
 
-Defined:
-- OWNED vs REFERENCED;
-- one owning Project per repo;
-- referenced repos read-only;
-- copied/forked derived source becomes owned destination;
-- Job/Task scope cannot exceed Project ownership.
+## S7 Planner — DEFINED
+Owns finite-work planning/topology/acceptance/capability requirements and mandatory review-trigger application.
 
----
+## S8 Designer — DEFINED
+Owns visual interpretation/design coverage; may run as non-independent child Run.
 
-## S4. Project Memory / storage — DEFINED
+## S9 Coder — DEFINED
+Owns source implementation HOW, scope claim, Goal Recheck and honest capability-backed checks.
 
-Canonical model:
+## S10 Reviewer — DEFINED
+Fresh-chat independent review when required; mechanical review floor applies to sensitive change classes.
 
-```text
-<Project>/
-├── PROJECT.md
-├── CONTROL.json
-├── WORK/
-├── KNOWLEDGE/
-└── ARTIFACTS/
-```
+## S11 Tester — DEFINED / PROBE_REQUIRED
+Semantic role is defined. Practical execution requires observed runtime/browser/product capability; otherwise human Retest path is used.
 
-Subcollections are derived from persistence/query requirements.
+## S12 QA/QC — SYNTHESIZED
+Coder self QA/QC = capability-backed checks + Goal Recheck.
+Reviewer independent evaluation.
+Tester practical QC when available.
 
-Reference:
-- PROJECT-MEMORY-v0.1.md
+## S13 Handoff — SYNTHESIZED
+Durable transition semantics + minimal dispatch/pickup contract required before Phase 2.
 
----
+## S14 Context Builder — DEFINED
+Minimum sufficient role-specific context; freshness-sensitive evidence refreshed.
 
-## S5. State model — DEFINED
+## S15 Human Gate/Approval — DEFINED
+Human decisions explicit; shared account identity never substitutes for human approval.
 
-Separate:
-- lifecycle;
-- result;
-- validity;
-- delivery facts;
-- verification obligations.
+## S16 Verification/Evidence — SYNTHESIZED
+Provenance/target/revision; causal fail-safe invalidation; UNVERIFIED supported at criterion level.
 
-Reference:
-- STATE-MACHINE-v1.md
+## S17 Capability/Executor — PROBE_REQUIRED
+Semantic catalog/contract exists; observed platform matrix must be filled by probes.
 
----
+## S18 Multi-repo — DEFINED
+Change Set only for genuine coordinated multi-repo work.
 
-## S6. Orchestrator — DEFINED
+## S19 Governance — SYNTHESIZED
+Global IDs, attribution, scope claims, append-first concurrency, merge coverage summary, fail-safe causal revalidation.
 
-Owns:
-- transition governance;
-- current work routing;
-- handoff persistence;
-- Human Gate routing;
-- conflict detection;
-- capability coordination;
-- status views.
+## S20 Security/Trust — SYNTHESIZED
+Shared identity constraint, external-content trust boundary, consequential-action recheck.
 
-Does not implement source.
+## S21 Asset Requirement — SYNTHESIZED
+Compact lifecycle; stable contract remains distinct semantic entity.
 
----
+## S22 Retest — SYNTHESIZED
+Pending after PASS_RETEST_REQUIRED; post-completion FAIL creates remediation Job.
 
-## S7. Planner — DEFINED
+## S23 Release/Completion — SYNTHESIZED
+Topology-driven completion + review floor + human merge coverage/authorization.
 
-Owns:
-- intent/scope;
-- architecture/impact;
-- Job topology;
-- acceptance/verification strategy;
-- role ordering;
-- specialist readiness;
-- Causal Change Review support.
+## S24 Command/User UX — SYNTHESIZED
+Outer surface remains PROJECT / DIRECT AGENT / HELP.
+Minimal dispatch must support list/take handoff, status, pause/stop.
+Current command/product names are aliases.
 
-Coder refines exact live-source HOW.
+## S25 Failure/Recovery — DEFINED
+Smallest causal recovery; append observed partial effects; retry via linked Run.
 
----
+## S26 Harness Quality — DEFINED / CALIBRATION
+Behavioral defect/eval loop improves Phase-2 harness after semantic contracts exist.
 
-## S8. Designer — DEFINED
+## S27 Identity / schemas — SYNTHESIZED
+See:
+- IDENTITY-AND-HANDLES-v1.md
+- CORE-RECORD-CONTRACTS-v1.md
+- ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md
 
-Owns:
-- visual interpretation;
-- design coverage;
-- concept/design system;
-- responsive visual intent;
-- Asset Requirement design semantics.
+## S28 Implementation architecture — BLOCKED
+Do not enter Phase 2 until:
+- accepted peer fixes are complete;
+- capability/platform probes are classified;
+- consistency review passes;
+- human confirms Phase-1 close.
 
-Specialist methodology belongs in Designer skills/harness, not core GSA theory.
+## S29 Theory process
+Moved to THEORY-PROCESS-v1.md; it is not product foundation.
 
----
-
-## S9. Coder — DEFINED
-
-Owns:
-- exact source implementation HOW;
-- approved owned repo writes;
-- continuous self QA/QC;
-- smallest causally sufficient change;
-- honest verification;
-- fix/re-review loop.
-
-UX/UI Coder are specializations.
-
----
-
-## S10. Reviewer — DEFINED
-
-Owns:
-- independent objective evaluation;
-- exact target/revision binding;
-- findings;
-- severity;
-- re-review;
-- HUMAN_REVIEW_REQUIRED routing.
-
-Reviewer is topology-driven, not universally mandatory.
-
----
-
-## S11. Tester — DEFINED
-
-Owns:
-- scripted practical testing;
-- exploratory testing;
-- Retest execution where possible;
-- discovery of unforeseen realistic failures.
-
-Tester is distinct from Reviewer.
-
----
-
-## S12. QA / QC — DEFINED
+## S30 Current Phase-1 gate
 
 ```text
-QA = COMPLIANCE/process assurance
-QC = CORRECTNESS + FIT/output quality
-```
-
-Layered across Coder / Reviewer / Tester.
-
----
-
-## S13. Handoff — DEFINED
-
-Handoff transfers responsibility between Runs.
-
-Current platform:
-```text
-human-dispatched
-+ durable transition state
-```
-
-Future automatic dispatch is an extension point.
-
----
-
-## S14. Context Builder — DEFINED
-
-```text
-Project Memory
-+ current work/request
-+ relevant live evidence
-→ minimum sufficient role-specific packet
-```
-
-No fixed theory token quota.
-
----
-
-## S15. Human Gate / Approval — DEFINED
-
-Planned Human Gate and Runtime Confirmation are distinct.
-
-Runtime Confirmation is never a durable approval record.
-
-Material governance/waiver/release decisions may persist.
-
----
-
-## S16. Verification / Evidence — DEFINED
-
-Evidence:
-- provenance-aware;
-- exact target/revision-bound;
-- causally revalidated;
-- categorical provenance, not numeric confidence.
-
-Unavailable verification may create PASS_RETEST_REQUIRED.
-
----
-
-## S17. Capability / Executor — DEFINED
-
-Capability state:
-
-```text
-AVAILABLE
-UNAVAILABLE
-UNKNOWN
-```
-
-Derived execution mode may be NORMAL / DEGRADED / BLOCKED.
-
-Unknown is treated operationally as unavailable.
-
----
-
-## S18. Multi-repo coordination — DEFINED
-
-Change Set is used only when one logical change truly spans/coordin­ates repos.
-
-Repo completion does not imply integrated completion.
-
----
-
-## S19. Governance / artifact lifecycle — DEFINED
-
-Defined:
-- stable IDs/revisions;
-- causal invalidation;
-- optimistic concurrency;
-- revision lineage;
-- no blanket stale;
-- no last-write-wins.
-
----
-
-## S20. Security / trust — DEFINED
-
-Defined:
-- external content is data, not authority;
-- no inferred permission escalation;
-- destructive confirmations proportional to blast radius;
-- secrets not copied unnecessarily;
-- OWNED/REFERENCED as trust boundary.
-
----
-
-## S21. Asset Requirement — DEFINED
-
-Stable integration contract may precede final binary asset.
-
-Placeholder/final/integration/verification are separate concepts.
-
----
-
-## S22. Retest — DEFINED
-
-Retest is durable practical verification obligation.
-
-Status:
-PENDING / BLOCKED / PASS / FAIL / SUPERSEDED.
-
-History is append-preserving.
-
----
-
-## S23. Release / completion — DEFINED
-
-Project lifecycle is separate from release milestones.
-
-Job completion is topology-driven.
-
-Delivery facts:
-accepted / merged / deployed / deployment_verified.
-
----
-
-## S24. Command / User UX — DEFINED
-
-Outer surface:
-
-```text
-PROJECT
-DIRECT AGENT
-HELP
-```
-
-Deep CLI synthesized minimally from recurring needs.
-
-Natural language remains equivalent.
-
----
-
-## S25. Failure / recovery — DEFINED
-
-Recover at smallest causal scope.
-
-Interrupted meaningful retry creates new linked Run.
-
-Partial effects are observed/reconciled rather than assumed rolled back.
-
----
-
-## S26. Harness Quality Loop — DEFINED / CALIBRATION
-
-Theory is defined.
-
-Operational skills/harnesses/loops/actions are reference-informed baseline in Phase 2, then calibrated using real Project output evidence.
-
----
-
-## S27. Schemas — DEFINED
-
-Core semantic schemas synthesized for:
-- Project;
-- Job;
-- Task;
-- Run;
-- Handoff;
-- Human Gate;
-- Review/Finding;
-- Evidence;
-- Retest;
-- Asset Requirement;
-- Capability;
-- Release;
-- CONTROL.
-
-Exact machine validation syntax belongs to implementation detail.
-
----
-
-## S28. Implementation architecture — BLOCKED BY EXTERNAL PEER REVIEW
-
-GSA is primarily theory + instructions + harnesses + skills + connected platform capabilities, not a standalone runtime product that requires a large custom engine first.
-
-Phase 2 implementation architecture should therefore focus on:
-- plugin/harness packaging;
-- skill loading;
-- tool/action routing;
-- Drive/GitHub connector use;
-- schema/template handling where needed;
-- user-facing fake CLI/control surface.
-
-Do not prematurely design a heavy runtime.
-
----
-
-## S29. Theory process — FROZEN META-RULE
-
-```text
-DETAIL
-→ COLLECT
-→ REVIEW
-→ SYNTHESIZE
-→ FIX
-→ repeat
-```
-
-After this FIX pass:
-```text
-COLLECT PASS 02
-→ REVIEW PASS 02
-```
-
-The goal is to detect contradictions introduced by synthesis/fix before declaring theory complete.
-
-
----
-
-## S30. Phase 1 internal completeness status
-
-```text
-INTERNAL_THEORY_STATUS = COMPLETE
-EXTERNAL_PEER_REVIEW = PENDING
+PEER_REVIEW_DISPOSITION = COMPLETE
+ACCEPTED_FIX_PASS = IN_PROGRESS
+MISSING_CONTRACTS = BEING_SYNTHESIZED
+PLATFORM_PROBES = PENDING
+CONSISTENCY_REVIEW = PENDING
 PHASE_2_ENTRY = BLOCKED
-```
-
-The current theory has completed:
-
-```text
-DETAIL
-→ COLLECT
-→ REVIEW
-→ SYNTHESIZE
-→ FIX
-→ repeated consistency/completeness passes
-```
-
-No known material semantic gap remains in the internal review.
-
-Before Phase 2:
-
-```text
-Claude peer review
-→ review findings
-→ disposition
-→ fix/reconcile accepted material findings
-→ final human check
-→ Phase 2
 ```
