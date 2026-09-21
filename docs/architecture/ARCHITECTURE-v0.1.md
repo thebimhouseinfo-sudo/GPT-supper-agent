@@ -30,6 +30,8 @@ Project
 
 One Project may contain many Jobs over time.
 
+Durable Project/Job/Task/Run/Handoff/Review/Finding/Evidence/Retest/Asset/Human-Gate/Release identities intended for detached reference are globally unique.
+
 ---
 
 ## 3. Project root
@@ -279,6 +281,8 @@ Orchestrator detects:
 
 Durable artifacts use optimistic concurrency.
 
+CONTROL.json is a rebuildable materialized current-state view, not the historical source of truth.
+
 ---
 
 ## 18. Multi-repo coordination
@@ -324,6 +328,8 @@ HELP / INSTRUCTION
 Natural language remains valid.
 
 Deep CLI is synthesized from actual recurring needs, not entity symmetry.
+
+Manual `job new` is an advanced shortcut into normal Job normalization/readiness; it does not bypass Planner/Orchestrator governance.
 
 ---
 
