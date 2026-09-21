@@ -37,6 +37,7 @@ Source code remains in GitHub or an approved local workspace. Google Drive is us
 ## Architecture documents
 
 - [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
+- [Clarification & Causal Readiness](docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md)
 - [Project Memory & Knowledge](docs/architecture/PROJECT-MEMORY-v0.1.md)
 - [Agent Harnesses](docs/architecture/AGENT-HARNESSES-v0.1.md)
 - [Planner Scope, Skill Routing & UI/UX](docs/architecture/PLANNER-SCOPE-AND-UIUX-v0.1.md)
