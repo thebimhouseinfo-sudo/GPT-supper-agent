@@ -342,7 +342,19 @@ BLOCKED → CANCELLED
 BLOCKED → SUPERSEDED
 ```
 
-A completed Task may be explicitly reopened only when the remediation is still semantically the same bounded Task. Otherwise create a new linked remediation Task.
+A completed Task may be explicitly reopened only when the remediation is still semantically the same bounded Task.
+
+The only direct reopen transition is:
+
+```text
+COMPLETED → READY
+```
+
+This forces current inputs/acceptance to be re-evaluated before new execution starts.
+
+Do not use `COMPLETED → IN_PROGRESS` directly.
+
+If remediation introduces materially new scope/type/objective, create a new linked remediation Task instead.
 
 ### Run
 
@@ -460,3 +472,113 @@ SUPERSEDED Task → IN_PROGRESS
 ```
 
 Use new linked Job/Task/Run when new work is actually being performed.
+
+
+---
+
+## 21. Project PAUSED semantics
+
+```text
+Project PAUSED
+→ Project Memory remains readable
+→ no new Job/Task/Run execution begins
+→ no pending Handoff is consumed
+→ active work stops at earliest safe boundary
+→ resume execution requires Project ACTIVE
+```
+
+A currently issued indivisible external action may finish if the executor cannot cancel it safely.
+
+Its observed result must be persisted before stopping.
+
+PAUSED is therefore an execution freeze, not deletion or archive.
+
+---
+
+## 22. Project ARCHIVED semantics
+
+```text
+Project ARCHIVED
+→ visible in Project Status
+→ hidden from normal Project Open
+→ history/read inspection allowed
+→ ordinary work execution prohibited
+```
+
+To resume ordinary work, reactivate the Project, normally:
+
+```text
+ARCHIVED → ACTIVE
+```
+
+---
+
+## 23. WAITING vs BLOCKED
+
+```text
+WAITING
+= a valid continuation path exists,
+  but a known condition / handler / event has not occurred yet
+
+BLOCKED
+= no safe/current continuation path exists
+  until a blocker is actively resolved
+```
+
+Examples:
+
+```text
+WAITING
+→ next human-dispatched role is known
+→ known external completion is pending
+→ expected event has not occurred yet
+
+BLOCKED
+→ required permission unavailable
+→ architecture decision unresolved
+→ source inaccessible
+→ concurrency conflict unresolved
+```
+
+---
+
+## 24. Shared evaluation vocabulary scope
+
+Shared evaluation vocabulary:
+
+```text
+PASS
+PASS_RETEST_REQUIRED
+CHANGES_REQUIRED
+BLOCKED
+HUMAN_REVIEW_REQUIRED
+```
+
+is contextual and is not a mandatory enum for every durable entity.
+
+For a completed accepted Job, the terminal accepted result is normally:
+
+```text
+PASS
+or
+PASS_RETEST_REQUIRED
+```
+
+Other values are normally nonterminal evaluation/routing outcomes.
+
+---
+
+## 25. Lifecycle change during active execution
+
+When a Project changes from ACTIVE to PAUSED or ARCHIVED while a Run is active:
+
+```text
+record lifecycle change
+→ do not begin another consequential action
+→ allow already-issued indivisible action to settle if cancellation is unavailable
+→ persist observed result
+→ stop at earliest safe boundary
+→ keep subsequent Handoff/work pending
+```
+
+Do not claim an external action was cancelled unless the executor confirms cancellation.
