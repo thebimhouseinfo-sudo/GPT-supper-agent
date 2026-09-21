@@ -16,6 +16,8 @@ Schemas below define semantic fields. Exact serialization validation may be impl
 
 ## 1. Common metadata
 
+Durable entities intended for detached durable reference use globally unique IDs.
+
 Durable entities SHOULD include:
 
 ```text
@@ -52,6 +54,9 @@ repo:
 relation: OWNED | REFERENCED
 role:
 provenance:
+attached_at:
+detached_at:
+transfer_ref:
 ```
 
 ---
@@ -99,7 +104,7 @@ repo_scope: []
 path_scope: []
 completion_criteria: []
 run_refs: []
-finding_refs: []
+findings: []
 asset_requirement_refs: []
 retest_refs: []
 cancel_reason:
@@ -203,7 +208,7 @@ evidence_refs: []
 previous_review_id:
 ```
 
-Finding:
+Finding is embedded in Review by default but retains a globally unique ID:
 
 ```yaml
 id:
@@ -314,6 +319,7 @@ verified_at:
 source:
 enforcement: HARD | SOFT | UNKNOWN
 limitations: []
+last_observed_only: true
 ```
 
 Derived execution mode may be:
@@ -366,3 +372,51 @@ last_updated_at:
 ```
 
 This is a current snapshot/index, not historical truth by itself.
+
+
+---
+
+## 15. Job tombstone
+
+Used only when deletion must preserve identity for surviving durable references:
+
+```yaml
+id:
+project_id:
+type: job_tombstone
+deleted_at:
+deletion_reason:
+former_job_type:
+former_objective_summary:
+surviving_reference_refs: []
+```
+
+Do not preserve ordinary Job content in the tombstone.
+
+---
+
+## 16. Milestone / stage
+
+Milestones/stages remain embedded inside Job `milestones[]`.
+
+They may have local IDs for intra-Job references but are not promoted to top-level durable entities initially.
+
+---
+
+## 17. Direct Agent promotion
+
+Promotion does not serialize the whole prior conversation.
+
+Persist only:
+- useful accepted outputs;
+- relevant target/source refs;
+- decisions that must survive;
+- new Project/Job relationship created by promotion.
+
+---
+
+## 18. Capability freshness
+
+Stored capability data represents last observed state.
+
+Before consequential execution, refresh capability when permissions/runtime/tool availability may have changed.
