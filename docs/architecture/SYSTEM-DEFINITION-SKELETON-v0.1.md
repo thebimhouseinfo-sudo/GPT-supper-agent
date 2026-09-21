@@ -593,21 +593,27 @@ SECURITY-PROTOCOL-v1
 
 ---
 
-## S18. Commands / User UX — TO_DEFINE
+## S18. Commands / User UX — PARTIAL
+
+Frozen naming:
+
+- Plugin handle: `@gsa`
+- Command namespace: `gsa/`
+- Repository name is not part of the user-facing interface.
 
 Current candidates:
 
 ```text
-job list
-job create
-job open
-job update
-job archive
+gsa/job list
+gsa/job create
+gsa/job open
+gsa/job update
+gsa/job archive
 
-status
-plan
-continue
-review
+gsa/status
+gsa/plan
+gsa/continue
+gsa/review
 ```
 
 Need define:
