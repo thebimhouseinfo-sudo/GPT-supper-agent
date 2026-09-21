@@ -70,7 +70,7 @@ Chat history is not a source of truth. It is an interaction surface.
 
 ## 4. Job model
 
-Super Agent is configured once with a Google Drive root. Every new Job automatically receives one dedicated direct subfolder under `<configured-root>/<job-id>/` before project work starts.
+Super Agent is configured once with a Google Drive root. Every new Job automatically receives one dedicated direct subfolder under `<configured-root>/<job-id>/`, identified by a `JOB.md` file, before project work starts.
 
 Invariant:
 
@@ -80,7 +80,7 @@ A Job is a durable work entity stored in its Google Drive Job folder. It is sepa
 
 Each Job references a GitHub code environment containing one or more repositories. A Job is therefore not identical to a repo and does not have to equal the logical Project context inferred by Planner.
 
-The Drive folder tree is the Job index; no registry file is required. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
+The Drive folder tree is the Job index; no registry file is required. `JOB.md` is the Job marker and human-readable entry point; structured runtime state remains in JSON files where appropriate. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
 
 Example:
 
