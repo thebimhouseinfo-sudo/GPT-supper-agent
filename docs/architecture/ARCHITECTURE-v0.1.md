@@ -147,7 +147,64 @@ JOB (Drive)
 -> SELECTIVE LIVE GITHUB EVIDENCE
 ```
 
-## 6. Change propagation
+## 6. Why Drive exists above GitHub
+
+For a single-repo Job, GitHub can technically store much of the same planning material inside that repository:
+
+```text
+repo/
+├── docs/
+├── plans/
+├── decisions/
+└── ...
+```
+
+In that narrow case, GitHub can cover most of the persistence role that Drive provides.
+
+However, Super Agent intentionally keeps the Job in Drive for two reasons:
+
+1. one uniform Job lifecycle regardless of whether the code environment has one repo or many;
+2. a Job can later expand from one repo to multiple repos without migrating its control state out of a source repository.
+
+For multi-repo work, Drive becomes the cross-repository control plane:
+
+```text
+                    Job (Drive)
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+     Repo A           Repo B           Repo C
+     GitHub           GitHub           GitHub
+```
+
+Drive owns the project-wide material that has no natural canonical home in any one code repository:
+
+- master architecture
+- repo graph
+- shared contracts
+- cross-repo decisions
+- master plans
+- change-set state
+- design concepts
+- asset sheets
+- project-level reviews
+- approvals
+- cross-repo obligations
+
+GitHub may provide cross-repository work-tracking mechanisms, but these do not replace the Job's durable project-memory/control-plane role.
+
+Therefore:
+
+```text
+Single repo:
+GitHub can technically cover most persistence,
+but Drive remains the canonical Job root for consistency.
+
+Multi repo:
+Drive is the canonical cross-repo coordination/memory layer.
+```
+
+## 7. Change propagation
 
 A change to a shared contract or provider must trigger impact analysis.
 
@@ -164,7 +221,7 @@ child-profile changed
 
 The system MUST track downstream obligations rather than relying on chat memory.
 
-## 7. Master plan and repo plans
+## 8. Master plan and repo plans
 
 Cross-repo work begins with a Master Plan.
 
@@ -179,7 +236,7 @@ Master Plan
 
 A repo-level plan MUST declare its parent master plan when one exists.
 
-## 8. Agent write boundaries
+## 9. Agent write boundaries
 
 Write permissions are architectural boundaries, not prompt suggestions.
 
@@ -207,15 +264,15 @@ Orchestrator
 
 This prevents one role from defining the rule, implementing the rule, and grading itself.
 
-## 9. Governance, lifecycle, and trust
+## 10. Governance, lifecycle, and trust
 
 Artifact authority, versioning, invalidation, approvals, concurrency, and trust boundaries are defined in `GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md` and `SECURITY-AND-TRUST-BOUNDARIES-v0.1.md`.
 
-## 10. Clarification and causal readiness
+## 11. Clarification and causal readiness
 
 Before planning, design, or implementation, each role applies `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`. Blocking unknowns are resolved before the downstream stage; safe non-blocking assumptions may be inferred and recorded.
 
-## 11. Project readiness gate
+## 12. Project readiness gate
 
 Coder MUST NOT start until the project or change is ready for implementation.
 
@@ -234,7 +291,7 @@ PROJECT_READY_FOR_IMPLEMENTATION =
   AND acceptance criteria prepared
 ```
 
-## 12. Core invariants
+## 13. Core invariants
 
 1. Conversation is UI, not memory.
 2. Shared project knowledge lives once at project level.
@@ -254,7 +311,7 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 16. Job list is sourced by enumerating direct Job subfolders in the configured Drive root, not from a registry file and not from GitHub.
 
 
-## 13. Online-first execution boundary
+## 14. Online-first execution boundary
 
 Super Agent is primarily an online coding agent.
 
