@@ -1459,52 +1459,67 @@ Rules:
 - creating an owned derivative from referenced source must preserve provenance.
 
 
-## 4.14 Minimal Project skeleton
+## 4.14 Minimal Project skeleton — derive storage from finalized domain model
 
 User decision:
 
-Every Project should start from a **minimal standard skeleton**, but the exact file/folder schema must be defined later as a dedicated design task.
+Every Project should eventually have a minimal standard skeleton, but the actual folders/files MUST NOT be nominated in advance.
 
-The core theory only freezes the following:
+The storage schema is derived only after the core domain objects and workflows have been defined in sufficient detail, including at least:
 
-```text
-Project initialization
-→ creates a small canonical structure
-→ enough to identify the Project, hold durable control-plane state,
-  and provide stable homes for known persistent requirement queues
-→ avoids generating a large tree of speculative empty artifacts
-```
+- Agent / role;
+- Project;
+- Job;
+- Task;
+- Run;
+- handoff;
+- Asset Requirement;
+- Test Requirement;
+- Retest;
+- Review finding/evidence;
+- release/completion milestone;
+- decisions/governance records;
+- any other durable entity discovered during definition.
 
-Known persistent areas already justified by the architecture include at least:
-
-- Project marker / identity and ownership metadata;
-- Job / Task / Run state storage;
-- Asset Requirements;
-- test / practical verification requirements and Retest records;
-- release/completion milestone records;
-- durable decisions / handoff information as required.
-
-The exact naming, file boundaries, front matter, indexes, IDs, and folder hierarchy are **NOT frozen yet**.
-
-For example, concepts currently known to need durable homes include:
+For each finalized entity, the schema-design pass must decide explicitly:
 
 ```text
-asset-requirements/
-test-requirements/ or equivalent
-retests/ or equivalent
-jobs/ or equivalent
-releases/ or equivalent
+Does this need:
+- its own folder?
+- one file per entity?
+- one shared/index file?
+- append-only log?
+- structured front matter?
+- only fields inside another artifact?
+- no durable storage at all?
 ```
 
-The final schema may combine or rename some of these if a cleaner design preserves all required semantics.
+Only after this cross-check is complete should the canonical Project Memory tree be designed.
 
-Rule:
+Therefore the sequence is:
 
 ```text
-freeze the need for a minimal skeleton now
-→ design the exact Project Memory schema later
-→ avoid premature folder-by-folder canonization
+define agents/jobs/tasks/runs/workflows
+→ identify durable entities and access patterns
+→ identify ownership/read-write boundaries
+→ identify lookup/query needs
+→ identify history/audit needs
+→ derive folders/files/indexes
+→ minimize and normalize the structure
+→ freeze Project Memory schema
 ```
+
+Known concepts such as Asset Requirements and Test/Retest requirements clearly need durable storage, but their exact physical representation is intentionally deferred until this schema-design pass.
+
+The core rule is:
+
+```text
+semantic model first
+storage layout second
+```
+
+Do not invent folders merely because a concept exists. Do not force multiple distinct concepts into one file merely to keep the tree small. The final skeleton should be the smallest structure that faithfully supports the finalized workflows.
+
 
 ## 5. Review floor and acceptance result
 
