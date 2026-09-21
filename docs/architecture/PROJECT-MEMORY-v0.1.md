@@ -176,33 +176,13 @@ Example:
 }
 ```
 
-## 6. Single-repo redundancy vs multi-repo necessity
+## 6. Single-repo and multi-repo consistency
 
-When a Job has exactly one GitHub repository, that repository could technically hold plans, ADRs, architecture notes, task state, and similar artifacts.
+Project Memory follows the same Drive Job model for one-repo and multi-repo Jobs.
 
-Super Agent still stores the Job in Drive because the Drive Job folder is the stable control-plane identity of the Job.
+The canonical rationale for keeping Drive above GitHub is defined once in `ARCHITECTURE-v0.1.md` §6.
 
-This avoids a storage-mode switch if the Job later grows from:
-
-```text
-1 repo
-→ 2 repos
-→ N repos
-```
-
-For multi-repo Jobs, no single code repository is allowed to become the implicit owner of shared project truth.
-
-The Drive Job folder is the neutral location for cross-repo material such as:
-
-- REPO-GRAPH.json
-- shared contracts
-- master plans
-- change-set state
-- shared design artifacts
-- approvals/reviews
-- project-level decisions
-
-Repo-local material remains in GitHub when it is naturally source-specific.
+This file only defines how Project Memory is stored and consumed; it does not restate that rationale.
 
 ## 7. Repo graph
 
