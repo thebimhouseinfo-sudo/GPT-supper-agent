@@ -29,7 +29,9 @@ During COLLECT:
 
 During REVIEW:
 - challenge semantics, platform realism, authority, lifecycle, complexity and missing responsibilities;
-- human confirms material architecture/product/governance decisions.
+- internal review may nominate/disposition fixes;
+- independent Claude peer review is used as the final Phase-1 challenge gate instead of a generic human completeness check;
+- the human still retains authority for any material product/architecture/governance choice surfaced by that review.
 
 During SYNTHESIZE:
 - convert reviewed semantics into coherent cross-domain contracts, records, state and storage.
@@ -69,6 +71,8 @@ semantic theory coherent
 + missing contracts synthesized
 + platform probes classified
 + consistency review passes
-+ human confirms close
++ Claude peer review round 2 finds no unresolved material gap
+  OR all round-2 material findings are dispositioned and fixed
++ no new human-owned architecture/product decision remains unresolved
 → Phase 2
 ```
