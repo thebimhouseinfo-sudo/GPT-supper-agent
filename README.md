@@ -1,13 +1,16 @@
 # GPT Super Agent
 
-GPT Super Agent (GSA) is a ChatGPT orchestration/harness design for durable project work using Google Drive as Project memory/control plane and GitHub as source-code truth.
+GPT Super Agent is a ChatGPT orchestration/harness design for durable project work using Google Drive as Project memory/control plane and GitHub as source-code truth.
 
 ## Current phase
 
 ```text
-PHASE 1 INTERNAL THEORY = COMPLETE
-CLAUDE PEER REVIEW = PENDING
-PHASE 2 = BLOCKED UNTIL PEER REVIEW DISPOSITION
+PHASE 1 THEORY       = FIX PASS AFTER PEER REVIEW
+PEER REVIEW          = DISPOSITIONED
+ACCEPTED FIXES       = APPLIED
+PLATFORM PROBES      = PARTIALLY CLASSIFIED / SOME STILL PENDING
+CONSISTENCY REVIEW   = IN PROGRESS
+PHASE 2              = BLOCKED
 ```
 
 Phase 2 has intentionally not started.
@@ -21,39 +24,22 @@ GitHub = source-code truth
 Harness / Skills / Loops = operational behavior
 ```
 
-Durable work hierarchy:
+Durable hierarchy:
 
 ```text
-Project
-→ Job
-→ Task
-→ Run
+Project → Job → Task → Run
 ```
 
-Current execution is:
-
-```text
-pull-based
-+ human-dispatched
-+ durable-state persistent
-```
+Job is a finite objective and may contain multiple role Runs.
 
 ## Repository relationships
 
-A Project may:
-
-- own 0..N GitHub repositories;
-- reference 0..N repositories read-only.
-
 ```text
-OWNED
-= writable within approved Project/Job/Task scope
-
-REFERENCED
-= read-only context/dependency/example
+OWNED = writable within approved scope
+REFERENCED = read-only
 ```
 
-One repository may have at most one GSA owning Project at a time.
+Ownership is recorded structurally. Duplicate ownership claims block write routing until human resolution.
 
 ## Roles
 
@@ -68,70 +54,62 @@ Reviewer
 Tester
 ```
 
-Review placement is topology-driven. There is no universal Reviewer gate for every PR, Task, milestone, or Job.
+One Run has one active role.
+
+Non-independent specialist calls may use child Runs.
+
+Independent Reviewer uses a fresh chat.
+
+Tester practical execution is capability-gated.
+
+## Review model
+
+Normal review placement is topology-driven.
+
+A mandatory independent review floor applies to mechanically sensitive changes such as shared contracts/schema, migrations, auth/security, CI/CD configuration, destructive operations, and material dependency-state changes.
+
+Merge always requires explicit human authorization and a review-coverage summary.
 
 ## Project Memory
 
-Synthesized Project structure:
+Drive storage is intentionally simple rather than database-like:
 
 ```text
 <Project>/
 ├── PROJECT.md
-├── CONTROL.json
+├── CONTROL.json        # optional/rebuildable cache
 ├── WORK/
-│   ├── jobs/
-│   ├── tasks/
-│   ├── runs/
-│   └── handoffs/
+│   ├── jobs/           # Tasks/topology embedded by default
+│   └── runs/           # separate append-preserving Runs
 ├── KNOWLEDGE/
-│   ├── architecture/
-│   ├── decisions/
-│   ├── contracts/
-│   ├── plans/
-│   └── design/
-└── ARTIFACTS/
-    ├── reviews/
-    ├── evidence/
-    ├── retests/
-    ├── assets/
-    ├── approvals/
-    └── releases/
+└── VERIFICATION/       # review/evidence/test/retest/goal-recheck records
 ```
 
-`CONTROL.json` is a rebuildable materialized current-state view, not historical truth.
+No durable fact may exist only in CONTROL.
 
-## User-facing identity
+Cross-chat consistency is eventual; consequential actions re-check lifecycle/scope/target.
 
-```text
-Plugin handle:     @gsa
-Command namespace: gsa/
-```
+## User-facing naming
+
+Current product handles/command namespaces are aliases only and are **not frozen product identity**.
 
 Natural language remains valid.
 
-Outer control surface:
+Outer control surface remains conceptually:
 
 ```text
 PROJECT
-- new
-- open
-- status
-- delete
-
 DIRECT AGENT
-- Planner
-- Designer
-- Coder
-- Reviewer
-
 HELP / INSTRUCTION
 ```
+
+Human dispatch additionally requires minimal intents for pending handoffs/status/pause/resume.
 
 ## Canonical architecture
 
 The active theory lives in `docs/architecture/`.
 
-Recommended reading order:
+Core reading order:
 
 1. `FROZEN-FOUNDATION-v0.1.md`
 2. `ARCHITECTURE-v0.1.md`
@@ -143,44 +121,27 @@ Recommended reading order:
 8. `SECURITY-AND-TRUST-BOUNDARIES-v0.1.md`
 9. `AGENT-HARNESSES-v0.1.md`
 10. `EXECUTION-AND-REVIEW-v0.1.md`
-11. `PLANNER-SCOPE-AND-UIUX-v0.1.md`
-12. `DESIGNER-HARNESS-v0.1.md`
-13. `CODER-UIUX-HARNESS-v0.1.md`
-14. `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`
-15. `UI-SPEC-MODEL-v0.1.md`
-16. `CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`
+11. `IDENTITY-AND-HANDLES-v1.md`
+12. `ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md`
+13. `CAPABILITY-CATALOG-v1.md`
+14. `DISPATCH-AND-HANDOFF-v1.md`
+15. `CODER-GOAL-RECHECK-v1.md`
+16. `CORE-RECORD-CONTRACTS-v1.md`
+17. `THEORY-PROCESS-v1.md`
 
-## Final review gate
+Specialist UI/design documents remain supporting architecture/methodology references.
 
-Internal theory completion is documented in:
+## Phase 1 close gate
 
-`docs/working-notes/FINAL-THEORY-COMPLETENESS-REVIEW.md`
-
-The next required step is independent Claude peer review using:
-
-`docs/working-notes/CLAUDE-PEER-REVIEW-HANDOFF.md`
-
-Peer findings are advisory evidence and must be dispositioned before Phase 2:
+Before Phase 2:
 
 ```text
-ACCEPT
-ACCEPT_WITH_MODIFICATION
-REJECT_WITH_REASON
-DEFER_TO_PHASE_2_CALIBRATION
+accepted peer fixes
+→ missing contracts
+→ platform capability classification/probes
+→ consistency review
+→ human Phase-1 confirmation
+→ Phase 2
 ```
 
-## Phase 2 boundary
-
-After peer review and final reconciliation, Phase 2 should begin as a thin operational harness:
-
-```text
-role instructions/contracts
-→ specialist skills
-→ Drive/GitHub actions
-→ state/persistence helpers
-→ fake CLI/control UX
-→ pilot Project
-→ calibration
-```
-
-Do not begin by building a heavyweight autonomous orchestration server.
+Do not begin Phase 2 while these gates remain open.
