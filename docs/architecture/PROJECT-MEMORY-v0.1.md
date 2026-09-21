@@ -177,7 +177,35 @@ Example:
 }
 ```
 
-## 6. Repo graph
+## 6. Single-repo redundancy vs multi-repo necessity
+
+When a Job has exactly one GitHub repository, that repository could technically hold plans, ADRs, architecture notes, task state, and similar artifacts.
+
+Super Agent still stores the Job in Drive because the Drive Job folder is the stable control-plane identity of the Job.
+
+This avoids a storage-mode switch if the Job later grows from:
+
+```text
+1 repo
+→ 2 repos
+→ N repos
+```
+
+For multi-repo Jobs, no single code repository is allowed to become the implicit owner of shared project truth.
+
+The Drive Job folder is the neutral location for cross-repo material such as:
+
+- REPO-GRAPH.json
+- shared contracts
+- master plans
+- change-set state
+- shared design artifacts
+- approvals/reviews
+- project-level decisions
+
+Repo-local material remains in GitHub when it is naturally source-specific.
+
+## 7. Repo graph
 
 `REPO-GRAPH.json` models providers, consumers, roles, and shared contracts.
 
@@ -185,7 +213,7 @@ Its purpose is causal impact analysis, not merely documentation.
 
 If a shared provider or contract changes, the graph identifies all consumers that must be considered.
 
-## 7. Contracts
+## 8. Contracts
 
 Shared interfaces across repositories are first-class Project Memory.
 
@@ -200,7 +228,7 @@ A contract should identify at least:
 
 A contract change can invalidate a single-repo implementation plan.
 
-## 8. Decisions
+## 9. Decisions
 
 Decision logs capture durable project decisions and their scope.
 
@@ -214,7 +242,7 @@ Decision scope may be:
 
 Agents load only relevant decisions into working context.
 
-## 9. Knowledge Base
+## 10. Knowledge Base
 
 Project Memory answers:
 
@@ -248,7 +276,7 @@ knowledge/
   lessons/
 ```
 
-## 10. Knowledge profiles
+## 11. Knowledge profiles
 
 Each Job declares required knowledge profiles.
 
@@ -267,7 +295,7 @@ Example:
 
 Planner determines these profiles from actual project evidence and user intent.
 
-## 11. Knowledge metadata
+## 12. Knowledge metadata
 
 Knowledge items should carry provenance and freshness information where relevant.
 
@@ -286,7 +314,7 @@ Example:
 
 Platform knowledge may become stale and must be refreshed contextually.
 
-## 12. Capability knowledge
+## 13. Capability knowledge
 
 The system must distinguish:
 
@@ -304,7 +332,7 @@ Negative knowledge is valuable and should be retained when durable, e.g.:
 - Super Agent does not assume ownership of local/offline execution.
 - A tool cannot claim runtime verification it cannot physically perform.
 
-## 13. Drive-first Context Builder
+## 14. Drive-first Context Builder
 
 Context construction always starts from the active Job's Drive memory.
 
@@ -324,7 +352,7 @@ Super Agent should avoid broad repo scans when Drive already narrows the relevan
 
 For status/planning/history questions, Drive may be sufficient and GitHub reading may be unnecessary.
 
-## 14. Context packet composition
+## 15. Context packet composition
 
 Agents MUST NOT receive the entire project memory, entire GitHub codebase, or chat history by default.
 
