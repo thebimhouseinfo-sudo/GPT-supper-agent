@@ -1,276 +1,169 @@
-# Clarification & Causal Readiness Protocol v0.1
+# Clarification & Causal Readiness Protocol v1
 
-## Purpose
+## 1. Purpose
 
-Planner, Designer, UX Coder, and UI Coder must not jump directly from a vague request to execution.
+Runtime roles must not jump from materially ambiguous intent to consequential execution.
 
-Before committing to a path, each role determines:
-
-- what is known
-- what is inferred
-- what is unknown
-- what causally depends on each unknown
-- whether missing information is blocking
-- whether evidence can safely resolve it
-- whether the user must be asked
-
-> Clarify causes and constraints before optimizing solutions.
-
-## Shared reasoning order
+Shared order:
 
 ```text
-User intent
-  ↓
-Known facts
-  ↓
-Causal dependencies
-  ↓
-Unknowns / ambiguities
-  ↓
-Blocking vs non-blocking
-  ↓
-Clarify only what matters
-  ↓
-State assumptions
-  ↓
-Plan
-  ↓
-Execute
+known facts
+→ missing information
+→ causal impact
+→ infer if safe
+→ ask/escalate if material
+→ proceed
 ```
 
-No agent may move from a materially ambiguous requirement to irreversible implementation when a missing fact could change the result.
+---
 
-## Missing-information ledger
+## 2. Ask-or-infer rule
 
-```yaml
-known:
-  - target users are primary-school learners
-  - app is mobile-first
-
-inferred:
-  - touch is the primary interaction mode
-
-unknown:
-  - whether tablet landscape is a primary target
-
-blocking:
-  - none
-
-assumptions:
-  - tablet landscape uses REGULAR layout mode
-```
-
-Material unknowns affecting architecture, contracts, design direction, execution scope, or acceptance must be recorded.
-
-## Blocking vs non-blocking
-
-BLOCKING means different answers would materially change:
-
-- architecture
-- data model
-- repo scope
-- API/contract
-- user flow
-- audience treatment
-- visual direction
-- device strategy
-- security/privacy
-- migration
-- acceptance
-- executor/tool needs
-
-Non-blocking details should be inferred from evidence instead of interrupting the user.
-
-## Ask-or-infer rule
-
-Ask only when all are true:
+Ask only when:
 
 ```text
 information is missing
 AND materially decision-changing
-AND unavailable from conversation / Project Memory / repo / specs
-AND safe inference creates meaningful risk
+AND not already available from current context / Project Memory / relevant evidence
+AND safe inference would create meaningful risk
 ```
 
-Otherwise infer from evidence and state the assumption when useful.
+Do not re-ask known information.
 
-## Question quality
+---
 
-Questions must be specific, causal, minimal, grouped, and understandable to a non-developer.
+## 3. Material unknowns
 
-Bad:
+Material when different answers could change:
+- product behavior;
+- architecture;
+- contract/API;
+- repo/write scope;
+- data/migration;
+- user flow;
+- design direction;
+- device/accessibility requirements;
+- security/privacy;
+- acceptance;
+- executor/capability needs.
 
-> What do you want?
+Non-material implementation detail should usually be inferred from evidence.
 
-Better:
+---
 
-> The lesson can either start exercises immediately or require theory completion first. This changes the state model and screen flow. Which behavior do you want?
+## 4. Role behavior
 
-Explain why the answer matters.
+Planner:
+- resolves product/scope/architecture blockers before dependent planning.
 
-## Do not re-ask known information
+Designer:
+- resolves visual/design blockers before material design output.
 
-Before asking, inspect current conversation, Project Memory, repo evidence, contracts, approved decisions, and relevant files.
+Coder:
+- resolves implementation ambiguity but escalates material scope/architecture/design changes.
 
-If the answer exists, do not ask again.
+Reviewer:
+- requests missing evidence/criteria where required; does not invent acceptance rules.
 
-## Causal trace
+Tester:
+- may explore beyond known assumptions but must distinguish observation from binding requirement.
+
+Orchestrator:
+- routes unresolved material decisions to appropriate Human Gate/role.
+
+---
+
+## 5. Human decision boundary
 
 ```text
-Requirement
-  ↓ causes
-Constraint
-  ↓ determines
-Design / architecture choice
-  ↓ creates
-Implementation obligations
-  ↓ verified by
-Acceptance evidence
+semantic / product / architecture decision
+→ Human
+
+mechanical detailing after semantics fixed
+→ GPT
 ```
 
-## Planner clarification gate
+No role may silently cross this boundary.
 
-Planner resolves or records:
+---
 
-- objective
-- target user
-- use cases
-- scope/non-goals
-- affected repos
-- constraints
-- target platforms/devices
-- domain assumptions
-- data/API dependencies
-- success criteria
-- rollout/migration expectations
+## 6. Theory DETAIL exception
 
-Planner may publish `PLANNING_INPUT_COMPLETE` only when blocking unknowns are resolved or explicitly accepted as assumptions.
-
-## Designer clarification gate
-
-Designer verifies use case, target audience, UI Tree, hierarchy, device context, visual constraints, existing design language, tone, and artwork role.
-
-If a missing answer would materially change the concept:
+During theory construction, unresolved architecture questions follow the meta-rule:
 
 ```text
-DESIGN_CLARIFICATION_REQUIRED
+discover
+→ nominate preferred option
+→ record alternatives/trade-offs
+→ defer to REVIEW
+→ continue
 ```
 
-Non-blocking visual choices may be explored as controlled alternatives.
+This theory process must not be confused with runtime Project execution, where blocking product decisions may require immediate user input.
 
-## UX Coder clarification gate
+---
 
-UX Coder verifies flow, state transitions, entry/exit conditions, error/recovery behavior, progression rules, responsive semantics, and accessibility behavior.
+## 7. Strict clarification requests
 
-Material incompleteness emits:
+If user explicitly asks for clarification-first behavior:
+- surface material unknowns;
+- explain why each matters;
+- wait before consequential execution where required.
+
+Do not turn harmless details into interrogation.
+
+---
+
+## 8. Fast/best-effort requests
+
+Low-risk local detail may proceed with safe inference.
+
+Fast execution does not permit guessing:
+- architecture;
+- shared contracts;
+- security-sensitive behavior;
+- destructive intent;
+- repo ownership;
+- material product behavior.
+
+---
+
+## 9. Causal trace
+
+Useful external explanation format:
 
 ```text
-UX_PLANNING_GAP
+requirement
+→ constraint
+→ design/architecture consequence
+→ implementation obligation
+→ acceptance evidence
 ```
 
-UX Coder must not invent product behavior.
+Do not expose hidden chain-of-thought; provide concise inspectable rationale.
 
-## UI Coder clarification gate
+---
 
-UI Coder verifies Concept Artwork, reference viewport/layout mode, design tokens, Asset Sheet references, MUST MATCH requirements, and responsive rules.
+## 10. Readiness
 
-Material visual ambiguity emits:
+Readiness is domain/topology-specific rather than one universal status list.
 
-```text
-UI_DESIGN_GAP
-```
+Examples:
+- Job READY;
+- DESIGN_READY;
+- SHELL_READY;
+- capability available;
+- Human Gate resolved.
 
-Low-risk implementation details may be inferred.
+Canonical lifecycle/status semantics live in STATE-MACHINE-v1.md and specialist domain definitions.
 
-## Plan-before-action rule
+---
 
-Substantial work must have a causally coherent plan first.
-
-```text
-tiny local fix
-→ compact execution checklist
-
-single-screen feature
-→ screen plan + acceptance
-
-multi-screen feature
-→ UI/UX plan + execution units
-
-multi-repo change
-→ Master Plan + repo plans + review topology
-```
-
-This does not require long documents for trivial work.
-
-## Strict Clarification Mode
-
-If the user explicitly asks to clarify first, ask before assuming, explain cause/effect, plan before doing, or not implement until requirements are clear:
-
-```text
-STRICT_CLARIFICATION_MODE = true
-```
-
-Then:
-
-1. surface all unresolved material assumptions;
-2. ask blocking questions before execution;
-3. summarize causal reasoning in the plan;
-4. do not execute until blocking answers are resolved;
-5. list inferred non-blocking assumptions explicitly.
-
-## Fast Path
-
-If the user explicitly requests fast best-effort execution and risk is low:
-
-```text
-FAST_PATH = true
-```
-
-Still never guess architecture, contracts, security-sensitive behavior, or silently expand cross-repo scope.
-
-## Clarification packet
-
-When questions are needed, group them where possible:
-
-```text
-Need clarification before planning:
-
-1. Target user: ...
-   Why it matters: ...
-
-2. Required behavior: ...
-   Why it matters: ...
-
-3. Device scope: ...
-   Why it matters: ...
-```
-
-Avoid one-question-at-a-time interruptions unless new dependencies emerge.
-
-## Readiness statuses
-
-```text
-INPUT_READY
-CLARIFICATION_REQUIRED
-ASSUMPTION_ACCEPTED
-PLANNING_READY
-DESIGN_READY
-EXECUTION_READY
-
-PLANNING_GAP
-DESIGN_CLARIFICATION_REQUIRED
-UX_PLANNING_GAP
-UI_DESIGN_GAP
-CAPABILITY_BLOCKED
-```
-
-## Core invariants
+## 11. Core invariants
 
 1. Do not ask what is already known.
-2. Do not guess what would materially change the project.
-3. Do not block on harmless details that can be safely inferred.
+2. Do not guess material product/architecture intent.
+3. Infer safe low-impact detail when evidence supports it.
 4. Explain why a blocking question matters.
-5. Resolve causes and constraints before selecting solutions.
-6. Plan before substantial execution.
-7. Record material assumptions so downstream agents inherit them.
-8. If the user requests clarification-first behavior, treat it as a hard workflow constraint.
+5. Plan before consequential execution.
+6. Record material assumptions when downstream work depends on them.
