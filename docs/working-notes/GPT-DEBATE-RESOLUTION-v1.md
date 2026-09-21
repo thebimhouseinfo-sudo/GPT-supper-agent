@@ -1353,13 +1353,11 @@ Under the current platform model, the user may open/invoke multiple chats manual
 
 Future automatic dispatch may coordinate the same model without changing the Project / Job / Task / Run architecture.
 
-## 4.13 Repository ownership is exclusive to one Project
+## 4.13 Repository ownership and read-only references
 
 User decision:
 
-A GitHub repository is a source-code ownership unit and may be owned by only one GPT Super Agent Project.
-
-Do not model this as multiple Projects merely "referencing" the same writable repository.
+A GitHub repository is a source-code ownership unit and may be **owned by only one GPT Super Agent Project**.
 
 ```text
 1 repo
@@ -1370,49 +1368,96 @@ A Project may own one or many repositories:
 
 ```text
 Project A
-├── repo-1
-├── repo-2
-└── repo-3
+├── owns repo-1
+├── owns repo-2
+└── owns repo-3
 ```
 
-but a repository must not appear as an owned repository of Project B at the same time.
+An owned repository is writable by that Project's approved code workflow.
 
-### Cross-project dependency
+### Read-only repository references
 
-If another Project depends on code produced by a repo owned elsewhere, model that as a Project-to-Project dependency, not shared repo ownership.
+A different Project may still **reference** the repository, but reference has a strict meaning:
+
+```text
+reference
+= read-only access for context, contracts, examples, dependency understanding,
+  compatibility analysis, or reuse planning
+```
+
+A referenced repository is NOT writable by the referencing Project.
 
 Example:
 
 ```text
-Project: Kid eSchool Hub
+Project A
 owns:
-- Kideschool
-- Ke-kidenglish
+- app-a
 
-Project: Math Grade 1
-owns:
-- KE-Math-Grade1
-
-Kid eSchool Hub may depend on Math Grade 1,
-but it does not own KE-Math-Grade1.
+references:
+- shared-library-b   # read-only
 ```
 
-If Project A requires a change inside a repository owned by Project B:
+The referencing Project may inspect source, interfaces, schemas, behavior, or implementation patterns, but MUST NOT modify the referenced repository in place.
+
+### Copy / fork / derived-code rule
+
+If the referencing Project needs to modify or adapt code from a referenced repository:
+
+```text
+referenced repo (read-only)
+→ copy / fork / clone selected code into a destination owned by this Project
+→ record origin/provenance
+→ modify only the owned destination
+```
+
+The destination may be:
+
+- an owned repository;
+- a new repository assigned to the Project;
+- an owned workspace/path that will later become Project-owned source.
+
+The original referenced repository remains unchanged.
+
+This permits legitimate reuse/adaptation without creating competing write authority over the same source-of-truth repository.
+
+### Cross-project dependency
+
+If Project A needs the original repository itself to change, and that repository is owned by Project B:
 
 ```text
 Project A identifies dependency/change need
-→ create/route request to Project B
-→ Project B owns the code change workflow
+→ request/route change to Project B
+→ Project B performs the source change
 → Project A consumes the resulting contract/release/integration outcome
 ```
 
-This avoids two Projects maintaining competing memory, plans, assumptions, and write authority for the same source-of-truth repository.
+If Project A instead wants its own divergent implementation:
 
-### Ownership rule
+```text
+Project A reads Project B's repo
+→ copies/forks the needed source into Project A ownership
+→ Project A modifies its owned copy
+```
 
-The Project marker / Project Memory should maintain an explicit owned repository list.
+### Project repository registry
 
-Repository ownership changes, splits, or transfers are governance events and require explicit human approval.
+Project Memory should distinguish explicitly:
+
+```text
+owned_repositories
+referenced_repositories
+```
+
+Rules:
+
+- owned repositories are writable according to Job/Run permissions;
+- referenced repositories are always read-only;
+- one repository may be referenced by many Projects;
+- one repository may be owned by only one Project;
+- changing ownership requires explicit human approval;
+- creating an owned derivative from referenced source must preserve provenance.
+
 
 ## 5. Review floor and acceptance result
 
