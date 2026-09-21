@@ -76,7 +76,11 @@ Invariant:
 
 > NO JOB WITHOUT AN AUTO-CREATED MEMORY ROOT.
 
-A Job may represent a single repo or a multi-repo software project. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
+A Job is a durable work entity stored in its Google Drive Job folder. It is separate from its code environment.
+
+Each Job references a GitHub code environment containing one or more repositories. A Job is therefore not identical to a repo and does not have to equal the logical Project context inferred by Planner.
+
+The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
 
 Example:
 
@@ -90,9 +94,20 @@ Example:
     cad-mcp/
 ```
 
-## 5. Multi-repo model
+## 5. Code environment and multi-repo model
 
-A multi-repo project is treated as one project with many repositories, not as unrelated repositories.
+Each Job has an explicit code environment:
+
+```text
+Job (Drive)
+  ↓ references
+Code Environment (GitHub)
+  ├── Repo A
+  ├── Repo B
+  └── ...
+```
+
+When the code environment contains multiple related repositories, they are treated as one coordinated project context rather than unrelated repositories.
 
 Shared architecture, contracts, decisions, and master plans live at project level.
 
