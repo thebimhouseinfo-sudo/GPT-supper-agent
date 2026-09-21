@@ -25,7 +25,7 @@ Decision vocabulary:
 | --- | --- | --- |
 | P1 One Job = one role owner | MODIFY | A Job is a finite work unit that may be executed by one agent or by multiple cooperating agents. The Job owns the work objective and workflow; agents are participants with explicit responsibilities/runs. Do not force cross-role collaboration into separate Jobs unless the Job workflow requires it. |
 | P2 Run separate from Job | ACCEPT | A Job is durable; a Run is one execution attempt/session attached to it. Revisions and re-review create new Runs, not automatically new Jobs. |
-| P3 Pull-based orchestration | ACCEPT | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and start another non-independent Run explicitly. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
+| P3 Pull-based orchestration | ACCEPT | Use pull-based orchestration. One Run has exactly one role. A chat may finish one Run and, only after an explicit user dispatch instruction, start another non-independent Run. Any checkpoint requiring independent review MUST start a fresh chat. No scheduler is assumed. |
 | P4 Append-only Run records | MODIFY | Each Run gets a unique append-only record. Run records are the concurrency-safe history. A project-level STATE snapshot may exist as a derived/materialized cache and may be rebuilt by reconciliation; it is not the sole source of truth. Never rely on concurrent blind overwrite of one state file. |
 | P5 Mechanical checkpoint floor | MODIFY | Do not use LOW/STANDARD/HIGH work classes. Review requirements are selected directly from the Job workflow plus mechanically checkable change triggers. Mandatory review triggers may include shared contract/API/schema changes, migrations/irreversible data changes, auth/secrets handling, CI/workflow changes, destructive source/data actions, material dependency changes, and cross-repo contract impact. Removing a mandatory checkpoint requires explicit user acknowledgement. Merge/deploy remains an explicit human-controlled event. |
 | P6 D1/D2 definition depth | ACCEPT | Every skeleton module gets a D1 boundary contract. Only the first real-run path needs D2 before the first end-to-end test. This preserves conceptual completeness without over-specifying unused internals. |
@@ -388,6 +388,87 @@ stage complete
 ```
 
 A Reviewer PASS does not itself execute merge.
+
+## 5.4 Delivery event facts
+
+Acceptance, merge, deployment, and deployment verification are separate recorded facts/events.
+
+```text
+accepted
+merged
+deployed
+deployment_verified
+```
+
+They are NOT the main Job lifecycle states.
+
+Definitions:
+
+- `accepted`: the current work has satisfied its required workflow, review, QA/QC and evidence obligations, producing `PASS` or `PASS_RETEST_REQUIRED`.
+- `merged`: the approved change has actually been merged into its target branch after explicit user authorization.
+- `deployed`: the merged revision has actually been deployed to the target environment, when deployment applies.
+- `deployment_verified`: the deployed revision has been checked successfully at the level the available online executor can verify.
+
+These facts may differ legitimately. Example:
+
+```text
+accepted = true
+merged = true
+deployed = true
+deployment_verified = true
+
+RT-0042-01 = PENDING
+```
+
+A deployment may be technically verified while a practical Retest remains outstanding.
+
+## 5.5 User-mediated handoff and dispatch
+
+The harness cannot autonomously hand work from one agent to another or launch the next agent/Run by itself.
+
+A handoff means:
+
+```text
+current Run finishes
+→ result + next recommended handler are recorded
+→ ChatGPT tells the user what should happen next
+→ user explicitly invokes/authorizes the next Run
+→ next agent/role begins
+```
+
+Example:
+
+```text
+Coder:
+"I have finished the implementation and the PR is ready.
+Next required handler: Reviewer.
+Please ask Reviewer to inspect PR #42."
+```
+
+The user may then say, for example:
+
+```text
+review it
+call reviewer
+let reviewer check PR #42
+gsa/review J-0042
+```
+
+Only then does a Reviewer Run begin.
+
+This applies even when multiple Runs occur in the same chat: the harness may recommend the next Run, but MUST NOT silently switch roles and continue without a user dispatch instruction.
+
+Independent Review keeps the additional requirement that its Reviewer Run must start in a fresh chat.
+
+Therefore orchestration is:
+
+```text
+pull-based
++ user-dispatched
++ state-persistent
+```
+
+not an autonomous scheduler or autonomous multi-agent runtime.
 
 ## 6. Run and independence model
 
