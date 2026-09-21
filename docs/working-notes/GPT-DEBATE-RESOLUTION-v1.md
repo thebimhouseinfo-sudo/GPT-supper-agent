@@ -2895,6 +2895,153 @@ The long-term goal is not the most elaborate process.
 
 It is the smallest set of harnesses, skills, loops, actions and rules that reliably produces high-quality results.
 
+## 4.21 Human product decisions vs GPT mechanical detailing
+
+User decision:
+
+After the product/system theory is sufficiently defined, GPT Super Agent should not require the human to approve every low-level schema field, filename, table column, or mechanical implementation detail.
+
+The decision boundary is:
+
+```text
+semantic / product / architecture decision
+→ Human
+
+mechanical / structural detailing
+→ GPT may complete autonomously
+```
+
+### Human-owned decisions
+
+Human decision is required when a choice materially affects:
+
+- product behavior;
+- user experience;
+- architecture direction;
+- authority or governance;
+- repository ownership;
+- lifecycle semantics;
+- approval requirements;
+- human-vs-agent responsibility;
+- security/safety boundary;
+- major workflow behavior;
+- meaningful trade-offs between competing approaches;
+- anything that changes the intended product contract rather than merely expressing it.
+
+Examples:
+
+```text
+Should Reviewer be allowed to block on subjective judgement?
+→ Human
+
+Can multiple Projects own the same repository?
+→ Human
+
+Should Project delete remove the Drive folder permanently?
+→ Human
+
+Should a release be allowed to merge with PASS_RETEST_REQUIRED?
+→ Human
+```
+
+### GPT-owned detailing
+
+Once the governing semantics are frozen, GPT may autonomously design the exact supporting structures needed to express them.
+
+Examples include:
+
+- field/schema definitions;
+- ID conventions;
+- exact state tables;
+- transition tables;
+- memo formats;
+- artifact templates;
+- file formats;
+- handoff records;
+- review records;
+- test/retest records;
+- evidence tables;
+- storage normalization;
+- agent input/output contracts;
+- workflow tables;
+- failure/recovery matrices;
+- indexes;
+- CLI candidate organization after all command needs are known;
+- exact folder/file placement after storage requirements have been derived.
+
+Example:
+
+```text
+Human has already decided:
+Retest must persist, have an ID, bind to owning work and preserve history.
+
+GPT may then define:
+- RT ID format;
+- required fields;
+- status enum;
+- revision representation;
+- exact memo/template structure;
+- lookup/index strategy.
+```
+
+The human does not need to approve each mechanical field unless that field introduces a new semantic decision.
+
+### Escalation rule
+
+While detailing, GPT must continuously distinguish:
+
+```text
+"How should an already-approved rule be represented?"
+vs
+"What should the rule itself be?"
+```
+
+If detailing exposes an unresolved product/architecture choice, GPT must stop that branch of detailing and return the decision to the human.
+
+Examples:
+
+```text
+Choosing whether a status field is YAML or JSON
+→ mechanical detail
+→ GPT decides
+
+Choosing whether a new status introduces a new lifecycle meaning
+→ semantic decision
+→ Human decides
+```
+
+```text
+Choosing exact fields for an approval record
+→ mechanical detail
+→ GPT decides
+
+Choosing whether runtime confirmations must be durably logged
+→ governance decision
+→ Human decides
+```
+
+### Purpose
+
+This boundary prevents two opposite failures:
+
+```text
+too much human micro-approval
+→ slow, exhausting, unnecessary
+
+too much GPT autonomy
+→ hidden product/architecture decisions are invented during detailing
+```
+
+The target operating model is:
+
+```text
+Human defines intent, semantics and important trade-offs.
+
+GPT turns those decisions into complete, internally consistent system specifications.
+```
+
+Once the human decision space is exhausted, GPT should proceed with the detailed specification work without repeatedly asking about purely mechanical choices.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
