@@ -344,7 +344,22 @@ They also do not invent material product/architecture/design intent.
 
 ---
 
-## F14. Not frozen by this document
+## F14. User-facing invocation identity
+
+The user-facing invocation identity is independent of the repository name.
+
+```text
+Plugin handle     = @gsa
+Command namespace = gsa/
+```
+
+The repository that contains the Super Agent implementation may be renamed later without requiring a user-facing command migration.
+
+Only the namespace is frozen here. The full command grammar remains to be defined.
+
+---
+
+## F15. Not frozen by this document
 
 The following still need detailed definition and may evolve without revising the frozen foundation:
 
