@@ -729,6 +729,115 @@ IMPLEMENTATION-ARCHITECTURE-v1
 
 ---
 
+## S23. Harness Quality Loop — PARTIAL
+
+Purpose:
+
+Continuously improve the harness by evaluating the quality of actual outputs rather than trying to predict every failure in advance.
+
+Each recorded harness defect should include:
+
+```text
+observed_output
+expected_output
+failure_class
+owner_module
+current_rule_gap
+proposed_smallest_fix
+enforcement_level
+eval_case
+rerun_result
+```
+
+The harness itself may have software logs where implementation code exists, but behavioral quality is primarily judged through observable artifacts:
+
+- quality of plans
+- quality of code/diffs
+- correctness of scope
+- CI/test evidence
+- Reviewer findings
+- UX/UI result
+- user acceptance
+- cross-repo completeness
+
+Deliverable:
+
+```text
+HARNESS-QUALITY-LOOP-v1
+```
+
+---
+
+# Iterative Harness Tightening
+
+The skeleton is a map, not a requirement to fully specify every module before testing.
+
+Development proceeds in rounds:
+
+```text
+ROUND N
+1. define only what the next real test needs
+2. build/update the minimal harness
+3. run it on a real Job/repo
+4. inspect the actual product and artifacts
+5. identify concrete quality failures
+6. classify the failure owner
+7. strengthen only that module
+8. add an eval that reproduces the failure
+9. rerun
+```
+
+Failure ownership examples:
+
+```text
+wrong scope / wrong assumptions
+→ Planner or clarification rule
+
+poor implementation structure
+→ Coder contract / execution-plan rule
+
+working code but poor UX
+→ UX QC / acceptance
+
+visually poor result
+→ UI QC / Designer / concept interpretation
+
+unsupported completion claim
+→ Evidence / Reviewer
+
+cross-repo omission
+→ Repo Graph / multi-repo protocol
+```
+
+A new rule SHOULD have:
+
+- an observed or high-confidence failure mode
+- an observable violation
+- a clear owner
+- an enforcement level: HARD / SOFT / UNKNOWN
+- at least one eval or verification hook
+
+Do not fully define deferred modules merely because they exist in this skeleton.
+
+## Minimal first-test definition set
+
+Before the first end-to-end test, define only enough for:
+
+```text
+Job open/list/create
++ minimal STATE
++ minimal work tier
++ minimal Planner contract
++ minimal Coder contract
++ minimal QA/QC/Evidence
++ minimal Reviewer contract
++ handoff channel
++ Task/PR Definition of Done
++ drift/freshness check
+```
+
+Designer, UX/UI specialization, full multi-repo orchestration, detailed recovery, and sophisticated artifact invalidation may remain PARTIAL until a real test needs them.
+
 # Recommended Definition Order
 
 Do not define everything at once.
@@ -736,24 +845,26 @@ Do not define everything at once.
 Recommended next sequence:
 
 ```text
-1. QA
-2. QC
-3. Verification / Evidence
-4. Reviewer
-5. Planner contract
-6. Coder contracts
-7. State machine / Orchestrator
-8. Multi-repo protocol
-9. Completion model
-10. Schemas
-11. Commands / UX
-12. Failure / Recovery
-13. Implementation architecture
+0. Consistency pass
+1. Minimal state machine + work tiers
+2. Minimal Project Memory schema
+3. Capability/enforcement matrix
+4. Minimal QA/QC/Evidence
+5. Minimal Planner contract
+6. Minimal Coder contract
+7. Minimal Reviewer contract
+8. Minimal commands/status
+9. Task + PR Definition of Done
+10. Drift/freshness
+11. First harness layout
+12. Evals
+13. One real end-to-end test
+14. Tighten only from observed failures
 ```
 
 Reason:
 
-QA/QC + evidence determine what "good implementation" means. Reviewer depends on that. Planner and Coder contracts then know exactly what evidence/acceptance they must create. State machine and schemas should be formalized after those behavioral obligations are stable.
+The first objective is not theoretical completeness. It is the smallest coherent harness that can produce a real artifact and expose its own weaknesses. Later definitions are pulled in by evidence from those runs.
 
 ---
 
