@@ -165,7 +165,6 @@ Example:
   "requires": [
     "repo_read",
     "repo_write",
-    "repo_write",
     "remote_ci"
   ],
   "executor": "github-online"
