@@ -126,15 +126,103 @@ PASS_RETEST_REQUIRED
 
 `PASS_RETEST_REQUIRED` is not a lower quality tier and not a failure. It is a PASS with a remaining real-world verification obligation.
 
+In the online-only model, practical testing may be impossible before merge. Therefore:
+
+```text
+PASS_RETEST_REQUIRED
+→ merge is allowed
+→ deployment/runtime becomes available
+→ practical retest is executed
+→ result is reported by Retest ID
+→ pass closes the obligation
+→ fail reopens the exact owning work context
+```
+
+Every remaining practical test MUST be recorded as a uniquely identifiable Retest item before merge.
+
+Minimum Retest record:
+
+```text
+retest_id
+project_id
+job_id
+task_id(s) or owning scope
+source_commit_sha
+merged_commit_sha when known
+target environment/device
+what to test
+exact steps
+expected result
+why online verification was insufficient
+related files/components/contracts when known
+status = PENDING | PASS | FAIL | BLOCKED
+result/evidence
+```
+
+Example:
+
+```text
+RT-0042-01
+Job: J-0042
+Task: J-0042.T3
+Test: Open lesson on iPhone Safari and finish question 1.
+Expected: answer is graded, feedback appears, next question opens automatically.
+Related: LessonPlayer / progression state
+Status: PENDING
+```
+
+The user may later report only the Retest ID plus observed result, for example:
+
+```text
+RT-0042-01 FAIL
+After correct answer it stays on the same question.
+```
+
+The harness must resolve that ID back to the original Job/Task/commit/context and reopen the smallest relevant fix scope rather than rediscovering the whole problem.
+
 Examples of why retest may remain:
 
-- no accessible runtime/preview;
+- no accessible runtime/preview before merge;
 - real device/user interaction is required;
 - external system behavior cannot be reproduced by the available executor;
 - visual/physical/environment-dependent behavior needs practical confirmation;
 - deployment can be checked technically but the actual use case still needs a real test.
 
-The concrete retest target and expected result must be recorded, not merely the word “retest”.
+The concrete retest target and expected result must be recorded. A generic note such as “retest later” is invalid.
+
+## 5.1 Retest identity and failure routing
+
+A Retest is not a Job type. It is a verification obligation attached to the work that already passed online review.
+
+Identity format is product-neutral. Recommended pattern:
+
+```text
+RT-<job-number>-<sequence>
+```
+
+A failed Retest routes by recorded ownership:
+
+```text
+Retest FAIL
+→ resolve Retest ID
+→ load original Project
+→ load owning Job/Task
+→ inspect source commit + merged/current head
+→ compare only the relevant implementation area first
+→ create/continue the smallest appropriate fix work
+→ review
+→ merge
+→ issue a new Retest revision or replacement ID if practical verification is still needed
+```
+
+Retest history is append-only. Do not overwrite a failed result as if it never happened.
+
+A code change after a failed Retest invalidates the old pending verification target. The follow-up practical test must reference either:
+
+- a new Retest ID; or
+- an explicit revision such as `RT-0042-01@r2`.
+
+The exact storage schema is defined later in the Project Memory / Evidence contract.
 
 ## 6. Run and independence model
 
