@@ -243,30 +243,70 @@ Example:
 }
 ```
 
-## 11. Job open
+## 11. Job list and selection
 
-`job open <id>`:
+`job list` is Drive-first.
+
+It reads `registry.json` from the configured Super Agent Drive root and lists the Jobs/projects persisted there.
+
+The list is therefore a view of Drive-managed Jobs, not a scan of GitHub repositories.
+
+Selecting a Job from the list is equivalent to opening that Drive Job.
+
+## 12. Job open
+
+`job open <id>` always loads Drive state before reading source code:
 
 ```text
-resolve registry entry
-→ validate memory root
-→ load STATE
-→ load project profile/repo graph
-→ refresh current online capabilities
-→ inspect relevant live GitHub state
+resolve registry entry from Drive
+→ validate Job memory root
+→ read JOB.json
+→ read STATE.json
+→ read Project Profile
+→ read Repo Graph
+→ read relevant decisions/contracts/plans/tasks/reviews
+→ understand current user request
+→ determine which repo(s) are relevant
+→ determine which paths/files/symbols in those repo(s) are relevant
+→ read only the required GitHub evidence
+→ refresh applicable online capabilities/evidence
 → revalidate stale artifacts
-→ resume from durable state
+→ resume/work from durable state
+```
+
+Invariant:
+
+> DRIVE FIRST, GITHUB SECOND, SELECTIVE SOURCE READ.
+
+Super Agent MUST NOT begin by scanning all attached repositories when opening a Job.
+
+Drive Memory determines which repository and which source area should be inspected for the current request.
+
+Examples:
+
+```text
+User asks about shared child-profile contract
+→ Drive says provider = Kideschool, consumers = Math/English/Typing
+→ inspect relevant contract/provider/consumer code only
+
+User asks to fix Math lesson UI
+→ Drive identifies KE-Math-Grade1 + relevant UI plan/design
+→ inspect only relevant Math repo paths/components first
+
+User asks for Job status
+→ answer from Drive state/reviews/tasks
+→ GitHub read may be unnecessary unless freshness verification is needed
 ```
 
 Chat history is not required to reopen a Job.
 
-## 12. Job list
+## 13. Job list command behavior
 
-`job list` reads `registry.json` and shows active/paused/archived Jobs plus their high-level state.
+`job list` reads Drive `registry.json` and shows active/paused/archived Jobs plus their high-level state. Each entry may show attached GitHub repos as metadata, but GitHub is not the source of the Job list.
 
 It does not recursively scan all Drive folders unless registry recovery is required.
 
-## 13. Job update
+## 14. Job update
 
 Job metadata may be updated for:
 
@@ -278,7 +318,7 @@ Job metadata may be updated for:
 
 Adding/removing a repo triggers impact analysis and repo-graph refresh.
 
-## 14. Job archive
+## 15. Job archive
 
 Archive preserves Project Memory but removes the Job from the normal active workflow.
 
@@ -290,7 +330,7 @@ Archive does not delete GitHub code and does not delete durable Project Memory.
 
 Destructive Job deletion, if ever supported, is a separate explicit operation and is not equivalent to archive.
 
-## 15. Job creation states
+## 16. Job creation states
 
 ```text
 JOB_CREATE_REQUESTED
@@ -313,7 +353,7 @@ REGISTRY_CONFLICT
 INCOMPLETE
 ```
 
-## 16. Online execution scope
+## 17. Online execution scope
 
 Every Super Agent Job defaults to:
 
@@ -325,7 +365,7 @@ Super Agent owns online coding orchestration around GitHub, remote CI, remote pr
 
 It does not require or create a local filesystem workspace as part of Job bootstrap.
 
-## 17. Core invariants
+## 18. Core invariants
 
 1. Drive root is configured once, not once per Job.
 2. Job folders are created automatically below the configured root.
@@ -335,3 +375,5 @@ It does not require or create a local filesystem workspace as part of Job bootst
 6. Source code is never copied into Project Memory.
 7. Job reopen depends on durable Drive state + live GitHub state, not chat history.
 8. Job creation is online-first and does not assume a local executor.
+9. Job selection/open always reads Drive Project Memory before deciding what GitHub source to inspect.
+10. GitHub reads are demand-driven and scoped by the active request plus Drive context.
