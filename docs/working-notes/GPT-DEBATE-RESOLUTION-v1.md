@@ -865,6 +865,180 @@ Therefore:
 
 These are separate gates and neither substitutes for the other.
 
+## 4.9 Design Coverage Inventory before UI design
+
+User decision:
+
+For UI-first applications, UI Design must not begin from a few obvious screens and discover the rest during implementation.
+
+Before detailed UI Design, the system creates a **Design Coverage Inventory**: a structured map of all known user flows, screens, states, content forms, interaction states and reusable surfaces that the product will require.
+
+The purpose is to determine **what must be designed before coding starts**.
+
+```text
+requirements
++ content model
++ product flows
++ feature list
+→ Design Coverage Inventory
+→ UI tree / state tree
+→ detailed UI design
+→ DESIGN_READY review
+→ code
+```
+
+### Example: learning application
+
+The design scope is not just "home page + lesson page".
+
+The inventory may include:
+
+```text
+Hub / subject / grade entry
+→ Topic list
+→ Topic detail
+→ Lesson list
+→ Lesson entry
+→ Theory / learning canvas
+→ Theory navigation
+→ Correct-answer feedback
+→ Incorrect-answer feedback
+→ Exercise entry
+→ Exercise question
+→ Different exercise-type variants
+→ Hint / retry / reveal states where applicable
+→ Automatic next-question transition
+→ Completion state
+→ Score / grading
+→ Report / result summary
+→ Return / resume / repeat flows
+```
+
+Each of these is treated as an expected design surface/state if the product requirements imply it.
+
+### Design coverage dimensions
+
+The inventory must evaluate at least:
+
+1. **Navigation surfaces**
+   - entry points;
+   - hierarchy;
+   - back/next/close behavior;
+   - resume/re-entry paths.
+
+2. **Content surfaces**
+   - topic;
+   - lesson;
+   - theory;
+   - examples;
+   - exercises;
+   - reports/results.
+
+3. **Interaction states**
+   - idle;
+   - selected;
+   - correct;
+   - incorrect;
+   - disabled;
+   - completed;
+   - retry;
+   - loading;
+   - error;
+   - empty.
+
+4. **Exercise/content variants**
+   - each materially different question/exercise type;
+   - different media requirements;
+   - short/normal/long text;
+   - image/audio-heavy cases.
+
+5. **Responsive states**
+   - target device classes;
+   - content extremes;
+   - orientation/viewport cases when relevant.
+
+6. **System states**
+   - first use;
+   - no data;
+   - partial progress;
+   - completed progress;
+   - offline/network failure where relevant;
+   - missing/pending asset fallback.
+
+7. **Reusable components**
+   - headers;
+   - navigation;
+   - cards;
+   - learning canvas;
+   - controls;
+   - feedback;
+   - score/report components;
+   - modal/dialog patterns.
+
+8. **Asset requirements**
+   - icon/artwork/audio/video slots;
+   - dimensions/aspect ratios;
+   - placeholder behavior;
+   - final filename/path contract.
+
+### UI State Matrix
+
+For complex apps, the Design Coverage Inventory should produce a UI State Matrix.
+
+Example:
+
+```text
+Surface            | State/Variant             | Must Design?
+Topic list         | normal / empty            | YES
+Lesson             | intro / theory / end      | YES
+Question           | unanswered                | YES
+Question           | correct                   | YES
+Question           | incorrect                 | YES
+Exercise           | type A / B / C            | YES
+Report             | complete / partial        | YES
+Responsive lesson  | mobile / tablet / desktop | YES
+```
+
+The matrix is not limited to literal pages. It includes meaningful states inside the same page/component.
+
+### Coverage gate
+
+`DESIGN_READY` may pass only when the system has reviewed the Design Coverage Inventory and confirmed that all **known, requirement-implied** UI surfaces/states are either:
+
+- fully designed;
+- intentionally delegated to a reusable component/pattern already designed;
+- explicitly deferred with a recorded reason and no blocking impact.
+
+The goal is:
+
+```text
+known requirement
+→ known design surface
+→ designed before code
+
+not:
+
+known requirement
+→ coder encounters it
+→ new UI is invented during implementation
+```
+
+### Unknown future cases
+
+This does not require predicting every possible future edge case.
+
+After `DESIGN_READY`, UI changes are still allowed when real content/testing exposes a genuinely unanticipated case. Those changes follow the existing Causal Change Review and post-SHELL_READY rules.
+
+Therefore the distinction is:
+
+```text
+could have been known from requirements/content model
+→ should have been in Design Coverage Inventory
+
+only discovered through real implementation/content/device behavior
+→ legitimate later discovery
+```
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
