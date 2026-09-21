@@ -1,103 +1,68 @@
-# GPT Super Agent — Architecture v0.2
+# GPT Super Agent — Architecture v0.3
 
 ## 1. System model
 
 ```text
-Conversation
-= interaction UI
-
-Google Drive Project Memory
-= durable Project state / control plane
-
-GitHub
-= source-code truth
-
-Harness / Skills / Loops
-= workflow, role, quality, tool-use logic
+Conversation = interaction UI
+Google Drive Project Memory = durable Project memory/control plane
+GitHub = source-code truth
+Harness / Skills / Loops = workflow, role, quality and tool-use logic
 ```
 
----
+GSA is not a heavy standalone runtime.
 
-## 2. Top-level hierarchy
+## 2. Hierarchy
 
 ```text
-Project
-├── Job
-│   ├── Task
-│   └── Run
-└── durable knowledge/artifacts
+Project → Job → Task → Run
 ```
 
-One Project may contain many Jobs over time.
+Job is a finite objective and may use many role Runs.
 
-Durable Project/Job/Task/Run/Handoff/Review/Finding/Evidence/Retest/Asset/Human-Gate/Release identities intended for detached reference are globally unique.
+Task is optional bounded work decomposition.
 
----
+Milestone/stage is topology, not ownership hierarchy.
 
 ## 3. Project root
 
-GSA uses one configured Drive root.
+Each direct child folder under `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
 
-Each direct child valid Project folder contains PROJECT.md.
-
-```text
-SUPER_AGENT_DRIVE_ROOT/
-├── Project-A/
-│   └── PROJECT.md
-└── Project-B/
-    └── PROJECT.md
-```
-
-Project may own zero repositories during planning/design-first phases.
-
----
+Project may own zero repositories during planning/design-first work.
 
 ## 4. Repository model
 
 ```text
-Project
-├── OWNED repos      → writable within approved scope
-└── REFERENCED repos → read-only
+OWNED → writable within approved scope
+REFERENCED → read-only
 ```
 
-One repo has at most one owning Project.
+Ownership uses structured Project records. Duplicate ownership claims block write work until human resolution.
 
-Standalone Direct Coder cannot bypass that owning Project. Project hard-delete releases the GSA ownership association without deleting the repository.
+## 5. Project Memory design principle
 
-Cross-Project references are provenance/weak references rather than strong dependencies on another Project's internal memory.
+Drive is not treated as a relational database.
 
----
+Use:
+- small stable Project identity/control records;
+- Job records that embed Tasks/topology where practical;
+- separate append-only Run records;
+- compact verification records;
+- minimal pending transition/control pointers;
+- semantic knowledge artifacts.
 
-## 5. Project Memory
-
-Synthesized root model:
-
-```text
-<Project>/
-├── PROJECT.md
-├── CONTROL.json
-├── WORK/
-├── KNOWLEDGE/
-└── ARTIFACTS/
-```
-
-GitHub source is never copied into Project Memory as the canonical source.
-
----
+`CONTROL.json`, if present, is a rebuildable cache/materialized view, never the sole source of a durable fact.
 
 ## 6. Context loading
 
 ```text
 open Project
-→ read Project Memory
-→ determine active Job/work
-→ interpret current request
-→ resolve relevant repo/path
-→ selectively read live GitHub evidence
-→ assemble role-specific context
+→ read Project identity/current work
+→ relevant decisions/contracts/plans
+→ relevant Job/Task/Run/Handoff
+→ current request
+→ selective live GitHub evidence
+→ role-specific context packet
 ```
-
----
 
 ## 7. Roles
 
@@ -114,261 +79,179 @@ Tester
 
 One Run has one active role.
 
-A Job may use many roles.
+Non-independent role assistance may use child Runs in the same chat.
 
----
+Independent Reviewer remains fresh-chat.
+
+Tester practical execution is capability-gated.
 
 ## 8. Role boundaries
 
-Target policy:
+Planner/Designer are source read-only.
 
-```text
-Planner
-→ durable planning/knowledge write
-→ source read-only
+Coder writes only approved Project-owned source scope.
 
-Designer
-→ design artifact write
-→ source read-only
+Reviewer is source implementation read-only and may comment/review.
 
-Coder
-→ approved owned source write
-→ Project theory/spec read-only
+Tester is source implementation read-only.
 
-Reviewer
-→ source read-only
-→ review/comment channels + durable review result
+Orchestrator coordinates control-plane behavior and does not implement source.
 
-Tester
-→ runtime/product interaction
-→ source read-only
-
-Orchestrator
-→ workflow/control-plane state
-→ no source implementation
-```
-
-Physical enforcement is classified separately as HARD / SOFT / UNKNOWN.
-
----
+All actions remain constrained by actual connector capability.
 
 ## 9. Work topology
 
-Planner defines enough topology to identify:
-
+Planner defines:
+- objective/scope;
+- Task decomposition when useful;
 - milestones/stages;
-- Tasks when useful;
 - dependencies;
 - role order;
-- parallel-safe work;
-- review checkpoints;
-- Tester checkpoints;
-- Human Gates;
-- completion conditions.
+- parallelism;
+- review/test/Human Gates;
+- completion/evidence requirements.
 
-Coder refines exact live-source implementation HOW inside those boundaries.
+Coder refines exact source-level HOW.
 
----
+## 10. Run scope and claims
 
-## 10. Run and Handoff
+Run records:
+- one Job-level or primary-Task execution scope;
+- optional affected Task refs;
+- role;
+- exact target/revision;
+- parent_run_id when child Run;
+- scope claim for intended repo/branch/path/work context;
+- result/evidence/handoff output.
+
+Before consequential source/control actions, the active Run re-checks Project lifecycle and relevant scope/target state.
+
+## 11. Handoff / dispatch
 
 ```text
-Run
-→ one execution scope
-→ exact target/revision
-→ result/evidence
-
 Run completes
-→ optional Handoff
-→ next Run
+→ durable pending handoff if another role is required
+→ user opens fresh/same chat as required
+→ selects/takes handoff
+→ next Run starts
 ```
 
-Current dispatch is human-mediated.
+Minimal dispatch UX must support:
+- list pending handoffs;
+- take next;
+- take by ID/handle;
+- show status;
+- pause/stop where applicable.
 
-Independent Reviewer Run starts in a fresh chat.
+## 12. Review/testing
 
----
-
-## 11. Review and testing
+Review is flexible except for the mandatory mechanically triggered review floor defined in Foundation F13.
 
 Reviewer verifies known requirements/evidence.
 
-Tester actively seeks realistic/unanticipated failures.
+Tester seeks practical/unanticipated failures when capability exists.
 
-Review is not universally attached to every node.
+When practical execution capability is unavailable, Retest is primarily a human checklist/evidence flow.
 
-Job completion topology decides which verification roles are required.
-
----
-
-## 12. QA/QC
+## 13. QA/QC
 
 ```text
-QA
-= process assurance / COMPLIANCE
-
-QC
-= output correctness and FIT
+QA = COMPLIANCE/process assurance
+QC = CORRECTNESS + FIT
 ```
 
-Layered ownership:
+Coder self QA/QC has two layers:
+1. capability-backed checks;
+2. Goal Recheck against goal/acceptance/non-goals/plan/diff/evidence.
 
-- Coder self QA/QC;
-- Reviewer independent evaluation where scheduled;
-- Tester practical/exploratory evidence.
+Reviewer independently evaluates required criteria rather than trusting the Coder's self recheck.
 
----
+## 14. Evidence
 
-## 13. Evidence
+Evidence is target/revision/provenance bound.
 
-Evidence is target/revision-bound and provenance-aware.
+Causal invalidation uses recorded dependencies.
 
-No role may claim unavailable verification.
+Unknown/incomplete dependency trace is conservatively treated as affected until revalidated.
 
-Evidence invalidation is causal, not blanket.
-
----
-
-## 14. Retest
+## 15. Retest
 
 ```text
 PASS_RETEST_REQUIRED
-→ accepted Job may complete
-→ durable Retest remains
-→ later PASS/FAIL routes by Retest ID
+→ Job may complete
+→ Retest remains pending
 ```
 
-Retest is not a Job type.
-
----
-
-## 15. Asset Requirements
-
-Stable asset integration contract may precede final binary asset.
-
+If Retest FAIL occurs after Job completion:
 ```text
-stable ID/name/path/spec
-→ placeholder
-→ implementation
-→ final asset
-→ practical verification
+preserve completed Job
+→ create linked remediation Job
 ```
 
----
+If practical failure occurs before terminal completion, same active Job may route to its owning Task.
 
-## 16. State model
+## 16. Asset Requirements
 
-Separate dimensions:
+Stable integration contract may precede final binary.
 
-```text
-Project lifecycle
-Job/Task/Run lifecycle
-evaluation result
-artifact validity
-delivery facts
-Retest state
-```
+Asset lifecycle is intentionally compact; placeholder/final/integrated are mostly facts/fields rather than many lifecycle states.
 
-Do not collapse these into one status field.
+## 17. State model
 
----
+Separate:
+- lifecycle;
+- result;
+- validity;
+- delivery facts;
+- verification obligations.
 
-## 17. Concurrency
+WAITING/BLOCKED should be derived from durable causes wherever practical rather than duplicated across records.
 
-Multiple Jobs/Tasks may run in parallel when independent.
+## 18. Concurrency
 
-Orchestrator detects:
-- branch/file conflicts;
-- shared contract/schema conflicts;
-- causal assumption conflicts;
-- release-critical overlap.
+Cross-chat consistency is eventual.
 
-Durable artifacts use optimistic concurrency.
+Do not rely on atomic Drive compare-and-swap until verified.
 
-CONTROL.json is a rebuildable materialized current-state view, not the historical source of truth.
+Prefer append-only Run/verification history and minimize shared mutable hot files.
 
----
+Conflict checks happen at dispatch and before consequential action.
 
-## 18. Multi-repo coordination
+## 19. Multi-repo
 
-Use Change Set only when one logical change genuinely spans multiple repositories.
+Change Set is used only for a logical coordinated multi-repo change.
 
-One repo completion does not imply integrated Job completion.
+Repo-level completion does not imply integrated completion.
 
----
-
-## 19. Security/trust
+## 20. Trust and identity
 
 External content is data, not authority.
 
 No inferred permission escalation.
 
-Destructive confirmation is proportional to blast radius.
+All roles currently act through the user's connected platform identity, so important agent outputs carry explicit role/Run/target attribution.
 
-Owned/reference semantics are trust boundaries.
+## 21. User UX
 
----
-
-## 20. User UX
-
-Outer control surface:
+Accepted outer surface:
 
 ```text
 PROJECT
-- new
-- open
-- status
-- delete
-
 DIRECT AGENT
-- Planner
-- Designer
-- Coder
-- Reviewer
-
 HELP / INSTRUCTION
 ```
 
-Natural language remains valid.
+Current product/command names are aliases, not frozen identity.
 
-Deep CLI is synthesized from actual recurring needs, not entity symmetry.
+Deep commands remain minimal and derived from recurring work needs.
 
-Manual `job new` is an advanced shortcut into normal Job normalization/readiness; it does not bypass Planner/Orchestrator governance.
-
----
-
-## 21. Theory vs harness maturity
-
-Theory must be coherent before real use.
-
-Initial operational harnesses/skills/loops/actions only need a good-enough baseline, then improve through real Project evidence.
-
-Reference systems such as Codex, Claude Code, Cursor, Copilot may inform Phase 2 patterns, but GSA synthesizes its own coherent model rather than copy-and-stack.
-
-
----
-
-## 22. Phase 1 completion gate
-
-Internal theory completeness does not immediately authorize Phase 2.
-
-Required sequence:
+## 22. Phase 1 completion path
 
 ```text
-internal theory completeness review
-→ Claude peer review
-→ classify peer findings
-→ resolve accepted findings
-→ final reconciliation/freeze
-→ Phase 2 bootstrap
+peer findings disposition
+→ accepted theory corrections
+→ missing Phase-1 contracts/schemas
+→ consistency review
+→ final human check
+→ only then Phase 2
 ```
-
-Peer review is independent challenge evidence, not automatic authority.
-
-Claude findings may be:
-- accepted;
-- accepted with modification;
-- rejected with reason;
-- deferred as Phase 2 calibration concern.
-
-Material accepted findings reopen the appropriate theory domain before Phase 2.
