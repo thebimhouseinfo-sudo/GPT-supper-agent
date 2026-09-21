@@ -23,11 +23,11 @@ Planner owns functional and structural truth:
 - interaction/state requirements
 - acceptance criteria
 
-Designer owns visual interpretation:
+Designer owns visual interpretation and, where not already fixed by an inherited design system, proposes the concrete visual tokens:
 - visual direction
 - composition
 - visual hierarchy
-- color and typography treatment
+- color and typography treatment / token proposal
 - artwork language
 - icon/illustration language
 - background treatment
