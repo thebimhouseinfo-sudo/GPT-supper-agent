@@ -687,6 +687,100 @@ Even in these cases, the system does not immediately patch the shared UI. It fir
 Therefore `SHELL_READY` means the shell is stable for expected content variation, not that future change is forbidden.
 
 
+## 4.7 Tester as a distinct role
+
+User decision / product lesson:
+
+A software workflow that relies only on implementation + code review is insufficient for application work. Real applications need a Tester role distinct from Reviewer.
+
+### Reviewer vs Tester
+
+```text
+Reviewer
+= verifies implementation against plans, contracts, diffs, tests, evidence,
+  architecture and acceptance rules.
+
+Tester
+= actively exercises the product as a user would,
+  with real content, real flows, representative devices/viewports/environments,
+  trying to expose cases the plan/pilot/spec did not anticipate.
+```
+
+Reviewer asks:
+
+- Did implementation follow the approved plan?
+- Is the code/evidence correct?
+- Are requirements/contracts satisfied?
+- Are there regressions visible from available technical evidence?
+
+Tester asks:
+
+- Does the product actually work in realistic use?
+- What happens with unusually short/long content?
+- What happens across mobile/tablet/desktop or other target environments?
+- What happens when flows are repeated, interrupted, resumed, or combined?
+- Are there missing shell capabilities revealed only by real content?
+- Does the implementation fail under cases the original spec did not foresee?
+
+### Tester is not merely final manual QA
+
+Tester participates at planned checkpoints.
+
+For content-driven applications:
+
+```text
+app shell
+→ representative pilot content
+→ Tester exploratory pass
+→ shell-readiness decision
+→ content scale-out
+→ periodic regression/exploratory testing
+```
+
+The Tester is especially important before `SHELL_READY`, because the purpose of the pilot is to discover unknown UI/UX/shell cases before mass content production.
+
+After `SHELL_READY`, Tester findings should not automatically trigger UI changes. Findings route through the causal change review:
+
+```text
+Tester finding
+→ reproduce + evidence
+→ classify:
+   content defect?
+   implementation defect?
+   missing shell capability?
+   responsive edge case?
+   new product requirement?
+→ Causal Change Review when shared behavior may change
+→ human decision where required
+→ fix
+→ retest
+```
+
+### Tester and Retest Queue
+
+Tester is a natural executor of persistent Retest obligations.
+
+```text
+PASS_RETEST_REQUIRED
+→ Retest ID
+→ Tester or human performs practical test
+→ PASS / FAIL
+```
+
+Human testing remains valid and may be required for subjective acceptance, but the architecture should not assume that all practical testing must be done ad hoc by the user.
+
+### Role independence
+
+Tester may be the same underlying model/runtime in a separate Run, but it is a distinct reasoning role with its own objective:
+
+```text
+Coder tries to make it work.
+Reviewer tries to prove the implementation satisfies known rules.
+Tester tries to make it fail under realistic use.
+```
+
+When independent testing matters, the Detailed Execution Plan should require a separate Tester Run/context rather than letting the Coder self-test and declare completion.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
