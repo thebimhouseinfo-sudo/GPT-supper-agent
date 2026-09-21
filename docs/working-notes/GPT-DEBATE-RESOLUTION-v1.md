@@ -781,6 +781,90 @@ Tester tries to make it fail under realistic use.
 
 When independent testing matters, the Detailed Execution Plan should require a separate Tester Run/context rather than letting the Coder self-test and declare completion.
 
+## 4.8 Design-readiness gate for UI-first applications
+
+User decision:
+
+For UI-first applications, implementation should begin only after the design is sufficiently complete that downstream coding rarely needs to redesign, add missing structural UI, or invent new interaction surfaces.
+
+The intended sequence is:
+
+```text
+requirements/content model
+→ UI architecture / screen tree
+→ design system + shared components
+→ responsive rules
+→ state/variant coverage
+→ asset slots/contracts
+→ representative screen/content coverage
+→ DESIGN_READY
+→ implementation
+```
+
+`DESIGN_READY` is stronger than "a few mockups exist".
+
+Before the gate passes, the design should define, as applicable:
+
+- complete screen/page hierarchy;
+- navigation relationships;
+- reusable shell and layout regions;
+- component families and variants;
+- typography and spacing hierarchy;
+- responsive behavior across target breakpoints/device classes;
+- empty/loading/error/disabled/success states;
+- short/normal/long content behavior;
+- interaction affordances that affect layout;
+- asset positions, dimensions, aspect-ratio rules and placeholder contracts;
+- modal/dialog/popup patterns;
+- report/result/summary states;
+- representative edge cases discovered during pilot design;
+- enough real or representative content to validate composition.
+
+The goal is:
+
+```text
+after DESIGN_READY:
+coding ≈ implementation of an approved system
+
+not:
+coding → discover missing screen → invent UI → continue
+```
+
+### Allowed post-gate UI changes
+
+UI changes after `DESIGN_READY` should be exceptional, not routine.
+
+They are justified when implementation or real content reveals:
+
+- a legitimate requirement that design could not reasonably have anticipated;
+- a missing capability/state;
+- responsive failure under real short/long/extreme content;
+- accessibility/usability defect;
+- platform/browser/device constraint;
+- an approved product change.
+
+Such a finding routes through Causal Change Review before changing shared UI.
+
+### Relationship to SHELL_READY
+
+For UI-first applications:
+
+```text
+DESIGN_READY
+→ code the application shell
+→ representative implementation pilot
+→ Tester exploratory pass
+→ SHELL_READY
+→ content/feature scale-out
+```
+
+Therefore:
+
+- `DESIGN_READY` means the design specification is mature enough to implement.
+- `SHELL_READY` means the implemented reusable shell has survived representative practical testing and is stable enough to scale.
+
+These are separate gates and neither substitutes for the other.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
