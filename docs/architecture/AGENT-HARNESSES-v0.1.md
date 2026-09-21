@@ -14,7 +14,7 @@ Planner may read:
 
 - Project Memory
 - Knowledge Base
-- source repositories
+- GitHub source repositories, read-only and scoped to the current request
 - platform/tool metadata
 - capability information
 
@@ -126,6 +126,8 @@ Coder writes only to the GitHub repositories and branches/PR surfaces explicitly
 
 Coder reads approved Project Memory materials but does not edit them.
 
+When Coder needs to report a durable event such as `PLANNING_GAP`, deviation, completion handoff, or verification result, Coder emits a structured role result. Orchestrator is responsible for persisting that result into Project Memory/state when persistence is required. The exact transport/schema is owned by the future `HANDOFF-PROTOCOL-v1`.
+
 ### 3.1 Coder flow
 
 ```text
@@ -221,7 +223,7 @@ Reviewer has four distinct jobs when substantial UI/design work is involved:
 3. Execution Plan Audit before coding.
 4. Implementation Review after coding.
 
-For non-visual work, the Design Review Gate is skipped. Fast-path local fixes may also skip Plan Readiness Review.
+For non-visual work, the Design Review Gate is skipped. Any other gate-skipping rule must come from the canonical work-classification/state-machine definition; no implicit "fast path" is normative.
 
 ### 4.1 Plan Readiness Review
 
@@ -267,25 +269,10 @@ Reviewer records findings in durable Project Memory.
 
 Orchestrator owns workflow state, not technical implementation.
 
-Typical states:
+The single canonical workflow state list, allowed transitions, blocking branches, pause/resume behavior, and work classification are owned by `STATE-MACHINE-v1.md`.
 
-```text
-IDLE
--> DISCOVERY
--> CLARIFICATION
--> PLANNING
--> PLAN_READINESS_REVIEW
--> PREPARING
--> DESIGNING (when applicable)
--> DESIGN_REVIEW (when applicable)
--> READY_TO_IMPLEMENT
--> EXEC_PLAN_AUDIT
--> IMPLEMENTING
--> READY_FOR_REVIEW
--> CHANGES_REQUIRED
--> IMPLEMENTING
--> APPROVED
--> DONE
-```
+This document MUST NOT maintain a second workflow state list.
 
-Orchestrator may update state files but does not write source code or technical plans.
+Until `STATE-MACHINE-v1.md` is approved, any state names found in older documents are non-normative.
+
+Orchestrator may update state/governance records but does not write source implementation.
