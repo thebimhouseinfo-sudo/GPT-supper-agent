@@ -34,7 +34,8 @@ It does not store GitHub source as canonical code truth.
 │   ├── architecture/
 │   ├── decisions/
 │   ├── contracts/
-│   └── plans/
+│   ├── plans/
+│   └── design/
 └── ARTIFACTS/
     ├── reviews/
     ├── evidence/
@@ -75,6 +76,8 @@ It may contain:
 
 Historical entity files remain authoritative for history.
 
+CONTROL.json is a rebuildable materialized view/index. If it conflicts with durable entity history, rebuild/reconcile CONTROL from the durable records rather than treating the stale snapshot as authority.
+
 ---
 
 ## 5. WORK
@@ -97,7 +100,8 @@ KNOWLEDGE stores durable semantic truth:
 - architecture;
 - decisions;
 - contracts;
-- plans.
+- plans;
+- approved design intent/artifacts.
 
 Artifacts are organized by meaning, not by which role authored them.
 
@@ -128,6 +132,8 @@ REFERENCED
 Owned repos may be written within approved scope.
 
 Referenced repos are read-only.
+
+Repository relationship changes that matter to governance should preserve provenance/history. Ownership transfer is a human-governed event rather than a silent metadata edit.
 
 ---
 
@@ -213,3 +219,39 @@ No global Project registry is required initially.
 The configured Drive root + Project folders are the discovery source.
 
 Cross-Project global-ID lookup may be slower but remains unambiguous due to globally unique durable IDs.
+
+
+---
+
+## 17. Findings
+
+Review findings remain embedded in their owning Review record by default.
+
+Each Finding still has a globally unique ID so Tasks, Runs, waivers, Retests, and re-reviews can reference it directly.
+
+A separate `findings/` collection is not required initially.
+
+---
+
+## 18. Job deletion / tombstones
+
+Job hard-delete remains allowed.
+
+```text
+no surviving durable external references
+→ full Job deletion allowed
+
+surviving durable external references
+→ delete detailed Job-owned records
+→ preserve minimal tombstone identity needed to keep references interpretable
+```
+
+A tombstone is not archive and does not preserve the full Job history.
+
+---
+
+## 19. Milestone / Stage persistence
+
+Milestones and stages remain structured topology inside Job records.
+
+They are not promoted into a new ownership hierarchy or separate WORK collections unless real use later proves an independent lifecycle need.
