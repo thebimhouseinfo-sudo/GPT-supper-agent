@@ -198,16 +198,7 @@ Super Agent uses exactly one Job model for both single-repo and multi-repo work.
 
 There is no separate single-repo storage mode.
 
-For a single-repo Job, GitHub could technically persist much of the planning material, but Drive remains the canonical Job root for consistency.
-
-This avoids migration when:
-
-```text
-1 repo
-→ multiple repos
-```
-
-For multi-repo Jobs, Drive is the neutral cross-repository control plane.
+Drive remains the canonical Job root in both cases. The full rationale is canonical in `ARCHITECTURE-v0.1.md` §6 and MUST NOT be duplicated here.
 
 ---
 
@@ -270,7 +261,11 @@ Coder
 Reviewer
 ```
 
-High-level write boundaries are also frozen:
+High-level role ownership boundaries are also frozen as policy intent.
+
+Their enforcement mechanism is NOT frozen here. A later capability/enforcement definition must classify each boundary as `HARD`, `SOFT`, or `UNKNOWN`; until verified, `UNKNOWN` is treated operationally as `SOFT`.
+
+Target ownership:
 
 ```text
 Planner
@@ -294,7 +289,7 @@ Orchestrator
 → no source implementation
 ```
 
-Detailed responsibilities remain subject to later definition.
+Detailed responsibilities and enforcement mechanisms remain subject to later definition.
 
 ---
 
