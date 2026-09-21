@@ -67,7 +67,11 @@ Individual PR approval does not imply Change Set approval.
 
 ## 4. Review gates
 
-The default review topology contains four gate types.
+The default review topology contains five gate types.
+
+### Gate 0 — Plan Readiness Review
+
+For substantial changes, Reviewer audits Planner output before downstream design/execution depends on it.
 
 ### Gate 1 — Execution Plan Audit
 
