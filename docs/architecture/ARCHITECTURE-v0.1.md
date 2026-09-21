@@ -11,7 +11,7 @@ The system must continue to understand a project across new chats, model changes
 The system separates four concerns:
 
 ```text
-GitHub / approved local workspace
+GitHub
 = source-code truth
 
 Google Drive Project Memory
@@ -70,18 +70,20 @@ Chat history is not a source of truth. It is an interaction surface.
 
 ## 4. Job model
 
-Every new Job MUST have a dedicated Project Memory root on Google Drive before implementation work starts.
+Super Agent is configured once with a Google Drive root. Every new Job automatically receives a dedicated Project Memory subfolder under `<configured-root>/jobs/<job-id>/` before project work starts.
 
 Invariant:
 
-> NO JOB WITHOUT A MEMORY ROOT.
+> NO JOB WITHOUT AN AUTO-CREATED MEMORY ROOT.
 
-A Job may represent a single repo or a multi-repo software project.
+A Job may represent a single repo or a multi-repo software project. The user does not provide a new Drive link per Job. See `JOB-LIFECYCLE-v0.1.md` for creation/open/list/update/archive flow.
 
 Example:
 
 ```text
-CodeAgent/
+<configured Super Agent Drive root>/
+  registry.json
+  knowledge/
   jobs/
     kid-eschool/
     revit-mep-tools/
@@ -176,7 +178,7 @@ Designer
 
 Coder
   Drive: read-only
-  Repo: write
+  GitHub repo: write
 
 Reviewer
   Drive: write
@@ -232,3 +234,16 @@ PROJECT_READY_FOR_IMPLEMENTATION =
 12. User-facing coding separates UX behavior from UI visual implementation while preserving one coordinated execution plan.
 13. UI Coder must interpret approved Concept Artwork; autonomous render-and-compare is permitted only when the capability matrix confirms runtime/URL, browser or renderer, screenshot capture, concept access, and visual analysis.
 14. Plugin presence alone never implies render capability. Missing visual-verification capabilities must be reported explicitly rather than assumed to pass.
+
+
+## 13. Online-first execution boundary
+
+Super Agent is primarily an online coding agent.
+
+Core execution targets are GitHub repository operations, remote CI/workflows, PRs, and connected online preview/deployment evidence.
+
+Local filesystem editing, local shell/dev-server ownership, and desktop application runtimes are not part of the Super Agent core execution model.
+
+GPTWorker is a separate offline/local coding agent and is not treated as a built-in Super Agent executor.
+
+If a task fundamentally requires local-only execution, Super Agent records the verification/execution limitation instead of pretending to own that runtime.
