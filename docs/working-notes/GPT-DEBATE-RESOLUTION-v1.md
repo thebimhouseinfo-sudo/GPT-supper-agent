@@ -1090,6 +1090,68 @@ This keeps the theory coherent and allows the UI methodology to improve independ
 
 The same principle should apply to other specialist domains when appropriate: the core orchestrator owns lifecycle/governance, while specialist skills own domain methodology.
 
+### Example — UI-first learning app
+
+Example only; this is not the canonical UI methodology.
+
+```text
+Project:
+Kid learning web app
+
+Known product flow:
+grade
+→ subject
+→ topic
+→ lesson
+→ theory
+→ exercise
+→ correct/incorrect feedback
+→ score/report
+```
+
+Super Agent core does NOT decide the detailed visual rules itself.
+
+Instead:
+
+```text
+1. Planner classifies the Job as UI-first.
+
+2. Planner records that implementation requires DESIGN_READY.
+
+3. UI Design specialist skill/harness is invoked.
+
+4. The specialist examines the product/content model and determines
+   the concrete design coverage it needs, for example:
+   - page/screen tree;
+   - lesson states;
+   - exercise variants;
+   - correct/incorrect states;
+   - responsive cases;
+   - reusable components;
+   - asset requirements.
+
+5. The specialist produces its design artifacts and evidence.
+
+6. Super Agent checks only the orchestration contract:
+   - required design artifact exists;
+   - known requirement-implied surfaces are covered;
+   - unresolved blockers are explicit;
+   - DESIGN_READY decision is recorded.
+
+7. UI/UX implementation begins according to the approved Detailed Execution Plan.
+
+8. Representative real content is implemented.
+
+9. Tester exercises the shell.
+
+10. If the shell survives representative cases:
+    SHELL_READY
+    → content scale-out may begin.
+```
+
+The core therefore knows **when design must be complete and what gate must be satisfied**, while the UI specialist owns **how to perform professional UI design and what detailed design checks are required**.
+
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
