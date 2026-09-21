@@ -660,10 +660,33 @@ FAILURE-RECOVERY-v1
 
 ---
 
-## S20. Completion model — TO_DEFINE
+## S20. Completion model — PARTIAL
+
+Known core rule:
+
+```text
+work produced
+≠ work approved
+≠ parent complete
+```
+
+Completion is hierarchical:
+
+```text
+Task
+→ Review Unit
+→ PR
+→ Change Set
+→ Job
+```
+
+Each applicable level must pass its own review before completion can be promoted upward. If review fails, the affected owning level is reopened; parent completion is revoked until the branch is approved again.
+
+A Job requires a final Job-level verdict before it is marked complete or the workflow moves on.
 
 Need answer:
 
+- exact status vocabulary for READY_FOR_REVIEW / APPROVED / DONE
 - When is a Task done?
 - When is a Review Unit done?
 - When is a PR done?
