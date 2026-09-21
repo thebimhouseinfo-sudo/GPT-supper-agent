@@ -1,291 +1,241 @@
-# Project Memory Model v1
+# Project Memory Model v1.1
 
 ## 1. Purpose
 
-Google Drive Project Memory is the durable Project state/control plane.
+Google Drive Project Memory is the durable Project control plane.
 
-It stores:
-- Project identity/lifecycle;
-- work state;
-- decisions;
-- architecture/contracts/plans;
-- reviews/evidence;
-- Retests;
-- Asset Requirements;
-- approvals;
-- release records.
+It stores enough durable state to reopen work without chat history while avoiding database-style over-normalization.
 
-It does not store GitHub source as canonical code truth.
+GitHub remains source-code truth.
 
----
+## 2. Minimal logical layout
 
-## 2. Root layout
+Physical folders may be implemented lazily, but the logical model is:
 
 ```text
 <Project>/
 ├── PROJECT.md
-├── CONTROL.json
+├── CONTROL.json              # optional/rebuildable current-state cache
 ├── WORK/
 │   ├── jobs/
-│   ├── tasks/
-│   ├── runs/
-│   └── handoffs/
+│   └── runs/
 ├── KNOWLEDGE/
-│   ├── architecture/
-│   ├── decisions/
-│   ├── contracts/
-│   ├── plans/
-│   └── design/
-└── ARTIFACTS/
-    ├── reviews/
-    ├── evidence/
-    ├── retests/
-    ├── assets/
-    ├── approvals/
-    └── releases/
+└── VERIFICATION/
 ```
 
-This structure is derived from collected domain persistence/query requirements.
-
----
+Asset requirements, approvals and releases may live as compact records under the most relevant semantic area rather than requiring one folder family each.
 
 ## 3. PROJECT.md
 
 PROJECT.md is:
 - Project marker;
-- stable identity entry point;
-- human-readable overview;
+- stable human-readable identity entry point;
 - high-level lifecycle/repository summary.
 
-It is not the full state/history store.
+Structured ownership/identity fields must not exist only as prose.
 
----
+## 4. Repository claims
 
-## 4. CONTROL.json
+Each OWNED repo has a structured claim containing at least:
+- Project ID;
+- repository stable identifier/full name;
+- relation = OWNED;
+- claim timestamp/reference;
+- provenance.
 
-CONTROL.json is the compact current-state index/cache.
+REFERENCED relationships are also structured.
 
-It may contain:
-- Project lifecycle;
-- active/waiting/blocked Jobs;
-- pending Handoffs;
-- pending Human Gates;
-- pending Retests;
-- current release refs;
-- revision token.
+Duplicate OWNED claims:
+```text
+detected
+→ block write routing
+→ show conflicting Projects
+→ human resolves ownership
+```
 
-Historical entity files remain authoritative for history.
+No "earliest claim automatically wins" authority rule.
 
-CONTROL.json is a rebuildable materialized view/index. If it conflicts with durable entity history, rebuild/reconcile CONTROL from the durable records rather than treating the stale snapshot as authority.
+## 5. Job records
 
----
+Job records are the primary finite-work container.
 
-## 5. WORK
+By default Job record embeds:
+- Job identity/type/objective;
+- scope;
+- Tasks;
+- milestone/stage topology;
+- dependencies;
+- completion/evidence requirements;
+- linked Retests/assets/verification refs;
+- current durable causes for waiting/blocking.
 
-WORK stores durable operational entities:
+Task becomes a separate file only if real volume/query/concurrency later proves a need.
 
+## 6. Run records
+
+Runs are separate unique append-preserving records.
+
+A Run record includes:
+- Run ID/short handle;
 - Job;
-- Task;
-- Run;
-- Handoff.
+- primary Task or Job-level scope;
+- affected Task refs;
+- role;
+- parent_run_id if any;
+- exact target/revision;
+- scope claim;
+- inputs;
+- result;
+- output/evidence/handoff refs;
+- timestamps where available.
 
-No per-role folder is required.
+Executed Run records are not normally overwritten/deleted.
 
----
+## 7. Handoff representation
 
-## 6. KNOWLEDGE
+Handoff is a semantic transition contract.
+
+Storage should remain compact:
+- either a small unique handoff record;
+- or a pending transition object associated with source Run/Job.
+
+It must still preserve:
+- source Run;
+- target role;
+- target/revision;
+- completed/remaining work;
+- gate/blocker;
+- successor Run when consumed.
+
+Consumed handoff history remains traceable.
+
+## 8. Verification storage
+
+Review, Evidence and Retest remain distinct semantic concepts but may share one physical verification record family:
+
+```text
+verification kind =
+  REVIEW
+  EVIDENCE
+  RETEST
+  TEST
+  GOAL_RECHECK
+```
+
+Findings remain embedded in Review records by default.
+
+Each record keeps its kind-specific fields and globally unique identity.
+
+## 9. Knowledge
 
 KNOWLEDGE stores durable semantic truth:
-
 - architecture;
 - decisions;
 - contracts;
 - plans;
-- approved design intent/artifacts.
+- design intent;
+- other Project knowledge.
 
-Artifacts are organized by meaning, not by which role authored them.
+Organize by meaning, not authoring role.
 
----
+## 10. CONTROL.json
 
-## 7. ARTIFACTS
+CONTROL.json is optional/rebuildable materialized current-state view.
 
-ARTIFACTS stores durable supporting records with distinct lifecycle/query needs:
+It may cache:
+- Project lifecycle;
+- active Job handles;
+- pending handoffs;
+- pending Human Gates;
+- pending Retests;
+- release refs.
 
-- reviews;
-- evidence;
-- Retests;
-- Asset Requirements;
-- materially consequential approvals;
-- release/milestone records.
+Rules:
+- no unique durable fact may exist only in CONTROL;
+- correctness must not depend on atomic conditional update;
+- stale/lost CONTROL is rebuilt from durable records.
 
----
+## 11. Concurrency model
 
-## 8. Repository relationships
-
-Project stores explicit relationships:
-
-```text
-OWNED
-REFERENCED
-```
-
-Owned repos may be written within approved scope.
-
-Referenced repos are read-only.
-
-Repository relationship changes that matter to governance should preserve provenance/history. Ownership transfer is a human-governed event rather than a silent metadata edit.
-
----
-
-## 9. Context Builder
-
-Opening/resuming work uses:
+Default is append-first + recheck-before-consequential-action.
 
 ```text
-Project Memory
-→ current work
-→ relevant decisions/contracts/plans
-→ current request
-→ relevant repo/path
-→ selective live evidence
+unique Run/verification records
+→ append-preserving history
+→ minimal shared mutable state
 ```
 
-Do not load the whole Project or whole repo by default.
+If the Drive connector later proves revision-aware conditional writes, they may strengthen mutable record safety but are not foundational correctness requirements.
 
----
+## 12. Cross-chat consistency
 
-## 10. Concurrency
+Consistency is eventual.
 
-Mutable durable records must support optimistic concurrency/revision checking.
+Before source write, handoff consumption, destructive action, merge/deploy or material control-plane mutation:
+- re-read Project lifecycle;
+- re-read relevant scope claim/current target;
+- detect obvious conflict;
+- block/reconcile if conflict exists.
 
-Avoid last-write-wins for concurrent chats.
+## 13. Retest
 
----
+Retest history is append-preserving.
 
-## 11. Evidence
+Pending Retests must remain visible even if originating Job is COMPLETED.
 
-Prefer durable references/metadata over duplicating external raw data.
+Retest FAIL after completion creates a linked remediation Job.
 
-Examples:
-- CI run reference;
-- PR/revision;
-- screenshot reference;
-- user Retest result;
-- deployment evidence.
+## 14. Assets
 
----
+Asset Requirement contract may be embedded/recorded with the owning Job/knowledge artifact while retaining unique ID.
 
-## 12. Retests
+Final production binary assets normally live in Project-owned source at stable target paths.
 
-Retest records are durable and append-preserve attempt history.
-
-Old FAIL is not erased by later PASS.
-
----
-
-## 13. Assets
-
-Asset Requirement contracts live in Project Memory.
-
-Final production binary assets normally live in owned source repositories at stable target paths.
-
----
-
-## 14. Persistence exclusions
+## 15. Persistence exclusions
 
 Do not persist by default:
 - raw chat transcripts;
 - hidden reasoning;
 - transient tool chatter;
-- speculative guesses;
 - runtime confirmations;
-- ephemeral Direct Agent work unless promoted;
-- redundant copies of GitHub source.
+- redundant source copies;
+- ephemeral Direct Agent work before promotion.
 
----
+## 16. No global registry
 
-## 15. Lazy creation
+Configured Drive root + Project folders remain Project discovery source.
 
-PROJECT.md and CONTROL.json are bootstrap artifacts.
+No mandatory global registry is added.
 
-Subcollections may be created lazily as work requires them.
+Global IDs and structured repo claims allow cross-Project conflict discovery when needed.
 
----
+## 17. Job deletion
 
-## 16. Global registry
+Initial model removes tombstone machinery.
 
-No global Project registry is required initially.
+Before hard delete:
+- identify durable references;
+- warn user;
+- user chooses cancel/delete/cascade according to available scope.
 
-The configured Drive root + Project folders are the discovery source.
+Do not silently leave broken references.
 
-Cross-Project global-ID lookup may be slower but remains unambiguous due to globally unique durable IDs.
+More elaborate tombstones may be added only after demonstrated need.
 
+## 18. Cross-Project references
 
----
+Do not attempt database-like strong cross-Project integrity initially.
 
-## 17. Findings
+Cross-Project references are provenance references and should carry enough human-readable/source context to remain understandable if target memory later disappears.
 
-Review findings remain embedded in their owning Review record by default.
+## 19. Promotion from Direct Agent
 
-Each Finding still has a globally unique ID so Tasks, Runs, waivers, Retests, and re-reviews can reference it directly.
+Direct Agent has no durable lifecycle.
 
-A separate `findings/` collection is not required initially.
-
----
-
-## 18. Job deletion / tombstones
-
-Job hard-delete remains allowed.
-
-```text
-no surviving durable external references
-→ full Job deletion allowed
-
-surviving durable external references
-→ delete detailed Job-owned records
-→ preserve minimal tombstone identity needed to keep references interpretable
-```
-
-A tombstone is not archive and does not preserve the full Job history.
-
----
-
-## 19. Milestone / Stage persistence
-
-Milestones and stages remain structured topology inside Job records.
-
-They are not promoted into a new ownership hierarchy or separate WORK collections unless real use later proves an independent lifecycle need.
-
-
----
-
-## 20. Cross-Project references
-
-Strong referential integrity is required inside one Project.
-
-Cross-Project durable references are weak/provenance references and must remain intelligible even if the target Project is later hard-deleted.
-
-A cross-Project reference should carry enough snapshot/provenance context, such as:
-- target Project/entity ID;
-- human-readable summary when material;
-- repository/revision reference where applicable.
-
-A surviving Project must not require another Project's internal files to remain loadable for its own integrity.
-
----
-
-## 21. Project deletion and ownership
-
-Project hard-delete removes its Drive memory/control-plane folder.
-
-It does not delete repositories.
-
-Its GSA OWNED relationships cease to exist with the deleted Project, releasing those repositories for future explicit ownership by another Project.
-
----
-
-## 22. CONTROL rebuild contract
-
-No unique durable historical fact may exist only in CONTROL.json.
-
-If CONTROL.json is lost or corrupt, the Project must remain reconstructable from PROJECT.md plus durable WORK / KNOWLEDGE / ARTIFACTS records.
+Promotion creates new Project/Job state from a compact promotion packet:
+- objective;
+- produced result/artifact;
+- assumptions/decisions;
+- repo target if relevant;
+- remaining work;
+- source references.
