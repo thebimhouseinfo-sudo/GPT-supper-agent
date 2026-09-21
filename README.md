@@ -12,7 +12,7 @@ ChatGPT
 Orchestrator
    |
    +-- Planner  -> prepares project/specs; writes Project Memory
-   +-- Designer -> creates visual concepts/assets; writes Design Workspace
+   +-- Designer -> creates visual concepts + crop-ready asset sheet; writes Design Workspace
    +-- Coder
    |   +-- UX Coder -> behavior/flow/state
    |   +-- UI Coder -> visual implementation/fidelity
@@ -38,6 +38,8 @@ Source code remains in GitHub or an approved local workspace. Google Drive is us
 
 - [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
 - [Clarification & Causal Readiness](docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md)
+- [Governance & Artifact Lifecycle](docs/architecture/GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md)
+- [Security & Trust Boundaries](docs/architecture/SECURITY-AND-TRUST-BOUNDARIES-v0.1.md)
 - [Project Memory & Knowledge](docs/architecture/PROJECT-MEMORY-v0.1.md)
 - [Agent Harnesses](docs/architecture/AGENT-HARNESSES-v0.1.md)
 - [Planner Scope, Skill Routing & UI/UX](docs/architecture/PLANNER-SCOPE-AND-UIUX-v0.1.md)
