@@ -1,4 +1,4 @@
-# Project / Job Lifecycle v1
+# Project / Job Lifecycle v1.1
 
 ## 1. Project lifecycle
 
@@ -10,74 +10,32 @@ ARCHIVED
 
 Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
 
-Project Delete is a destructive operation that removes Project Drive memory/control-plane state and does not imply GitHub repository deletion.
+Project delete removes Drive Project memory, not repositories.
 
-Deleting a Project releases its GSA ownership associations for previously OWNED repositories. The repositories remain untouched and may later be explicitly attached to another Project.
+## 2. Project creation/open
 
----
-
-## 2. Project creation
-
+Create:
 ```text
-project new
-→ create Project folder
-→ write PROJECT.md
-→ initialize CONTROL.json
-→ Project lifecycle = ACTIVE
-→ owned repos may still be 0
+Project folder
+→ PROJECT.md
+→ optional rebuildable control view
+→ ACTIVE
 ```
 
-Planning/design may begin before any owned repo exists.
-
----
-
-## 3. Project open
-
+Open:
 ```text
-resolve Project
-→ read PROJECT.md
-→ read CONTROL
-→ identify active/waiting work
-→ load relevant durable context
-→ resolve current request
-→ selectively read GitHub only when needed
+Project identity/current work
+→ relevant durable context
+→ selective live source
 ```
 
----
+## 3. Job semantics
 
-## 4. Job lifecycle
+Job = one finite objective/work unit.
 
-```text
-DRAFT
-READY
-IN_PROGRESS
-WAITING
-BLOCKED
-COMPLETED
-CANCELLED
-SUPERSEDED
-```
+A Job may contain many role Runs.
 
-Job result is separate:
-
-```text
-PASS
-PASS_RETEST_REQUIRED
-CHANGES_REQUIRED
-BLOCKED
-HUMAN_REVIEW_REQUIRED
-```
-
----
-
-## 5. Job identity
-
-Job ID is globally unique.
-
-Job type is immutable after creation.
-
-Baseline types:
-
+Job type classifies primary objective:
 ```text
 plan
 code
@@ -85,45 +43,53 @@ design
 review
 ```
 
-A materially different workflow creates a new linked Job.
+Example:
+- code Job may include Coder → Reviewer → Tester;
+- review Job means the objective itself is standalone review.
 
----
+Job type is immutable.
 
-## 6. Job creation
-
-A Job is created when a finite objective requires its own workflow/completion boundary.
-
-Job creation does not require:
-- a new chat;
-- a new agent;
-- a new PR;
-- a Retest;
-- an Asset Requirement.
-
----
-
-## 7. Task lifecycle
+## 4. Job lifecycle
 
 ```text
-PLANNED
+DRAFT
 READY
 IN_PROGRESS
-WAITING
-BLOCKED
 COMPLETED
 CANCELLED
 SUPERSEDED
 ```
 
-Task deletion is allowed only before durable references depend on it.
+WAITING/BLOCKED are derived work conditions from Handoff/Human Gate/dependency/blocker records.
 
----
+Accepted terminal result:
+```text
+PASS
+PASS_RETEST_REQUIRED
+```
 
-## 8. Run lifecycle
+## 5. Task
+
+Task is optional bounded work package embedded in Job by default.
 
 ```text
-CREATED
+PLANNED
 READY
+IN_PROGRESS
+COMPLETED
+CANCELLED
+SUPERSEDED
+```
+
+WAITING/BLOCKED are derived conditions.
+
+Task deletion is allowed only before durable references exist.
+
+## 6. Run
+
+A Run begins when execution begins.
+
+```text
 IN_PROGRESS
 WAITING_HUMAN
 BLOCKED
@@ -133,11 +99,11 @@ CANCELLED
 SUPERSEDED
 ```
 
-A meaningful new attempt/context creates a new linked Run.
+Meaningful retry/new chat creates new linked Run.
 
----
+Non-independent specialist assistance may create a child Run with `parent_run_id`.
 
-## 9. Handoff lifecycle
+## 7. Handoff
 
 ```text
 PENDING
@@ -146,37 +112,37 @@ CONSUMED
 SUPERSEDED
 ```
 
-Pending next-role transition is represented by Handoff, not by keeping the source Run alive.
+Source Run is completed; Handoff represents pending transition.
 
----
-
-## 10. Completion
-
-A Job becomes COMPLETED when its own approved completion topology is satisfied.
+## 8. Completion topology
 
 There is no universal Reviewer requirement.
 
-Possible completion paths may involve:
-- objective evidence/self QA;
+Normal topology is flexible, but mandatory review floor applies to mechanically sensitive change classes defined in Foundation F13.
+
+Completion may require:
+- Goal Recheck/self QA;
+- capability-backed evidence;
 - Reviewer;
 - Tester;
 - Human Gate;
 - combinations.
 
-Accepted successful results:
+## 9. PASS_RETEST_REQUIRED
 
+Job may become COMPLETED + PASS_RETEST_REQUIRED while practical Retest remains pending.
+
+Merge is allowed only after explicit human authorization with pending Retest/unverified coverage shown.
+
+If later Retest FAIL occurs after Job completion:
 ```text
-PASS
-PASS_RETEST_REQUIRED
+preserve completed Job
+→ create linked remediation Job
 ```
 
-PASS_RETEST_REQUIRED permits completed/accepted Job while practical Retest remains outstanding.
+Do not reopen a Task inside terminal Job.
 
----
-
-## 11. Merge/deploy facts
-
-Separate recorded facts:
+## 10. Delivery facts
 
 ```text
 accepted
@@ -185,81 +151,28 @@ deployed
 deployment_verified
 ```
 
-Merge requires explicit human authorization.
+Separate from lifecycle.
 
----
+## 11. Job history/delete
 
-## 12. Job history/delete
+Completed Job remains history.
 
-Completed Job remains in Project history.
+No Job ARCHIVED state.
 
-No Job ARCHIVED state exists.
+Hard delete is explicit human action.
 
-Hard Job deletion is allowed as explicit user action.
+Initial model does not require tombstones. Before deleting referenced Job data, show references/consequences and obtain explicit decision.
 
-Deletion semantics:
+## 12. PAUSED/ARCHIVED execution
 
-```text
-no surviving durable external references
-→ full deletion
+No chat can be asynchronously stopped by another chat.
 
-surviving durable external references
-→ delete detailed Job-owned records
-→ preserve minimal tombstone identity required by surviving references
-```
+Therefore lifecycle is rechecked before consequential actions.
 
-The tombstone is not Job ARCHIVED state and does not retain ordinary Job contents.
+PAUSED/ARCHIVED blocks new consequential work once observed.
 
+## 13. Direct Agent promotion
 
----
+Promotion does not mutate an ephemeral Direct Agent lifecycle.
 
-## 13. PAUSED execution semantics
-
-```text
-PAUSED
-→ durable state readable
-→ no new execution begins
-→ no pending Handoff consumed
-→ active Run stops at earliest safe boundary
-→ ACTIVE required to resume
-```
-
----
-
-## 14. ARCHIVED execution semantics
-
-```text
-ARCHIVED
-→ history/status read allowed
-→ ordinary execution prohibited
-→ reactivate before work resumes
-```
-
-Normal work resume is `ARCHIVED → ACTIVE`.
-
----
-
-## 15. WAITING vs BLOCKED
-
-```text
-WAITING
-= valid continuation path exists but known condition/handler/event is pending
-
-BLOCKED
-= no safe continuation path exists until blocker is resolved
-```
-
----
-
-## 16. Result vocabulary
-
-Shared evaluation terms are contextual.
-
-A completed accepted Job normally records only:
-
-```text
-PASS
-PASS_RETEST_REQUIRED
-```
-
-`CHANGES_REQUIRED`, `BLOCKED`, and `HUMAN_REVIEW_REQUIRED` normally route nonterminal work rather than define accepted terminal Job result.
+It creates a new Project/Job from a promotion packet containing objective, outputs, assumptions, repo target and remaining work.
