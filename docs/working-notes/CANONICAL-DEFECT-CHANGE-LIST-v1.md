@@ -41,15 +41,15 @@ Section: §18 Reviewer UI audit and Execution Plan Audit references
 Change: make these review modes conditional checkpoints selected by the review topology / mechanical floor.  
 Reason: remove fixed-flow contradiction.
 
-## C5 — Universal final Job acceptance conflicts with conditional LOW path
+## C5 — Universal final Job acceptance conflicts with direct workflow-based acceptance
 
 Files:
 - `docs/architecture/AGENT-HARNESSES-v0.1.md`
 - `docs/architecture/EXECUTION-AND-REVIEW-v0.1.md`
 
 Current: Final Job Acceptance is universal.  
-Change: after FA-1, finite Jobs close according to work class and required review dependencies. LOW may close without independent final review only when no mandatory trigger applies and the absence is explicit. Project is never “complete”; user archives it.  
-Reason: resolved P5/P7/P12.  
+Change: after FA-1, finite Jobs close according to their Job-type workflow, required review dependencies, and direct mechanical triggers. Do not introduce LOW/STANDARD/HIGH classes. Accepted outcomes use `PASS` or `PASS_RETEST_REQUIRED`; Project itself is never “complete”, only archived by the user.  
+Reason: resolved P5/P7/P12 plus user decision removing work tiers.  
 Dependency: FA-1 + STATE-MACHINE-v1.
 
 ## C6 — QA/QC vocabulary drift
