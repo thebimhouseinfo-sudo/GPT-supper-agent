@@ -89,6 +89,27 @@ This keeps the user's QA/QC language while removing vocabulary drift between Cod
 
 ## 5. Review floor and acceptance result
 
+Review is NOT required for every PR.
+
+After the Detailed Execution Plan is sufficiently concrete, the system produces a work-assignment / review-topology table that states which Tasks, work groups, or PRs require Reviewer participation.
+
+Conceptual example:
+
+```text
+Work item | Owner | Output/PR | Review required | Reviewer mode | Depends on
+T1        | Coder | PR #21    | NO              | -             | Plan
+T2        | Coder | PR #22    | YES             | implementation| T1
+T3        | Design| artifact  | YES             | design        | Plan
+```
+
+Therefore:
+
+- PR existence alone does not imply review;
+- review placement follows the approved Detailed Execution Plan / Review Topology;
+- Reviewer is inserted only where the topology requires it or where a later discovered condition causes the topology to be updated;
+- a PR marked no-review may proceed according to its workflow once its own required QA/QC/evidence passes;
+- if new information makes review necessary, the topology may be revised before merge.
+
 There is no LOW / STANDARD / HIGH work classification.
 
 Review topology is determined directly from:
