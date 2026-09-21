@@ -242,7 +242,7 @@ The Drive folder tree itself is the Job index. There is no separate registry fil
 
 Selecting a Job from the list is equivalent to opening that Drive Job.
 
-## 12. Job open
+## 11. Job open
 
 `job open <id>` always loads Drive state before reading source code:
 
