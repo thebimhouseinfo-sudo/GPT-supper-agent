@@ -448,18 +448,18 @@ VERIFICATION-AND-EVIDENCE-v1
 
 Known:
 
-- independent of Coder
+- independent of the work owner being reviewed
 - Project Memory write
 - source read-only
-- Plan Readiness Review
-- Design Review
-- Execution Plan Audit
-- Implementation Review
-- Integration Review when needed
+- provides reusable review modes rather than a hard-coded gate sequence
+- review checkpoints are selected only after phases/tasks/dependencies are sufficiently known
+- final Job acceptance is independently reviewed
 
 Still define:
 
-- exact review checklist per gate
+- rules for selecting review checkpoints from the Work Map
+- reviewer mode selection per checkpoint
+- exact review checklist per review mode
 - finding severity
 - blocking vs non-blocking findings
 - evidence requirements
@@ -662,31 +662,34 @@ FAILURE-RECOVERY-v1
 
 ## S20. Completion model — PARTIAL
 
-Known core rule:
+Known core rules:
 
 ```text
 work produced
-≠ work approved
-≠ parent complete
+≠ independently accepted
+≠ Job complete
 ```
 
-Completion is hierarchical:
+Work is first decomposed:
 
 ```text
-Task
-→ Review Unit
-→ PR
-→ Change Set
-→ Job
+Job
+→ Phase
+→ Task
 ```
 
-Each applicable level must pass its own review before completion can be promoted upward. If review fails, the affected owning level is reopened; parent completion is revoked until the branch is approved again.
+Review is then overlaid dynamically after phase/task/dependency structure is known.
 
-A Job requires a final Job-level verdict before it is marked complete or the workflow moves on.
+There is NO hard rule that every Task, Phase, Review Unit, PR, or Change Set receives its own independent review.
+
+A Work Map / Review Topology determines the useful checkpoints.
+
+A Job does require final independent acceptance before it is marked complete or the workflow moves on.
 
 Need answer:
 
-- exact status vocabulary for READY_FOR_REVIEW / APPROVED / DONE
+- exact Work Map / Review Topology schema and owner
+- exact status vocabulary for working / checkpoint-ready / accepted / changes-required / done
 - When is a Task done?
 - When is a Review Unit done?
 - When is a PR done?
