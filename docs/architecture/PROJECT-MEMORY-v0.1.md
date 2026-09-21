@@ -255,3 +255,37 @@ A tombstone is not archive and does not preserve the full Job history.
 Milestones and stages remain structured topology inside Job records.
 
 They are not promoted into a new ownership hierarchy or separate WORK collections unless real use later proves an independent lifecycle need.
+
+
+---
+
+## 20. Cross-Project references
+
+Strong referential integrity is required inside one Project.
+
+Cross-Project durable references are weak/provenance references and must remain intelligible even if the target Project is later hard-deleted.
+
+A cross-Project reference should carry enough snapshot/provenance context, such as:
+- target Project/entity ID;
+- human-readable summary when material;
+- repository/revision reference where applicable.
+
+A surviving Project must not require another Project's internal files to remain loadable for its own integrity.
+
+---
+
+## 21. Project deletion and ownership
+
+Project hard-delete removes its Drive memory/control-plane folder.
+
+It does not delete repositories.
+
+Its GSA OWNED relationships cease to exist with the deleted Project, releasing those repositories for future explicit ownership by another Project.
+
+---
+
+## 22. CONTROL rebuild contract
+
+No unique durable historical fact may exist only in CONTROL.json.
+
+If CONTROL.json is lost or corrupt, the Project must remain reconstructable from PROJECT.md plus durable WORK / KNOWLEDGE / ARTIFACTS records.
