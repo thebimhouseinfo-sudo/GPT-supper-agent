@@ -152,6 +152,8 @@ Direct Agent work:
 - ephemeral by default;
 - may be promoted/persisted when work grows;
 - Direct Coder requires clearly authorized repo target.
+- If the target repo is already OWNED by a Project, Direct Coder must route into that owning Project instead of writing standalone.
+- If the repo is unowned by GSA, Direct Coder may perform an explicitly authorized bounded one-off change without automatically claiming ownership.
 
 Tester and Orchestrator are not outer entries initially.
 
