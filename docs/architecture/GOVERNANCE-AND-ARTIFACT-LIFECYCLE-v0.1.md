@@ -95,7 +95,7 @@ PLANNING_GAP
 CAPABILITY_BLOCKED
 ```
 
-Fast-path low-risk fixes may skip this gate.
+Whether this gate may be skipped is determined only by the canonical work-classification/state-machine specification. No implicit fast-path exemption is normative.
 
 ## User approval gate
 
@@ -155,22 +155,15 @@ Evidence tied to an older commit or superseded artifact cannot automatically pro
 
 ## Workflow state model
 
-```text
-DISCOVERY
-→ CLARIFICATION
-→ PLANNING
-→ PLAN_READINESS_REVIEW
-→ WAITING_FOR_USER_APPROVAL (when required)
-→ DESIGNING (when applicable)
-→ DESIGN_REVIEW
-→ EXEC_PLAN_DETAIL
-→ EXEC_PLAN_AUDIT
-→ IMPLEMENTING
-→ VERIFYING
-→ IMPLEMENTATION_REVIEW
-→ INTEGRATION_REVIEW (when applicable)
-→ APPROVED
-→ DONE
-```
+Workflow states and transitions are not defined independently in this document.
 
-Blocking branches include CLARIFICATION_REQUIRED, PLANNING_GAP, DESIGN_GAP, CAPABILITY_BLOCKED, STALE, STATE_CONFLICT, and CHANGES_REQUIRED.
+The canonical source is `STATE-MACHINE-v1.md`, which owns:
+
+- the complete state vocabulary
+- allowed and illegal transitions
+- blocking branches
+- who may trigger each transition
+- pause/resume/interruption behavior
+- work classification and gate requirements
+
+Artifact lifecycle statuses such as `DRAFT`, `APPROVED`, `STALE`, and `SUPERSEDED` remain defined here and are distinct from workflow states.
