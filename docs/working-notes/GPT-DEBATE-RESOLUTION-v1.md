@@ -2314,6 +2314,149 @@ Direct Agent promotion into Project workflow
 
 Do not treat deferred items as already decided.
 
+## 4.18 Theory completeness before implementation
+
+User decision:
+
+GPT Super Agent must not use progressive-definition as the main architecture strategy.
+
+The system theory / system definition must be sufficiently complete **before real implementation begins**.
+
+The goal is to avoid reproducing the same anti-pattern seen in application development where implementation starts before the underlying structure is mature, causing the architecture to be invented and patched while coding is already underway.
+
+The intended sequence is:
+
+```text
+define theory
+→ detail the complete system model
+→ review for gaps / contradictions / missing responsibilities
+→ resolve open architectural decisions
+→ freeze the implementation-relevant contracts
+→ only then begin implementation
+```
+
+Not:
+
+```text
+start coding
+→ discover missing theory
+→ invent new architecture
+→ patch contracts
+→ continue coding
+```
+
+### What "theory complete" means
+
+Before implementation, all concepts that materially affect system behavior, governance, persistence, orchestration, or cross-module contracts must be defined to a level where the implementation does not have to invent them.
+
+This includes, as applicable:
+
+- Product boundary;
+- Project;
+- Job;
+- Task;
+- Run;
+- Agent/role model;
+- Planner;
+- Designer;
+- Coder and specializations;
+- Reviewer;
+- Tester;
+- Project lifecycle;
+- Job lifecycle;
+- Run lifecycle;
+- handoff;
+- human approval;
+- runtime confirmation;
+- parallel execution rules;
+- Project/Repository ownership and reference semantics;
+- Project Memory responsibilities;
+- durable storage requirements;
+- asset requirements;
+- test requirements;
+- Retest;
+- review/evidence;
+- QA/QC semantics;
+- severity and blocking rules;
+- Causal Change Review;
+- release/completion milestones;
+- failure/recovery behavior;
+- state machine;
+- CLI/control-surface semantics;
+- capability/platform boundaries;
+- governance boundaries;
+- any other concept required for one subsystem to safely interact with another.
+
+The exact physical storage schema, CLI tree, and implementation structure may only be finalized after the underlying domain semantics are complete, but they must still be finalized **before implementation** if the implementation depends on them.
+
+### What may remain implementation-level
+
+Only details that do not change the product/system contract may remain to be chosen during implementation.
+
+Examples:
+
+- exact internal function names;
+- class/module decomposition;
+- helper utilities;
+- library selection when it does not alter an approved contract;
+- minor syntax choices;
+- local refactors;
+- performance optimization details that do not change semantics;
+- implementation-specific internal abstractions.
+
+If choosing an implementation detail would affect another agent, another module, persistence format, lifecycle state, user-visible behavior, approval boundary, evidence requirement, or future compatibility, then it is **not** merely an implementation detail and must be defined before coding.
+
+### Completeness review before implementation
+
+Before implementation begins, perform a dedicated theory completeness review.
+
+The review should ask:
+
+```text
+Are all domain entities defined?
+Are ownership boundaries clear?
+Are all read/write responsibilities clear?
+Are lifecycle/state transitions clear?
+Are handoffs clear?
+Are approval gates clear?
+Are failure/recovery paths clear?
+Are persistence needs clear?
+Are platform limitations distinguished from architecture policy?
+Are cross-module contracts clear?
+Are deferred items truly implementation-only?
+Are there contradictions between documents?
+Would a Coder have to invent any product/architecture rule while implementing?
+```
+
+If the answer to the last question is yes, theory is not yet complete.
+
+### Relationship to specialist skills
+
+Completeness does not mean the core must contain every domain methodology.
+
+For example:
+
+```text
+core theory
+→ defines when UI Design is required
+→ defines DESIGN_READY / SHELL_READY contracts
+→ defines who owns the stage and what must be produced
+
+UI specialist skill/harness
+→ owns the professional UI design methodology
+```
+
+The specialist contract itself must still be sufficiently defined before implementation depends on it.
+
+### Core rule
+
+```text
+theory complete first
+implementation second
+```
+
+The system should not intentionally leave architecture gaps for implementation to discover later.
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
