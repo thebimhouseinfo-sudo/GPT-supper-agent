@@ -4,11 +4,9 @@
 
 Independently challenge the completed Phase 1 theory before Phase 2 operational harness work begins.
 
-Do NOT assume the existing design is correct merely because documents call parts FROZEN or DEFINED.
+Do not assume the existing design is correct merely because documents call parts FROZEN or DEFINED.
 
 The goal is to discover material contradictions, omissions, overengineering, hidden implementation requirements, or unsafe assumptions.
-
----
 
 ## Current gate
 
@@ -18,9 +16,7 @@ CLAUDE PEER REVIEW = PENDING
 PHASE 2 = BLOCKED
 ```
 
----
-
-## Recommended reading order
+## Reading order
 
 ### Core architecture
 
@@ -42,24 +38,16 @@ PHASE 2 = BLOCKED
 13. `docs/architecture/CODER-UIUX-HARNESS-v0.1.md`
 14. `docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`
 
-### Specialist/reference UI model
+### Specialist/reference UI theory
 
 15. `docs/architecture/UI-SPEC-MODEL-v0.1.md`
 16. `docs/architecture/CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`
 
-### Theory synthesis / audit trail
+### Internal completion result
 
-17. `docs/working-notes/THEORY-COLLECT-PASS-01.md`
-18. `docs/working-notes/THEORY-REVIEW-PASS-01.md`
-19. `docs/working-notes/THEORY-COLLECT-PASS-02.md`
-20. `docs/working-notes/THEORY-REVIEW-PASS-02.md`
-21. `docs/working-notes/THEORY-COLLECT-PASS-03.md`
-22. `docs/working-notes/THEORY-REVIEW-PASS-03.md`
-23. `docs/working-notes/THEORY-COLLECT-PASS-04.md`
-24. `docs/working-notes/THEORY-REVIEW-PASS-04.md`
-25. `docs/working-notes/FINAL-THEORY-COMPLETENESS-REVIEW.md`
+17. `docs/working-notes/FINAL-THEORY-COMPLETENESS-REVIEW.md`
 
----
+Git history preserves prior theory debates, drafts, collect/review passes, and superseded documents. They are intentionally not kept in the main tree because the peer review should challenge the current coherent theory rather than be biased by obsolete intermediate models.
 
 ## Core assumptions to attack
 
@@ -106,8 +94,8 @@ Challenge:
 ### E. State model
 
 Challenge:
-- missing legal transitions;
-- invalid reopen semantics;
+- legal transitions;
+- reopen semantics;
 - WAITING vs BLOCKED;
 - PAUSED/ARCHIVED behavior;
 - state/result/validity/event separation.
@@ -134,11 +122,9 @@ Challenge:
 
 ### H. Operational complexity
 
-Identify any element that adds ceremony without clear correctness/quality value.
+Identify anything that adds ceremony without clear correctness/quality value.
 
-Conversely identify anything underspecified that would force Phase 2 implementation to invent architecture.
-
----
+Conversely, identify anything underspecified that would force Phase 2 implementation to invent architecture.
 
 ## Required review output format
 
@@ -155,20 +141,17 @@ Recommended change:
 Downstream impact:
 ```
 
-Severity meaning:
+Severity:
 
 ```text
 CRITICAL
-= foundational contradiction or unsafe architecture;
-  Phase 2 must not start
+= foundational contradiction or unsafe architecture; Phase 2 must not start
 
 IMPORTANT
-= material theory weakness;
-  should be resolved before Phase 2 unless explicitly waived
+= material theory weakness; resolve before Phase 2 unless explicitly waived
 
 MINOR
-= clarification/cleanup;
-  non-blocking
+= clarification/cleanup; non-blocking
 ```
 
 Then provide:
@@ -189,9 +172,7 @@ Do not implement fixes during peer review.
 
 Review only.
 
----
-
-## Human/GSA disposition after peer review
+## Disposition after peer review
 
 Claude is an independent reviewer, not final authority.
 
