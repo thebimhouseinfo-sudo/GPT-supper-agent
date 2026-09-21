@@ -214,19 +214,24 @@ Reviewer writes only to Google Drive Project Memory.
 
 Reviewer does not fix source code.
 
-Reviewer has three distinct jobs when UI/design work is involved:
+Reviewer has four distinct jobs when substantial UI/design work is involved:
 
-1. Design Review Gate after Designer.
-2. Execution Plan Audit before coding.
-3. Implementation Review after coding.
+1. Plan Readiness Review after Planner for substantial changes.
+2. Design Review Gate after Designer when applicable.
+3. Execution Plan Audit before coding.
+4. Implementation Review after coding.
 
-For non-visual work, the Design Review Gate is skipped.
+For non-visual work, the Design Review Gate is skipped. Fast-path local fixes may also skip Plan Readiness Review.
 
-### 4.1 Design Review Gate
+### 4.1 Plan Readiness Review
+
+Reviewer checks Planner output for requirement completeness, causal consistency, architecture/contract impact, capability feasibility, verification strategy, acceptance criteria, and unresolved assumptions.
+
+### 4.2 Design Review Gate
 
 Reviewer verifies that the concept satisfies Planner requirements and target audience needs, and that the numbered Asset Sheet completely decomposes the visual elements Coder will depend on.
 
-### 4.2 Execution Plan Audit
+### 4.3 Execution Plan Audit
 
 Reviewer checks:
 
@@ -242,7 +247,7 @@ Reviewer checks:
 
 The result can approve the plan or require restructuring before coding begins.
 
-### 4.3 Implementation review
+### 4.4 Implementation review
 
 Reviewer evaluates:
 
@@ -266,6 +271,10 @@ Typical states:
 
 ```text
 IDLE
+-> DISCOVERY
+-> CLARIFICATION
+-> PLANNING
+-> PLAN_READINESS_REVIEW
 -> PREPARING
 -> DESIGNING (when applicable)
 -> DESIGN_REVIEW (when applicable)
