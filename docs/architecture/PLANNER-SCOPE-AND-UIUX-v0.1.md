@@ -14,6 +14,8 @@ Invariant:
 
 ## 2. Planner responsibility layers
 
+Before these layers, Planner performs clarification/causal readiness: known facts → unknowns → causal impact → user questions or explicit assumptions.
+
 Planner preparation is divided into five layers:
 
 ```text
@@ -206,7 +208,7 @@ The list is extensible. Planner identifies missing knowledge/skills before plan 
 
 ## 5. Roadmap obligation
 
-Planner MUST distinguish roadmap from implementation plan.
+Planner MUST distinguish roadmap from implementation plan. It must not compile either while a blocking requirement ambiguity remains unresolved.
 
 The roadmap explains major project progression and dependency order.
 
