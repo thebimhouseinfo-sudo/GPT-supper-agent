@@ -13,7 +13,29 @@ They share the same source-repository write boundary but have different responsi
 
 > UX Coder makes the product behave correctly. UI Coder makes the approved visual concept appear correctly.
 
-## 2. Shared boundary
+## 2. Clarification before execution
+
+Before modifying source, UX Coder and UI Coder verify that their applicable inputs are sufficiently clear.
+
+UX Coder emits:
+
+```text
+UX_PLANNING_GAP
+```
+
+when flow, state, progression, accessibility behavior, or responsive semantics remain materially ambiguous.
+
+UI Coder emits:
+
+```text
+UI_DESIGN_GAP
+```
+
+when Concept Artwork, reference viewport, layout intent, design tokens, Asset Sheet references, or responsive visual rules remain materially ambiguous.
+
+Low-risk implementation details may be inferred from repo/design-system evidence. Material product or design intent may not be invented.
+
+## 3. Shared boundary
 
 Both roles may write only to the approved source repository/workspace. Neither may edit Planner specs, Designer concept artifacts, Project Memory decisions, or Reviewer findings.
 
@@ -21,7 +43,7 @@ Both inherit the approved implementation plan, execution plan, architecture/cont
 
 UI Coder additionally receives the approved Concept Artwork, Design Foundation, design tokens, Asset Sheet, asset specs/prompts, and visual references.
 
-## 3. UX Coder
+## 4. UX Coder
 
 UX Coder implements the functional experience:
 - route/navigation behavior
@@ -41,7 +63,7 @@ UX acceptance is about behavior, not visual similarity.
 
 UX Coder verifies that flows, state transitions, disabled/selected/loading/error states, touch/keyboard paths, responsive behavior, automatic progression, and recovery behavior match the Planner spec.
 
-## 4. UI Coder
+## 5. UI Coder
 
 UI Coder implements the visual layer from approved design artifacts.
 
@@ -64,7 +86,7 @@ Required interpretation includes:
 - state appearance
 - responsive visual priorities
 
-## 5. Visual fidelity classes
+## 6. Visual fidelity classes
 
 UI Coder classifies design requirements as:
 
@@ -105,7 +127,7 @@ Preserve the approved visual feeling even if exact pixels differ:
 
 UI Coder may choose non-material details such as CSS technique, grid vs flex, small interpolation between breakpoints, technical image loading method, or small spacing adjustments for real content.
 
-## 6. UI Coder workflow
+## 7. UI Coder workflow
 
 ```text
 READ CONCEPT ARTWORK
@@ -143,7 +165,7 @@ VISUAL QA
 
 UI Coder must not stop because the code compiles.
 
-## 7. Concept-reading and measurement skill
+## 8. Concept-reading and measurement skill
 
 UI Coder requires a dedicated concept-reading skill that converts visual evidence into implementation constraints.
 
@@ -167,7 +189,7 @@ The goal is faithful visual relationships, not blind pixel copying. For mobile c
 
 UI Coder should measure identifiable regions in the concept, normalize them against concept dimensions, infer repeated spacing/size patterns, and convert them into semantic layout constraints before coding. See `CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`.
 
-## 8. Render-and-compare is capability-gated
+## 9. Render-and-compare is capability-gated
 
 The plugin itself does NOT inherently provide rendering, localhost access, screenshot capture, or browser automation.
 
@@ -217,7 +239,7 @@ VISUAL_BLOCKED_BY_BROWSER
 
 A user-provided screenshot may still be visually compared with the concept even when the plugin cannot launch/render the app itself, but that is manual evidence rather than autonomous rendering.
 
-### 8.1 Executor examples
+### 9.1 Executor examples
 
 ```text
 GitHub connector only
@@ -237,7 +259,7 @@ GPTWorker + dev server, but no browser/screenshot tool
 
 The capability matrix, not the executor name, is authoritative.
 
-## 9. Visual QA
+## 10. Visual QA
 
 UI Coder checks:
 - hierarchy matches concept
@@ -255,7 +277,7 @@ UI Coder checks:
 - stable asset ids/paths are used
 - no accidental placeholder remains
 
-## 10. UX/UI execution ordering
+## 11. UX/UI execution ordering
 
 Typical screen implementation:
 
@@ -278,7 +300,7 @@ Lesson: UX pass → UI pass → joint QA
 Exercise: UX pass → UI pass → joint QA
 ```
 
-## 11. Execution Plan ownership
+## 12. Execution Plan ownership
 
 Coder's detailed execution plan labels tasks:
 
@@ -298,7 +320,7 @@ Coder's detailed execution plan labels tasks:
 
 Reviewer audits the split and ordering before implementation.
 
-## 12. UI acceptance evidence
+## 13. UI acceptance evidence
 
 Where capability permits, UI Coder handoff includes rendered screenshots, viewport labels, visual checklist result, known deviations, asset substitution status, and responsive evidence.
 
@@ -312,11 +334,11 @@ VISUAL_BLOCKED_BY_RUNTIME
 DESIGN_GAP
 ```
 
-## 13. Missing final assets
+## 14. Missing final assets
 
 UI Coder may use cropped/provisional assets only when the plan explicitly permits it. Final visual acceptance cannot pass if a missing final asset materially affects the result.
 
-## 14. UX/UI conflict handling
+## 15. UX/UI conflict handling
 
 If UI implementation would break approved UX behavior, UI Coder may not silently change behavior. If UX implementation makes the approved concept materially impossible, UX Coder may not silently simplify the design.
 
@@ -328,7 +350,7 @@ UX_UI_CONFLICT
 
 and return to Coder orchestration / Planner / Designer depending on whether the conflict is functional or visual.
 
-## 15. Reviewer split
+## 16. Reviewer split
 
 Reviewer evaluates UX and UI separately.
 
@@ -338,6 +360,6 @@ UI review covers visual fidelity, concept interpretation, token compliance, asse
 
 Combined approval requires both applicable tracks to pass.
 
-## 16. Core invariant
+## 17. Core invariant
 
 > A user-facing feature is not complete merely because it works. It must behave according to the UX specification and visually satisfy the approved concept at the required level of fidelity.
