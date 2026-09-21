@@ -40,7 +40,7 @@ Hard rules:
 - User configures the Super Agent Drive root once; normal Job creation never asks for a new Drive link.
 - Every Job defaults to online execution.
 
-Exit criterion: a Job can be created as one direct Drive subfolder without a per-Job Drive link or registry entry, appear in `job list` through folder enumeration + JOB.json validation, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
+Exit criterion: a Job can be created as one direct Drive subfolder without a per-Job Drive link, appear in `job list` through direct-folder enumeration + JOB.json validation, reopen Drive-first in another conversation, and use the current request plus Drive context to selectively read the relevant GitHub repo/path.
 
 ## Phase 2 — Job Code Environment, Project and Repo Profiling
 
