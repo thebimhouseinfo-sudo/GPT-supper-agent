@@ -1,353 +1,215 @@
-# Project Memory & Knowledge Model v0.1
+# Project Memory Model v1
 
-## 1. Project Memory purpose
+## 1. Purpose
 
-Google Drive is the durable memory store. One Super Agent root folder is configured once; each Job receives an automatically created subfolder beneath that root.
+Google Drive Project Memory is the durable Project state/control plane.
 
-It does NOT contain source code.
+It stores:
+- Project identity/lifecycle;
+- work state;
+- decisions;
+- architecture/contracts/plans;
+- reviews/evidence;
+- Retests;
+- Asset Requirements;
+- approvals;
+- release records.
 
-Typical content is Markdown and JSON representing:
+It does not store GitHub source as canonical code truth.
 
-- project architecture
-- decisions
-- contracts
-- repo relationships
-- plans
-- task state
-- review findings
-- cross-repo impact
-- lessons
-- capability and platform profiles
-
-Raw chat transcripts, temporary reasoning, tool chatter, and intermediate guesses MUST NOT be persisted as project memory.
-
-## 2. Suggested Job layout
-
-```text
-<configured Super Agent Drive root>/
-  <job-id>/
-    JOB.md
-    PROJECT.md
-    PROJECT-PROFILE.json
-    ARCHITECTURE.md
-    STATE.json
-    REPO-GRAPH.json
-    KNOWLEDGE-PROFILE.json
-    CAPABILITY-MATRIX.json
-
-    decisions/
-      ADR-0001.md
-      ADR-0002.md
-
-    contracts/
-      <contract>.json
-
-    plans/
-      MASTER-0001.md
-      MASTER-0001.json
-
-    tasks/
-      TASK-0001.json
-
-    reviews/
-      REVIEW-0001.md
-
-    approvals/
-      APPROVAL-0001.json
-
-    design/
-      brief/
-      concepts/
-        selected/
-      asset-sheet/
-        ASSET-SHEET.png
-        ASSET-SPECS.json
-        PROMPTS.md
-        ASSET-SHEET.md
-      reviews/
-
-    lessons/
-      LESSONS.md
-
-    repos/
-      <repo>.json
-```
-
-`JOB.md`, architecture, plans, decisions, and narrative reviews are Markdown-first. YAML front matter is used when a Markdown file also needs compact machine-readable metadata. JSON is reserved for strongly structured runtime/state artifacts such as `STATE.json`, `REPO-GRAPH.json`, and `CAPABILITY-MATRIX.json`.
-
-Durable artifacts should carry id/version/status/input references so downstream artifacts can be invalidated or revalidated when upstream decisions change.
-
-The `design/` workspace may contain concept images and one crop-ready `ASSET-SHEET.png`. The Asset Sheet is a single image canvas containing concept-derived visual assets already separated from one another, numbered, and padded for manual cropping. It is intentionally not a complete directory of individually generated production assets. `ASSET-SPECS.json` and `PROMPTS.md` are sidecars that explain each numbered region and support later high-quality regeneration of individual assets.
-
-## 3. Configured Drive root
-
-Super Agent stores one stable Google Drive root folder reference in its configuration. Job commands operate relative to that root.
-
-The user is not asked for a Drive folder link during normal `job create`.
-
-The root itself is the Job container. Each direct child folder that contains a valid `JOB.md` is one Job.
-
-Example:
-
-```text
-<configured Super Agent Drive root>/
-├── kid-eschool/
-│   ├── JOB.md
-│   └── ...
-├── stockmind/
-│   ├── JOB.md
-│   └── ...
-└── another-job/
-    ├── JOB.md
-    └── ...
-```
-
-There is no global Job registry and no required `jobs/` wrapper.
-
-## 4. Job folder as discovery unit
-
-The Job folder itself is both the durable memory root and the discovery record.
-
-`job list` enumerates only the direct child folders of the configured Drive root and reads each folder's `JOB.md`.
-
-A valid `JOB.md` provides at least this YAML front matter:
-
-```yaml
 ---
-id: kid-eschool
-name: Kid eSchool
-status: active
-execution_mode: online
-repositories:
-  - thebimhouseinfo-sudo/Kideschool
-  - thebimhouseinfo-sudo/KE-Math-Grade1
+
+## 2. Root layout
+
+```text
+<Project>/
+├── PROJECT.md
+├── CONTROL.json
+├── WORK/
+│   ├── jobs/
+│   ├── tasks/
+│   ├── runs/
+│   └── handoffs/
+├── KNOWLEDGE/
+│   ├── architecture/
+│   ├── decisions/
+│   ├── contracts/
+│   └── plans/
+└── ARTIFACTS/
+    ├── reviews/
+    ├── evidence/
+    ├── retests/
+    ├── assets/
+    ├── approvals/
+    └── releases/
+```
+
+This structure is derived from collected domain persistence/query requirements.
+
 ---
-```
 
-The body of `JOB.md` is human-readable and may summarize purpose, scope, current phase, and important links.
+## 3. PROJECT.md
 
-Folders without a valid `JOB.md` are not treated as active Jobs.
+PROJECT.md is:
+- Project marker;
+- stable identity entry point;
+- human-readable overview;
+- high-level lifecycle/repository summary.
 
-Global reusable knowledge, if persisted externally, is logically separate from Job discovery and MUST NOT require a Job registry.
+It is not the full state/history store.
 
-## 5. Job, Project, and repo knowledge
+---
 
-These concepts are distinct:
+## 4. CONTROL.json
 
-```text
-Job
-= durable work state stored in Drive
+CONTROL.json is the compact current-state index/cache.
 
-Project
-= logical system/product context for planning
+It may contain:
+- Project lifecycle;
+- active/waiting/blocked Jobs;
+- pending Handoffs;
+- pending Human Gates;
+- pending Retests;
+- current release refs;
+- revision token.
 
-Repo
-= one GitHub source repository inside the Job's code environment
-```
+Historical entity files remain authoritative for history.
 
-Project-level artifacts contain shared truth across the repos relevant to the Job.
+---
 
-Example:
+## 5. WORK
 
-```text
-ARCHITECTURE.md
-REPO-GRAPH.json
-contracts/*
-decisions/*
-```
+WORK stores durable operational entities:
 
-Repo metadata points to shared project artifacts.
+- Job;
+- Task;
+- Run;
+- Handoff.
 
-Example:
+No per-role folder is required.
 
-```json
-{
-  "repo": "thebimhouseinfo-sudo/KE-Math-Grade1",
-  "project": "kid-eschool",
-  "role": "subject-app",
-  "consumes": [
-    "authentication",
-    "child-profile",
-    "navigation"
-  ],
-  "provides": [
-    "math-learning"
-  ]
-}
-```
+---
 
-## 6. Single-repo and multi-repo consistency
+## 6. KNOWLEDGE
 
-Project Memory follows the same Drive Job model for one-repo and multi-repo Jobs.
+KNOWLEDGE stores durable semantic truth:
 
-The canonical rationale for keeping Drive above GitHub is defined once in `ARCHITECTURE-v0.1.md` §6.
+- architecture;
+- decisions;
+- contracts;
+- plans.
 
-This file only defines how Project Memory is stored and consumed; it does not restate that rationale.
+Artifacts are organized by meaning, not by which role authored them.
 
-## 7. Repo graph
+---
 
-`REPO-GRAPH.json` models providers, consumers, roles, and shared contracts.
+## 7. ARTIFACTS
 
-Its purpose is causal impact analysis, not merely documentation.
+ARTIFACTS stores durable supporting records with distinct lifecycle/query needs:
 
-If a shared provider or contract changes, the graph identifies all consumers that must be considered.
+- reviews;
+- evidence;
+- Retests;
+- Asset Requirements;
+- materially consequential approvals;
+- release/milestone records.
 
-## 8. Contracts
+---
 
-Shared interfaces across repositories are first-class Project Memory.
+## 8. Repository relationships
 
-A contract should identify at least:
-
-- contract id and version
-- provider repo
-- consumer repos
-- schema or behavior
-- compatibility rules
-- migration constraints
-
-A contract change can invalidate a single-repo implementation plan.
-
-## 9. Decisions
-
-Decision logs capture durable project decisions and their scope.
-
-Decision scope may be:
-
-- global
-- project
-- repo
-- contract
-- subsystem
-
-Agents load only relevant decisions into working context.
-
-## 10. Knowledge Base
-
-Project Memory answers:
-
-> What has this project decided and what state is it in?
-
-Knowledge Base answers:
-
-> What must the agent know to reason correctly?
-
-Suggested hierarchy:
+Project stores explicit relationships:
 
 ```text
-knowledge/
-  engineering/
-    testing/
-    debugging/
-    multi-repo/
-
-  platforms/
-    chatgpt/
-    github/
-    google-drive/
-    vercel/
-
-  domains/
-    revit/
-    autocad/
-    web/
-    education/
-
-  lessons/
+OWNED
+REFERENCED
 ```
 
-## 11. Knowledge profiles
+Owned repos may be written within approved scope.
 
-Each Job declares required knowledge profiles.
+Referenced repos are read-only.
 
-Example:
+---
 
-```json
-{
-  "job": "revit-mep-plugin",
-  "knowledge_profiles": [
-    "dotnet",
-    "revit",
-    "revit-mep"
-  ]
-}
-```
+## 9. Context Builder
 
-Planner determines these profiles from actual project evidence and user intent.
-
-## 12. Knowledge metadata
-
-Knowledge items should carry provenance and freshness information where relevant.
-
-Example:
-
-```json
-{
-  "topic": "revit-connectors",
-  "product": "Autodesk Revit",
-  "version": "2026",
-  "source_type": "official-docs",
-  "verified_at": "2026-09-21",
-  "confidence": "high"
-}
-```
-
-Platform knowledge may become stale and must be refreshed contextually.
-
-## 13. Capability knowledge
-
-The system must distinguish:
-
-- documented capability
-- observed capability
-- unknown capability
-- known-unavailable capability
-
-Unknown is treated as unavailable until verified.
-
-Negative knowledge is valuable and should be retained when durable, e.g.:
-
-- GitHub repository write does not imply shell execution.
-- A cloud repo connector does not imply localhost access.
-- Super Agent does not assume ownership of local/offline execution.
-- A tool cannot claim runtime verification it cannot physically perform.
-
-## 14. Drive-first Context Builder
-
-Context construction always starts from the active Job's Drive memory.
+Opening/resuming work uses:
 
 ```text
-Job selected
-→ Drive Job Memory
-→ current state / plans / decisions / repo graph
-→ current user request
-→ repo/path relevance resolution
-→ selective GitHub read
-→ role-specific context packet
+Project Memory
+→ current work
+→ relevant decisions/contracts/plans
+→ current request
+→ relevant repo/path
+→ selective live evidence
 ```
 
-The attached GitHub repositories are code environments, not the first context source.
+Do not load the whole Project or whole repo by default.
 
-Super Agent should avoid broad repo scans when Drive already narrows the relevant repository/subsystem.
+---
 
-For status/planning/history questions, Drive may be sufficient and GitHub reading may be unnecessary.
+## 10. Concurrency
 
-## 15. Context packet composition
+Mutable durable records must support optimistic concurrency/revision checking.
 
-Agents MUST NOT receive the entire project memory, entire GitHub codebase, or chat history by default.
+Avoid last-write-wins for concurrent chats.
 
-A context packet should be assembled from:
+---
 
-```text
-current task
-+ relevant project invariants
-+ relevant decisions
-+ relevant contracts
-+ relevant architecture
-+ relevant domain/platform knowledge
-+ relevant live repo evidence
-+ relevant previous review findings
-```
+## 11. Evidence
 
-Planner, Designer, Coder, and Reviewer receive different context packets according to role.
+Prefer durable references/metadata over duplicating external raw data.
 
-Designer context additionally includes the approved Design Brief, use cases, target audience, UI Tree, node requirements, Design Foundation constraints, Device Matrix, existing visual references, and relevant design skills. The asset inventory is derived after concept creation rather than treated as a fixed upstream input.
+Examples:
+- CI run reference;
+- PR/revision;
+- screenshot reference;
+- user Retest result;
+- deployment evidence.
+
+---
+
+## 12. Retests
+
+Retest records are durable and append-preserve attempt history.
+
+Old FAIL is not erased by later PASS.
+
+---
+
+## 13. Assets
+
+Asset Requirement contracts live in Project Memory.
+
+Final production binary assets normally live in owned source repositories at stable target paths.
+
+---
+
+## 14. Persistence exclusions
+
+Do not persist by default:
+- raw chat transcripts;
+- hidden reasoning;
+- transient tool chatter;
+- speculative guesses;
+- runtime confirmations;
+- ephemeral Direct Agent work unless promoted;
+- redundant copies of GitHub source.
+
+---
+
+## 15. Lazy creation
+
+PROJECT.md and CONTROL.json are bootstrap artifacts.
+
+Subcollections may be created lazily as work requires them.
+
+---
+
+## 16. Global registry
+
+No global Project registry is required initially.
+
+The configured Drive root + Project folders are the discovery source.
+
+Cross-Project global-ID lookup may be slower but remains unambiguous due to globally unique durable IDs.
