@@ -233,6 +233,18 @@ gate decisions are contextual and often need explanation/options, not terse CLI 
 
 Direct Agent invocation loads specialist harness but does not create Project automatically.
 
+For Direct Coder specifically, resolve repo ownership before write:
+
+```text
+repo already OWNED by Project
+→ open/use owning Project
+→ no standalone write bypass
+
+repo unowned by GSA
+→ explicitly authorized bounded Direct Coder work may proceed
+→ no automatic ownership claim
+```
+
 If work grows:
 ```text
 offer promotion
