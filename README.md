@@ -1,146 +1,186 @@
 # GPT Super Agent
 
-A persistent coding-agent harness for ChatGPT.
+GPT Super Agent (GSA) is a ChatGPT orchestration/harness design for durable project work using Google Drive as Project memory/control plane and GitHub as source-code truth.
 
-The project turns ChatGPT from a conversation-driven coding assistant into an orchestrated software-development system with durable project memory, explicit agent roles, knowledge preparation, capability-aware planning, execution QA/QC, and independent review.
+## Current phase
+
+```text
+PHASE 1 INTERNAL THEORY = COMPLETE
+CLAUDE PEER REVIEW = PENDING
+PHASE 2 = BLOCKED UNTIL PEER REVIEW DISPOSITION
+```
+
+Phase 2 has intentionally not started.
 
 ## Core model
 
 ```text
-ChatGPT
-   |
-Orchestrator
-   |
-   +-- Planner  -> prepares project/specs; writes Project Memory
-   +-- Designer -> creates visual concepts + crop-ready asset sheet; writes Design Workspace
-   +-- Coder
-   |   +-- UX Coder -> behavior/flow/state
-   |   +-- UI Coder -> visual implementation/fidelity
-   |   -> writes source repositories only
-   +-- Reviewer -> audits design/plan/code; writes Project Memory
+Conversation = interaction UI
+Google Drive = durable Project memory/control plane
+GitHub = source-code truth
+Harness / Skills / Loops = operational behavior
 ```
 
-Each Job is a durable work entity stored in Google Drive. Its code environment is GitHub and may contain one or more repositories. Source code never moves into Drive. Super Agent is designed primarily for online coding/orchestration.
-
-## Core entity model
+Durable work hierarchy:
 
 ```text
-Job
-= durable work state in Google Drive
-
-Code Environment
-= one or more GitHub repositories attached to the Job
-
 Project
-= logical product/system context inferred or recorded for planning
+→ Job
+→ Task
+→ Run
 ```
 
-**Job ≠ Repo.** A Job may use one repo or many repos.
+Current execution is:
 
-The canonical rationale for keeping Drive as the Job control plane for both single- and multi-repo work is defined in `ARCHITECTURE-v0.1.md` §6.
+```text
+pull-based
++ human-dispatched
++ durable-state persistent
+```
 
-## Invocation
+## Repository relationships
 
-The user-facing identity is intentionally short and independent of the repository name:
+A Project may:
+
+- own 0..N GitHub repositories;
+- reference 0..N repositories read-only.
+
+```text
+OWNED
+= writable within approved Project/Job/Task scope
+
+REFERENCED
+= read-only context/dependency/example
+```
+
+One repository may have at most one GSA owning Project at a time.
+
+## Roles
+
+```text
+Orchestrator
+Planner
+Designer
+Coder
+  ├── UX Coder
+  └── UI Coder
+Reviewer
+Tester
+```
+
+Review placement is topology-driven. There is no universal Reviewer gate for every PR, Task, milestone, or Job.
+
+## Project Memory
+
+Synthesized Project structure:
+
+```text
+<Project>/
+├── PROJECT.md
+├── CONTROL.json
+├── WORK/
+│   ├── jobs/
+│   ├── tasks/
+│   ├── runs/
+│   └── handoffs/
+├── KNOWLEDGE/
+│   ├── architecture/
+│   ├── decisions/
+│   ├── contracts/
+│   ├── plans/
+│   └── design/
+└── ARTIFACTS/
+    ├── reviews/
+    ├── evidence/
+    ├── retests/
+    ├── assets/
+    ├── approvals/
+    └── releases/
+```
+
+`CONTROL.json` is a rebuildable materialized current-state view, not historical truth.
+
+## User-facing identity
 
 ```text
 Plugin handle:     @gsa
 Command namespace: gsa/
 ```
 
-Examples:
+Natural language remains valid.
+
+Outer control surface:
 
 ```text
-@gsa
-gsa/job list
-gsa/job create ...
-gsa/status
+PROJECT
+- new
+- open
+- status
+- delete
+
+DIRECT AGENT
+- Planner
+- Designer
+- Coder
+- Reviewer
+
+HELP / INSTRUCTION
 ```
 
-The GitHub repository name is an implementation detail and may be renamed later without changing the user-facing command contract.
+## Canonical architecture
 
-## Design principles
+The active theory lives in `docs/architecture/`.
 
-- Conversation is UI, not memory.
-- **Drive first, GitHub second:** selecting/opening a Job always loads its Drive memory before deciding which repo/path to inspect.
-- **No Job registry:** `job list` enumerates the Drive root's direct Job subfolders and reads each folder's `JOB.md`. `JOB.md` uses YAML front matter for machine-readable metadata and Markdown body for humans/agents.
-- Super Agent is configured once with one Google Drive root; each Job is one direct subfolder of that root.
-- Shared project knowledge lives once at project level; repositories reference it instead of duplicating it.
-- Planner prepares all material reasonably knowable before implementation begins.
-- Planner plans only work that has a known executor and verified capabilities.
-- Coder pulls approved materials, details the execution plan, self-QA/QCs continuously, and writes only to the repo.
-- Reviewer audits the detailed execution plan before coding and independently reviews implementation afterward.
-- Multi-repo changes begin with a master plan, not independent repo-local plans.
-- No agent may claim an action that its active executor cannot physically perform.
+Recommended reading order:
 
-## Definition and release model
+1. `FROZEN-FOUNDATION-v0.1.md`
+2. `ARCHITECTURE-v0.1.md`
+3. `SYSTEM-DEFINITION-SKELETON-v0.1.md`
+4. `PROJECT-MEMORY-v0.1.md`
+5. `JOB-LIFECYCLE-v0.1.md`
+6. `STATE-MACHINE-v1.md`
+7. `GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md`
+8. `SECURITY-AND-TRUST-BOUNDARIES-v0.1.md`
+9. `AGENT-HARNESSES-v0.1.md`
+10. `EXECUTION-AND-REVIEW-v0.1.md`
+11. `PLANNER-SCOPE-AND-UIUX-v0.1.md`
+12. `DESIGNER-HARNESS-v0.1.md`
+13. `CODER-UIUX-HARNESS-v0.1.md`
+14. `CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md`
+15. `UI-SPEC-MODEL-v0.1.md`
+16. `CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md`
 
-The architecture should define the full conceptual model before implementation versions are scoped.
+## Final review gate
+
+Internal theory completion is documented in:
+
+`docs/working-notes/FINAL-THEORY-COMPLETENESS-REVIEW.md`
+
+The next required step is independent Claude peer review using:
+
+`docs/working-notes/CLAUDE-PEER-REVIEW-HANDOFF.md`
+
+Peer findings are advisory evidence and must be dispositioned before Phase 2:
 
 ```text
-complete concepts
-→ resolve contradictions
-→ make rules testable
-→ classify HARD / SOFT / UNKNOWN
-→ choose implementation scope for v1
-→ run real Jobs
-→ inspect product quality
-→ tighten harness
-→ choose/adjust v2, v3 ...
+ACCEPT
+ACCEPT_WITH_MODIFICATION
+REJECT_WITH_REASON
+DEFER_TO_PHASE_2_CALIBRATION
 ```
 
-"Fully defined" does not mean "fully implemented in v1".
+## Phase 2 boundary
 
-A concept may be completely specified while its implementation is assigned to a later version.
-
-The harness is then tightened iteratively from real output quality:
+After peer review and final reconciliation, Phase 2 should begin as a thin operational harness:
 
 ```text
-real run
-→ observable defect
-→ identify owning concept/rule
-→ strengthen prompt/gate/enforcement/eval
-→ rerun
+role instructions/contracts
+→ specialist skills
+→ Drive/GitHub actions
+→ state/persistence helpers
+→ fake CLI/control UX
+→ pilot Project
+→ calibration
 ```
 
-Release scope is decided after conceptual dependencies are understood, not by leaving concepts undefined.
-
-## Documentation authority
-
-| Area | Canonical document | Status |
-| --- | --- | --- |
-| Frozen product/Job invariants | `FROZEN-FOUNDATION-v0.1.md` | FROZEN |
-| Definition map | `SYSTEM-DEFINITION-SKELETON-v0.1.md` | WORKING |
-| Definition workflow | `docs/plans/DEFINITION-COMPLETION-WORKFLOW-v1.md` | WORKING |
-| Overall architecture/rationale | `ARCHITECTURE-v0.1.md` | WORKING |
-| Workflow states | `STATE-MACHINE-v1.md` | DRAFT / TO DEFINE |
-| Release implementation planning | `IMPLEMENTATION-PLAN-v0.1.md` (content v0.3) | WORKING |
-
-Individual architecture files keep their current version labels until explicitly revised.
-
-## Architecture documents
-
-- [Frozen Foundation v0.1](docs/architecture/FROZEN-FOUNDATION-v0.1.md)
-- [System Definition Skeleton v0.1](docs/architecture/SYSTEM-DEFINITION-SKELETON-v0.1.md)
-- [Definition Completion Workflow v1](docs/plans/DEFINITION-COMPLETION-WORKFLOW-v1.md)
-- [State Machine v1 — draft](docs/architecture/STATE-MACHINE-v1.md)
-- [Architecture v0.1](docs/architecture/ARCHITECTURE-v0.1.md)
-- [Clarification & Causal Readiness](docs/architecture/CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md)
-- [Governance & Artifact Lifecycle](docs/architecture/GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md)
-- [Security & Trust Boundaries](docs/architecture/SECURITY-AND-TRUST-BOUNDARIES-v0.1.md)
-- [Project Memory & Knowledge](docs/architecture/PROJECT-MEMORY-v0.1.md)
-- [Job Lifecycle & Drive Root](docs/architecture/JOB-LIFECYCLE-v0.1.md)
-- [Agent Harnesses](docs/architecture/AGENT-HARNESSES-v0.1.md)
-- [Planner Scope, Skill Routing & UI/UX](docs/architecture/PLANNER-SCOPE-AND-UIUX-v0.1.md)
-- [UI Specification Model](docs/architecture/UI-SPEC-MODEL-v0.1.md)
-- [Designer Harness](docs/architecture/DESIGNER-HARNESS-v0.1.md)
-- [Coder UI/UX Harness](docs/architecture/CODER-UIUX-HARNESS-v0.1.md)
-- [Concept Measurement & UI Normalization](docs/architecture/CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md)
-- [Execution & Review Model](docs/architecture/EXECUTION-AND-REVIEW-v0.1.md)
-- [Implementation Plan v0.1](docs/plans/IMPLEMENTATION-PLAN-v0.1.md)
-
-## Status
-
-Current phase: foundation frozen; remaining behavioral modules are being defined against the System Definition Skeleton.
-
-Current work is definition completion and consistency. Release contents for v1/v2/v3 are intentionally not assigned until the conceptual model is sufficiently DEFINED.
+Do not begin by building a heavyweight autonomous orchestration server.
