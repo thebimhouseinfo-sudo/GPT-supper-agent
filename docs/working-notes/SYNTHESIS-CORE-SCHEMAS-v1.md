@@ -420,3 +420,45 @@ Persist only:
 Stored capability data represents last observed state.
 
 Before consequential execution, refresh capability when permissions/runtime/tool availability may have changed.
+
+
+---
+
+## 19. Cross-Project reference
+
+Cross-Project references are weak/provenance records:
+
+```yaml
+target_project_id:
+target_entity_id:
+summary:
+repo_ref:
+revision:
+captured_at:
+```
+
+They must not require the target Project's internal record to remain available forever.
+
+---
+
+## 20. CONTROL rebuild invariant
+
+Any field in CONTROL.json must be derivable from durable Project records or current Project lifecycle metadata.
+
+CONTROL must not be the sole source of a historical fact.
+
+---
+
+## 21. BLOCKED semantics
+
+```text
+entity.state = BLOCKED
+```
+means current workflow cannot progress.
+
+```text
+result = BLOCKED
+```
+means an evaluation/execution could not complete judgement.
+
+Do not mirror one automatically into the other.
