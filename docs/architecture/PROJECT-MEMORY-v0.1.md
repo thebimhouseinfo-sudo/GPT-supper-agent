@@ -26,7 +26,7 @@ Raw chat transcripts, temporary reasoning, tool chatter, and intermediate guesse
 ```text
 <configured Super Agent Drive root>/
   <job-id>/
-    JOB.json
+    JOB.md
     PROJECT.md
     PROJECT-PROFILE.json
     ARCHITECTURE.md
@@ -73,7 +73,7 @@ Raw chat transcripts, temporary reasoning, tool chatter, and intermediate guesse
       <repo>.json
 ```
 
-Markdown is primarily human/agent-readable. JSON is primarily orchestrator-readable.
+`JOB.md`, architecture, plans, decisions, and narrative reviews are Markdown-first. YAML front matter is used when a Markdown file also needs compact machine-readable metadata. JSON is reserved for strongly structured runtime/state artifacts such as `STATE.json`, `REPO-GRAPH.json`, and `CAPABILITY-MATRIX.json`.
 
 Durable artifacts should carry id/version/status/input references so downstream artifacts can be invalidated or revalidated when upstream decisions change.
 
@@ -85,20 +85,20 @@ Super Agent stores one stable Google Drive root folder reference in its configur
 
 The user is not asked for a Drive folder link during normal `job create`.
 
-The root itself is the Job container. Each direct child folder that contains a valid `JOB.json` is one Job.
+The root itself is the Job container. Each direct child folder that contains a valid `JOB.md` is one Job.
 
 Example:
 
 ```text
 <configured Super Agent Drive root>/
 ├── kid-eschool/
-│   ├── JOB.json
+│   ├── JOB.md
 │   └── ...
 ├── stockmind/
-│   ├── JOB.json
+│   ├── JOB.md
 │   └── ...
 └── another-job/
-    ├── JOB.json
+    ├── JOB.md
     └── ...
 ```
 
@@ -108,26 +108,25 @@ There is no global Job registry and no required `jobs/` wrapper.
 
 The Job folder itself is both the durable memory root and the discovery record.
 
-`job list` enumerates only the direct child folders of the configured Drive root and reads each folder's `JOB.json`.
+`job list` enumerates only the direct child folders of the configured Drive root and reads each folder's `JOB.md`.
 
-A valid `JOB.json` provides at least:
+A valid `JOB.md` provides at least this YAML front matter:
 
-```json
-{
-  "id": "kid-eschool",
-  "name": "Kid eSchool",
-  "status": "active",
-  "code_environment": {
-    "type": "github",
-    "repositories": [
-      "thebimhouseinfo-sudo/Kideschool",
-      "thebimhouseinfo-sudo/KE-Math-Grade1"
-    ]
-  }
-}
+```yaml
+---
+id: kid-eschool
+name: Kid eSchool
+status: active
+execution_mode: online
+repositories:
+  - thebimhouseinfo-sudo/Kideschool
+  - thebimhouseinfo-sudo/KE-Math-Grade1
+---
 ```
 
-Folders without a valid `JOB.json` are not treated as active Jobs.
+The body of `JOB.md` is human-readable and may summarize purpose, scope, current phase, and important links.
+
+Folders without a valid `JOB.md` are not treated as active Jobs.
 
 Global reusable knowledge, if persisted externally, is logically separate from Job discovery and MUST NOT require a Job registry.
 
