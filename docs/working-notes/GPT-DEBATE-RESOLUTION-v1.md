@@ -422,17 +422,19 @@ RT-0042-01 = PENDING
 
 A deployment may be technically verified while a practical Retest remains outstanding.
 
-## 5.5 User-mediated handoff and dispatch
+## 5.5 Handoff capability — current platform and future extension
 
-The harness cannot autonomously hand work from one agent to another or launch the next agent/Run by itself.
+### Current platform capability
 
-A handoff means:
+In the current plugin-only ChatGPT web model, there is no verified native capability for the harness to spawn/invoke a separate agent execution unit, open a fresh chat automatically, or autonomously dispatch the next independent role.
+
+Therefore current handoff is human-mediated:
 
 ```text
 current Run finishes
 → result + next recommended handler are recorded
 → ChatGPT tells the user what should happen next
-→ user explicitly invokes/authorizes the next Run
+→ user invokes/authorizes the next Run
 → next agent/role begins
 ```
 
@@ -442,7 +444,7 @@ Example:
 Coder:
 "I have finished the implementation and the PR is ready.
 Next required handler: Reviewer.
-Please ask Reviewer to inspect PR #42."
+Please invoke Reviewer in a fresh chat to inspect PR #42."
 ```
 
 The user may then say, for example:
@@ -454,21 +456,45 @@ let reviewer check PR #42
 gsa/review J-0042
 ```
 
-Only then does a Reviewer Run begin.
+Only then does the next Run begin.
 
-This applies even when multiple Runs occur in the same chat: the harness may recommend the next Run, but MUST NOT silently switch roles and continue without a user dispatch instruction.
+Independent Review keeps the additional requirement that its Reviewer Run starts in a fresh chat.
 
-Independent Review keeps the additional requirement that its Reviewer Run must start in a fresh chat.
-
-Therefore orchestration is:
+Current orchestration is therefore:
 
 ```text
 pull-based
-+ user-dispatched
++ human-dispatched
 + state-persistent
 ```
 
-not an autonomous scheduler or autonomous multi-agent runtime.
+### EXTENSION POINT — automatic agent handoff
+
+This is a platform limitation, not a permanent architecture rule.
+
+If a future ChatGPT/plugin/runtime capability exposes safe agent invocation or agent-to-agent handoff, the orchestration layer may evolve to:
+
+```text
+Run A finishes
+→ durable handoff record
+→ platform invokes next required agent/Run
+→ independent context created when required
+→ Run B starts
+```
+
+The Project / Job / Task / Run model must not depend on human dispatch. Human-mediated and automatic dispatch are two executor modes over the same durable state model.
+
+Future automatic handoff MUST preserve:
+
+- role attribution;
+- independent-review context requirements;
+- exact Job/Task/Run linkage;
+- durable handoff state;
+- approval/merge boundaries;
+- evidence provenance;
+- user visibility into what was dispatched and why.
+
+Until such capability is verified, automatic agent dispatch is `UNAVAILABLE` / `UNKNOWN` and the implementation uses human-mediated handoff.
 
 ## 6. Run and independence model
 
