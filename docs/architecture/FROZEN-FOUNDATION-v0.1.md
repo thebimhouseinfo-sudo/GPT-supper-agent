@@ -1,4 +1,4 @@
-# Frozen Foundation v0.1
+# Frozen Foundation v0.2
 
 ## Status
 
@@ -6,250 +6,195 @@
 FOUNDATION_STATUS = FROZEN
 ```
 
-This document freezes the foundational decisions that define what GPT Super Agent is and how a Job is represented.
+This document replaces the obsolete Job-as-Drive-root foundation.
 
-These decisions MUST NOT be changed implicitly while defining later modules such as Planner, QA/QC, Reviewer, schemas, or execution details.
-
-A change requires an explicit architecture revision.
+A change to these invariants requires an explicit architecture revision.
 
 ---
 
 ## F1. Product boundary
 
-GPT Super Agent is primarily an **online coding/orchestration agent**.
-
-Its current code environment is GitHub.
-
-Core online execution surfaces include:
-
-- GitHub repositories
-- branches / commits / pull requests
-- GitHub CI/workflows
-- remote preview/deployment evidence when available
-- other explicitly connected online coding services
-
-Local filesystem, local shell, localhost-only runtime, Revit/AutoCAD desktop runtime, and other offline execution are not part of the Super Agent core.
-
-GPTWorker remains a separate offline/local coding agent.
+GPT Super Agent is a ChatGPT-based orchestration/harness system for online project work.
 
 ```text
-Super Agent = online
-GPTWorker   = offline/local
+Conversation = UI, not durable memory
+Google Drive = durable Project memory/control plane
+GitHub = source-code truth
+Harness / skills / loops = workflow and quality logic
 ```
+
+GPTWorker remains a separate offline/local agent.
 
 ---
 
-## F2. One configured Google Drive root
+## F2. Configured Drive root
 
-Super Agent is configured once with one Google Drive root.
-
-The user does not provide a new Drive link for each Job.
+GSA is configured once with:
 
 ```text
 SUPER_AGENT_DRIVE_ROOT
 ```
 
-Every Job is created as one direct child folder of that root.
+Each direct child Project folder is one Project.
 
-There is:
-
-- no Job registry file
-- no mandatory `jobs/` wrapper folder
-- no GitHub scan to discover Jobs
+There is no mandatory global registry and no required jobs/ wrapper.
 
 ---
 
-## F3. Job definition
+## F3. Project definition
 
-A Job is a durable work entity stored in Google Drive.
+A Project is the durable top-level product/system context.
 
 ```text
-Job
-= one direct Drive subfolder
-= durable work state / project memory
-```
-
-A Job is NOT:
-
-- a GitHub repository
-- a chat conversation
-- a GitHub Project
-- a branch
-- a pull request
-
-A Job may represent a long-running project, migration, major change stream, or another coherent unit of work.
-
----
-
-## F4. Job marker and entry point
-
-Every valid Job folder contains:
-
-```text
-JOB.md
-```
-
-`JOB.md` is:
-
-- the Job marker
-- the human-readable Job entry point
-- the compact machine-readable metadata source through YAML front matter
-
-Example:
-
-```markdown
----
-id: kid-eschool
-name: Kid eSchool
-status: active
-execution_mode: online
-repositories:
-  - thebimhouseinfo-sudo/Kideschool
-  - thebimhouseinfo-sudo/KE-Math-Grade1
----
-
-# Kid eSchool
-
-Durable Super Agent Job memory for Kid eSchool.
-```
-
-`ARCHITECTURE.md` is an architecture document, not the Job marker.
-
-JSON remains appropriate for strongly structured runtime/state artifacts such as:
-
-- `STATE.json`
-- `REPO-GRAPH.json`
-- `CAPABILITY-MATRIX.json`
-
----
-
-## F5. Job discovery
-
-`job list` reads the configured Drive root.
-
-```text
-SUPER_AGENT_DRIVE_ROOT
-→ enumerate direct child folders
-→ find JOB.md
-→ parse valid front matter
-→ list Jobs
-```
-
-The Drive folder tree itself is the Job index.
-
-Folders without a valid `JOB.md` are not active Jobs.
-
----
-
-## F6. Job creation
-
-`job create` automatically creates a new direct subfolder under the configured Drive root.
-
-The Job bootstrap is status-driven:
-
-```text
-create folder
-→ JOB.md status: bootstrapping
-→ create initial Project Memory
-→ attach GitHub code environment
-→ initial profiling
-→ validate
-→ JOB.md status: active
-```
-
-If creation fails and cleanup cannot complete:
-
-```text
-status: incomplete
-```
-
-The user is not asked for a per-Job Drive link.
-
----
-
-## F7. Code environment
-
-The Job and the code environment are separate concepts.
-
-```text
-Job
-= Drive
-
-Code Environment
-= GitHub
-= 1..N repositories
-```
-
-A Job may contain:
-
-```text
-1 repo
-or
-many repos
-```
-
-Repositories are references from the Job; source code is not copied into Drive.
-
----
-
-## F8. Single-repo and multi-repo consistency
-
-Super Agent uses exactly one Job model for both single-repo and multi-repo work.
-
-There is no separate single-repo storage mode.
-
-Drive remains the canonical Job root in both cases. The full rationale is canonical in `ARCHITECTURE-v0.1.md` §6 and MUST NOT be duplicated here.
-
----
-
-## F9. Drive-first context loading
-
-When an existing Job is selected/opened, Super Agent reads Drive first.
-
-```text
-select Job
-→ JOB.md
-→ state / architecture / plans / decisions / repo graph
-→ understand current user request
-→ determine relevant repository
-→ determine relevant source area
-→ selectively read GitHub
-```
-
-Core rule:
-
-> DRIVE FIRST, GITHUB SECOND, SELECTIVE SOURCE READ.
-
-Super Agent does not scan every attached repository by default.
-
-For status/history/planning questions, GitHub may not need to be read at all.
-
----
-
-## F10. Project vs Job vs Repo
-
-These terms are distinct:
-
-```text
-Job
-= durable work entity in Drive
-
 Project
-= logical product/system context used for planning
-
-Repo
-= a GitHub source repository in the Job's code environment
+= one direct child folder under SUPER_AGENT_DRIVE_ROOT
+= durable memory/control-plane root
+= parent of Jobs
+= owner of 0..N writable GitHub repositories
+= may reference 0..N read-only repositories
 ```
 
-A Job can operate across a multi-repo Project.
-
-A Project is a logical model, not another storage root.
+A Project may exist before any owned repository exists.
 
 ---
 
-## F11. Agent role boundaries
+## F4. Project marker
 
-The high-level role split is frozen:
+Every valid Project folder contains:
+
+```text
+PROJECT.md
+```
+
+PROJECT.md is the Project marker and human-readable identity entry point.
+
+The exact physical Project Memory schema is defined separately.
+
+---
+
+## F5. Hierarchy
+
+```text
+Project
+→ Job
+→ Task
+→ Run
+```
+
+Semantics:
+
+```text
+Project
+= long-lived durable context
+
+Job
+= finite work unit inside one Project
+
+Task
+= optional bounded work package inside a Job
+
+Run
+= one bounded execution attempt/session
+  with one active role
+```
+
+---
+
+## F6. Repository ownership/reference
+
+Repository relation is explicit:
+
+```text
+OWNED
+= writable source belonging to one Project only
+
+REFERENCED
+= strictly read-only context/dependency/example
+```
+
+Rules:
+
+- one repository may be owned by exactly one GSA Project at a time;
+- many Projects may reference the same repository;
+- referenced repositories are never modified in place by the referencing Project;
+- code derived from a reference must be copied/forked into Project-owned source before editing.
+
+---
+
+## F7. Drive-first context loading
+
+Opening an existing Project follows:
+
+```text
+Project Memory
+→ current work/request
+→ relevant owned/reference repo
+→ relevant source area
+→ selective live GitHub evidence
+```
+
+GSA does not broad-scan every repository by default.
+
+---
+
+## F8. Project lifecycle
+
+```text
+ACTIVE
+PAUSED
+ARCHIVED
+```
+
+Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
+
+Release/product milestones are separate from lifecycle.
+
+---
+
+## F9. Job semantics
+
+A Job is finite and belongs to exactly one Project.
+
+Baseline Job types:
+
+```text
+plan
+code
+design
+review
+```
+
+These are extensible after real evidence.
+
+Job ID is globally unique.
+
+Completed Jobs remain in Project history unless explicitly deleted.
+
+No Job-level ARCHIVED state is required.
+
+---
+
+## F10. Task and Run semantics
+
+Task creation is optional for small Jobs.
+
+Run attribution uses:
+
+```text
+one execution scope
+= Job-level
+  OR one primary Task
+
++ optional affected_task_refs[]
+```
+
+One Run has one active role.
+
+---
+
+## F11. Roles
+
+Current system roles:
 
 ```text
 Orchestrator
@@ -259,116 +204,181 @@ Coder
   ├── UX Coder
   └── UI Coder
 Reviewer
+Tester
 ```
 
-High-level role ownership boundaries are also frozen as policy intent.
+Role policy boundaries may be HARD, SOFT, or UNKNOWN depending on actual platform enforcement.
 
-Their enforcement mechanism is NOT frozen here. A later capability/enforcement definition must classify each boundary as `HARD`, `SOFT`, or `UNKNOWN`; until verified, `UNKNOWN` is treated operationally as `SOFT`.
+---
 
-Target ownership:
+## F12. Role authority
+
+Tool capability does not grant role authority.
+
+Effective authority is constrained by:
 
 ```text
-Planner
-→ Project Memory write
-→ GitHub source read-only
-
-Designer
-→ Design Workspace / Project Memory write
-→ GitHub source read-only
-
-Coder
-→ Project Memory read-only
-→ approved GitHub source write
-
-Reviewer
-→ Project Memory write
-→ GitHub source read-only
-
-Orchestrator
-→ workflow/state governance
-→ no source implementation
+Project policy
+∩ Job scope
+∩ Task scope
+∩ role boundary
+∩ Run target
+∩ human approvals
+∩ actual executor capability
 ```
-
-Detailed responsibilities and enforcement mechanisms remain subject to later definition.
 
 ---
 
-## F12. Clarification-before-execution principle
+## F13. Review topology
 
-Material ambiguity must be resolved before substantial execution.
+Review placement is topology-driven.
 
-Shared causal order:
+There is no universal rule that every PR, Task, milestone, or Job must receive Reviewer.
+
+The Detailed Execution Plan / milestone topology determines required Reviewer, Tester, Human Gate, and evidence checkpoints.
+
+---
+
+## F14. Accepted result model
+
+Successful accepted results:
 
 ```text
-intent
-→ known facts
-→ unknowns
-→ causal impact
-→ ask or infer
-→ assumptions
-→ plan
-→ execute
+PASS
+PASS_RETEST_REQUIRED
 ```
 
-Agents do not ask about information already available in:
-
-- current conversation
-- Drive Job memory
-- relevant GitHub evidence
-- approved decisions/specs
-
-They also do not invent material product/architecture/design intent.
+PASS_RETEST_REQUIRED means implementation/review evidence is sufficient for acceptance while practical real-world verification remains outstanding.
 
 ---
 
-## F13. Foundation invariants
+## F15. Merge authority
 
-1. Conversation is UI, not durable memory.
-2. A Job always has a Drive folder.
-3. One direct Drive subfolder equals one Job.
-4. `JOB.md` identifies the Job.
-5. `job list` is derived from Drive folders, not GitHub.
-6. GitHub is the code environment.
-7. A Job has one or many GitHub repositories.
-8. Single-repo and multi-repo use the same Job lifecycle.
-9. Existing Job context is always loaded Drive-first.
-10. GitHub source reading is selective and request-driven.
-11. Super Agent remains online-first.
-12. GPTWorker remains a separate offline/local agent.
-13. Later module design must preserve these invariants.
+Merge requires explicit human authorization.
+
+```text
+accepted result
+→ explicit human merge authorization
+→ merge
+```
+
+Reviewer PASS does not merge by itself.
 
 ---
 
-## F14. User-facing invocation identity
+## F16. Human decisions
 
-The user-facing invocation identity is independent of the repository name.
+```text
+semantic / product / architecture decision
+→ Human
+
+mechanical / structural detailing after semantics fixed
+→ GPT
+```
+
+Planned Human Gate and Runtime Confirmation are distinct.
+
+Runtime Confirmation is never a durable approval log.
+
+---
+
+## F17. Causal Change Review
+
+Upstream change does not blanket-invalidate downstream work.
+
+```text
+change
+→ trace causal effect
+→ affected/unaffected with reasons
+→ options/trade-offs
+→ human decides material choice
+→ revalidate/stale/supersede exact artifacts
+```
+
+---
+
+## F18. State separation
+
+```text
+lifecycle state
+≠ result
+≠ validity
+≠ delivery facts/events
+```
+
+Delivery facts such as accepted/merged/deployed/deployment_verified remain separate.
+
+---
+
+## F19. Current platform handoff
+
+Current orchestration is:
+
+```text
+pull-based
++ human-dispatched
++ durable-state persistent
+```
+
+Future automatic handoff is an extension point over the same durable state model.
+
+---
+
+## F20. Theory-construction meta-rule
+
+```text
+DETAIL
+→ COLLECT
+→ REVIEW
+→ SYNTHESIZE
+→ FIX
+→ repeat
+```
+
+During DETAIL, unresolved theory decisions are normally nominated with alternatives and deferred to REVIEW rather than interrupting the user.
+
+---
+
+## F21. Phase maturity
+
+```text
+Phase 1
+→ complete coherent theory
+
+Phase 2
+→ reference-informed initial harness/skills/loops/actions
+
+Phase 3+
+→ real-world calibration and hardening
+```
+
+GSA is not treated as a standalone coded runtime whose behavioral quality can be inferred from internal logs.
+
+---
+
+## F22. User-facing identity
 
 ```text
 Plugin handle     = @gsa
 Command namespace = gsa/
 ```
 
-The repository that contains the Super Agent implementation may be renamed later without requiring a user-facing command migration.
-
-Only the namespace is frozen here. The full command grammar remains to be defined.
+Exact deep command grammar is defined separately.
 
 ---
 
-## F15. Not frozen by this document
+## F23. Foundation invariants
 
-The following still need detailed definition and may evolve without revising the frozen foundation:
-
-- exact Planner inputs/outputs
-- exact Designer inputs/outputs
-- QA responsibilities
-- QC responsibilities
-- Reviewer checklist/severity model
-- verification/evidence policy details
-- exact state machine
-- exact schemas
-- exact command grammar
-- failure/recovery behavior
-- capability resolution details
-- PR/branch strategy details
-- observability/audit model
-- completion definition
+1. Conversation is UI, not durable memory.
+2. Project is the top-level durable Drive entity.
+3. PROJECT.md marks Project identity.
+4. Job is finite work inside Project.
+5. Task is optional work decomposition.
+6. Run is one execution attempt with one active role.
+7. GitHub is source-code truth.
+8. Owned and referenced repositories have different authority.
+9. Opening existing work is Drive-first and GitHub-selective.
+10. Review placement is topology-driven.
+11. Merge requires explicit human authorization.
+12. State/result/validity/delivery facts remain separate.
+13. GPTWorker remains separate offline/local tooling.
