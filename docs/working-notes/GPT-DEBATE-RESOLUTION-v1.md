@@ -1646,6 +1646,98 @@ Do not create approval logs merely because the human answered a routine runtime 
 
 Even for Planned Human Gates, logging is not automatic. Persist only when the decision needs to remain part of durable Project memory or later evidence.
 
+## 4.16 Run attribution and target-neutral signatures
+
+User decision:
+
+The architecture adopts a durable attribution/signature mechanism for important Run outputs, handoffs, review records, evidence, and durable artifacts.
+
+The signature must be **target-neutral**. It must not assume that the target is always a GitHub PR.
+
+Examples of legitimate targets include:
+
+- a Drive plan;
+- a Detailed Execution Plan revision;
+- a design artifact;
+- a Job or Task artifact;
+- a GitHub branch/commit/PR;
+- a Retest ID;
+- a release milestone;
+- a Causal Change Review option set;
+- another durable Project artifact.
+
+Therefore, this is only an illustrative form:
+
+```text
+[role:reviewer · run:R-0042 · job:J-0017 · target:<typed-reference>]
+```
+
+The exact signature schema is deferred until the full domain model and storage model are defined.
+
+### Example targets
+
+Plan review on Drive:
+
+```text
+role: reviewer
+run: R-0012
+job: J-0004
+target_type: plan
+target_ref: PLAN-0004@v3
+```
+
+Code review:
+
+```text
+role: reviewer
+run: R-0042
+job: J-0017
+target_type: github_pr
+target_ref: PR#42@abc123
+```
+
+Design review:
+
+```text
+role: reviewer
+run: R-0030
+job: J-0010
+target_type: design_artifact
+target_ref: DESIGN-0010@v5
+```
+
+Retest execution:
+
+```text
+role: tester
+run: R-0061
+job: J-0017
+target_type: retest
+target_ref: RT-0042-03
+```
+
+### Scope of use
+
+Do not stamp every conversational reply.
+
+Use attribution where persistence, handoff, auditability, or cross-chat coordination matters.
+
+The final schema design should determine:
+
+- which fields are mandatory;
+- whether Run ID is always present;
+- how target type/ref are represented;
+- whether Project/Task IDs are explicit or inferable;
+- how revisions are bound;
+- how signatures appear in Drive artifacts vs GitHub comments/reviews vs other storage.
+
+Core rule:
+
+```text
+important durable output
+→ attributable to role + Run + owning work context + exact target/revision
+```
+
 ## 5. Review floor and acceptance result
 
 Review is NOT required for every PR.
