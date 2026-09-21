@@ -1738,81 +1738,196 @@ important durable output
 → attributable to role + Run + owning work context + exact target/revision
 ```
 
-## 4.17 Minimal fake CLI
+## 4.17 Fake CLI outer control surface
 
 User decision:
 
-The fake CLI must stay extremely small. It is only a convenient conversational control surface for basic Project/Job management, not a second workflow language and not a wrapper around GitHub operations.
+The fake CLI is an explicit trigger/control surface for GPT Super Agent. It is not a real shell and it does not replace natural-language conversation.
 
-Initial command set:
+Its value is that a short explicit command can reliably select the intended GPT Super Agent harness/skill when multiple plugins/skills are available, and can load a pre-defined execution procedure without requiring the user to restate a long prompt.
+
+Conceptually:
 
 ```text
-gsa/new
-gsa/open
-gsa/status
-gsa/delete
+short explicit command
+→ select GPT Super Agent
+→ select harness / specialist role
+→ load the relevant skills + workflow + quality rules
+→ execute the requested work
 ```
 
-### `gsa/new`
+The same underlying model may produce different quality/consistency depending on whether it is operating under the specialist harness and procedural instructions.
+
+### Outer landing page
+
+Only the outer control surface is nominated now.
+
+```text
+GPT SUPER AGENT
+├── PROJECT
+├── DIRECT AGENT
+└── HELP / INSTRUCTION
+```
+
+The deeper CLI tree is intentionally deferred until Agents, Jobs, Runs, tests, assets, releases and other domains are defined in detail.
+
+### PROJECT commands
+
+The Project namespace currently has four commands:
+
+```text
+project new
+project open
+project status
+project delete
+```
+
+#### `project new`
 
 Creates a new Project.
 
-The exact initialization flow and bootstrap fields will be defined later together with the canonical Project schema.
+The exact bootstrap flow is deferred until the canonical Project schema is defined.
 
-### `gsa/open`
+#### `project open`
 
-Opens the current Project work view in chat and lists the Jobs that are currently active/running so the user can choose what to continue.
+Shows only Projects that are currently active/running and lets the user choose one to continue.
 
-Conceptually:
-
-```text
-gsa/open
-→ show active/running Jobs
-→ user selects Job
-→ chat resumes that Job context
-```
-
-Do not overload this command with planning/review-specific behavior.
-
-### `gsa/status`
-
-Shows the Project's full Job list and each Job's lifecycle state, including at minimum whether it is active/running or archived.
-
-The user may select a Job from this view and change its lifecycle state.
+Archived Projects are intentionally hidden from this everyday working list so it stays short and useful.
 
 Conceptually:
 
 ```text
-gsa/status
-→ show all Jobs
-→ show state
-→ user selects Job
-→ change state when requested
+project open
+→ list active/running Projects only
+→ user selects Project
+→ resume work in that Project
 ```
 
-The exact Job state vocabulary is defined later with the Job lifecycle model.
+#### `project status`
 
-### `gsa/delete`
+Shows the complete Project list, including archived Projects.
 
-Shows the Job list and lets the user select a Job to delete.
+This is the management/history view and may be used to bring an old archived Project back into active work.
 
-Deletion semantics, confirmation rules, and whether deletion means hard-delete vs tombstone/archive are intentionally deferred until Job persistence and audit requirements are defined.
+Conceptually:
 
-### Explicit non-goals
+```text
+project status
+→ list all Projects
+→ show lifecycle state
+→ user selects Project
+→ inspect/change state when allowed
+```
 
-Do NOT create fake CLI commands merely for:
+Typical intent:
 
-- planning;
-- review;
-- next-step calculation;
-- coder/designer/tester role selection;
-- commit/push/PR/merge/deploy;
-- milestone handoff;
-- release approval.
+```text
+OPEN
+= short daily work list
 
-Those actions belong to normal conversation, the approved workflow topology, and connected tool execution.
+STATUS
+= complete Project registry/history
+```
 
-The fake CLI is an alias/UI convenience layer and must remain replaceable without changing the underlying Project / Job / Task / Run architecture.
+#### `project delete`
+
+Deletes the Project itself, including its Google Drive Project folder.
+
+This is for Projects that the user has intentionally decided to remove permanently, for example when an obsolete source repository/version has already been discarded and the corresponding Project memory no longer has value.
+
+Deletion safety/confirmation rules are defined later with the Project persistence model.
+
+### DIRECT AGENT
+
+The landing page also exposes direct access to specialist agents for small or independent work that does not justify creating or opening a Project/Job.
+
+Currently nominated direct agents:
+
+```text
+Planner
+Designer
+Coder
+Reviewer
+```
+
+Example:
+
+```text
+Direct Agent → Designer
+→ load Designer harness + design skills + quality procedure
+→ perform a standalone asset/design task
+```
+
+or:
+
+```text
+Direct Agent → Coder
+→ load Coder harness + coding skills + verification procedure
+→ implement a small standalone code task
+```
+
+The purpose is to reuse the quality/process advantages of the specialist harness even when the work is too small or independent to deserve a full Project/Job lifecycle.
+
+Direct Agent invocation does not automatically create a Project.
+
+### HELP / INSTRUCTION
+
+The landing page includes a help/instruction entry for new users.
+
+It should explain, at a high level:
+
+- what GPT Super Agent is;
+- what a Project is;
+- when to create/open a Project;
+- when to use Direct Agent;
+- the available outer commands;
+- basic lifecycle usage such as open/archive/delete.
+
+The exact wording/UI is defined later.
+
+### Deeper CLI structure is deferred
+
+Do not nominate a complete CLI tree now.
+
+When each domain is defined in detail, evaluate whether it needs explicit CLI commands or subcommands:
+
+```text
+detail Planner
+→ identify any real CLI need
+
+detail Designer
+→ identify any real CLI need
+
+detail Coder
+→ identify any real CLI need
+
+detail Reviewer
+→ identify any real CLI need
+
+detail Job / Run / Test / Retest / Asset / Release / ...
+→ identify any real CLI need
+```
+
+Record only justified command requirements.
+
+After the domain model is complete:
+
+```text
+collect CLI requirements
+→ remove duplicates
+→ organize hierarchy
+→ define commands/subcommands
+→ freeze final CLI tree
+```
+
+Core principle:
+
+```text
+semantics first
+CLI structure second
+```
+
+Do not invent commands in advance merely because a domain concept exists.
 
 ## 5. Review floor and acceptance result
 
