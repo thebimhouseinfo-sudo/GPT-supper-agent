@@ -1,4 +1,4 @@
-# Frozen Foundation v0.3
+# Frozen Foundation v0.4
 
 ## Status
 
@@ -6,15 +6,9 @@
 FOUNDATION_STATUS = FROZEN
 ```
 
-This document contains product/system invariants only. Theory-construction process rules live in `THEORY-PROCESS-v1.md`.
-
-A change to these invariants requires explicit architecture revision.
-
----
+Product/system invariants only. Theory-construction rules live in `THEORY-PROCESS-v1.md`.
 
 ## F1. Product boundary
-
-GPT Super Agent is a ChatGPT-based orchestration/harness system for online project work.
 
 ```text
 Conversation = UI, not durable memory
@@ -23,78 +17,55 @@ GitHub = source-code truth
 Harness / skills / loops = workflow and quality logic
 ```
 
-GPTWorker remains a separate offline/local agent.
+GPTWorker remains separate offline/local tooling.
 
 ## F2. Configured Drive root
 
-GSA is configured once with `SUPER_AGENT_DRIVE_ROOT`.
+One configured `SUPER_AGENT_DRIVE_ROOT`.
 
-Each direct child Project folder is one Project.
+Each valid direct child Project folder contains `PROJECT.md`.
 
-There is no mandatory global registry and no required jobs/ wrapper.
+No mandatory global registry or jobs/ wrapper.
 
-## F3. Project definition
+## F3. Project
 
-```text
-Project
-= one direct child folder under SUPER_AGENT_DRIVE_ROOT
-= durable memory/control-plane root
-= parent of Jobs
-= owner of 0..N writable GitHub repositories
-= may reference 0..N read-only repositories
-```
+Project is long-lived durable context, parent of Jobs, owner of 0..N writable repos and may reference 0..N read-only repos.
 
-A Project may exist before any owned repository exists.
-
-## F4. Project marker
-
-Every valid Project folder contains `PROJECT.md`.
-
-PROJECT.md is the Project marker and human-readable identity entry point.
-
-## F5. Hierarchy
+## F4. Hierarchy
 
 ```text
 Project → Job → Task → Run
 ```
 
-```text
-Project = long-lived durable context
-Job = finite objective/work unit inside one Project
-Task = optional bounded work package inside a Job
-Run = one bounded execution attempt with one active role
-```
+Job = finite objective/work unit and may contain multiple role Runs.
 
-A Job may contain multiple roles/Runs. Job type classifies the Job's primary objective; it is not the active role.
+Task = optional bounded work package.
 
-## F6. Repository ownership/reference
+Run = one execution attempt with one active role.
+
+## F5. Repository authority
 
 ```text
-OWNED = writable source belonging to one Project only
-REFERENCED = strictly read-only context/dependency/example
+OWNED = writable by one Project within approved scope
+REFERENCED = read-only
 ```
 
-Rules:
-- one repository may be owned by exactly one GSA Project at a time;
-- many Projects may reference the same repository;
-- referenced repositories are never modified in place by the referencing Project;
-- code derived from a reference must be copied/forked into Project-owned source before editing;
-- ownership claims are structured durable records;
-- duplicate OWNED claims are a governance conflict and require human resolution.
+Ownership is structured.
 
-## F7. Drive-first context loading
+Duplicate OWNED claims block write routing until human resolution.
+
+## F6. Context loading
 
 ```text
 Project Memory
 → current work/request
-→ relevant owned/reference repo
-→ relevant source area
-→ selective live GitHub evidence
+→ relevant repo/source
+→ selective live evidence
 ```
 
-GSA does not broad-scan every repository by default.
+No broad-scan default.
 
-## F8. Project lifecycle
+## F7. Project lifecycle
 
 ```text
 ACTIVE
@@ -102,16 +73,11 @@ PAUSED
 ARCHIVED
 ```
 
-Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
+Open shows ACTIVE + PAUSED, hides ARCHIVED.
 
-Release/product milestones are separate from lifecycle.
+## F8. Job semantics
 
-## F9. Job semantics
-
-A Job is finite and belongs to exactly one Project.
-
-Baseline Job types:
-
+Baseline types:
 ```text
 plan
 code
@@ -119,42 +85,31 @@ design
 review
 ```
 
-Job type is immutable after creation and classifies the primary objective.
+Type = primary objective classification, not active role.
 
-A review checkpoint inside another Job is not automatically a `review` Job; a `review` Job exists when independent review itself is the finite objective.
+Review checkpoint inside another Job is not a review Job.
 
-All durable entities intended for detached reference use globally collision-resistant identity plus optional short human handles.
+Job type immutable.
 
-Completed Jobs remain in Project history unless explicitly deleted.
+Task growth remains inside Job only while finite objective remains materially the same; materially different objective becomes a linked Job.
 
-No Job-level ARCHIVED state is required.
+## F9. Identity
 
-## F10. Task and Run semantics
+Durable detached-reference entities use globally collision-resistant IDs plus optional short human handles.
 
-Task creation is optional for small Jobs.
+No central allocation counter is required.
 
-Run attribution uses:
+## F10. Run semantics
 
 ```text
 one execution scope
-= Job-level
-  OR one primary Task
-
-+ optional affected_task_refs[]
+= Job-level OR one primary Task
++ affected_task_refs[]
 ```
 
-One Run has one active role.
+One active role per Run.
 
-A non-independent specialist call may use a child Run in the same chat:
-
-```text
-parent Run
-→ child Run with different role
-→ child completes
-→ parent resumes
-```
-
-Each child Run has its own ID, role, attribution, and parent_run_id.
+Non-independent specialist assistance may use child Run with own ID/role/attribution/parent_run_id.
 
 ## F11. Roles
 
@@ -169,56 +124,42 @@ Reviewer
 Tester
 ```
 
-Tester is capability-gated for practical execution.
+Tester practical execution is capability-gated.
 
-Role policy boundaries may be HARD, SOFT, or UNKNOWN depending on actual platform enforcement.
-
-## F12. Role authority
-
-Tool capability does not grant role authority.
-
-Effective authority:
+## F12. Authority
 
 ```text
-Project policy
-∩ Job scope
-∩ Task scope
-∩ role boundary
-∩ Run target
-∩ human approvals
-∩ actual executor capability
+tool surface ≠ observed capability ≠ role authority
 ```
+
+Effective authority is constrained by Project/Job/Task/role/Run/human/capability boundaries.
 
 ## F13. Review topology and mandatory floor
 
-Review placement is topology-driven for normal work.
+Normal review is topology-driven; not every PR/Task/milestone/Job requires Reviewer.
 
-There is no universal rule that every PR, Task, milestone, or Job must receive Reviewer.
-
-However, an independent review checkpoint is mandatory when mechanically detectable change classes include:
+Independent review is mandatory for mechanically detectable sensitive classes:
 - shared contracts/interfaces/schema;
 - persisted-data migration/format;
-- authentication/permissions/security-sensitive logic;
+- auth/permission/security-sensitive logic;
 - CI/CD/workflow/deployment configuration;
 - destructive operations;
-- dependency manifest/lockfile changes that alter runtime/build dependency state.
+- dependency manifest/lockfile changes altering runtime/build dependency state.
 
-This floor is a harness policy boundary and may be SOFT unless the platform enforces it.
+Detection is based on actual changed-file/operation evidence against Project/Repo Claim sensitive path declarations plus universal patterns; Coder self-declaration cannot suppress it.
 
-Removing a previously planned review checkpoint must be visible to the human.
+Removing planned review remains human-visible.
 
-## F14. Accepted result model
+## F14. Accepted result
 
 ```text
 PASS
 PASS_RETEST_REQUIRED
 ```
 
-PASS_RETEST_REQUIRED means required online evidence is sufficient for acceptance while practical real-world verification remains outstanding.
+PASS_RETEST_REQUIRED may complete Job while practical Retest remains pending.
 
 ## F15. Merge authority
-
-Merge requires explicit human authorization.
 
 ```text
 accepted result
@@ -227,21 +168,14 @@ accepted result
 → merge
 ```
 
-Reviewer PASS does not merge by itself.
-
 ## F16. Human decisions
 
 ```text
-semantic / product / architecture decision
-→ Human
-
-mechanical / structural detailing after semantics fixed
-→ GPT
+semantic / product / architecture decision → Human
+mechanical detailing after semantics fixed → GPT
 ```
 
-Planned Human Gate and Runtime Confirmation are distinct.
-
-Runtime Confirmation is never a durable approval log.
+Runtime Confirmation is not durable approval.
 
 ## F17. Causal Change Review
 
@@ -249,56 +183,46 @@ Runtime Confirmation is never a durable approval log.
 change
 → trace recorded dependencies
 → known affected/unaffected with evidence
-→ unknown/incomplete dependency trace counts as affected
-→ options/trade-offs
-→ human decides material choice
+→ unknown/incomplete trace counts as affected
+→ human resolves material trade-off
 → revalidate/stale/supersede exact artifacts
 ```
-
-No blanket stale propagation, but uncertainty fails safe toward revalidation.
 
 ## F18. State separation
 
 ```text
-lifecycle state
-≠ result
-≠ validity
-≠ delivery facts/events
+lifecycle ≠ result ≠ validity ≠ delivery facts
 ```
 
-## F19. Current platform handoff
+WAITING/BLOCKED are derived where practical.
 
+## F19. Handoff
+
+Current orchestration:
 ```text
-pull-based
-+ human-dispatched
-+ durable-state persistent
+pull-based + human-dispatched + durable-state persistent
 ```
 
-Future automatic handoff is an extension point over the same durable handoff model.
+## F20. Shared identity
 
-## F20. Shared identity / attribution
+Connected account identity does not prove agent role or human approval.
 
-Current connectors act through the user's connected GitHub/Google identity.
-
-Therefore account identity does not prove agent role or independent approval.
-
-Important agent-authored durable/external outputs carry product-neutral attribution:
-
-```text
-role + Run ID + owning work context + exact target/revision
-```
-
-Human approval counts only when explicitly given by the human through the authorized interaction surface.
+Important agent outputs carry role + Run + owning work + target/revision attribution.
 
 ## F21. Concurrency realism
 
-Cross-chat consistency is eventual unless platform capabilities prove stronger enforcement.
+Cross-chat consistency is eventual.
 
-Correctness must not depend on atomic conditional Drive writes.
+Correctness must not depend on atomic Drive conditional writes.
 
-Prefer append-only unique records for execution history.
+```text
+append-preserving Run/Verification records
++ read-time joins
++ minimal shared mutation
++ recheck before consequential action
+```
 
-Before consequential actions, re-read relevant lifecycle/scope/current-target state.
+Completing Runs do not write progress/reference arrays back into shared Job records.
 
 ## F22. User-facing naming
 
@@ -309,17 +233,16 @@ Internal IDs/signatures are product-name-neutral.
 ## F23. Foundation invariants
 
 1. Conversation is UI, not durable memory.
-2. Project is the top-level durable Drive entity.
-3. PROJECT.md marks Project identity.
-4. Job is finite work inside Project and may contain multiple role Runs.
-5. Task is optional work decomposition.
-6. Run is one execution attempt with one active role; child Runs preserve role attribution.
-7. GitHub is source-code truth.
-8. Owned and referenced repositories have different authority.
-9. Opening existing work is Drive-first and GitHub-selective.
-10. Review placement is topology-driven with a mechanical mandatory floor for specified sensitive changes.
-11. Merge requires explicit human authorization with review-coverage visibility.
-12. State/result/validity/delivery facts remain separate.
-13. GPTWorker remains separate offline/local tooling.
-14. Cross-chat consistency is eventual unless stronger enforcement is observed.
-15. Account identity is not role identity or human approval.
+2. Project is top-level durable Drive entity.
+3. Job is finite objective and may contain multiple role Runs.
+4. Task is optional decomposition.
+5. One active role per Run; child Runs preserve attribution.
+6. GitHub is source truth.
+7. OWNED/REFERENCED have different authority.
+8. Opening existing work is Drive-first/GitHub-selective.
+9. Review is topology-driven with a mechanically computed mandatory floor.
+10. Merge requires explicit human authorization + coverage visibility.
+11. State/result/validity/delivery facts remain separate.
+12. Cross-chat consistency is eventual.
+13. Account identity is not role identity or human approval.
+14. Shared Job progress is read-time joined rather than parallel Run write-back.
