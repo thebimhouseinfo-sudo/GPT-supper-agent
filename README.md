@@ -5,12 +5,12 @@ GPT Super Agent is a ChatGPT orchestration/harness design for durable project wo
 ## Current phase
 
 ```text
-PHASE 1 THEORY       = ROUND-2 FIX PASS COMPLETE
+PHASE 1              = COMPLETE / CLOSED
 CLAUDE ROUND 1       = DISPOSITIONED/FIXED
-CLAUDE ROUND 2       = COMPLETE; FINDINGS ACCEPTED/FIXED
+CLAUDE ROUND 2       = CONDITIONAL READY; CONDITIONS SATISFIED
 MUST PLATFORM PROBES = COMPLETE
-FINAL CONSISTENCY    = PENDING
-PHASE 2              = BLOCKED UNTIL FINAL CONSISTENCY REVIEW
+FINAL CONSISTENCY    = PASS
+PHASE 2              = READY, NOT STARTED
 ```
 
 ## Core model
@@ -26,7 +26,7 @@ Harness / Skills / Loops = operational behavior
 Project → Job → Task → Run
 ```
 
-## Concurrency model
+## Concurrency
 
 ```text
 stable Job planning/control record
@@ -36,15 +36,13 @@ stable Job planning/control record
 + consequential-action recheck
 ```
 
-Completing Runs do not append progress/reference arrays into parent Job.
+Completing Runs do not write progress/reference arrays back into parent Job.
 
-## Review model
+## Review
 
 Normal review is topology-driven.
 
-Mechanically sensitive changes trigger independent review based on actual changed-file/operation evidence against declared repo-sensitive paths + universal patterns.
-
-Coder self-report cannot suppress the floor.
+Mechanically sensitive changes trigger independent review from actual changed-file/operation evidence against structured repo-sensitive paths + universal patterns.
 
 Merge requires explicit human authorization + Review Coverage Summary.
 
@@ -57,10 +55,10 @@ UNAVAILABLE
 UNKNOWN
 ```
 
-Phase-1 MUST probes now observed/classified:
-- raw Drive file create/read/update;
-- GitHub binary commit/read-back;
-- PR merge behavior;
+Observed before Phase-2 entry:
+- raw Drive file create/read/update/delete;
+- GitHub binary blob/tree/commit/read-back;
+- PR create/read/merge;
 - branch cleanup limitation.
 
 ## Project Memory
@@ -87,13 +85,13 @@ No Project open → shallow root-wide Project scan
 
 See `docs/architecture/DOCUMENT-INDEX-v1.md`.
 
-## Phase 1 close gate
+Phase-1 closure evidence:
+- `docs/working-notes/CLAUDE-ROUND2-DISPOSITION.md`
+- `docs/working-notes/PHASE1-PLATFORM-PROBES-v0.1.md`
+- `docs/working-notes/FINAL-PHASE1-CONSISTENCY-REVIEW-PASS-03.md`
 
-```text
-Claude round-2 fixes
-→ MUST platform probes
-→ final consistency review
-→ Phase 2
-```
+## Phase 2
 
-Phase 2 has not started yet.
+Phase 2 is now permitted but has **not** started.
+
+It should begin as a thin operational harness/skills/actions layer, not a heavyweight autonomous runtime.
