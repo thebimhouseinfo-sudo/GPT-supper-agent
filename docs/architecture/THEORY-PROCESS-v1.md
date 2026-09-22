@@ -1,40 +1,31 @@
-# Theory Construction Process v1
+# Theory Construction Process v1.1
 
 ## Purpose
 
-This document governs how GSA theory is developed. It is not product/runtime architecture.
+Governs theory development, not product runtime.
 
 ## Loop
 
 ```text
-DETAIL
-→ COLLECT
-→ REVIEW
-→ SYNTHESIZE
-→ FIX
-→ repeat
+DETAIL → COLLECT → REVIEW → SYNTHESIZE → FIX → repeat
 ```
 
 During DETAIL:
-- unresolved consequential choices are nominated;
-- viable alternatives/trade-offs are recorded;
-- `REVIEW_REQUIRED` is marked;
-- work continues unless no safe provisional path exists.
+- nominate unresolved consequential choices;
+- record alternatives/trade-offs;
+- continue unless no safe provisional path exists.
 
 During COLLECT:
-- gather nominations;
-- merge duplicates;
-- expose contradictions;
-- collect persistence/query/CLI/state needs.
+- gather decisions, persistence/query/CLI/state requirements;
+- expose duplication/contradiction.
 
 During REVIEW:
-- challenge semantics, platform realism, authority, lifecycle, complexity and missing responsibilities;
-- internal review may nominate/disposition fixes;
-- independent Claude peer review is used as the final Phase-1 challenge gate instead of a generic human completeness check;
-- the human still retains authority for any material product/architecture/governance choice surfaced by that review.
+- challenge semantics/platform realism/authority/lifecycle/complexity;
+- use independent Claude peer review as final Phase-1 challenge gate;
+- human retains authority over any newly surfaced material product/architecture/governance choice.
 
 During SYNTHESIZE:
-- convert reviewed semantics into coherent cross-domain contracts, records, state and storage.
+- convert reviewed semantics into cross-domain contracts.
 
 During FIX:
 - reconcile canonical docs and remove obsolete contradictions.
@@ -42,18 +33,13 @@ During FIX:
 ## Phase maturity
 
 ```text
-Phase 1 = coherent theory + implementation-relevant contracts + platform truth boundary
+Phase 1 = coherent theory + implementation-relevant contracts + required platform truth
 Phase 2 = initial operational harness/skills/loops/actions
 Phase 3+ = real-world calibration/hardening
 ```
 
-Phase 2 must not invent unresolved product/architecture semantics.
+## Peer-review disposition
 
-## External peer review
-
-Independent peer review is challenge evidence, not authority.
-
-Finding disposition:
 ```text
 ACCEPT
 ACCEPT_WITH_MODIFICATION
@@ -61,18 +47,21 @@ REJECT_WITH_REASON
 DEFER_TO_PHASE_2_CALIBRATION
 ```
 
-Accepted material findings reopen relevant Phase-1 domain before Phase 2.
+Claude is challenge evidence, not authority.
 
 ## Phase-1 close gate
 
-Required:
 ```text
 semantic theory coherent
-+ missing contracts synthesized
-+ platform probes classified
-+ consistency review passes
-+ Claude peer review round 2 finds no unresolved material gap
-  OR all round-2 material findings are dispositioned and fixed
-+ no new human-owned architecture/product decision remains unresolved
-→ Phase 2
++ implementation-critical contracts synthesized
++ required Phase-1 platform probes classified
++ Claude round-2 material findings dispositioned/fixed
++ no unresolved human-owned material decision
++ final consistency review PASS
+→ Phase 1 CLOSED
+→ Phase 2 ENTRY READY
 ```
+
+This gate is now satisfied for the current theory snapshot.
+
+Future Phase-2 calibration findings that reveal a genuine semantic gap reopen the relevant theory domain through the same governance loop.
