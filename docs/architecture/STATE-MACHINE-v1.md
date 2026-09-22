@@ -1,17 +1,16 @@
 ---
 id: STATE-MACHINE
-version: 1.1
+version: 1.2
 status: DEFINED
 depends_on:
   - FROZEN-FOUNDATION-v0.1
 ---
 
-# State Model v1.1
+# State Model v1.2
 
 ## 1. Principle
 
 Separate:
-
 ```text
 lifecycle state
 result
@@ -21,8 +20,6 @@ verification obligations
 derived work condition
 ```
 
-Do not use one universal status field.
-
 ## 2. Project lifecycle
 
 ```text
@@ -31,9 +28,7 @@ PAUSED
 ARCHIVED
 ```
 
-Delete is an operation, not a state.
-
-Project transition rules remain explicit because wrong transitions have governance impact.
+Delete is operation, not state.
 
 ## 3. Job lifecycle
 
@@ -46,15 +41,13 @@ CANCELLED
 SUPERSEDED
 ```
 
-Derived work condition may be:
+Derived:
 ```text
 WAITING
 BLOCKED
 ```
 
-WAITING/BLOCKED should be derived from a durable cause such as Handoff, Human Gate, dependency or blocker instead of duplicated as authoritative Job lifecycle whenever practical.
-
-Accepted terminal successful result:
+Accepted terminal result:
 ```text
 PASS
 PASS_RETEST_REQUIRED
@@ -71,34 +64,36 @@ CANCELLED
 SUPERSEDED
 ```
 
-WAITING/BLOCKED are derived conditions.
+WAITING/BLOCKED are derived.
 
-A completed Task may be reactivated only while its parent Job is still nonterminal and remediation remains the same bounded objective.
-
-If parent Job is COMPLETED, later remediation uses a new linked Job.
+Completed Task does not reopen after parent Job completion.
 
 ## 5. Run lifecycle
 
-A Run exists when execution starts; avoid pre-execution CREATED/READY ceremony.
+A Run exists when execution begins.
 
+Stored:
 ```text
 IN_PROGRESS
-WAITING_HUMAN
-BLOCKED
 COMPLETED
 FAILED
 CANCELLED
 SUPERSEDED
 ```
 
-A meaningful new attempt/new chat after interruption creates a new linked Run.
+Derived condition:
+```text
+WAITING_HUMAN
+BLOCKED
+```
 
-Child Run:
-- has separate lifecycle;
-- may execute in same chat when independence is not required;
-- preserves parent_run_id.
+WAITING_HUMAN derives from unresolved Human Gate/confirmation condition; BLOCKED derives from explicit blocker.
 
-## 6. Handoff lifecycle
+Meaningful retry/new chat creates new linked Run.
+
+Child Run has independent lifecycle + parent_run_id.
+
+## 6. Handoff
 
 ```text
 PENDING
@@ -107,9 +102,7 @@ CONSUMED
 SUPERSEDED
 ```
 
-Consumed handoff remains historical.
-
-## 7. Retest lifecycle
+## 7. Retest
 
 ```text
 PENDING
@@ -119,11 +112,9 @@ FAIL
 SUPERSEDED
 ```
 
-Attempt history is append-preserving.
+Attempt history append-preserving.
 
-## 8. Asset Requirement lifecycle
-
-Keep compact:
+## 8. Asset Requirement
 
 ```text
 DEFINED
@@ -132,7 +123,7 @@ VERIFIED
 SUPERSEDED
 ```
 
-Placeholder/final/integrated status are fields/facts, not separate lifecycle states unless future evidence proves otherwise.
+Placeholder/final/integrated are facts/fields.
 
 ## 9. Artifact validity
 
@@ -143,7 +134,7 @@ STALE
 SUPERSEDED
 ```
 
-Unknown/incomplete dependency trace is treated as affected until revalidated.
+Unknown/incomplete dependency trace counts as affected until revalidated.
 
 ## 10. Delivery facts
 
@@ -154,26 +145,19 @@ deployed
 deployment_verified
 ```
 
-These are not lifecycle states.
-
 ## 11. Transition ownership
 
-Domains define semantic state meaning.
+Domain defines semantics.
 
-Orchestrator/harness applies transition rules when invoked; there is no always-running state engine.
+Harness/Orchestrator applies transitions when invoked; no always-running engine.
 
 ## 12. Project legal transitions
 
 ```text
-ACTIVE → PAUSED
-ACTIVE → ARCHIVED
-PAUSED → ACTIVE
-PAUSED → ARCHIVED
-ARCHIVED → ACTIVE
-ARCHIVED → PAUSED
+ACTIVE → PAUSED | ARCHIVED
+PAUSED → ACTIVE | ARCHIVED
+ARCHIVED → ACTIVE | PAUSED
 ```
-
-Delete remains explicit destructive operation.
 
 ## 13. Job legal transitions
 
@@ -183,70 +167,53 @@ READY → IN_PROGRESS | CANCELLED | SUPERSEDED
 IN_PROGRESS → COMPLETED | CANCELLED | SUPERSEDED
 ```
 
-A Job may display WAITING/BLOCKED while its lifecycle remains READY/IN_PROGRESS according to the blocking cause.
+WAITING/BLOCKED are display/work conditions based on durable causes.
 
-COMPLETED/CANCELLED/SUPERSEDED are historical terminal states.
-
-## 14. Smaller-domain safety rules
-
-Rather than large transition matrices:
+## 14. Smaller-domain safety
 
 Task:
 - terminal CANCELLED/SUPERSEDED do not reactivate;
-- COMPLETED does not reopen after parent Job completion.
+- COMPLETED does not reopen under terminal parent Job.
 
 Run:
-- terminal COMPLETED/FAILED/CANCELLED/SUPERSEDED do not reactivate;
-- retry creates new linked Run.
+- terminal states do not reactivate;
+- retry = new linked Run.
 
 Handoff:
-- CONSUMED/SUPERSEDED do not return to PENDING.
+- CONSUMED/SUPERSEDED do not return PENDING.
 
 Retest:
-- prior PASS/FAIL attempt history is never erased.
+- prior results never erased.
 
 Asset:
-- SUPERSEDED does not reactivate; create/revise current requirement explicitly.
+- SUPERSEDED does not reactivate.
 
 ## 15. Retest failure
 
 ```text
-Job not terminal
-+ practical/test failure
-→ route to smallest relevant Task/work scope
+Job nonterminal + failure
+→ active Task/work routing
 
-Job COMPLETED + PASS_RETEST_REQUIRED
-+ later Retest FAIL
-→ preserve historical Job
-→ create linked remediation Job
+Job COMPLETED + later Retest FAIL
+→ preserve Job
+→ new linked remediation Job
 ```
-
-Status views must surface pending/failed Retests adjacent to completed Jobs.
 
 ## 16. PAUSED/ARCHIVED realism
 
-A running chat cannot be externally interrupted by another chat.
+Before consequential action re-read Project lifecycle.
 
-Therefore:
-
-```text
-before consequential action
-→ re-read Project lifecycle
-→ if PAUSED/ARCHIVED, do not start that action
-```
-
-Already-issued indivisible external actions may settle if they cannot be cancelled.
+Already-issued indivisible action may settle.
 
 Cross-chat consistency is eventual.
 
 ## 17. Consequential actions
 
-Include:
-- owned source write;
+- source write;
 - destructive operation;
-- handoff consumption;
-- merge/deploy action;
-- material shared control-plane mutation.
+- Handoff consumption;
+- merge/deploy;
+- material shared control mutation.
 
 ## 18. Evaluation vocabulary
 
@@ -258,11 +225,7 @@ BLOCKED
 HUMAN_REVIEW_REQUIRED
 ```
 
-These are contextual evaluation/routing results, not lifecycle states.
-
-## 19. Criterion verification vocabulary
-
-For Goal Recheck / criterion mapping:
+## 19. Criterion vocabulary
 
 ```text
 MET
@@ -270,5 +233,3 @@ PARTIAL
 NOT_MET
 UNVERIFIED
 ```
-
-UNVERIFIED is not equivalent to PASS.
