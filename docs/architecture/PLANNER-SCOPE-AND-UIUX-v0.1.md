@@ -1,89 +1,61 @@
-# Planner Scope & Specialist Readiness v1.1
+# Planner Scope & Specialist Readiness v1.2
 
 ## 1. Purpose
 
-Planner prepares work so downstream roles do not invent material product, architecture, workflow or readiness rules during implementation.
+Planner prepares work so downstream roles do not invent material product, architecture, workflow or readiness rules.
 
-Planner owns orchestration of readiness, not every specialist methodology.
+## 2. Responsibilities
 
-## 2. Planner responsibilities
-
-Planner resolves applicable:
+Planner resolves:
 - intent/scope;
-- target users/use cases;
+- users/use cases;
 - product behavior;
 - architecture/system impact;
 - repo/dependency impact;
-- Job/Task/milestone topology;
-- role ordering;
-- parallelism/conflicts;
+- Job/Task/stage topology;
+- role ordering/parallelism;
 - Human Gates;
 - review/test checkpoints;
-- acceptance criteria;
-- verification strategy;
-- capability/executor feasibility;
+- acceptance/verification;
+- capability/executor requirements;
 - release/migration sequencing.
 
 Planner does not modify source.
 
-## 3. Review-floor responsibility
+## 3. Review floor
 
-Planner may choose normal review topology, but must also apply mandatory mechanically triggered review classes defined by Foundation F13.
+Planner configures/maintains repo-specific sensitive path declarations where required.
 
-A planned required review may not be silently removed.
+Mandatory review itself is computed at PR-ready/handoff from actual changed-file/operation evidence, not from Coder self-report.
 
 ## 4. UI/UX readiness
-
-For material user-facing work Planner ensures known product flows/states are identified before dependent implementation.
 
 Applicable readiness may require:
 - Design Coverage;
 - DESIGN_READY;
 - representative shell/pilot;
-- practical verification checkpoint;
+- practical verification;
 - responsive/accessibility requirements;
-- Asset Requirements;
-- objective visual/behavior acceptance where possible.
+- Asset Requirements.
 
-Practical verification may be performed by Tester only when capability is AVAILABLE; otherwise use human Retest.
+Practical verification may be performed by Tester only when the required runtime capability is `OBSERVED`; otherwise use human Retest.
 
 ## 5. Specialist delegation
 
 ```text
-Planner
-→ identifies specialist need
-→ defines readiness/output contract
-→ routes to specialist
-
-Designer / specialist skill
-→ performs detailed design methodology
+Planner → readiness/output contract
+Designer/specialist → detailed methodology
 ```
 
-## 6. Product/UX vs visual ownership
+## 6. Ownership boundary
 
-Planner owns functional intent:
-- user goal;
-- information architecture;
-- navigation/flow;
-- state semantics;
-- content hierarchy;
-- responsive priority/behavior;
-- accessibility behavior;
-- acceptance.
+Planner owns functional intent/flow/state semantics/responsive priority/accessibility/acceptance.
 
-Designer owns visual interpretation where not fixed:
-- composition;
-- visual hierarchy;
-- palette/type;
-- artwork/icon language;
-- background;
-- visual tokens;
-- concept;
-- visual Asset Requirements.
+Designer owns visual interpretation/system/artwork.
 
-Coder implements approved intent.
+Coder owns exact source HOW.
 
-## 7. Causal planning model
+## 7. Causal planning
 
 ```text
 intent
@@ -94,43 +66,24 @@ intent
 → work decomposition
 → topology
 → acceptance/verification
-→ consistency check
+→ consistency
 ```
 
-No mandatory P0–P11 ceremony.
+## 8. Detailed Execution Plan
 
-## 8. Detailed Execution Plan split
+Planner owns objective/scope/architecture/dependencies/Task boundaries/topology/review-test-Human Gate placement/acceptance.
 
-Planner owns:
-- objective;
-- scope;
-- architecture;
-- dependencies;
-- milestone topology;
-- Task boundaries;
-- review/test/Human Gate placement;
-- mandatory review-trigger application;
-- acceptance/verification constraints.
+Coder owns file/symbol/helper HOW.
 
-Coder owns exact file/symbol/helper HOW after live-source inspection.
+Task additions remain inside Job only while finite objective is materially unchanged.
 
-## 9. Design Coverage / DESIGN_READY
+## 9. DESIGN_READY
 
-```text
-requirements
-→ Design Coverage
-→ design
-→ DESIGN_READY
-→ implementation
-```
+Known applicable design space is mature enough for implementation without routine redesign.
 
-DESIGN_READY means known applicable design decisions are mature enough for implementation without routine redesign.
-
-Final production binary assets need not all exist if stable contracts/placeholders suffice.
+Final production assets need not all exist when stable contracts/placeholders suffice.
 
 ## 10. SHELL_READY
-
-For content-driven apps:
 
 ```text
 design-ready shell
@@ -140,24 +93,18 @@ design-ready shell
 → scale-out
 ```
 
-Practical verification:
-- Tester when runtime capability exists;
-- otherwise human Retest with durable evidence.
+Tester if runtime capability OBSERVED; otherwise human Retest.
 
-## 11. Acceptance / capability
+## 11. Capability honesty
 
-Unavailable runtime/device capability is not pass.
+A `SURFACE_PRESENT` executor is not treated as proven operational capability.
 
-Planner records capability requirements and degraded evidence path.
-
-Use PASS_RETEST_REQUIRED when required online evidence is sufficient but practical verification remains.
+Unavailable/unobserved practical verification remains UNVERIFIED or becomes Retest obligation.
 
 ## 12. Small-task scaling
 
 Scale artifact count, not reasoning obligations.
 
-No fixed physical design file tree is mandated.
-
 ## 13. Core boundary
 
-> Planner makes product/system/workflow intent implementation-ready. Designer owns detailed visual design methodology. Coder owns exact source-level HOW.
+> Planner makes product/system/workflow intent implementation-ready. Designer owns visual methodology. Coder owns exact source-level HOW.
