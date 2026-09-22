@@ -1,142 +1,87 @@
-# UI Specification / Design Coverage Model v1.1
+# UI Specification / Design Coverage Model v1.2
 
-## 1. Status
+## 1. Purpose
 
-This document defines design coverage obligations and a specialist reference model, not a mandatory fixed file set.
+Defines design coverage/readiness obligations, not a mandatory file package.
 
-## 2. Design Coverage Inventory
-
-For material UI-first work:
+## 2. Design Coverage
 
 ```text
-requirements
-+ content model
-+ product flows
-+ feature list
+requirements + content + flows + features
 → Design Coverage
 → detailed design
 → DESIGN_READY
 ```
 
-Cover known:
-- surfaces/screens;
-- flows;
-- shared shell/components;
-- loading/empty/error/success;
-- selected/disabled/completed;
-- responsive variants;
-- assessment/report;
-- media/asset-heavy cases.
+Cover known surfaces, flows, shared shell, meaningful states, responsive variants and media-heavy cases.
 
 ## 3. UI tree
 
-UI Tree is useful but not mandatory storage.
-
-Semantic coverage matters more than filename ceremony.
+Useful technique, not mandatory storage.
 
 ## 4. Surface obligations
 
-Material surfaces should define enough applicable:
-- purpose;
-- content;
-- hierarchy;
-- interaction;
-- states;
-- responsive behavior;
-- accessibility;
-- assets;
-- acceptance.
+Define applicable purpose/content/hierarchy/interaction/states/responsive behavior/accessibility/assets/acceptance.
 
 ## 5. Ownership
 
-Planner/product definition owns functional intent/flow/state semantics/responsive priority/accessibility/acceptance.
+Planner owns functional intent.
 
-Designer owns visual hierarchy/composition/visual system/artwork/variants.
+Designer owns visual interpretation/system.
 
 Coder owns exact implementation HOW.
 
-## 6. Design system
+## 6. Responsive coverage
 
-Prefer existing Project design system.
+Specify semantic behavior before implementation breakpoint numbers.
 
-Designer proposes missing shared visual language.
+## 7. Representative variation
 
-## 7. Responsive coverage
+Cover materially different real cases, not only happy path.
 
-Specify behavior before breakpoint numbers:
-- reflow;
-- hide/show;
-- sizing;
-- crop/contain;
-- max-width;
-- touchability;
-- large-screen use.
+## 8. DESIGN_READY
 
-## 8. Representative variation
+Known required design space is covered enough that implementation should not routinely redesign it.
 
-Include materially different cases, not only happy path:
-- short/long text;
-- assets/audio;
-- interactive content;
-- assessment/result;
-- errors;
-- device classes.
+Does not require every final production asset.
 
-## 9. DESIGN_READY
-
-```text
-DESIGN_READY
-= known required design space covered enough that implementation should not routinely redesign it
-```
-
-Does not require every final asset/pixel-perfect screen/mandatory file package.
-
-## 10. SHELL_READY
-
-For content-driven apps:
+## 9. SHELL_READY
 
 ```text
 DESIGN_READY
 → shell implementation
-→ representative real-content pilot
+→ representative pilot
 → practical verification
 → SHELL_READY
 → scale-out
 ```
 
-Practical verification is:
-- Tester when runtime capability is AVAILABLE;
+Practical verification:
+- Tester only when runtime/product capability is `OBSERVED`;
 - otherwise human Retest/evidence.
 
-## 11. Reopening design
+## 10. Reopen design
 
-Legitimate reopen reasons:
-- new missing capability;
-- extreme valid content case;
-- new media interaction;
-- accessibility/usability defect;
-- device/platform constraint.
+Legitimate new constraint/capability/accessibility/usability/device findings use Causal Change Review.
 
-Shared redesign uses Causal Change Review.
-
-## 12. Traceability
+## 11. Traceability
 
 ```text
-product requirement
+requirement
 → design coverage
-→ design artifact/reference
+→ design artifact
 → implementation Task
 → verification record
 ```
 
-## 13. Asset Requirements
+## 12. Assets
 
-Stable Asset Requirement contracts may support placeholder integration before final binary availability.
+Stable Asset Requirement contracts may precede final binary.
 
-## 14. Specialist delegation
+## 13. Specialist delegation
 
-Detailed UI methodology belongs to specialist design/UI skills.
+Detailed design methodology belongs to specialist skills.
 
-## 15. Core principle
+## 14. Core principle
 
-> Cover the known product space before coding, but do not confuse coverage obligations with a mandatory document tree or unavailable practical verification.
+> Cover the known product space before coding without inventing unavailable practical verification.
