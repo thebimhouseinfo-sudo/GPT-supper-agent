@@ -1,4 +1,4 @@
-# Architecture Document Index v1.1
+# Architecture Document Index v1.2
 
 ## Purpose
 
@@ -23,13 +23,11 @@ Legacy filename suffixes are stable repository paths, not current internal versi
 | CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md | legacy specialist reference | SUPPORTING |
 | IDENTITY-AND-HANDLES-v1.md | 1.0 | SYNTHESIZED |
 | ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md | 1.1 | SYNTHESIZED |
-| CAPABILITY-CATALOG-v1.md | 1.2 | PROBE_REQUIRED |
+| CAPABILITY-CATALOG-v1.md | 1.3 | SYNTHESIZED / OBSERVED |
 | DISPATCH-AND-HANDOFF-v1.md | 1.1 | SYNTHESIZED |
 | CODER-GOAL-RECHECK-v1.md | 1.0 | SYNTHESIZED |
 | CORE-RECORD-CONTRACTS-v1.md | 1.1 | SYNTHESIZED |
 | THEORY-PROCESS-v1.md | 1.0 | PROCESS |
-| SYSTEM-DEFINITION-SKELETON-v0.1.md | 1.1 | INDEX |
+| SYSTEM-DEFINITION-SKELETON-v0.1.md | 1.3 | INDEX |
 
 Do not infer freshness from filename suffix alone.
-
-A future filename migration should update all references in one controlled change.
