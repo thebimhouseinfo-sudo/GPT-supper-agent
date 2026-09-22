@@ -34,8 +34,20 @@ This pack turns the reviewed Phase-2 implementation plan into executable work.
 
 4. `PHASE2-INITIAL-ARTIFACT-LAYOUT-v0.1.md`
    - exact initial repository paths;
+   - exact initial Drive record placement;
    - which milestone creates each artifact;
    - ownership and mutation rules.
+
+5. `PHASE2-M0-CHECKLIST-v0.1.md`
+   - executable Phase-2 entry checklist;
+   - canonical version pin;
+   - capability baseline;
+   - M0 result contract.
+
+6. `PHASE2-RISK-AND-PROBE-REGISTER-v0.1.md`
+   - known execution risks;
+   - remaining Phase-2 bootstrap probes;
+   - fallback/routing rules.
 
 ## Authority
 
