@@ -267,37 +267,61 @@ The repository implementation above writes/reads Project memory using:
 └── VERIFICATION/
 ```
 
-Recommended initial record placement:
+Exact initial record placement:
 
 ```text
-WORK/jobs/<job-handle-or-id>.json
-WORK/runs/<run-id>.json
-
-VERIFICATION/<verification-id>.json
-
-KNOWLEDGE/<knowledge-id>-<slug>.md
-```
-
-Handoffs, Asset Requirements, Human Gates and Release Records may initially live as distinct JSON records under the most relevant shared durable family rather than forcing extra Drive folders.
-
-Preferred initial mapping:
-
-```text
-VERIFICATION/
-  verification/test/retest/goal-recheck records
-
 WORK/
-  Job / Run / Handoff / Human Gate records
+├── jobs/
+│   └── <job-id>.json
+├── runs/
+│   └── <run-id>.json
+├── handoff-<handoff-id>.json
+├── gate-<gate-id>.json
+├── asset-<asset-requirement-id>.json
+└── release-<release-id>.json
+
+VERIFICATION/
+└── <verification-id>.json
 
 KNOWLEDGE/
-  Decision / Contract / Plan / Design / Asset Requirement metadata+body
-
-Release Record
-  WORK or VERIFICATION implementation choice,
-  but must remain uniquely addressable and queryable by project_id/job_id.
+└── <knowledge-id>-<slug>.md
 ```
 
-Before implementation, M1 should choose one deterministic Release/Handoff/Gate placement and document it in the workflow/templates without adding new semantic entities.
+Initial placement semantics:
+
+```text
+WORK/jobs/
+→ Job + embedded Task/topology planning/control records
+
+WORK/runs/
+→ append-preserving Run records
+
+WORK/handoff-*.json
+→ Handoff transition records
+
+WORK/gate-*.json
+→ durable Planned Human Gates only
+
+WORK/asset-*.json
+→ Asset Requirement contracts
+
+WORK/release-*.json
+→ Release/delivery facts + Review Coverage Summary + human authorization reference
+
+VERIFICATION/
+→ REVIEW / EVIDENCE / TEST / RETEST / GOAL_RECHECK records
+
+KNOWLEDGE/
+→ DECISION / CONTRACT / PLAN / ARCHITECTURE_NOTE / DESIGN Markdown artifacts with structured front matter
+```
+
+This placement is the initial Phase-2 implementation choice.
+
+Changing placement later is allowed as a mechanical migration only if:
+- semantic identity/backrefs remain intact;
+- read-time joins remain intact;
+- no new shared hot file is introduced;
+- resume/query behavior stays deterministic.
 
 ---
 
