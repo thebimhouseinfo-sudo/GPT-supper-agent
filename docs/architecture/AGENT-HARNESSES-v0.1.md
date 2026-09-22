@@ -1,4 +1,4 @@
-# Agent Contracts v1.1
+# Agent Contracts v1.2
 
 ## 1. Shared role model
 
@@ -20,15 +20,15 @@ Reviewer
 Tester
 ```
 
-All roles may act through the user's same connected platform identity; role attribution therefore comes from explicit Run signatures, not account identity.
+All roles may act through the user's same connected platform identity; role attribution comes from explicit Run signatures, not account identity.
 
 ## 2. Shared authority
 
 ```text
-tool capability ≠ role authority
+tool surface ≠ observed capability ≠ role authority
 ```
 
-Effective authority is intersection of Project/Job/Task/role/Run/human/capability boundaries.
+Effective authority is the intersection of Project/Job/Task/role/Run/human/capability boundaries.
 
 ## 3. Planner
 
@@ -38,7 +38,7 @@ Planner:
 - defines objective/scope/architecture/dependencies;
 - defines topology and completion/evidence requirements;
 - schedules normal review/test/human checkpoints;
-- must also apply mandatory review triggers;
+- ensures mechanical mandatory review classification is configured;
 - supports Causal Change Review.
 
 ## 4. Designer
@@ -46,12 +46,10 @@ Planner:
 Designer:
 - source read-only;
 - owns visual interpretation/design coverage;
-- writes design/asset requirement outputs;
+- writes design/asset-requirement outputs;
 - does not silently change product behavior.
 
-Concept-first is normal default.
-
-Designer may be invoked as a child Run from Coder when non-independent specialist asset/design work is needed.
+Designer may run as a child Run from Coder when independence is not required.
 
 ## 5. Coder
 
@@ -66,11 +64,13 @@ Coder:
 
 Before handoff/PR-ready, Coder performs Goal Recheck:
 ```text
-goal + acceptance + non-goals + plan/contracts + actual diff + available evidence
-→ MET / PARTIAL / NOT_MET / UNVERIFIED per criterion
+goal + acceptance + non-goals + plan/contracts + actual diff + observed evidence
+→ MET / PARTIAL / NOT_MET / UNVERIFIED
 ```
 
 Any source-changing Run declares a scope claim.
+
+Completing Runs do not write progress/reference arrays back into the parent Job file; status is joined from append-preserving records.
 
 ## 6. Reviewer
 
@@ -78,23 +78,22 @@ Independent Reviewer:
 - uses fresh chat;
 - reads exact target/revision and applicable requirements/evidence;
 - source implementation read-only;
-- may comment/review;
 - produces findings/results;
 - does not fix source.
 
-Reviewer derives judgement independently from target + requirements + evidence; Coder self-recheck is secondary evidence, not authority.
+Reviewer independently derives judgement.
 
-Reviewer is topology-driven except mechanical mandatory review triggers.
+Reviewer is topology-driven except when the mechanically computed mandatory review floor triggers.
 
 ## 7. Tester
 
 Tester:
-- performs scripted/exploratory practical testing only when runtime/product capability is observed AVAILABLE;
+- performs practical scripted/exploratory testing only when the required runtime/product capability is `OBSERVED`;
 - source implementation read-only;
-- may execute Retests when capability exists;
-- otherwise provides/plans test steps while human performs practical Retest and GSA records evidence.
+- may execute Retests when capability is observed;
+- otherwise prepares/plans test steps while the human executes practical Retest and GSA records evidence.
 
-Tester remains a semantic role even if initial Phase-2 execution is human-backed.
+A merely `SURFACE_PRESENT` action does not justify a successful practical-test claim.
 
 ## 8. Orchestrator
 
@@ -102,25 +101,24 @@ Orchestrator is an implicit harness responsibility set, not an always-running pr
 
 Core duties:
 - route current work;
-- apply/check transition rules when invoked;
+- apply/check transitions when invoked;
 - surface pending Handoffs/Human Gates/Retests;
 - coordinate capability lookup;
-- perform conflict/scope checks at dispatch/consequential-action boundaries;
-- produce status views.
+- perform conflict/scope/review-floor checks;
+- produce status views using read-time joins.
 
 It does not implement source.
 
 ## 9. Child Runs
 
-When independence is not required:
 ```text
-parent Run pauses/yields
-→ child Run with another role may execute in same chat
-→ child result attributed separately
-→ parent Run resumes
+parent Run yields
+→ child Run with another role
+→ child output separately attributed
+→ parent resumes
 ```
 
-Independent review remains a fresh-chat Run.
+Independent review remains fresh-chat.
 
 ## 10. Direct Agent
 
@@ -134,46 +132,36 @@ Reviewer
 
 Direct work is ephemeral by default.
 
-Promotion creates a new Project/Job from a promotion packet.
+Promotion creates new Project/Job from a promotion packet.
 
-Direct Coder:
-- requires explicit repo target;
-- cannot bypass an existing owning Project.
-
-Tester/Orchestrator are not outer entries initially.
+Direct Coder cannot bypass an existing owning Project.
 
 ## 11. Context discipline
 
 Use minimum sufficient role context.
 
-Do not load entire Project/repo/chat indiscriminately.
-
-Reviewer/Tester may receive deliberately isolated context.
+Reviewer/Tester may receive intentionally isolated context.
 
 ## 12. Handoff
 
-Cross-Run transition uses durable handoff with owning work, source Run, next role, exact target/revision, completed/remaining work, blocker/gate and expected next outcome.
+Cross-Run transition uses durable Handoff with owning work, source Run, next role, exact target/revision, completed/remaining work, blocker/gate and expected next outcome.
 
 ## 13. Attribution
 
-Important externally visible/durable role outputs include product-neutral signature:
+Important durable/external outputs include:
 ```text
 role
 Run ID
-owning work context
+owning work
 exact target/revision
 ```
 
-Unsigned content is not treated as human approval.
+Agent-authored content is never human approval.
 
 ## 14. Human authority
 
 Human owns material product/architecture/governance/subjective acceptance and merge/release decisions.
 
-Agent-authored comments under the user's account are still agent outputs.
-
 ## 15. Phase 2
 
-This document defines semantics.
-
-Exact prompts/skills/loops/tool procedures are Phase-2 work after Phase-1 entry gate is satisfied.
+Exact prompts/skills/tool procedures remain Phase-2 implementation after Phase-1 gate closes.
