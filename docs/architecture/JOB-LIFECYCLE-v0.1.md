@@ -1,4 +1,4 @@
-# Project / Job Lifecycle v1.1
+# Project / Job Lifecycle v1.2
 
 ## 1. Project lifecycle
 
@@ -10,23 +10,18 @@ ARCHIVED
 
 Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
 
-Project delete removes Drive Project memory, not repositories.
+Project delete removes Drive Project memory, not repos.
 
 ## 2. Project creation/open
 
 Create:
 ```text
-Project folder
-→ PROJECT.md
-→ optional rebuildable control view
-→ ACTIVE
+Project folder → PROJECT.md → optional control cache → ACTIVE
 ```
 
 Open:
 ```text
-Project identity/current work
-→ relevant durable context
-→ selective live source
+Project identity/current work → relevant durable context → selective live source
 ```
 
 ## 3. Job semantics
@@ -43,11 +38,21 @@ design
 review
 ```
 
-Example:
-- code Job may include Coder → Reviewer → Tester;
-- review Job means the objective itself is standalone review.
-
 Job type is immutable.
+
+Review checkpoint inside another Job is not a review Job.
+
+### Scope growth rule
+
+Task list may grow through planning-time or Planner-approved additions while the finite objective remains materially the same.
+
+If a proposed Task:
+- introduces a materially different objective; or
+- would not reasonably have belonged inside the Job's originally approved objective/scope;
+
+then Planner proposes a new linked Job rather than silently expanding the existing Job.
+
+Causal Change Review handles ambiguous/material boundary changes.
 
 ## 4. Job lifecycle
 
@@ -60,7 +65,7 @@ CANCELLED
 SUPERSEDED
 ```
 
-WAITING/BLOCKED are derived work conditions from Handoff/Human Gate/dependency/blocker records.
+WAITING/BLOCKED are derived conditions.
 
 Accepted terminal result:
 ```text
@@ -81,27 +86,34 @@ CANCELLED
 SUPERSEDED
 ```
 
-WAITING/BLOCKED are derived conditions.
+WAITING/BLOCKED are derived.
 
-Task deletion is allowed only before durable references exist.
+Completing Runs do not independently write Task completion back into the Job file; current progress is joined from Run/Verification records and finalized by explicit control action.
 
 ## 6. Run
 
-A Run begins when execution begins.
+A Run exists when execution begins.
 
+Stored lifecycle:
 ```text
 IN_PROGRESS
-WAITING_HUMAN
-BLOCKED
 COMPLETED
 FAILED
 CANCELLED
 SUPERSEDED
 ```
 
-Meaningful retry/new chat creates new linked Run.
+Derived condition:
+```text
+WAITING_HUMAN
+BLOCKED
+```
 
-Non-independent specialist assistance may create a child Run with `parent_run_id`.
+Human Gate/blocker is the durable cause; do not duplicate it as authoritative Run lifecycle.
+
+Meaningful retry/new chat creates linked Run.
+
+Child Run may use `parent_run_id`.
 
 ## 7. Handoff
 
@@ -112,35 +124,27 @@ CONSUMED
 SUPERSEDED
 ```
 
-Source Run is completed; Handoff represents pending transition.
+Source Run completes; Handoff carries pending transition.
 
 ## 8. Completion topology
 
-There is no universal Reviewer requirement.
+Normal topology is flexible.
 
-Normal topology is flexible, but mandatory review floor applies to mechanically sensitive change classes defined in Foundation F13.
+Mandatory mechanically classified review floor applies where required.
 
-Completion may require:
-- Goal Recheck/self QA;
-- capability-backed evidence;
-- Reviewer;
-- Tester;
-- Human Gate;
-- combinations.
+Completion may require Goal Recheck, capability-backed evidence, Reviewer, Tester, Human Gate, or combinations.
 
 ## 9. PASS_RETEST_REQUIRED
 
-Job may become COMPLETED + PASS_RETEST_REQUIRED while practical Retest remains pending.
+Job may complete while Retest pending.
 
-Merge is allowed only after explicit human authorization with pending Retest/unverified coverage shown.
+Merge needs explicit human authorization with visible pending Retest/UNVERIFIED coverage.
 
-If later Retest FAIL occurs after Job completion:
+Post-completion Retest FAIL:
 ```text
-preserve completed Job
-→ create linked remediation Job
+preserve historical Job
+→ linked remediation Job
 ```
-
-Do not reopen a Task inside terminal Job.
 
 ## 10. Delivery facts
 
@@ -155,24 +159,16 @@ Separate from lifecycle.
 
 ## 11. Job history/delete
 
-Completed Job remains history.
-
 No Job ARCHIVED state.
 
-Hard delete is explicit human action.
+Hard delete is explicit human action; show references/consequences first.
 
-Initial model does not require tombstones. Before deleting referenced Job data, show references/consequences and obtain explicit decision.
+## 12. PAUSED/ARCHIVED
 
-## 12. PAUSED/ARCHIVED execution
+No asynchronous cross-chat stop assumption.
 
-No chat can be asynchronously stopped by another chat.
-
-Therefore lifecycle is rechecked before consequential actions.
-
-PAUSED/ARCHIVED blocks new consequential work once observed.
+Recheck lifecycle before consequential actions.
 
 ## 13. Direct Agent promotion
 
-Promotion does not mutate an ephemeral Direct Agent lifecycle.
-
-It creates a new Project/Job from a promotion packet containing objective, outputs, assumptions, repo target and remaining work.
+Promotion creates new Project/Job from promotion packet; no ephemeral lifecycle mutation.
