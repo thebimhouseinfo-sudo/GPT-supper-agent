@@ -1,4 +1,4 @@
-# Execution and Review Model v1.1
+# Execution and Review Model v1.2
 
 ## 1. Work hierarchy
 
@@ -8,7 +8,7 @@ Project → Job → Task → Run
 
 Milestones/stages are topology elements, not hierarchy nodes.
 
-Job = finite primary objective, not one role.
+Job is a finite primary objective, not one role.
 
 ## 2. Topology
 
@@ -19,28 +19,34 @@ Milestone | Stage | Handler | Output | Depends on | Next | Review? | Tester? | H
 
 Coder refines exact source-level HOW.
 
-A standalone `review` Job is used only when review itself is the objective; review checkpoints inside another Job do not become separate review Jobs automatically.
+Standalone `review` Job exists only when review itself is the objective.
 
 ## 3. Review placement
 
-Normal work:
-> Review is placed where topology requires independent evaluation.
-
-Not every Task/PR/milestone/Job receives Reviewer.
+Normal work is topology-driven; not every Task/PR/milestone/Job receives Reviewer.
 
 ## 4. Mandatory review floor
 
-Independent fresh-chat review is mandatory when mechanically detectable change classes include:
+Independent fresh-chat review is mandatory for mechanically sensitive changes:
 - shared contracts/interfaces/schema;
 - persisted-data migrations/formats;
-- auth/permissions/security-sensitive logic;
+- auth/permission/security-sensitive logic;
 - CI/CD/workflow/deployment config;
 - destructive operations;
-- dependency manifests/lockfiles when runtime/build dependency state changes.
+- dependency manifests/lockfiles that alter runtime/build dependency state.
 
-The Planner cannot silently remove these checkpoints.
+### Mechanical detection
 
-If a previously planned non-mandatory review is removed/merged, the topology change is shown to the human.
+At PR-ready/handoff:
+1. obtain actual changed-file list/operations;
+2. compare against Repo Claim sensitive/contract/migration/security path sets;
+3. compare against universal patterns such as `.github/workflows/**` and known lockfile filenames;
+4. include explicitly planned destructive operation class;
+5. compute review-floor trigger independent of Coder self-declaration.
+
+Coder scope claim hints may help early coordination but cannot disable the computed trigger.
+
+Removing a previously planned review remains human-visible.
 
 ## 5. Review loop
 
@@ -50,12 +56,12 @@ owner works
 → Reviewer evaluates exact revision
 → PASS / PASS_RETEST_REQUIRED
    or CHANGES_REQUIRED / BLOCKED / HUMAN_REVIEW_REQUIRED
-→ route according to topology
+→ route by topology
 ```
 
 Reviewer does not repair source.
 
-## 6. Finding severity
+## 6. Severity
 
 ```text
 CRITICAL = always blocking
@@ -66,72 +72,67 @@ MINOR = non-blocking
 ## 7. Coder Goal Recheck
 
 Before handoff/PR-ready:
-- map each applicable acceptance criterion to actual diff/evidence;
-- mark MET / PARTIAL / NOT_MET / UNVERIFIED;
-- identify changes not traceable to approved scope;
-- identify missing implied requirement without inventing it;
-- fix or escalate PARTIAL/NOT_MET.
+- map criteria to actual diff/evidence;
+- mark MET/PARTIAL/NOT_MET/UNVERIFIED;
+- identify out-of-scope changes;
+- fix/escalate applicable gaps.
 
-Goal Recheck is judgement-based self-check evidence, not independent proof of runtime correctness.
+Self recheck is not independent proof.
 
 ## 8. Capability-backed evidence
 
-Objective checks run only when capability exists.
+Objective checks run only when capability is OBSERVED.
 
-Examples:
-- CI;
-- build/test/lint;
-- deploy/preview;
-- runtime/browser;
-- screenshot.
+A connector action that is merely SURFACE_PRESENT is not relied on as successful operational evidence.
 
-Unavailable checks are UNVERIFIED, not PASS.
+Unavailable/unproven checks remain UNVERIFIED unless another evidence path exists.
 
 ## 9. Tester
 
 Tester practical execution is capability-gated.
 
-If unavailable:
+If not OBSERVED:
 ```text
 GSA prepares Retest
-→ human executes practical steps
-→ GSA records evidence/result
+→ human executes
+→ GSA records result/evidence
 ```
 
 ## 10. Completion
 
-Job completion follows approved topology plus mandatory review floor.
+Job completion follows approved topology + computed mandatory review floor.
 
 No universal final Reviewer gate.
 
-PASS_RETEST_REQUIRED may complete a Job while Retest remains pending.
+PASS_RETEST_REQUIRED may complete Job while Retest remains pending.
 
-Later Retest FAIL after completion creates a new linked remediation Job.
+Post-completion Retest FAIL creates linked remediation Job.
 
 ## 11. Merge authorization coverage
 
-Before requesting merge authorization, show:
+Before requesting merge authorization, generate Review Coverage Summary:
 ```text
-Independent review : status / none
-CI/checks          : status / unavailable
-Tester             : status / unavailable
-Retest             : pending / none
-Self-recheck only  : scopes
-UNVERIFIED         : explicit list
-Waivers            : explicit list
+Independent review
+CI/checks
+Tester
+Retest
+Self-recheck-only scopes
+UNVERIFIED
+Waivers
+Blockers
+Target revision
 ```
 
-Then human explicitly authorizes merge.
+Human then explicitly authorizes merge.
 
 ## 12. PR / Change Set
 
-PR is delivery surface, not lifecycle root.
+PR is delivery surface.
 
-Change Set exists only when one logical change coordinates multiple repos.
+Change Set only for genuine coordinated multi-repo change.
 
 ## 13. Run attribution
 
-Run:
 ```text
 one execution scope
 = Job-level OR one primary Task
@@ -142,20 +143,20 @@ Child Run has `parent_run_id`.
 
 Source-writing Run includes scope claim.
 
-## 14. Causal failure routing
+## 14. Causal routing
 
 ```text
-implementation defect → owning active Task/work
+implementation defect → active owning Task/work
 design defect → Designer/design artifact
 architecture/contract/scope defect → Causal Change Review
-post-completion Retest FAIL → new linked remediation Job
+post-completion Retest FAIL → linked remediation Job
 ```
 
-## 15. Current handoff
+## 15. Handoff
 
 ```text
 Run completes
 → pending Handoff if needed
-→ user selects/takes Handoff
+→ user selects/takes
 → next Run starts
 ```
