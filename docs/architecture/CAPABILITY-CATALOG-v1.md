@@ -1,23 +1,34 @@
-# Capability Catalog v1.1
+# Capability Catalog v1.2
 
-## 1. State
+## 1. Capability evidence state
 
 ```text
-AVAILABLE
+OBSERVED
+= successful end-to-end execution has been observed for the relevant action class
+
+SURFACE_PRESENT
+= connector/tool action exists in schema but end-to-end behavior for this use has not been proven
+
 UNAVAILABLE
+= required action is absent or known unusable in current environment
+
 UNKNOWN
+= surface/behavior has not yet been established
 ```
 
-Derived execution mode:
+Only OBSERVED capability may be relied on as an operational guarantee.
+
+SURFACE_PRESENT may justify a probe, not a success claim.
+
+## 2. Derived execution mode
+
 ```text
 NORMAL
 DEGRADED
 BLOCKED
 ```
 
-UNKNOWN is never assumed AVAILABLE.
-
-## 2. Enforcement
+## 3. Enforcement
 
 ```text
 HARD
@@ -25,60 +36,56 @@ SOFT
 UNKNOWN
 ```
 
-Capability availability and policy enforcement are separate dimensions.
+Availability evidence and policy enforcement are separate.
 
-## 3. Current observed connector surface
-
-The following reflects capabilities visible/used in the current ChatGPT connector environment. "AVAILABLE" means the action surface is present or has been successfully used; it does not imply every target permission succeeds.
+## 4. Current matrix
 
 ### Google Drive
 
 ```text
-list folder                         AVAILABLE
-create folder                       AVAILABLE
-read files/folders                  AVAILABLE
-upload raw file bytes               AVAILABLE
-replace raw file bytes in place     AVAILABLE
-native Docs/Sheets/Slides edits     AVAILABLE
-file comments read/write            AVAILABLE
-conditional/revision-aware write    UNAVAILABLE in current update action schema
+list folder                       SURFACE_PRESENT
+create folder                     SURFACE_PRESENT
+read files/folders                SURFACE_PRESENT
+upload raw file bytes             SURFACE_PRESENT
+replace raw file bytes            SURFACE_PRESENT
+native Workspace edits            SURFACE_PRESENT
+file comments                     SURFACE_PRESENT
+conditional/revision-aware write  UNAVAILABLE in current raw update action schema
 ```
 
-Important:
-Drive raw-file update action exposes no revision/precondition parameter. Therefore GSA correctness must not depend on compare-and-swap.
+Raw Drive Project round-trip remains a required probe before Phase 2.
 
 ### GitHub
 
-Observed/available tool surface:
-
 ```text
-repo/file read                      AVAILABLE
-text create/update/delete           AVAILABLE (used in Phase 1)
-branch create                       AVAILABLE
-commit/tree/blob creation            AVAILABLE
-PR create/read/update               AVAILABLE
-PR diff/changed files               AVAILABLE
-PR comments/review surfaces         AVAILABLE
-Actions run/job/log inspection      AVAILABLE
-workflow rerun                      AVAILABLE
-binary blob creation                AVAILABLE
-merge pull request                  AVAILABLE
-independent reviewer identity       UNAVAILABLE under same connected user identity
-branch delete                       UNKNOWN in current exposed high-level actions
-protected-branch enforcement read   DEGRADED/permission-dependent via available read surfaces
+repo/file read                    OBSERVED
+text create/update                OBSERVED
+text delete                       SURFACE_PRESENT
+branch create                     SURFACE_PRESENT
+commit/tree/blob creation         SURFACE_PRESENT
+PR create/read/update             SURFACE_PRESENT
+PR diff/changed files             SURFACE_PRESENT
+PR review/comment surfaces        SURFACE_PRESENT
+Actions run/job/log inspection    SURFACE_PRESENT
+workflow rerun                    SURFACE_PRESENT
+binary blob/commit path           SURFACE_PRESENT
+merge pull request                SURFACE_PRESENT
+independent reviewer identity     UNAVAILABLE under same connected user identity
+branch delete                     UNKNOWN in current exposed high-level actions
+protected-branch behavior         UNKNOWN / permission-dependent
 ```
 
-Merge action existence does not authorize merge; human authorization rule still applies.
+Binary commit and merge behavior remain required probes before Phase 2.
 
 ### Runtime / testing
 
 ```text
-public web fetch/search             AVAILABLE
-general deployed-app interaction    UNKNOWN
-authenticated/private preview       UNKNOWN
-localhost/private runtime           UNAVAILABLE in ordinary connector chat unless another executor is provided
-desktop/Revit/AutoCAD execution     UNAVAILABLE in ordinary online harness
-interactive screenshot-driven test UNKNOWN
+public web fetch/search           OBSERVED
+general deployed-app interaction  UNKNOWN
+authenticated/private preview     UNKNOWN
+localhost/private runtime         UNAVAILABLE in ordinary connector chat unless another executor exists
+desktop Revit/AutoCAD execution   UNAVAILABLE in ordinary online harness
+interactive screenshot testing   UNKNOWN
 ```
 
 Tester practical execution remains capability-gated.
@@ -86,57 +93,45 @@ Tester practical execution remains capability-gated.
 ### Media/design
 
 ```text
-image generation                    AVAILABLE
-image editing                       AVAILABLE
-transparent output request          AVAILABLE
-exact-size behavior                 capability-dependent
-direct generated-image persistence
-  into Drive/GitHub                 UNKNOWN
+image generation                  SURFACE_PRESENT
+image editing                     SURFACE_PRESENT
+transparent-output request        SURFACE_PRESENT
+direct generated-image persistence UNKNOWN
 ```
 
-## 4. Repo readiness baseline
+## 5. Repo readiness baseline
 
-Each coding Job records which objective checks are actually available:
-- CI workflow?;
-- tests?;
-- build?;
-- lint?;
-- typecheck?;
-- deploy preview?;
-- runtime/browser?;
-- other domain-specific checks.
+Each coding Job records observed/surface-present status for applicable:
+- CI;
+- tests;
+- build;
+- lint;
+- typecheck;
+- preview;
+- runtime/browser;
+- domain-specific checks.
 
-Missing check is not itself failure, but affected criteria remain `UNVERIFIED` unless another evidence path exists.
+If not OBSERVED, an acceptance criterion cannot be marked verified by that capability.
 
-## 5. Enforcement examples
+## 6. Phase-1 probe classification
 
-Likely HARD or externally enforced only when platform actually provides it:
-- connector repository authorization scope;
-- protected branch/rules;
-- explicit platform confirmation prompts;
-- human-controlled merge flow.
-
-Likely SOFT in harness:
-- role write boundaries when same connector exposes write action;
-- review-trigger detection;
-- scope-claim conflict detection;
-- check-before-consequential-action.
-
-## 6. Remaining Phase-1 probes
-
-Still require real target tests before relying on them:
-- raw Drive create/update round-trip under intended Project root;
-- Google Drive comment workflow only if chosen for Phase 2;
+### MUST_BE_PROBED_BEFORE_PHASE_2
+- raw Drive create/update/read round-trip in a disposable Project folder;
 - GitHub binary commit round-trip;
-- merge + branch cleanup behavior/confirmation;
-- protected/default branch behavior on a representative repo;
-- direct image persistence path;
-- practical runtime/browser capability for Tester.
+- merge behavior + branch cleanup/confirmation path.
 
-These probes may be performed on a disposable test Project/repo or representative pilot before Phase-2 harness claims those capabilities as operational.
+### CAN_BE_PROBED_DURING_PHASE_2_BOOTSTRAP BEFORE FIRST REAL USE
+- protected/default branch behavior;
+- direct generated-image persistence;
+- practical runtime/browser Tester capability.
+
+### NOT NEEDED FOR PHASE-2 ENTRY
+- Google Drive comment workflow unless later selected as load-bearing.
 
 ## 7. Rule
 
-Platform probe result may change capability/enforcement truth.
+Probe updates capability evidence state only.
 
-It does not silently expand role authority or rewrite product semantics.
+It does not expand role authority.
+
+A theory fallback may permit Phase 2 even when a capability remains unavailable, but all MUST probes must be executed and classified before entry.
