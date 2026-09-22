@@ -1,4 +1,4 @@
-# Architecture Document Index v1.2
+# Architecture Document Index v1.3
 
 ## Purpose
 
@@ -7,7 +7,7 @@ Legacy filename suffixes are stable repository paths, not current internal versi
 | Stable path | Current internal version | Status |
 |---|---:|---|
 | FROZEN-FOUNDATION-v0.1.md | 0.4 | FROZEN |
-| ARCHITECTURE-v0.1.md | 0.3 | DEFINED |
+| ARCHITECTURE-v0.1.md | 0.4 | SYNTHESIZED |
 | PROJECT-MEMORY-v0.1.md | 1.2 | SYNTHESIZED |
 | JOB-LIFECYCLE-v0.1.md | 1.2 | SYNTHESIZED |
 | STATE-MACHINE-v1.md | 1.2 | SYNTHESIZED |
@@ -15,10 +15,10 @@ Legacy filename suffixes are stable repository paths, not current internal versi
 | SECURITY-AND-TRUST-BOUNDARIES-v0.1.md | 1.1 | SYNTHESIZED |
 | AGENT-HARNESSES-v0.1.md | 1.2 | DEFINED |
 | EXECUTION-AND-REVIEW-v0.1.md | 1.2 | SYNTHESIZED |
-| PLANNER-SCOPE-AND-UIUX-v0.1.md | 1.1 | DEFINED |
+| PLANNER-SCOPE-AND-UIUX-v0.1.md | 1.2 | DEFINED |
 | DESIGNER-HARNESS-v0.1.md | 1.0 | DEFINED |
 | CODER-UIUX-HARNESS-v0.1.md | 1.1 | DEFINED |
-| UI-SPEC-MODEL-v0.1.md | 1.1 | DEFINED |
+| UI-SPEC-MODEL-v0.1.md | 1.2 | DEFINED |
 | CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md | 1.0 | DEFINED |
 | CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md | legacy specialist reference | SUPPORTING |
 | IDENTITY-AND-HANDLES-v1.md | 1.0 | SYNTHESIZED |
@@ -28,6 +28,6 @@ Legacy filename suffixes are stable repository paths, not current internal versi
 | CODER-GOAL-RECHECK-v1.md | 1.0 | SYNTHESIZED |
 | CORE-RECORD-CONTRACTS-v1.md | 1.1 | SYNTHESIZED |
 | THEORY-PROCESS-v1.md | 1.0 | PROCESS |
-| SYSTEM-DEFINITION-SKELETON-v0.1.md | 1.3 | INDEX |
+| SYSTEM-DEFINITION-SKELETON-v0.1.md | 1.4 | PHASE-1 CLOSE INDEX |
 
 Do not infer freshness from filename suffix alone.
