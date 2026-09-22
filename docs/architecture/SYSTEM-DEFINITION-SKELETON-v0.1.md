@@ -1,8 +1,8 @@
-# System Definition Skeleton v1.3
+# System Definition Skeleton v1.4
 
 ## Purpose
 
-Current Phase-1 map after Claude peer-review rounds 1 and 2, accepted fix passes, and mandatory platform probes.
+Current system map at Phase-1 close after Claude peer-review rounds 1 and 2, all accepted fix passes, mandatory platform probes, and final consistency review.
 
 Status:
 ```text
@@ -17,7 +17,7 @@ CALIBRATION = Phase-2+ operational tuning
 Conversation UI; Drive durable Project memory/control plane; GitHub source truth.
 
 ## S1 Project/Drive — FROZEN / OBSERVED
-Project raw Drive file create/read/update round-trip observed.
+Raw Drive Project-memory file create/read/update/delete path observed.
 
 ## S2 Work hierarchy — FROZEN
 ```text
@@ -26,44 +26,37 @@ Project → Job → Task → Run
 Multi-role Job; one active role per Run.
 
 ## S3 Repository model — SYNTHESIZED
-Structured OWNED/REFERENCED claims + review-sensitive path sets.
+Structured OWNED/REFERENCED claims + sensitive path metadata.
 
 ## S4 Project Memory — SYNTHESIZED / OBSERVED
-Read-time join:
-- stable Job planning/control record;
-- completing Runs do not write back progress/reference arrays;
-- Runs/Verification append-preserving;
-- Knowledge artifacts structured;
-- CONTROL rebuildable cache.
-Raw Drive persistence path observed.
+Read-time join model; no Run write-back hot file.
 
 ## S5 State — SYNTHESIZED
-Lifecycle/result/validity/facts separated.
-WAITING/BLOCKED/WAITING_HUMAN derived where applicable.
+Lifecycle/result/validity/facts separated; waiting/blocking primarily derived.
 
 ## S6 Orchestrator — DEFINED
-Implicit harness responsibility set; no always-running engine.
+Implicit harness responsibility set.
 
 ## S7 Planner — DEFINED
-Planning/topology/readiness + review-sensitive metadata.
+Planning/topology/readiness + repo review-sensitive metadata.
 
 ## S8 Designer — DEFINED
 Visual/design specialist; child Run supported.
 
 ## S9 Coder — DEFINED
-Source HOW, scope claim, Goal Recheck; cannot self-disable review floor.
+Source HOW + scope claim + Goal Recheck.
 
 ## S10 Reviewer — SYNTHESIZED
-Fresh-chat independent Reviewer when topology or computed floor requires it.
+Fresh-chat independent Reviewer where topology or mechanically computed floor requires it.
 
 ## S11 Tester — DEFINED / CALIBRATION
-Practical execution remains runtime-capability-gated; human Retest fallback is complete.
+Runtime capability-gated; human Retest fallback complete.
 
 ## S12 QA/QC — SYNTHESIZED
-Capability-backed evidence + Goal Recheck + independent evaluation where required.
+Observed capability checks + Goal Recheck + independent evaluation.
 
 ## S13 Handoff — SYNTHESIZED
-Current-Project default; root-wide shallow discovery when no Project open.
+Current-Project default; shallow cross-Project discovery when none open.
 
 ## S14 Context Builder — DEFINED
 Minimum sufficient context.
@@ -72,9 +65,9 @@ Minimum sufficient context.
 Explicit human authority.
 
 ## S16 Verification/Evidence — SYNTHESIZED
-Provenance/target/revision + fail-safe causal validity.
+Target/revision/provenance + fail-safe causal validity.
 
-## S17 Capability — SYNTHESIZED / MUST PROBES COMPLETE
+## S17 Capability — SYNTHESIZED / OBSERVED
 Evidence states:
 ```text
 OBSERVED
@@ -82,19 +75,19 @@ SURFACE_PRESENT
 UNAVAILABLE
 UNKNOWN
 ```
-Required Phase-1 Drive/binary/merge probes completed.
+Phase-1 MUST probes complete.
 
 ## S18 Multi-repo — DEFINED
-Change Set only when coordinated.
+Change Set only for coordinated change.
 
 ## S19 Governance — SYNTHESIZED
-Identity, attribution, scope claims, read-time joins, merge coverage, causal revalidation.
+Identity, attribution, scope claims, read-time joins, merge coverage, causal validity.
 
 ## S20 Security — SYNTHESIZED
-External content untrusted; consequential-action recheck.
+Untrusted external content; consequential-action recheck.
 
 ## S21 Asset — SYNTHESIZED
-Stable integration contract; binary GitHub persistence path observed.
+Stable asset contract; GitHub binary commit path observed.
 
 ## S22 Retest — SYNTHESIZED
 Post-completion FAIL → linked remediation Job.
@@ -103,7 +96,7 @@ Post-completion FAIL → linked remediation Job.
 Topology + computed review floor + explicit human merge authorization.
 
 ## S24 UX/Dispatch — SYNTHESIZED
-Deterministic Handoff discovery/selection.
+Deterministic Handoff discovery and selection.
 
 ## S25 Failure/Recovery — DEFINED
 Smallest causal recovery.
@@ -112,16 +105,16 @@ Smallest causal recovery.
 Phase-2 behavioral eval loop.
 
 ## S27 Schemas — SYNTHESIZED
-Includes Knowledge Artifact and Review Coverage Summary.
+Knowledge Artifact + Review Coverage Summary included.
 
-## S28 Implementation architecture — READY SUBJECT TO FINAL CONSISTENCY REVIEW
+## S28 Implementation architecture — READY FOR PHASE 2
 
-No unresolved mandatory platform probe remains.
+Phase 2 may implement the thin harness/skills/actions without inventing material product/architecture/governance semantics.
 
 ## S29 Theory process
 See THEORY-PROCESS-v1.md.
 
-## S30 Current gate
+## S30 Phase-1 gate
 
 ```text
 PEER_REVIEW_ROUND_1 = COMPLETE
@@ -129,6 +122,10 @@ PEER_REVIEW_ROUND_2 = COMPLETE
 ROUND_2_FIX_PASS = COMPLETE
 MISSING_CONTRACTS = COMPLETE
 MUST_PLATFORM_PROBES = COMPLETE
-FINAL_CONSISTENCY_REVIEW = PENDING
-PHASE_2_ENTRY = BLOCKED UNTIL FINAL CONSISTENCY REVIEW
+FINAL_CONSISTENCY_REVIEW = PASS
+PHASE_1 = CLOSED
+PHASE_2_ENTRY = READY
+PHASE_2_STARTED = NO
 ```
+
+Phase-2 bootstrap/calibration probes still apply before first use of capability areas not yet OBSERVED.
