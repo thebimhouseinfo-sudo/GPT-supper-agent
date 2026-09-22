@@ -1,14 +1,13 @@
-# Core Record Contracts v1
+# Core Record Contracts v1.1
 
 ## Purpose
 
 Define semantic fields/relationships enough that Phase 2 does not invent architecture.
 
-Exact JSON Schema/YAML syntax is implementation detail after these contracts.
+Exact serialization/validation syntax is implementation detail.
 
 ## Project
 
-Required:
 ```text
 project_id
 name
@@ -28,11 +27,19 @@ relation = OWNED | REFERENCED
 project_id
 provenance
 claimed_at?
+sensitive_paths[]?
+contract_paths[]?
+migration_paths[]?
+security_sensitive_paths[]?
 ```
+
+The declared path sets support mechanical review-floor classification. They are Project/Planner-governed metadata, not Coder self-declaration.
 
 Duplicate OWNED claims = governance conflict.
 
 ## Job
+
+Job is a relatively stable planning/control record, not a Run write-back aggregate.
 
 ```text
 job_id
@@ -48,13 +55,23 @@ dependencies[]
 completion_requirements
 verification_requirements
 review_triggers[]
-state
+planning_revision
+lifecycle
 result?
 linked_job_ids[]
+```
+
+Do **not** store authoritative:
+```text
 verification_refs[]
 asset_requirement_refs[]
 retest_refs[]
+ordinary Run completion append data
 ```
+
+These are discovered by querying/joining records carrying job_id/task_id.
+
+Job lifecycle/result updates are performed only by explicit serialized Planner/control/dispatch actions, not independently by completing Runs.
 
 ## Embedded Task
 
@@ -65,8 +82,10 @@ objective
 scope
 dependencies[]
 completion_criteria[]
-state
+lifecycle
 ```
+
+Task progress/completion view may be derived from Runs/Verification rather than every Run mutating the Job record.
 
 ## Run
 
@@ -83,7 +102,8 @@ target_ref?
 target_revision?
 scope_claim
 input_refs[]
-state
+lifecycle
+derived_condition?
 result?
 output_refs[]
 verification_refs[]
@@ -91,6 +111,8 @@ handoff_ref?
 started_at?
 ended_at?
 ```
+
+`derived_condition` may display WAITING_HUMAN/BLOCKED from Human Gate/blocker records; it is not an authoritative lifecycle state.
 
 ## Handoff
 
@@ -115,6 +137,7 @@ successor_run_id?
 ## Verification Record
 
 Common envelope:
+
 ```text
 verification_id
 kind = REVIEW | EVIDENCE | TEST | RETEST | GOAL_RECHECK
@@ -133,12 +156,15 @@ created_at?
 ```
 
 Review extension:
+
 ```text
 review_mode
 findings[]
+coverage_summary?
 ```
 
 Finding:
+
 ```text
 finding_id
 severity = CRITICAL | IMPORTANT | MINOR
@@ -150,6 +176,7 @@ waiver_ref?
 ```
 
 Retest extension:
+
 ```text
 retest_id
 steps[]
@@ -160,6 +187,25 @@ attempt_history[]
 originating_job_id
 remediation_job_id?
 ```
+
+## Knowledge Artifact
+
+A compact structured envelope may be front matter on a Markdown knowledge file.
+
+```text
+knowledge_id
+project_id
+kind = DECISION | CONTRACT | PLAN | ARCHITECTURE_NOTE | DESIGN
+title
+revision
+validity = CURRENT | REVALIDATED | STALE | SUPERSEDED
+depends_on[]
+supersedes?
+approved_by_or_source?
+updated_at?
+```
+
+The document body carries human-readable content.
 
 ## Asset Requirement
 
@@ -195,7 +241,23 @@ state
 dependent_work_refs[]
 ```
 
-Only materially consequential gates require durable persistence.
+## Review Coverage Summary
+
+Required before merge authorization:
+
+```text
+independent_review_status
+ci_check_status
+tester_status
+retest_status
+self_recheck_only_scopes[]
+unverified[]
+waivers[]
+blockers[]
+target_revision
+```
+
+May be generated from Verification records rather than permanently embedded in Job.
 
 ## Release Record
 
@@ -211,16 +273,18 @@ deployed
 deployment_verified
 known_limitations[]
 pending_retests[]
+review_coverage_summary?
 human_authorization_ref?
 ```
 
 ## Scope Claim
 
-See ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md.
+See `ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md`.
 
 ## CONTROL materialized view
 
 Optional/rebuildable:
+
 ```text
 project_id
 lifecycle
@@ -228,7 +292,7 @@ active_job_handles[]
 pending_handoff_handles[]
 pending_gate_handles[]
 pending_retest_handles[]
-generated_from_revision/time?
+generated_at?
 ```
 
 No authoritative fact may exist only here.
