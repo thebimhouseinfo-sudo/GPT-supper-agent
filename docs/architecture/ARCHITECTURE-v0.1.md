@@ -1,4 +1,4 @@
-# GPT Super Agent — Architecture v0.3
+# GPT Super Agent — Architecture v0.4
 
 ## 1. System model
 
@@ -23,48 +23,44 @@ Task is optional bounded work decomposition.
 
 Milestone/stage is topology, not ownership hierarchy.
 
-## 3. Project root
+## 3. Project / repository model
 
 Each direct child folder under `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
-
-Project may own zero repositories during planning/design-first work.
-
-## 4. Repository model
 
 ```text
 OWNED → writable within approved scope
 REFERENCED → read-only
 ```
 
-Ownership uses structured Project records. Duplicate ownership claims block write work until human resolution.
+Structured ownership claims include repo-specific review-sensitive path metadata.
 
-## 5. Project Memory design principle
+## 4. Project Memory
 
-Drive is not treated as a relational database.
+Drive is not treated as a relational DB.
 
 Use:
-- small stable Project identity/control records;
-- Job records that embed Tasks/topology where practical;
-- separate append-only Run records;
-- compact verification records;
-- minimal pending transition/control pointers;
-- semantic knowledge artifacts.
+- stable Project/Job planning-control records;
+- Tasks/topology embedded in Job by default;
+- separate append-preserving Run records;
+- Verification records joined by job_id/task_id;
+- compact Handoffs;
+- structured Knowledge artifacts;
+- optional rebuildable CONTROL cache.
 
-`CONTROL.json`, if present, is a rebuildable cache/materialized view, never the sole source of a durable fact.
+Completing Runs do not write progress/reference arrays back into parent Job.
 
-## 6. Context loading
+## 5. Context loading
 
 ```text
 open Project
-→ read Project identity/current work
-→ relevant decisions/contracts/plans
-→ relevant Job/Task/Run/Handoff
+→ identity/current work
+→ relevant knowledge/work records
 → current request
 → selective live GitHub evidence
-→ role-specific context packet
+→ role-specific context
 ```
 
-## 7. Roles
+## 6. Roles
 
 ```text
 Orchestrator
@@ -77,181 +73,149 @@ Reviewer
 Tester
 ```
 
-One Run has one active role.
+One active role per Run.
 
-Non-independent role assistance may use child Runs in the same chat.
+Child Runs support non-independent specialist assistance.
 
-Independent Reviewer remains fresh-chat.
+Independent Reviewer uses fresh chat.
 
-Tester practical execution is capability-gated.
+## 7. Work topology
 
-## 8. Role boundaries
-
-Planner/Designer are source read-only.
-
-Coder writes only approved Project-owned source scope.
-
-Reviewer is source implementation read-only and may comment/review.
-
-Tester is source implementation read-only.
-
-Orchestrator coordinates control-plane behavior and does not implement source.
-
-All actions remain constrained by actual connector capability.
-
-## 9. Work topology
-
-Planner defines:
-- objective/scope;
-- Task decomposition when useful;
-- milestones/stages;
-- dependencies;
-- role order;
-- parallelism;
-- review/test/Human Gates;
-- completion/evidence requirements.
+Planner defines objective/scope/dependencies/Tasks/stages/role order/review/test/Human Gates/completion/evidence.
 
 Coder refines exact source-level HOW.
 
-## 10. Run scope and claims
+Materially different objective becomes linked Job rather than silent Task growth.
 
-Run records:
-- one Job-level or primary-Task execution scope;
-- optional affected Task refs;
+## 8. Run scope / concurrency
+
+Run carries:
+- Job or primary Task scope;
+- affected Tasks;
 - role;
-- exact target/revision;
-- parent_run_id when child Run;
-- scope claim for intended repo/branch/path/work context;
-- result/evidence/handoff output.
+- target/revision;
+- scope claim;
+- outputs/evidence/handoff.
 
-Before consequential source/control actions, the active Run re-checks Project lifecycle and relevant scope/target state.
+Concurrency model:
+```text
+append-preserving Run/Verification records
++ read-time joins
++ minimal shared mutable records
++ recheck before consequential action
+```
 
-## 11. Handoff / dispatch
+Cross-chat consistency is eventual.
+
+## 9. Handoff / dispatch
 
 ```text
 Run completes
-→ durable pending handoff if another role is required
-→ user opens fresh/same chat as required
-→ selects/takes handoff
-→ next Run starts
+→ Handoff PENDING
+→ human dispatches next Run
 ```
 
-Minimal dispatch UX must support:
-- list pending handoffs;
-- take next;
-- take by ID/handle;
-- show status;
-- pause/stop where applicable.
+Default discovery:
+- Project open → current Project;
+- no Project open → shallow root-wide Project scan using CONTROL caches where available.
 
-## 12. Review/testing
+## 10. Review / QA
 
-Review is flexible except for the mandatory mechanically triggered review floor defined in Foundation F13.
+Normal review is topology-driven.
 
-Reviewer verifies known requirements/evidence.
+Mandatory review floor is mechanically computed from actual changed files/operations against:
+- Project/Repo sensitive path metadata;
+- universal workflow/lockfile patterns;
+- destructive operation classification.
 
-Tester seeks practical/unanticipated failures when capability exists.
+Coder self-report cannot suppress the floor.
 
-When practical execution capability is unavailable, Retest is primarily a human checklist/evidence flow.
+Coder self QA/QC:
+- capability-backed checks;
+- Goal Recheck.
 
-## 13. QA/QC
+Reviewer independently evaluates required criteria.
+
+## 11. Capability truth
 
 ```text
-QA = COMPLIANCE/process assurance
-QC = CORRECTNESS + FIT
+OBSERVED
+SURFACE_PRESENT
+UNAVAILABLE
+UNKNOWN
 ```
 
-Coder self QA/QC has two layers:
-1. capability-backed checks;
-2. Goal Recheck against goal/acceptance/non-goals/plan/diff/evidence.
+Only OBSERVED may support an operational success claim.
 
-Reviewer independently evaluates required criteria rather than trusting the Coder's self recheck.
+Phase-1 MUST probes confirmed:
+- raw Drive file round-trip;
+- GitHub binary commit/read-back;
+- PR merge behavior.
 
-## 14. Evidence
+Branch auto-delete is not observed and branch delete is unavailable in the current connector; never assume cleanup.
+
+## 12. Tester / Retest
+
+Tester practical execution requires the relevant runtime capability to be OBSERVED.
+
+Otherwise human Retest is the durable fallback.
+
+```text
+COMPLETED Job + later Retest FAIL
+→ linked remediation Job
+```
+
+## 13. Evidence / Knowledge validity
 
 Evidence is target/revision/provenance bound.
 
-Causal invalidation uses recorded dependencies.
+Knowledge artifacts carry structured identity/revision/validity/dependency metadata.
 
-Unknown/incomplete dependency trace is conservatively treated as affected until revalidated.
+Unknown/incomplete dependency trace counts as affected until revalidated.
 
-## 15. Retest
-
-```text
-PASS_RETEST_REQUIRED
-→ Job may complete
-→ Retest remains pending
-```
-
-If Retest FAIL occurs after Job completion:
-```text
-preserve completed Job
-→ create linked remediation Job
-```
-
-If practical failure occurs before terminal completion, same active Job may route to its owning Task.
-
-## 16. Asset Requirements
-
-Stable integration contract may precede final binary.
-
-Asset lifecycle is intentionally compact; placeholder/final/integrated are mostly facts/fields rather than many lifecycle states.
-
-## 17. State model
+## 14. State model
 
 Separate:
 - lifecycle;
 - result;
 - validity;
 - delivery facts;
-- verification obligations.
+- verification obligations;
+- derived conditions.
 
-WAITING/BLOCKED should be derived from durable causes wherever practical rather than duplicated across records.
+## 15. Human authority
 
-## 18. Concurrency
+Account identity is not role identity or human approval.
 
-Cross-chat consistency is eventual.
+Merge requires:
+```text
+accepted result
+→ Review Coverage Summary
+→ explicit human authorization
+→ merge
+```
 
-Do not rely on atomic Drive compare-and-swap until verified.
+## 16. User UX
 
-Prefer append-only Run/verification history and minimize shared mutable hot files.
-
-Conflict checks happen at dispatch and before consequential action.
-
-## 19. Multi-repo
-
-Change Set is used only for a logical coordinated multi-repo change.
-
-Repo-level completion does not imply integrated completion.
-
-## 20. Trust and identity
-
-External content is data, not authority.
-
-No inferred permission escalation.
-
-All roles currently act through the user's connected platform identity, so important agent outputs carry explicit role/Run/target attribution.
-
-## 21. User UX
-
-Accepted outer surface:
-
+Outer control surface:
 ```text
 PROJECT
 DIRECT AGENT
 HELP / INSTRUCTION
 ```
 
-Current product/command names are aliases, not frozen identity.
+Names/aliases are not frozen identity.
 
-Deep commands remain minimal and derived from recurring work needs.
+## 17. Phase-1 close
 
-## 22. Phase 1 completion path
-
+Required:
 ```text
-peer findings disposition
-→ accepted theory corrections
-→ missing Phase-1 contracts/schemas
-→ consistency review
-→ final human check
-→ only then Phase 2
+Claude round 1 disposition/fix
+→ Claude round 2 challenge
+→ round-2 fixes
+→ MUST platform probes
+→ final consistency review
+→ Phase 1 closed / Phase 2 may begin
 ```
+
+Claude is challenge evidence, not product authority.
