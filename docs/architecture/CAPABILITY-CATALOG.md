@@ -241,6 +241,13 @@ GSA Drive mutation guard                   IMPLEMENTED / MCP v12
 Project Drive outside-scope mutation          DENY BY GSA POLICY/GUARD
 Automatic pre-existing-item delete            DENY WITHOUT HUMAN GATE
 
+GSA Project lifecycle handlers            IMPLEMENTED / MCP v19
+GSA Direct Agent dispatch handler             IMPLEMENTED / MCP v19
+GSA Help handlers                             IMPLEMENTED / MCP v19
+Project manifest pure self-test               OBSERVED / PASS
+Real repo Project Memory create/read          OBSERVED / KE-Math-Grade1
+Real Project ACTIVE→PAUSED→ACTIVE              OBSERVED
+
 ## 7. Rule
 
 Probe results update capability evidence only.
