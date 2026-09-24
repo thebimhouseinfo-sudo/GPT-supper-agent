@@ -103,7 +103,7 @@ The current root must be resolved from the authorized per-user configuration sto
 
 Supabase Google OAuth establishes application-user identity. A Gmail address manually typed by a user is not identity proof.
 
-Google Drive connector authority is separately proven by successful operations against the selected folder. Project Drive must not be marked READY until a temporary write/delete probe succeeds.
+Google Drive connector authority is separately proven against the selected folder. Prefer non-destructive permission metadata for the actual connected Drive account; a create/delete probe is fallback only when permission metadata is insufficient. Project Drive must not be marked READY until write authority is verified.
 
 Do not claim that the Supabase OAuth Google account and the ChatGPT Drive connector account are identical unless the connector exposes reliable identity evidence. Current correctness depends on verified access to the selected folder, not on unobservable account equality.
 
