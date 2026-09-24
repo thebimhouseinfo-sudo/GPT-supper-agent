@@ -1,118 +1,45 @@
-# M1B Real-Repo Acceptance Evidence — KE-Math-Grade1
+# M1B Real-Repo Acceptance — Memory Repo Cutover
 
 ## Status
 
 ```text
-HANDLERS = IMPLEMENTED
-RUNTIME = GSA MCP v19
-PURE_SELFTEST = PASS
-REAL_REPO_STORAGE_PATH = PASS
-CHAT_PLUGIN_COMMAND_ACCEPTANCE = PENDING USER REFRESH/TEST
-M1B_GATE = NOT YET DECLARED
+SOURCE_REPO = KE-Math-Grade1
+MEMORY_BACKEND = GITHUB MEMORY REPO
+RUNTIME = GSA MCP v20+
+OLD STORAGE ACCEPTANCE = SUPERSEDED
+NEW MEMORY-REPO ACCEPTANCE = PENDING CONFIGURED PRIVATE REPO
 ```
 
-## Runtime self-test
+## Source repository
 
-Observed through the deployed Edge Function:
-
-```text
-HTTP /selftest = 200
-pass = true
-uuidv7_shape = true
-manifest_parse = true
-pause_transition = true
-resume_transition = true
-repo_normalization = true
-invalid_repo_rejected = true
-```
-
-Temporary PostgreSQL HTTP probe extension was removed after the check.
-
-## Real repository
-
-Target:
+Pilot target:
 
 `thebimhouseinfo-sudo/KE-Math-Grade1`
 
-Observed:
-- repository accessible;
-- default branch = `main`;
-- connector reports push/admin access;
-- no source mutation performed during this acceptance run.
+The Project-memory acceptance must not modify this source repository.
 
-## Real Project Memory
+## Cutover requirement
 
-A Project folder for the real repository was created as a direct child of the selected Project Drive.
-
-Security evidence:
-- every mutation in this acceptance run targeted the selected Project Drive or descendants;
-- no My Drive root mutation was used;
-- no unrelated user item was deleted;
-- Drive IDs are intentionally not persisted in this GitHub evidence file.
-
-Verified structure:
+All durable acceptance evidence must now be reproduced using:
 
 ```text
-<Project>/
-├── PROJECT.md
-├── WORK/
-│   ├── jobs/
-│   ├── runs/
-│   ├── handoffs/
-│   ├── gates/
-│   ├── assets/
-│   └── releases/
-├── KNOWLEDGE/
-└── VERIFICATION/
+configured private Memory Repo
+└── projects/<project-id>/...
 ```
 
-`PROJECT.md` read-back verified:
-- canonical UUIDv7-class Project ID;
-- name = KE-Math-Grade1;
-- lifecycle = ACTIVE;
-- repo relation = OWNED;
-- repo URL points to the real repository.
+No alternate storage backend participates in the acceptance result.
 
-## Lifecycle evidence
+## Required evidence
 
-Observed against the real Project Memory document:
+- Memory Repo config saved through RLS;
+- fresh-chat config recovery;
+- create/read PROJECT.md;
+- list/open/status;
+- ACTIVE → PAUSED → ACTIVE;
+- blob SHA changes across updates;
+- stale SHA conflict;
+- wrong-repo mutation DENY;
+- outside-prefix mutation DENY;
+- source repository unchanged.
 
-```text
-ACTIVE → PAUSED    PASS
-read-back PAUSED   PASS
-PAUSED → ACTIVE    PASS
-read-back ACTIVE   PASS
-```
-
-The GitHub source repository was not modified.
-
-## Handler coverage implemented
-
-PROJECT:
-- project_list
-- project_create
-- project_open
-- project_status
-- project_pause
-- project_resume
-- project_archive
-- project_delete
-
-DIRECT AGENT:
-- start_direct_agent with planner/designer/coder/reviewer/tester roles
-
-SETTING:
-- get_profile
-- get_drive_config
-- set_drive_config
-- authorize_drive_mutation
-
-HELP:
-- get_instruction
-- get_command_help
-
-## Remaining acceptance
-
-The personal GSA plugin must be refreshed so ChatGPT discovers the new tool schemas. Then run E1 from the user-facing shortcuts.
-
-The standing pilot should remain ACTIVE after the test unless the human explicitly chooses to test archive/delete.
+See `evals/E1-project-lifecycle.md`.
