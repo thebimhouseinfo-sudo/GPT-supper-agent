@@ -237,6 +237,10 @@ Supabase Edge Functions cannot serve HTML; GET text/html is rewritten to text/pl
 
 Do not promote MCP protocol, OAuth, or per-user configuration to OBSERVED until an actual ChatGPT/MCP client completes the corresponding end-to-end flow.
 
+GSA Drive mutation guard                   IMPLEMENTED / MCP v12
+Project Drive outside-scope mutation          DENY BY GSA POLICY/GUARD
+Automatic pre-existing-item delete            DENY WITHOUT HUMAN GATE
+
 ## 7. Rule
 
 Probe results update capability evidence only.
