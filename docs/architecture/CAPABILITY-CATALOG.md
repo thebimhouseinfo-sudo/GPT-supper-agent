@@ -208,9 +208,13 @@ MCP tools/list                            OBSERVED / 4 tools
 MCP anonymous tool call                   OBSERVED / get_runtime_status
 MCP protected-resource metadata           OBSERVED / HTTP 200
 MCP OAuth challenge                       OBSERVED / mcp/www_authenticate
+MCP transport OAuth challenge               OBSERVED / HTTP 401 + WWW-Authenticate
+Supabase dynamic client registration        OBSERVED / registration_endpoint published
+Supabase JWT public signing key             OBSERVED / ES256 JWKS
 ChatGPT Developer Mode connection         UNKNOWN / UI GATE
-Supabase OAuth 2.1 server enablement      UNAVAILABLE CURRENTLY / DISABLED
-Google provider/user OAuth session        UNKNOWN / UI GATE
+Supabase OAuth 2.1 server enablement      OBSERVED / ENABLED
+Google provider                          OBSERVED / ENABLED
+Google end-user OAuth session               TO_PROVE
 per-user RLS CRUD under auth.uid()        TO_PROVE
 ```
 
