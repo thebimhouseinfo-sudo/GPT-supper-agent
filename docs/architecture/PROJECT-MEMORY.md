@@ -25,7 +25,7 @@ The current Drive folder ID must not be reconstructed from chat history or GitHu
 
 Changing root updates the stable user's config record in place; no config revision counter is required.
 
-See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
+See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
 
 ## 3. Minimal logical layout
 
