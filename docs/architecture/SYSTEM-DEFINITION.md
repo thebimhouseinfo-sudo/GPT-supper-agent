@@ -47,7 +47,7 @@ Visual/design specialist; child Run supported.
 Source HOW + scope claim + Goal Recheck.
 
 ## S10 Reviewer — SYNTHESIZED
-Fresh-chat independent Reviewer where topology or mechanically computed floor requires it.
+Fresh-chat Context-Isolated Reviewer where topology or mechanically computed floor requires it.
 
 ## S11 Tester — DEFINED / CALIBRATION
 Runtime capability-gated; human Retest fallback complete.
