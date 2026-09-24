@@ -33,7 +33,7 @@ Durable records use collision-resistant global IDs and may expose short human ha
 
 Historically significant revisions/results remain traceable.
 
-Exact scheme is defined in `IDENTITY-AND-HANDLES-v1.md`.
+Exact scheme is defined in `IDENTITY-AND-HANDLES.md`.
 
 ## 5. Causal validity
 
