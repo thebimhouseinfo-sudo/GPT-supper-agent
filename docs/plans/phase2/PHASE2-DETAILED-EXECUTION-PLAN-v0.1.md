@@ -166,7 +166,11 @@ Make Drive-based Project memory operational and resumable.
 ## Work packages
 
 ### M1-A Bootstrap
-- configured Drive root resolver;
+- Supabase-backed per-user Drive root resolver;
+- stable one-row-per-user root configuration;
+- root change updates the existing record in place (no config revision counter);
+- folder ID is canonical; display name/path is non-authoritative;
+- missing config returns CONFIG_REQUIRED and routes to Settings/folder selection;
 - Project-folder discovery;
 - PROJECT.md validator;
 - open/status/create/delete workflows;
@@ -200,16 +204,17 @@ Define rebuild behavior and stale-cache fallback.
 ## Exit criteria
 
 Fresh chat can:
-1. discover/open a Project;
-2. reconstruct one Job's current status from durable records;
-3. resolve pending Handoff/Retest/Gate without chat history;
-4. detect duplicate OWNED repo claim;
-5. persist/reload a Release Record;
-6. survive missing/stale CONTROL.
+1. resolve the current user's Drive root from Supabase without relying on chat/GitHub-stored folder ID;
+2. discover/open a Project;
+3. reconstruct one Job's current status from durable records;
+4. resolve pending Handoff/Retest/Gate without chat history;
+5. detect duplicate OWNED repo claim;
+6. persist/reload a Release Record;
+7. survive missing/stale CONTROL.
 
 ## Mandatory evals
 
-E1, E2, E3-storage variant, E11-storage variant.
+E1, E2, E3-storage variant, E11-storage variant, plus per-user root isolation/change-in-place config eval.
 
 ---
 
