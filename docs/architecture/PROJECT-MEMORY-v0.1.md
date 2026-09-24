@@ -1,4 +1,4 @@
-# Project Memory Model v1.3
+# Project Memory Model
 
 ## 1. Purpose
 
@@ -35,7 +35,11 @@ See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
 ├── CONTROL.json              # optional/rebuildable current-state cache
 ├── WORK/
 │   ├── jobs/
-│   └── runs/
+│   ├── runs/
+│   ├── handoffs/
+│   ├── gates/
+│   ├── assets/
+│   └── releases/
 ├── KNOWLEDGE/
 └── VERIFICATION/
 ```
@@ -102,7 +106,20 @@ Tasks/topology are rewritten only through an explicit Planner/control action, no
 
 This is the read-time join model.
 
-## 7. Derived Job view
+## 7. Current view and read-time reconstruction
+
+Normal UX may read `CONTROL.json` first as a compact rebuildable cache to avoid repeatedly scanning every Run.
+
+```text
+fresh CONTROL
+→ use compact current view
+
+CONTROL missing/stale/conflicted
+→ reconstruct from durable records
+→ optionally refresh CONTROL
+```
+
+CONTROL is never the sole authority.
 
 Current Job view may be derived from:
 - stable Job planning record;
@@ -148,10 +165,11 @@ Preserve:
 - target role;
 - target/revision;
 - completed/remaining work;
-- blocker/gate;
-- successor Run when consumed.
+- blocker/gate.
 
-Consumed history remains traceable.
+Handoff records are immutable. Successor/consumption is recorded separately and joined by `handoff_id`.
+
+Consumed history remains traceable without mutating the original Handoff.
 
 ## 10. Verification storage
 
@@ -227,6 +245,10 @@ Before source write, handoff consumption, destructive action, merge/deploy or ma
 
 ## 15. Retest
 
+Retest Request is stable. Each Retest attempt is a separate Verification record.
+
+Pending/current Retest state is derived from attempts.
+
 Pending Retests remain visible even when originating Job is COMPLETED.
 
 Later Retest FAIL after completion creates linked remediation Job.
@@ -265,7 +287,44 @@ Before hard delete, show surviving references/consequences and obtain explicit u
 
 Cross-Project refs are provenance references, not database-like strong foreign keys.
 
-## 21. Direct Agent promotion
+## 21. Drive record lookup and collision rule
+
+Drive permits duplicate filenames, so filenames are not sufficient durable identity.
+
+Rules:
+- create records with stable IDs in filenames;
+- once discovered/created, update by Drive file ID, not by name;
+- folder lookup by expected record name must return exactly one candidate;
+- zero matches = missing;
+- multiple matches = collision/conflict, never guess;
+- CONTROL may cache Drive file IDs for faster access but is rebuildable.
+
+## 22. Abandoned Runs
+
+A Run left `IN_PROGRESS` without a terminal record after its chat/execution context is gone is displayed as `STALE`, a derived condition.
+
+Do not auto-complete or silently retry it.
+
+User/Orchestrator may:
+- resume when scope/target is still valid;
+- supersede with a new Run;
+- cancel/close through an explicit control action.
+
+## 23. Run finalization order
+
+When a Run completes:
+
+```text
+write outputs/evidence
+→ write Verification records
+→ write Handoff if needed
+→ write/finish Run terminal record last
+→ refresh CONTROL best-effort
+```
+
+A terminal Run must not point to evidence/handoff records that were merely planned but never persisted.
+
+## 24. Direct Agent promotion
 
 Promotion creates new Project/Job state from a compact packet:
 - objective;
