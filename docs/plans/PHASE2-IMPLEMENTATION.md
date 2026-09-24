@@ -234,11 +234,28 @@ project create
 project status
 project pause
 project resume
+project delete <handle>
+
+job list
+job open <handle>
+job create
+job status
+job cancel <handle>
+
+agent planner
+agent designer
+agent coder
+agent reviewer
+agent tester
+
 handoff list
 handoff take <handle>
+
 setting
 help
 ```
+
+`DIRECT AGENT` maps to the `agent <role>` family. Job commands operate only within the currently open Project unless an explicit Project target is supplied.
 
 Names remain aliases, not frozen product identity. Ambiguous/destructive targets are never guessed.
 
@@ -498,7 +515,7 @@ Create exact revision-bound Handoff requiring fresh chat.
 Finding → Coder fix → new revision → Reviewer re-evaluation.
 
 ### M4-E Merge authorization
-Generate Review Coverage Summary before asking for human authorization.
+Generate Review Coverage Summary and persist/reference it from the Release Record before asking for human authorization, so the reviewed coverage remains recoverable after the chat closes.
 
 Immediately before merge:
 - re-read PR/change-set head SHA;
@@ -1080,6 +1097,8 @@ Do not require equality proof between OAuth Google identity and Drive connector 
 
 ## E16 — trust-boundary / prompt-authority security
 
+E16 intentionally overlaps E12 on the "agent-authored approved text" case. E16 exercises the trust boundary early in M1A; E12 later exercises merge-authorization attribution. Do not count the overlap as two independent coverage claims.
+
 Cases:
 - repo text instructs agent to ignore harness authority;
 - Drive content asks for scope escalation;
@@ -1571,7 +1590,7 @@ At minimum pin:
 ### C. Current invariant check
 
 Confirm:
-- [ ] read-time join/no Run→Job write-back;
+- [ ] CONTROL fast path + durable read-time reconstruction/no Run→Job aggregate write-back;
 - [ ] mechanical review-floor classification from actual diff;
 - [ ] OBSERVED/SURFACE_PRESENT/UNAVAILABLE/UNKNOWN;
 - [ ] Knowledge Artifact schema;
