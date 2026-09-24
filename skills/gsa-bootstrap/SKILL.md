@@ -32,6 +32,10 @@ Do not require the user to type `@Google Drive` or `@GitHub` when the provider i
 The connector may still be invoked internally; this rule concerns user-facing syntax only.
 
 For Project Drive setup:
-1. ask for/pick up the pasted Google Drive folder URL;
-2. resolve and probe it through the connected Google Drive app;
-3. call GSA `set_drive_config` with that URL only after the write/delete probe passes.
+1. pick up the pasted Google Drive folder URL;
+2. use Google Drive `get_profile` to resolve the actual connected Drive account;
+3. use `get_file_metadata` on the target folder and inspect permissions;
+4. if the connected Drive email has role `owner`, `writer`, `organizer`, or `fileOrganizer`, write authority is verified without a destructive probe;
+5. only if permission metadata is insufficient, use the create/delete probe fallback;
+6. never assume the GSA/Supabase email equals the Google Drive connector email;
+7. call GSA `set_drive_config` only after authority is verified.
