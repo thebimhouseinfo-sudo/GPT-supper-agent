@@ -168,3 +168,28 @@ These settings cannot be changed by the currently exposed Supabase/ChatGPT conne
 Supabase Security Advisor currently reports a pre-existing `public.rls_auto_enable()` SECURITY DEFINER function callable by anon/authenticated roles.
 
 It predates this GSA POC and was not modified by M1A. It should be reviewed separately rather than silently changed as part of GSA.
+
+
+### OAuth builder repair
+
+Observed after enabling Supabase OAuth Server:
+
+```text
+OAuth discovery                             PASS / 200
+registration_endpoint                       PRESENT
+Google provider                             ENABLED
+JWKS                                        ES256 public key present
+MCP unauthenticated initialize              401
+WWW-Authenticate                            PRESENT
+resource_metadata                           points to GSA protected-resource metadata
+```
+
+The initial ChatGPT plugin-builder error "MCP server does not implement OAuth" was traced to the MCP transport returning protocol responses before exposing an HTTP-level OAuth challenge. On path-based hosting such as Supabase Edge Functions, deterministic RFC 9728 metadata discovery does not land inside the function path automatically.
+
+Repair:
+- require OAuth at the MCP transport boundary;
+- unauthenticated MCP requests return HTTP 401;
+- `WWW-Authenticate` explicitly advertises the working protected-resource metadata URL;
+- protected-resource metadata points to the enabled Supabase OAuth issuer.
+
+This is now OBSERVED server behavior. The remaining proof is the real ChatGPT builder/linking flow.
