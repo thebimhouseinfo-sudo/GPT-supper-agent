@@ -89,7 +89,7 @@ End-to-end user Memory Repo configuration remains TO_PROVE until a private writa
 
 ## 6. Memory Repo runtime
 
-GSA MCP v20+ implements:
+GSA MCP v21 implements:
 
 ```text
 exact configured Memory Repo boundary
@@ -120,6 +120,8 @@ Pure manifest/parser/transition self-test exists in the deployed MCP.
 
 Real source-repo pilot:
 `thebimhouseinfo-sudo/KE-Math-Grade1`
+
+Runtime self-test is OBSERVED PASS 7/7: UUIDv7 shape, manifest parse, pause transition, resume transition, allowed Memory path, rejected out-of-scope path, and GitHub repo normalization.
 
 New persistence acceptance is pending configuration of the dedicated Memory Repo.
 
