@@ -28,14 +28,15 @@ Project → Job → Task → Run
 ## Concurrency
 
 ```text
-stable Job planning/control record
-+ append-preserving Run/Verification records
-+ read-time joins
-+ minimal shared mutation
-+ consequential-action recheck
+fresh CONTROL
+→ normal compact status path
+
+CONTROL missing/stale/conflicted
+→ durable Run/Verification/Handoff-consumption records
+→ read-time reconstruction
 ```
 
-Completing Runs do not write progress/reference arrays back into parent Job.
+CONTROL is rebuildable, never sole authority. Completing Runs do not write aggregate progress/reference arrays back into parent Job.
 
 ## Review
 
