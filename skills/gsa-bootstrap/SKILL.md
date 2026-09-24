@@ -39,3 +39,35 @@ For Project Drive setup:
 5. only if permission metadata is insufficient, use the create/delete probe fallback;
 6. never assume the GSA/Supabase email equals the Google Drive connector email;
 7. call GSA `set_drive_config` only after authority is verified.
+
+
+## Hard Drive mutation sandbox
+
+The configured Project Drive folder is the absolute boundary for every Google Drive mutation initiated by GSA.
+
+Before create/update/move/delete:
+1. call GSA `get_drive_config`;
+2. obtain the canonical Project Drive root ID;
+3. resolve the target item or parent by exact Drive ID;
+4. prove the target is the root itself or a descendant by following parent IDs;
+5. if ancestry is missing, ambiguous, or outside the root: STOP.
+
+Forbidden:
+- using Google Drive literal `root` as a mutation parent;
+- creating anything outside Project Drive;
+- moving anything across the Project Drive boundary;
+- deleting by filename/title;
+- deleting pre-existing user content automatically.
+
+Automatic delete is allowed only when:
+- the item was created by GSA in the same Run;
+- its exact returned Drive ID was recorded;
+- its ancestry is still inside Project Drive.
+
+Any deletion of pre-existing user content requires an explicit Human Gate naming the exact Drive item ID.
+
+Fallback Project Drive probe:
+- create one direct child under the configured Project Drive;
+- record returned ID;
+- delete only that exact ID;
+- never create at My Drive root and never move the probe afterward.
