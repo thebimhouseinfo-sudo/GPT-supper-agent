@@ -1,0 +1,168 @@
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+function page() {
+  const url = JSON.stringify(SUPABASE_URL)
+  const key = JSON.stringify(SUPABASE_ANON_KEY)
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GPT Super Agent · Connect</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
+    main { width: min(560px, calc(100vw - 32px)); border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 18px; padding: 28px; box-sizing: border-box; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { line-height: 1.5; }
+    .muted { opacity: .72; }
+    .box { margin: 18px 0; padding: 16px; border-radius: 12px; background: color-mix(in srgb, CanvasText 6%, transparent); }
+    button { width: 100%; padding: 12px 16px; margin-top: 10px; border: 0; border-radius: 10px; font: inherit; cursor: pointer; }
+    button.primary { background: CanvasText; color: Canvas; }
+    button.secondary { background: color-mix(in srgb, CanvasText 10%, transparent); color: CanvasText; }
+    #error { color: #c33; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>GPT Super Agent</h1>
+  <p class="muted">Connect your account and approve ChatGPT access to your GSA configuration.</p>
+
+  <div id="status" class="box">Checking authorization request…</div>
+  <div id="details" class="box" hidden></div>
+  <div id="error" hidden></div>
+
+  <button id="login" class="primary" hidden>Continue with Google</button>
+  <button id="approve" class="primary" hidden>Allow access</button>
+  <button id="deny" class="secondary" hidden>Deny</button>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+  const SUPABASE_URL = ${url}
+  const SUPABASE_ANON_KEY = ${key}
+  const params = new URLSearchParams(location.search)
+  const authorizationId = params.get('authorization_id')
+  const status = document.querySelector('#status')
+  const details = document.querySelector('#details')
+  const errorBox = document.querySelector('#error')
+  const login = document.querySelector('#login')
+  const approve = document.querySelector('#approve')
+  const deny = document.querySelector('#deny')
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  })
+
+  function showError(message) {
+    errorBox.hidden = false
+    errorBox.textContent = message
+    status.textContent = 'Authorization cannot continue.'
+  }
+
+  function consentUrl() {
+    const u = new URL(location.href)
+    u.search = ''
+    u.hash = ''
+    u.searchParams.set('authorization_id', authorizationId)
+    return u.toString()
+  }
+
+  async function boot() {
+    if (!authorizationId) {
+      showError('Missing authorization_id. Start the connection from ChatGPT Developer Mode.')
+      return
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session) {
+      status.textContent = 'Sign in with your Google account to continue.'
+      login.hidden = false
+      return
+    }
+
+    const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId)
+    if (error) {
+      showError(error.message)
+      return
+    }
+
+    status.textContent = 'Signed in as ' + (sessionData.session.user.email ?? 'Google user')
+    details.hidden = false
+    details.replaceChildren()
+
+    const title = document.createElement('strong')
+    title.textContent = data.client?.name ?? data.client_name ?? 'ChatGPT'
+    const text = document.createElement('p')
+    text.textContent = 'Requested scopes: ' + ((data.scopes ?? []).join(', ') || 'email')
+
+    details.append(title, text)
+    approve.hidden = false
+    deny.hidden = false
+  }
+
+  login.addEventListener('click', async () => {
+    login.disabled = true
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: consentUrl() },
+    })
+    if (error) {
+      login.disabled = false
+      showError(error.message)
+    }
+  })
+
+  approve.addEventListener('click', async () => {
+    approve.disabled = true
+    deny.disabled = true
+    const { data, error } = await supabase.auth.oauth.approveAuthorization(authorizationId)
+    if (error) {
+      approve.disabled = false
+      deny.disabled = false
+      showError(error.message)
+      return
+    }
+    location.assign(data.redirect_url)
+  })
+
+  deny.addEventListener('click', async () => {
+    approve.disabled = true
+    deny.disabled = true
+    const { data, error } = await supabase.auth.oauth.denyAuthorization(authorizationId)
+    if (error) {
+      approve.disabled = false
+      deny.disabled = false
+      showError(error.message)
+      return
+    }
+    location.assign(data.redirect_url)
+  })
+
+  boot().catch((error) => showError(String(error?.message ?? error)))
+</script>
+</body>
+</html>`
+}
+
+Deno.serve((req) => {
+  if (req.method !== 'GET') return new Response('Method Not Allowed', { status: 405 })
+  return new Response(page(), {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+    },
+  })
+})
