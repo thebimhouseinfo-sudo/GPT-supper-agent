@@ -51,36 +51,32 @@ The verified Google email is a human-readable unique account label and may be st
 
 The user must not establish identity by typing an arbitrary Gmail address.
 
-## 5. Google Drive connector prerequisite
+## 5. Google Drive is an external ChatGPT connection
 
-Google identity does not itself give ChatGPT Drive I/O.
+The ChatGPT Google Drive plugin/connector is not owned, configured, authenticated, or stored by GSA.
 
-The ChatGPT Google Drive plugin/connector must be installed and connected before Project Drive can become READY.
+GSA never requests Google Drive OAuth scopes and never stores Google Drive credentials.
 
-Onboarding must expose this dependency explicitly:
-
-```text
-Google Account     CONNECTED
-Google Drive       CONNECTED
-Project Drive      NOT_CONFIGURED | READY
-```
-
-If Google Drive connector access is unavailable:
+The responsibilities are separate:
 
 ```text
-DRIVE_CONNECTOR_REQUIRED
-→ show installation/connection instructions
-→ block root-dependent work
+Supabase Auth + Google sign-in
+= establish GSA user identity only
+
+ChatGPT Google Drive plugin
+= external ChatGPT capability used to access the folder
+
+Supabase user_drive_config
+= remember which Drive folder ID this GSA user selected
 ```
 
-Current connector evidence supports Drive listing, folder creation and deletion. Therefore Project Drive write authority can be proven operationally with a temporary folder probe inside the selected folder.
+If the user's ChatGPT account does not currently have usable Google Drive access, GSA may explain that Project Drive operations cannot continue, but connection/authorization is performed through ChatGPT's own Google Drive plugin UI outside GSA.
 
-The current connector does not expose a sufficiently direct authenticated-account identity contract to require or prove that its Google account is the exact same identity used for Supabase OAuth.
+Current connector evidence supports Drive listing, folder creation and deletion. Therefore GSA can ask ChatGPT to prove authority over the selected folder with a temporary create/delete probe before saving its folder ID.
 
-Therefore:
-- Supabase Auth proves application-user identity;
-- successful connector access/write probe proves resource authority over the selected Drive folder;
-- exact cross-connector Google-account equality is not a required invariant unless a future connector exposes reliable identity evidence.
+No equality between the Supabase Google account and the ChatGPT Google Drive account is required. The proofs are intentionally independent:
+- Supabase Auth proves GSA application-user identity;
+- the ChatGPT Google Drive connector proves practical authority over the selected folder.
 
 ## 6. Stable per-user record
 
@@ -152,19 +148,17 @@ HELP / INSTRUCTION
 `SETTING` exposes at least:
 
 ```text
-Google Account
+GSA Account
   [Sign in with Google]
   verified email
-
-Google Drive Plugin
-  CONNECTED | REQUIRED
-  installation/connection guidance when REQUIRED
 
 Project Drive
   current folder
   [Choose folder]
   [Change folder]
 ```
+
+Google Drive connection status is not a GSA account setting. Google Drive remains a separate ChatGPT plugin/connector managed outside this app.
 
 The user chooses or changes the root.
 
@@ -191,11 +185,9 @@ If no user configuration exists:
 first use
 → SETTING
 → Sign in with Google through Supabase Auth
-→ verify Google Drive plugin/connector is installed and connected
-→ user selects a Google Drive folder
-→ create temporary probe folder under selected folder
-→ verify creation/access
-→ delete probe folder
+→ Supabase resolves stable auth.users.id + verified email
+→ user selects a Google Drive folder using ChatGPT's existing Drive capability
+→ ChatGPT Drive connector creates/deletes a temporary probe inside that folder
 → only on PASS create/update the stable per-user config record
 → Project Drive = READY
 ```
@@ -235,6 +227,7 @@ Reasons it is not primary:
 9. GPT must not silently select or change the root.
 10. RLS isolates one user's root configuration from another user's.
 11. Supabase Google OAuth, not typed Gmail, establishes application-user identity.
-12. Google Drive connector availability is a prerequisite for Project Drive readiness.
-13. Project Drive becomes READY only after an observed write/delete probe succeeds in the selected folder.
-14. Supabase identity and Drive resource authority are separate proofs; current architecture does not require unobservable cross-connector account equality.
+12. Google Drive authentication/connection is external to GSA and remains owned by ChatGPT's Google Drive plugin.
+13. GSA stores no Google Drive credential or OAuth scope.
+14. Project Drive becomes READY only after an observed write/delete probe succeeds in the selected folder.
+15. Supabase identity and Drive resource authority are separate proofs; cross-connector account equality is not required.
