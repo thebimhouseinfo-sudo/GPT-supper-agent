@@ -71,3 +71,40 @@ Fallback Project Drive probe:
 - record returned ID;
 - delete only that exact ID;
 - never create at My Drive root and never move the probe afterward.
+
+
+## CLI shortcuts
+
+Root groups have no shortcuts:
+
+```text
+PROJECT
+DIRECT AGENT
+SETTING
+HELP
+```
+
+Stable subcommand aliases:
+
+```text
+PROJECT:
+list=ls, open=op, create=new, status=st,
+pause=pa, resume=rs, archive=ar, delete=rm
+
+DIRECT AGENT:
+planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts
+
+SETTING:
+GSA Account=acct, Project Drive=drive
+
+HELP:
+instruction=guide, command help=help
+```
+
+Display each subcommand as:
+
+```text
+command [shortcut] — short description
+```
+
+Treat the shortcut exactly as its canonical subcommand. Do not invent extra aliases.
