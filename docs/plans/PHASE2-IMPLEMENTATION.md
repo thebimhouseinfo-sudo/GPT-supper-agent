@@ -286,10 +286,22 @@ Prove session persistence/recovery across a fresh chat or reconnect path.
 ### M1A-D External Google Drive capability boundary
 - Google Drive remains a separate built-in ChatGPT plugin/connector, outside GSA authentication/configuration;
 - GSA does not install, connect, authenticate, or store credentials for Google Drive;
-- user selects the Project Drive folder through the existing ChatGPT Drive capability;
+- normal UX is URL-first: user pastes the Project Drive folder URL;
+- the Drive URL itself routes ChatGPT to the connected Google Drive app; no `@Google Drive` mention is required;
 - create/delete temporary child-folder probe before READY;
-- canonical locator = Drive folder ID;
+- GSA extracts and stores the canonical Drive folder ID from the accepted URL;
 - exact Supabase-Google-account == Drive-connector-account equality is neither required nor assumed.
+
+### Connector URL routing rule
+
+For already-connected external apps, provider URLs are the preferred explicit target:
+
+```text
+Google Drive URL → Google Drive app
+GitHub URL       → GitHub app
+```
+
+The user should not need `@Google Drive` or `@GitHub` when the URL already identifies the provider. The model may still invoke the corresponding connector internally.
 
 ### M1A-E Bounded fallback
 If Supabase/Auth bootstrap proves impractical, evaluate the already-approved fallback:
@@ -307,7 +319,7 @@ M1A passes only when:
 2. Supabase Google OAuth session can identify the application user;
 3. RLS-backed root config create/read/update works;
 4. GSA does not absorb or duplicate Google Drive connection/authentication;
-5. selected-folder create/delete probe works through ChatGPT's external Drive capability;
+5. pasted Drive folder URL auto-routes through ChatGPT's external Drive capability and the selected-folder create/delete probe succeeds;
 6. root-dependent work blocks rather than guesses when setup is incomplete.
 
 ## Mandatory evals
