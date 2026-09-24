@@ -105,8 +105,36 @@ function buildProjectManifest(args: {
 }
 
 function parseProjectManifest(text: string) {
-  const read = (key: string) => {
-    const match = text.match(new RegExp('^' + key + ':\\s*(.*)
+  const values: Record<string, string> = {}
+  for (const rawLine of text.split('\n')) {
+    const idx = rawLine.indexOf(':')
+    if (idx <= 0) continue
+    const key = rawLine.slice(0, idx).trim()
+    const value = rawLine.slice(idx + 1).trim()
+    values[key] = value
+  }
+  const project_id = values.project_id ?? ''
+  const name = values.name ?? ''
+  const lifecycle = values.lifecycle ?? ''
+  const repo_url = values.repo_url ?? ''
+  const purpose = values.purpose ?? ''
+  const created_at = values.created_at ?? ''
+  const updated_at = values.updated_at ?? ''
+  if (!project_id || !name || !repo_url || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
+  return { project_id, name, lifecycle, repo_url, purpose, created_at, updated_at }
+}
+
+function transitionProjectManifest(text: string, target: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') {
+  const parsed = parseProjectManifest(text)
+  if (!parsed) return null
+  const now = new Date().toISOString()
+  const lines = text.split('\n').map((line) => {
+    if (line.startsWith('lifecycle:')) return 'lifecycle: ' + target
+    if (line.startsWith('updated_at:')) return 'updated_at: ' + now
+    return line
+  })
+  return { parsed, next: lines.join('\n'), updated_at: now }
+}
 function authError(description: string) {
   return {
     content: [{ type: 'text' as const, text: description }],
