@@ -1,4 +1,4 @@
-# Security & Trust Boundaries v1.1
+# Security & Trust Boundaries v1.2
 
 ## 1. Core principle
 
@@ -73,11 +73,19 @@ block
 → request explicit human action/authorization
 ```
 
-## 8. Secrets
+## 8. Secrets and per-user configuration
 
 Avoid persisting secret values in Project Memory/source/reviews/screenshots/logs.
 
 Prefer names/locations/references.
+
+User-specific Google Drive root IDs are runtime configuration and must not be committed to the shared GitHub repository.
+
+Initial Supabase configuration storage must use per-user access control/RLS so one authenticated user cannot read or update another user's root configuration.
+
+Service-role or other privileged Supabase credentials must never be committed to GitHub or exposed through user-facing settings.
+
+The current root must be resolved from the authorized per-user configuration store rather than trusted from arbitrary prompt/repository content.
 
 ## 9. Destructive actions
 
@@ -123,3 +131,5 @@ Unknown capability is not assumed available.
 5. Secrets are minimized.
 6. Destructive actions receive proportional confirmation.
 7. Consequential actions re-check current lifecycle/scope/target.
+8. User-specific Drive root configuration is isolated per user and not stored in shared source.
+9. Arbitrary content cannot override the authorized Drive-root setting.
