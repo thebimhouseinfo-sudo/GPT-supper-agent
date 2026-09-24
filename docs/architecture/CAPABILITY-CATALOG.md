@@ -199,8 +199,9 @@ Observed on 2026-09-24:
 Supabase project health                  OBSERVED / ACTIVE_HEALTHY
 user_drive_config table creation         OBSERVED
 RLS enabled on user_drive_config         OBSERVED
-M1A gsa-mcp Edge Function deployment     OBSERVED / ACTIVE v3
-M1A gsa-auth consent UI deployment        OBSERVED / ACTIVE v1
+M1A gsa-mcp Edge Function deployment     OBSERVED / ACTIVE v5
+M1A auth-ui source                         IMPLEMENTED / NOT YET DEPLOYED
+gsa-auth Edge Function                    DEPRECATED / 410 API response
 MCP health endpoint                      OBSERVED / HTTP 200
 MCP initialize                            OBSERVED / protocol 2025-11-25
 MCP tools/list                            OBSERVED / 4 tools
@@ -222,6 +223,8 @@ The deployed MCP surface has now been protocol-probed from inside Supabase:
 - unauthenticated get_profile returns the expected OAuth challenge.
 
 This proves MCP server/protocol/auth signaling, but not end-user OAuth or Project Drive configuration.
+
+Supabase Edge Functions cannot serve HTML; GET text/html is rewritten to text/plain. Therefore the login/consent frontend moved to `auth-ui/` and must be deployed on a frontend host.
 
 Do not promote MCP protocol, OAuth, or per-user configuration to OBSERVED until an actual ChatGPT/MCP client completes the corresponding end-to-end flow.
 
