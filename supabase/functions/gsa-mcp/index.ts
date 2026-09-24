@@ -922,6 +922,34 @@ function createServer(req: Request) {
 const root = new Hono()
 const app = new Hono()
 
+app.get('/selftest', (c) => {
+  const now = new Date().toISOString()
+  const projectId = uuidv7()
+  const manifest = buildProjectManifest({
+    projectId,
+    name: 'Selftest Project',
+    lifecycle: 'ACTIVE',
+    repoUrl: 'https://github.com/example/example',
+    purpose: 'selftest',
+    createdAt: now,
+    updatedAt: now,
+  })
+  const parsed = parseProjectManifest(manifest)
+  const paused = transitionProjectManifest(manifest, 'PAUSED')
+  const resumed = paused ? transitionProjectManifest(paused.next, 'ACTIVE') : null
+
+  const checks = {
+    uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
+    manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
+    pause_transition: Boolean(paused && parseProjectManifest(paused.next)?.lifecycle === 'PAUSED'),
+    resume_transition: Boolean(resumed && parseProjectManifest(resumed.next)?.lifecycle === 'ACTIVE'),
+    repo_normalization: normalizeRepoUrl('https://github.com/example/example.git') === 'https://github.com/example/example',
+    invalid_repo_rejected: normalizeRepoUrl('https://example.com/not-github') === null,
+  }
+  const pass = Object.values(checks).every(Boolean)
+  return c.json({ pass, checks })
+})
+
 app.get('/health', (c) =>
   c.json({
     ok: true,
