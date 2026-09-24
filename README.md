@@ -1,6 +1,6 @@
 # GPT Super Agent
 
-GPT Super Agent is a ChatGPT orchestration/harness design for durable project work using Google Drive as Project memory/control plane and GitHub as source-code truth.
+GPT Super Agent is a thin ChatGPT orchestration/harness system for durable project work.
 
 ## Status
 
@@ -8,18 +8,17 @@ GPT Super Agent is a ChatGPT orchestration/harness design for durable project wo
 PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
-CURRENT = M1A BOOTSTRAP SPIKE / IN PROGRESS
+CURRENT = M1B / GITHUB MEMORY REPO CUTOVER
 ```
-
-Git history records review/amendment history; README does not duplicate peer-review chronology.
 
 ## Core model
 
 ```text
 Conversation = UI
-Google Drive = durable Project memory/control plane
-Supabase = per-user plugin configuration (initially Drive root mapping only)
-GitHub = source-code truth
+Supabase Auth = GSA user identity
+Supabase = per-user Memory Repo configuration only
+GitHub Memory Repo = durable Project memory/control plane
+GitHub source repos = source-code truth
 Harness / Skills / Loops = operational behavior
 ```
 
@@ -27,26 +26,39 @@ Harness / Skills / Loops = operational behavior
 Project → Job → Task → Run
 ```
 
-## Concurrency
+## Memory Repo
+
+Each user configures one private GitHub repository as GSA Memory Repo.
 
 ```text
-fresh CONTROL
-→ normal compact status path
-
-CONTROL missing/stale/conflicted
-→ durable Run/Verification/Handoff-consumption records
-→ read-time reconstruction
+Supabase auth.uid()
+→ user_memory_config
+→ memory_repo_id / owner/name / default branch
+→ projects/<project-id>/...
 ```
 
-CONTROL is rebuildable, never sole authority. Completing Runs do not write aggregate progress/reference arrays back into parent Job.
+GSA Project Memory is written only to the configured repository and only below `projects/<project-id>/`.
+
+Project source repositories remain separate.
+
+## Concurrency
+
+Updates/deletes use current GitHub blob SHA as the optimistic write precondition.
+
+```text
+fetch current file + SHA
+→ update/delete with exact SHA
+→ stale SHA fails
+→ refetch/reconcile
+```
+
+CONTROL is optional/rebuildable; durable records remain authoritative.
 
 ## Review
 
-Normal review is topology-driven.
+Normal review is topology-driven. Sensitive changes trigger context-isolated review from actual changed-file/operation evidence.
 
-Mechanically sensitive changes trigger context-isolated review from actual changed-file/operation evidence against structured repo-sensitive paths + universal patterns.
-
-Merge requires explicit human authorization + Review Coverage Summary.
+Merge requires Review Coverage Summary + explicit human authorization.
 
 ## Capability evidence
 
@@ -57,49 +69,23 @@ UNAVAILABLE
 UNKNOWN
 ```
 
-Observed before Phase-2 entry:
-- raw Drive file create/read/update/delete;
-- GitHub binary blob/tree/commit/read-back;
-- PR create/read/merge;
-- branch cleanup limitation.
-
-## Per-user Drive root
-
-`SUPER_AGENT_DRIVE_ROOT` is a logical root resolved from the current user's runtime configuration.
-
-Initial implementation uses Supabase Auth with Google OAuth for application-user identity, then stores `user_id → drive_root_folder_id` in Supabase. Changing folder updates the same user's record in place; no config revision is used.
-
-The ChatGPT Google Drive plugin/connector is a separate prerequisite. Project Drive becomes READY only after the selected folder passes a temporary write/delete probe. User-specific folder IDs are not stored in GitHub or treated as authoritative from chat history.
-
 ## Project Memory
 
 ```text
-<Project>/
+projects/<project-id>/
 ├── PROJECT.md
-├── CONTROL.json        # optional/rebuildable cache
+├── CONTROL.json
 ├── WORK/
-│   ├── jobs/
-│   └── runs/
 ├── KNOWLEDGE/
 └── VERIFICATION/
 ```
 
-## Dispatch
-
-```text
-Project open → current-Project Handoffs
-No Project open → shallow root-wide Project scan
-```
+Git directories are lazy; no empty-folder placeholders are required.
 
 ## Canonical architecture
 
 See `docs/architecture/DOCUMENT-INDEX.md`.
 
-## Phase 2
+Phase-2 implementation source of truth:
 
-Phase 2 is now permitted but has **not** started.
-
-Single implementation source of truth:
 `docs/plans/PHASE2-IMPLEMENTATION.md`
-
-It should begin as a thin operational harness/skills/actions layer, not a heavyweight autonomous runtime.
