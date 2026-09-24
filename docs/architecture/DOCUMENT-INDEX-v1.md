@@ -1,34 +1,47 @@
-# Architecture Document Index v1.5
+# Architecture Document Index
 
 ## Purpose
 
-Legacy filename suffixes are stable repository paths, not current internal version authority.
+This file is the single navigation index for current architecture.
 
-| Stable path | Current internal version | Status |
-|---|---:|---|
-| FROZEN-FOUNDATION-v0.1.md | 0.5 | FROZEN |
-| ARCHITECTURE-v0.1.md | 0.5 | SYNTHESIZED |
-| PROJECT-MEMORY-v0.1.md | 1.3 | SYNTHESIZED |
-| JOB-LIFECYCLE-v0.1.md | 1.2 | SYNTHESIZED |
-| STATE-MACHINE-v1.md | 1.2 | SYNTHESIZED |
-| GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md | 1.1 | SYNTHESIZED |
-| SECURITY-AND-TRUST-BOUNDARIES-v0.1.md | 1.3 | SYNTHESIZED |
-| USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md | 1.1 | SYNTHESIZED / OBSERVED-PROBE-ALIGNED |
-| AGENT-HARNESSES-v0.1.md | 1.2 | DEFINED |
-| EXECUTION-AND-REVIEW-v0.1.md | 1.2 | SYNTHESIZED |
-| PLANNER-SCOPE-AND-UIUX-v0.1.md | 1.2 | DEFINED |
-| DESIGNER-HARNESS-v0.1.md | 1.0 | DEFINED |
-| CODER-UIUX-HARNESS-v0.1.md | 1.1 | DEFINED |
-| UI-SPEC-MODEL-v0.1.md | 1.2 | DEFINED |
-| CLARIFICATION-AND-CAUSAL-READINESS-v0.1.md | 1.0 | DEFINED |
-| CONCEPT-MEASUREMENT-NORMALIZATION-v0.1.md | legacy specialist reference | SUPPORTING |
-| IDENTITY-AND-HANDLES-v1.md | 1.0 | SYNTHESIZED |
-| ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md | 1.1 | SYNTHESIZED |
-| CAPABILITY-CATALOG-v1.md | 1.4 | SYNTHESIZED / OBSERVED |
-| DISPATCH-AND-HANDOFF-v1.md | 1.1 | SYNTHESIZED |
-| CODER-GOAL-RECHECK-v1.md | 1.0 | SYNTHESIZED |
-| CORE-RECORD-CONTRACTS-v1.md | 1.1 | SYNTHESIZED |
-| THEORY-PROCESS-v1.md | 1.0 | PROCESS |
-| SYSTEM-DEFINITION-SKELETON-v0.1.md | 1.4 | PHASE-1 CLOSE INDEX |
+File names are stable semantic names. Git history is the version authority; no version suffix is encoded in the path.
 
-Do not infer freshness from filename suffix alone.
+## Canonical architecture
+
+| Path | Role |
+|---|---|
+| FOUNDATION.md | governed product/system invariants |
+| ARCHITECTURE.md | synthesized system model |
+| SYSTEM-DEFINITION.md | concise current system map |
+| PROJECT-MEMORY.md | durable Drive memory model |
+| CORE-RECORD-CONTRACTS.md | semantic record contracts |
+| JOB-LIFECYCLE.md | Job semantics/lifecycle |
+| STATE-MACHINE.md | lifecycle/result/condition model |
+| GOVERNANCE-AND-ARTIFACT-LIFECYCLE.md | governance and artifact validity |
+| SECURITY-AND-TRUST-BOUNDARIES.md | trust, authority and sensitive paths |
+| USER-CONFIGURATION-AND-DRIVE-ROOT.md | Supabase/Google identity and Drive-root config |
+| AGENT-HARNESSES.md | role contracts and harness-loading boundary |
+| EXECUTION-AND-REVIEW.md | execution, review floor and merge guard |
+| DISPATCH-AND-HANDOFF.md | dispatch and immutable Handoff consumption |
+| ATTRIBUTION-AND-SCOPE-CLAIMS.md | signatures, scope claims and conflict checks |
+| CAPABILITY-CATALOG.md | observed/surface/unavailable/unknown capability truth |
+| IDENTITY-AND-HANDLES.md | durable IDs and human handles |
+| CODER-GOAL-RECHECK.md | Coder self-recheck contract |
+| CLARIFICATION-AND-CAUSAL-READINESS.md | clarification and causal readiness |
+| PLANNER-SCOPE-AND-UIUX.md | Planner scope/UIUX contract |
+| DESIGNER-HARNESS.md | Designer role contract |
+| CODER-UIUX-HARNESS.md | UI/UX Coder specialist contract |
+| UI-SPEC-MODEL.md | UI specification model |
+
+## Supporting, not core runtime architecture
+
+- `docs/process/THEORY-PROCESS.md` — theory-development governance.
+- `docs/specialist/CONCEPT-MEASUREMENT-NORMALIZATION.md` — optional UI Coder specialist methodology.
+
+## Authority rule
+
+When two files appear to overlap, the narrower semantic contract governs its domain, while `FOUNDATION.md` governs system invariants.
+
+Phase-2 implementation authority is separate and singular:
+
+`docs/plans/PHASE2-IMPLEMENTATION.md`
