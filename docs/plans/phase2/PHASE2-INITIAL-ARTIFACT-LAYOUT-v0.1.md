@@ -328,8 +328,10 @@ Changing placement later is allowed as a mechanical migration only if:
 # 7. Avoided structures
 
 Do not create:
-- database service;
-- registry service;
+- a database service for Project Memory/control-plane records;
+- a global Project registry service;
+
+Exception: the approved Supabase per-user settings store may hold plugin/runtime configuration such as `drive_root_folder_id`. It must not absorb Project/Job/Run/Verification memory.
 - server daemon;
 - per-role duplicate Project Memory trees;
 - one folder for every semantic concept;
