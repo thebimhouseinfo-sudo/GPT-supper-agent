@@ -33,7 +33,7 @@ Changing the user's root updates the same configuration record in place; no conf
 
 Each direct child folder under the currently resolved `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
 
-See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
+See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
 
 ```text
 OWNED → writable within approved scope
