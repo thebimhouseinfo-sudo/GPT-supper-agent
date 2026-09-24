@@ -1,417 +1,109 @@
-# M1A Bootstrap Spike
+# M1A Bootstrap / Memory Repo Cutover Evidence
 
 ## Status
 
 ```text
-M1A = IN_PROGRESS
 M0 = PASS
+M1A IDENTITY/OAUTH = OBSERVED
+MEMORY BACKEND = GITHUB MEMORY REPO
+M1B MEMORY-REPO ACCEPTANCE = PENDING USER-SUPPLIED MEMORY REPO
 ```
 
-This file records observed implementation evidence, not new architecture theory.
+## Observed identity chain
 
-## Observed
-
-### Plugin delivery model
-
-Current OpenAI plugin architecture supports:
-- MCP servers for live tools/auth/actions;
-- skills for packaged workflow instructions;
-- plugins combining both.
-
-Therefore the selected GSA implementation shape is:
-
-```text
-GSA plugin
-├── skills
-└── MCP server
-```
-
-Repository Markdown under `docs/` or `harness/` is not assumed to load into ChatGPT automatically.
-
-### Supabase configuration store
-
-Project:
-`fbyqktduoqlpbbtkghkf`
-
-Observed:
-- project = ACTIVE_HEALTHY;
-- `public.user_drive_config` created;
-- RLS enabled;
-- PK = `user_id` referencing `auth.users(id)`;
-- own-row SELECT/INSERT/UPDATE/DELETE policies use `auth.uid()`.
-
-OAuth-authenticated CRUD is not yet observed because no end-user OAuth session has been completed.
-
-### MCP bootstrap hosting
-
-Supabase Edge Functions:
-
-```text
-gsa-mcp  = ACTIVE / version 5
-gsa-auth = DEPRECATED / API-only 410 response
-```
-
-MCP endpoint:
-`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp`
-
-Protected-resource metadata:
-`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/oauth-protected-resource`
-
-Authorization UI source of truth:
-`auth-ui/`
-
-Supabase Edge Functions cannot serve HTML; the former `gsa-auth` Edge Function is intentionally deprecated. The static frontend must be deployed on a real frontend host such as Vercel.
-
-Supabase OAuth issuer:
-`https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1`
-
-Observed:
-- `gsa-mcp` deployed ACTIVE; the former `gsa-auth` Edge Function is intentionally deprecated because Edge Functions cannot serve HTML;
-- MCP server declares one anonymous bootstrap tool;
-- MCP server declares OAuth-protected `get_profile`, `get_drive_config`, `set_drive_config`;
-- protected-resource metadata is implemented;
-- authenticated handlers forward the Bearer token into Supabase so RLS applies;
-- `set_drive_config` requires `write_probe_passed = true`;
-- OAuth scopes are `email profile`; GSA does not request `openid`, so an ID token/asymmetric signing key is not required for this flow.
-
-Protocol probes completed through the Supabase database HTTP extension:
-
-```text
-GET /health                                 PASS / 200
-POST /mcp initialize                        PASS / protocol 2025-11-25
-POST /mcp tools/list                        PASS / 4 tools discovered
-POST /mcp get_runtime_status                PASS
-GET /.well-known/oauth-protected-resource   PASS / 200
-POST /mcp get_profile without token         PASS / OAuth challenge emitted
-```
-
-The remaining unproven layer is the real ChatGPT client OAuth/linking session.
-
-## Corrected identity / Drive boundary
-
-User-visible setup is intentionally simple:
-
-```text
-Connect GSA
-→ Continue with Google
-→ Supabase Auth resolves auth.uid() + verified email
-→ GSA account connected
-```
-
-This authentication is only for GSA identity and per-user configuration.
-
-Google Drive is NOT authenticated through GSA:
-
-```text
-ChatGPT Google Drive plugin
-= separate existing ChatGPT connection
-= outside GSA
-
-GSA Supabase config
-= auth.uid() + verified email + selected drive_root_folder_id
-```
-
-GSA never requests Google Drive scopes, never stores Drive credentials, and never tries to reproduce ChatGPT's Google Drive connection.
-
-The selected folder ID is saved only after ChatGPT's external Drive connector successfully probes write/delete authority on that folder.
-
-The internal MCP OAuth 2.1 exchange remains necessary only so ChatGPT can carry the same authenticated GSA identity across tool calls. It is transport/session plumbing, not a second user account and not a Google Drive connection.
-
-## Current package bootstrap
-
-Portable plugin files:
-- `plugin.json`;
-- `mcp.json`;
-- `skills/gsa-bootstrap/SKILL.md`.
-
-The skill contains only bootstrap truth and does not duplicate full architecture/harness contracts.
-
-## Manual UI gates still required
-
-These settings cannot be changed by the currently exposed Supabase/ChatGPT connector actions and must be configured in their product UIs:
-
-1. Supabase Dashboard → Authentication → Providers → Google:
-   - enable Google;
-   - provide Google OAuth Client ID and Client Secret.
-2. Google Cloud OAuth client:
-   - authorized redirect URI = `https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1/callback`.
-3. Deploy repository directory `auth-ui/` as a static frontend (Vercel recommended).
-4. Supabase Auth URL Configuration:
-   - add the deployed `auth-ui` URL as an allowed redirect URL.
-5. Supabase Dashboard → Authentication → OAuth Server:
-   - current probe result: `feature_disabled / OAuth server is disabled`;
-   - enable OAuth 2.1 server;
-   - authorization path = the deployed `auth-ui` URL;
-   - enable Dynamic Client Registration.
-6. ChatGPT → Settings → Security and login:
-   - enable Developer mode.
-7. ChatGPT → Plugins → +:
-   - MCP URL = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp`.
-
-## Still TO_PROVE before M1A PASS
-
-1. ChatGPT initializes the MCP endpoint and discovers all four tools.
-2. Anonymous `get_runtime_status` call succeeds.
-3. First protected-tool call launches the OAuth linking UI.
-4. Google sign-in returns to the deployed `auth-ui` frontend.
-5. Consent approval returns control to ChatGPT.
-6. `get_profile` returns the authenticated Supabase `auth.uid()` and verified email.
-7. `get_drive_config` is empty before setup.
-8. Separately connected ChatGPT Google Drive capability can write/delete probe a chosen folder.
-9. GSA does not perform any Google Drive authentication; `set_drive_config` only stores the resulting folder ID in the same user's row through RLS.
-10. `get_drive_config` reads the saved folder in a fresh call/chat.
-11. A second identity cannot read/update the first identity's row.
-12. Only then mark M1A PASS.
-
-## Existing unrelated security warning
-
-Supabase Security Advisor currently reports a pre-existing `public.rls_auto_enable()` SECURITY DEFINER function callable by anon/authenticated roles.
-
-It predates this GSA POC and was not modified by M1A. It should be reviewed separately rather than silently changed as part of GSA.
-
-
-### OAuth builder repair
-
-Observed after enabling Supabase OAuth Server:
-
-```text
-OAuth discovery                             PASS / 200
-registration_endpoint                       PRESENT
-Google provider                             ENABLED
-JWKS                                        ES256 public key present
-MCP unauthenticated initialize              401
-WWW-Authenticate                            PRESENT
-resource_metadata                           points to GSA protected-resource metadata
-```
-
-The initial ChatGPT plugin-builder error "MCP server does not implement OAuth" was traced to the MCP transport returning protocol responses before exposing an HTTP-level OAuth challenge. On path-based hosting such as Supabase Edge Functions, deterministic RFC 9728 metadata discovery does not land inside the function path automatically.
-
-Repair:
-- require OAuth at the MCP transport boundary;
-- unauthenticated MCP requests return HTTP 401;
-- `WWW-Authenticate` explicitly advertises the working protected-resource metadata URL;
-- protected-resource metadata points to the enabled Supabase OAuth issuer.
-
-This is now OBSERVED server behavior. The remaining proof is the real ChatGPT builder/linking flow.
-
-
-### End-to-end ChatGPT OAuth success
-
-Observed from Supabase Auth and Edge logs after creating the GSA personal plugin in ChatGPT:
-
-```text
-ChatGPT reads OAuth discovery                 PASS
-ChatGPT dynamic client registration           PASS / 201
-Google PKCE sign-in                           PASS / 200
-Authorization consent                         PASS / approve
-OAuth authorization-code token exchange       PASS / 200
-ChatGPT authenticated MCP request             PASS / 200
-MCP JWT role                                  authenticated
-MCP token issuer                              Supabase Auth
-MCP auth-context user lookup                  PASS / /auth/v1/user 200
-```
-
-This proves the real runtime identity chain:
+Real ChatGPT personal-plugin flow has been observed:
 
 ```text
 ChatGPT
-→ Supabase OAuth 2.1
+→ Supabase OAuth discovery
+→ dynamic client registration
 → Google sign-in
-→ consent
-→ access token
-→ GSA MCP
+→ consent / auto-approved reconnect
+→ OAuth token exchange
+→ authenticated GSA MCP request
 → Supabase auth user
 ```
 
-No Google Drive scope or credential participates in this chain.
+The reconnect auto-approval case is handled by redirecting immediately when Supabase returns a redirect URL without a pending authorization ID.
 
-Remaining M1A proof:
-1. call/read the authenticated GSA profile through the plugin;
-2. verify `get_drive_config` returns not configured before setup;
-3. paste a Google Drive folder URL and let ChatGPT auto-route it to the already-connected Drive app;
-4. pass a write/delete probe on that folder;
-5. save the URL through `set_drive_config`, which extracts/stores the canonical folder ID;
-6. read it back through RLS in a fresh call/chat;
-7. verify cross-user RLS isolation when a second test identity is available.
+## Current runtime
 
+GSA MCP v20 changed the durable control plane to a per-user private GitHub Memory Repo.
 
-### CLI root and Drive cleanup correction
+Current configuration table:
 
-Observed issue from the real personal-plugin test:
-- a plugin created directly from an MCP Server URL does not automatically consume repository `skills/` files as user-facing CLI policy;
-- without an explicit MCP-side menu contract, the model exposed raw MCP tool names as fake CLI commands.
+`public.user_memory_config`
 
-Repair in `gsa-mcp` v8:
-- server instructions now define the authoritative root:
-  `PROJECT / DIRECT AGENT / SETTING / HELP`;
-- new `get_cli_root` tool is explicitly triggered by `gsa/`;
-- raw MCP tool names must not be presented as CLI commands;
-- URL-first routing remains the user-facing contract.
+Fields:
+- user_id;
+- email;
+- memory_repo_id;
+- memory_repo_full_name;
+- memory_repo_url;
+- default_branch;
+- created_at;
+- updated_at.
 
-Drive probe cleanup was also re-tested against the actual selected Project Drive folder.
+RLS uses `auth.uid()`.
 
-Observed connector quirk:
-- `create_folder` returns a normal folder URL `/drive/folders/<ID>`;
-- `delete_file` rejects that folder URL form;
-- deletion succeeds when the same Drive item ID is expressed as:
-  `https://drive.google.com/file/d/<ID>/view`.
-
-Verified end-to-end against the selected target folder:
+## Memory Repo setup contract
 
 ```text
-create child probe in target folder   PASS
-delete probe with file-resource URL   PASS
-list target folder after delete       probe absent
+paste private GitHub repo URL
+→ GitHub get_repo
+→ verify numeric repo ID
+→ verify private visibility
+→ verify push permission
+→ resolve default branch
+→ set_memory_repo_config
 ```
 
-The earlier leaked root probe was also removed successfully.
+Supabase stores configuration only.
 
-Operational rule:
-1. create probe inside the pasted target folder;
-2. capture returned probe ID;
-3. delete using `https://drive.google.com/file/d/<PROBE_ID>/view`;
-4. optionally list target folder to verify absence;
-5. only then set `write_probe_passed=true`.
+## Hard memory boundary
 
-
-### Reinstall / reconnect auto-approval fix
-
-Observed on plugin reinstall:
+GSA memory mutations are allowed only when:
 
 ```text
-OAuth authorize request                  PASS
-existing user/client consent             auto_approved = true
-getAuthorizationDetails                  returned redirect_url without pending authorization_id
-old auth-ui behavior                     called approveAuthorization again
-result                                   400 authorization request is no longer pending
+repository = configured Memory Repo
+path = projects/<uuid>/...
 ```
 
-Supabase documents this as a valid reconnect case: when authorization details no longer contain an `authorization_id`, the user has previously consented and the UI must redirect directly to `redirect_url`.
+Runtime guard:
 
-Repair in `auth-ui/index.html`:
-- after `getAuthorizationDetails()`, test whether `authorization_id` is present;
-- if absent and `redirect_url` exists, redirect immediately back to ChatGPT;
-- do not call `approveAuthorization()` a second time.
+`authorize_memory_mutation`
 
-Production Vercel deployment for commit `8eb7cff0c9b56450a69be8b3978717f30cdedfbb` reached READY.
+Shared mutable files require current blob SHA for update/delete.
 
+## Project command backend
 
-### Drive identity separation and non-destructive authority check
+Implemented handlers:
+- project_list;
+- project_create;
+- project_open;
+- project_status;
+- project_pause;
+- project_resume;
+- project_archive;
+- project_delete;
+- start_direct_agent;
+- get_instruction;
+- get_command_help.
 
-A real Project Drive setup attempt exposed two problems in the model-driven flow:
+## Source-repo pilot
 
-1. the model incorrectly reported the GSA/Supabase account email as the connected Google Drive account;
-2. it created a temporary folder at My Drive root and then attempted a move, even though the Drive connector can target a parent folder directly.
+`thebimhouseinfo-sudo/KE-Math-Grade1` remains the real source-repository target for the vertical-slice pilot.
 
-Direct connector inspection proved the identities are independent in the current test environment:
+The previous storage acceptance is superseded by the Memory Repo cutover. New M1B persistence acceptance must be rerun after a dedicated private Memory Repo is configured.
 
-```text
-GSA/Supabase identity       != connected Google Drive identity
-target Project Drive folder permissions:
-- one account = owner
-- connected Drive account = writer
-```
+## Remaining M1A/M1B proof
 
-Therefore the selected folder already has verified write authority for the actual connected Drive account.
-
-Correct verification flow is now:
-
-```text
-pasted Drive folder URL
-→ Google Drive get_profile
-→ Google Drive get_file_metadata(target folder)
-→ match connected Drive email to permission role
-→ owner/writer/organizer/fileOrganizer = PASS
-→ set_drive_config(write_access_verified=true,
-                   verification_method=permission_metadata)
-```
-
-No create/move/delete operation is required when permission metadata is sufficient.
-
-Fallback only:
-
-```text
-permission metadata insufficient
-→ create child probe directly under target folder
-→ delete returned probe ID using file-resource URL
-→ PASS only if both succeed
-```
-
-Never:
-- infer Drive identity from the GSA account;
-- create a root probe and then move it;
-- claim connector delete/move support from guesswork rather than the available tool surface.
-
-GSA MCP v9 implements this policy and keeps the old `write_probe_passed` field for backward compatibility.
-
-
-### Hard Project Drive sandbox
-
-Human decision: GSA must never mutate outside the configured Project Drive root because an accidental delete/move could damage unrelated user data.
-
-Runtime enforcement added in GSA MCP v12:
-
-```text
-get_drive_config
-→ exact configured drive_root_folder_id
-→ resolve target/parent ancestry through Google Drive metadata
-→ authorize_drive_mutation
-→ ALLOW or DENY
-→ external Drive mutation only on ALLOW
-```
-
-Guard rules:
-- no configured Project Drive → DENY;
-- create parent must be root or proven descendant;
-- update target must be root or proven descendant;
-- move source + destination must both remain inside root; moving the Project Drive root itself is denied;
-- delete the Project Drive root is always denied;
-- automatic delete requires exact target ID + same-Run GSA creation evidence;
-- deleting pre-existing user content requires explicit Human Gate;
-- unknown or ambiguous ancestry → DENY;
-- Drive literal `root` is forbidden as a GSA mutation parent.
-
-Important implementation boundary:
-the Google Drive connector is a separate ChatGPT app, so GSA cannot change Google's own connector permissions. The hard boundary is enforced by GSA orchestration: any GSA-initiated Drive mutation must pass the guard before the connector is invoked.
-
-The setup flow now prefers permission metadata and therefore normally performs no destructive probe at all.
-
-
-### Project command backend implementation
-
-GSA MCP v19 now exposes concrete handlers for every currently visible menu command family.
-
-PROJECT:
-- `project_list`
-- `project_create`
-- `project_open`
-- `project_status`
-- `project_pause`
-- `project_resume`
-- `project_archive`
-- `project_delete`
-
-DIRECT AGENT:
-- `start_direct_agent(role)`
-
-SETTING:
-- `get_profile`
-- `get_drive_config`
-- `set_drive_config`
-
-HELP:
-- `get_instruction`
-- `get_command_help`
-
-The Project handlers are thin orchestration handlers: they generate/validate deterministic Project contracts while Google Drive and GitHub connectors perform the actual external reads/writes.
-
-Real-repo acceptance was exercised against `thebimhouseinfo-sudo/KE-Math-Grade1` without source modification.
-
-Observed:
-- real repository accessible;
-- Project folder tree created inside the granted Project Drive boundary;
-- exactly one PROJECT.md created and read back;
-- lifecycle ACTIVE → PAUSED → ACTIVE verified;
-- runtime pure self-test passed all checks.
-
-See `evals/E1-project-lifecycle.md` and `evals/M1B-real-repo-acceptance.md`.
+1. user supplies a private GitHub Memory Repo;
+2. `set_memory_repo_config` succeeds through OAuth/RLS;
+3. fresh chat resolves the same repo;
+4. create `projects/<uuid>/PROJECT.md`;
+5. read it back;
+6. update lifecycle using exact blob SHA;
+7. deliberately attempt stale-SHA update and observe conflict;
+8. verify wrong-repo and outside-prefix mutation guards DENY;
+9. verify source repo remains separate and unchanged.
