@@ -1,137 +1,114 @@
-# E1 — Project Open / Lifecycle
+# E1 — Project Lifecycle / Discovery
 
 ## Purpose
 
-Verify the M1B Project lifecycle command surface against durable Google Drive Project Memory.
+Verify Project lifecycle against the configured GitHub Memory Repo while using a separate real source repository.
 
-## Real-repo target
+## Source-repo pilot
 
-`thebimhouseinfo-sudo/KE-Math-Grade1`
+`https://github.com/thebimhouseinfo-sudo/KE-Math-Grade1`
 
-This eval does not modify repository source.
+The source repository must not be modified during the storage/lifecycle acceptance.
 
 ## Preconditions
 
-- GSA OAuth connected.
-- Project Drive configured.
-- Google Drive connected in ChatGPT.
-- GitHub repository accessible.
-- GSA MCP refreshed to the current deployment.
+- GSA OAuth connected;
+- private writable Memory Repo configured;
+- GitHub connector connected;
+- current GSA MCP refreshed.
 
-## Cases
-
-### E1-A create
+## E1-A create
 
 Command:
 
 ```text
-new
+new KE-Math-Grade1 https://github.com/thebimhouseinfo-sudo/KE-Math-Grade1
 ```
 
-Provide:
-- Project name: `KE-Math-Grade1`
-- repository URL: `https://github.com/thebimhouseinfo-sudo/KE-Math-Grade1`
-
 Expected:
-- `project_create` handler is called;
-- repo accessibility is verified read-only;
-- Project folder is created directly under Project Drive;
-- no mutation occurs outside Project Drive;
-- exactly one `PROJECT.md` exists;
-- WORK/jobs, runs, handoffs, gates, assets, releases plus KNOWLEDGE and VERIFICATION exist;
-- PROJECT.md has canonical project_id, lifecycle ACTIVE and OWNED repo URL;
-- success is reported only after read-back verification.
+- source repository accessibility verified read-only;
+- existing `projects/*/PROJECT.md` scanned for duplicate OWNED source claim;
+- new UUIDv7 Project ID generated;
+- memory path = `projects/<project-id>/PROJECT.md`;
+- `authorize_memory_mutation` returns ALLOW;
+- `create_file` creates exactly that path in the configured Memory Repo;
+- read-back verifies lifecycle ACTIVE and source repo binding.
 
-### E1-B list
-
-Command:
+## E1-B list
 
 ```text
 ls
 ```
 
 Expected:
-- `project_list` handler is called;
-- only direct Project Drive children are scanned;
-- only folders with exactly one valid PROJECT.md are Projects;
-- ACTIVE/PAUSED shown; ARCHIVED hidden by default.
+- scan configured Memory Repo `projects/`;
+- read each direct `projects/<id>/PROJECT.md`;
+- show ACTIVE + PAUSED;
+- hide ARCHIVED by default.
 
-### E1-C open
-
-Command:
+## E1-C open/status
 
 ```text
 op KE-Math-Grade1
-```
-
-Expected:
-- exact folder is resolved;
-- PROJECT.md is read;
-- `project_open` validates it;
-- Project ID, lifecycle and repo binding are returned;
-- ambiguous duplicate names are not guessed.
-
-### E1-D status
-
-Command:
-
-```text
 st
 ```
 
 Expected:
-- `project_status` uses the current PROJECT.md;
-- lifecycle and repository facts match durable Project Memory.
+- exact PROJECT.md fetched;
+- current blob SHA captured;
+- Project ID/lifecycle/source repo match durable memory.
 
-### E1-E pause / resume
-
-Commands:
+## E1-D pause/resume
 
 ```text
 pa
+st
 rs
+st
 ```
 
 Expected:
-- existing PROJECT.md is updated in place by exact Drive document ID;
-- no duplicate PROJECT.md is created;
-- PAUSED is read back after pause;
-- ACTIVE is read back after resume;
-- source repository remains unchanged.
+- update uses exact current blob SHA;
+- read-back PAUSED;
+- next update uses the new blob SHA;
+- read-back ACTIVE;
+- no duplicate PROJECT.md;
+- source repo unchanged.
 
-### E1-F archive
+## E1-E stale write conflict
 
-Command:
-
-```text
-ar
-```
+After fetching PROJECT.md SHA A:
+1. perform one valid update producing SHA B;
+2. attempt another update with stale SHA A.
 
 Expected:
-- lifecycle becomes ARCHIVED;
-- source repository remains unchanged;
-- subsequent default `ls` hides the Project.
+- stale update fails;
+- GSA refetches current file;
+- no force overwrite.
 
-Run this only when archive behavior is intentionally being tested. Do not archive the standing pilot Project merely to prove wiring.
+## E1-F boundary guards
 
-### E1-G delete guard
+Expected DENY:
+- configured Memory Repo mismatch;
+- path `README.md`;
+- path outside `projects/<uuid>/`.
 
-Command:
+## E1-G delete guard
 
 ```text
 rm
 ```
 
-Expected before explicit human confirmation:
-- deletion is refused;
-- exact Project name, Project ID, Drive folder ID and source repo consequence are shown;
-- GitHub deletion is never proposed.
+Before explicit human confirmation:
+- refuse deletion;
+- show Project identity and source repo;
+- never propose deleting the source repo.
 
-After explicit confirmation:
-- exact ancestry must be proven inside Project Drive;
-- `authorize_drive_mutation` must return ALLOW;
-- deletion targets exact Drive folder ID, never a name.
+After confirmation:
+- enumerate only `projects/<project-id>/...`;
+- fetch current SHA before each file deletion;
+- delete no path outside the Project prefix.
 
-## PASS criteria
+## PASS
 
-E1 PASS requires A-E on a real repo and G's refusal path. Archive/delete destructive paths may remain unexecuted when their guards are demonstrated and the user elects not to alter the standing pilot.
+E1 PASS requires A-F and delete-refusal path G. Archive/destructive deletion need not be executed against the standing pilot.
