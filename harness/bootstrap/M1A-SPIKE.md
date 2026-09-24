@@ -193,3 +193,42 @@ Repair:
 - protected-resource metadata points to the enabled Supabase OAuth issuer.
 
 This is now OBSERVED server behavior. The remaining proof is the real ChatGPT builder/linking flow.
+
+
+### End-to-end ChatGPT OAuth success
+
+Observed from Supabase Auth and Edge logs after creating the GSA personal plugin in ChatGPT:
+
+```text
+ChatGPT reads OAuth discovery                 PASS
+ChatGPT dynamic client registration           PASS / 201
+Google PKCE sign-in                           PASS / 200
+Authorization consent                         PASS / approve
+OAuth authorization-code token exchange       PASS / 200
+ChatGPT authenticated MCP request             PASS / 200
+MCP JWT role                                  authenticated
+MCP token issuer                              Supabase Auth
+MCP auth-context user lookup                  PASS / /auth/v1/user 200
+```
+
+This proves the real runtime identity chain:
+
+```text
+ChatGPT
+→ Supabase OAuth 2.1
+→ Google sign-in
+→ consent
+→ access token
+→ GSA MCP
+→ Supabase auth user
+```
+
+No Google Drive scope or credential participates in this chain.
+
+Remaining M1A proof:
+1. call/read the authenticated GSA profile through the plugin;
+2. verify `get_drive_config` returns not configured before setup;
+3. use ChatGPT's separate Google Drive plugin to select a folder and pass a write/delete probe;
+4. save that folder ID through `set_drive_config`;
+5. read it back through RLS in a fresh call/chat;
+6. verify cross-user RLS isolation when a second test identity is available.
