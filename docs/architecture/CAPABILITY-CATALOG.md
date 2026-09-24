@@ -96,7 +96,7 @@ binary blob/commit round-trip      OBSERVED
 PR create/read                     OBSERVED
 PR merge                           OBSERVED
 binary read-back                   OBSERVED
-independent reviewer identity      UNAVAILABLE under same connected user identity
+different-model/account reviewer identity UNAVAILABLE under same connected user identity
 branch delete action               UNAVAILABLE in current exposed connector surface
 automatic branch cleanup on merge  NOT OBSERVED (probe branch remained)
 ```
