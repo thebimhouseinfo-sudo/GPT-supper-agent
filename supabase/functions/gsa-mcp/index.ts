@@ -10,7 +10,7 @@ const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 const MCP_RESOURCE = `${SUPABASE_URL}/functions/v1/gsa-mcp/mcp`
-const RESOURCE_METADATA = `${SUPABASE_URL}/functions/v1/gsa-mcp/oauth-protected-resource`
+const RESOURCE_METADATA = `${SUPABASE_URL}/functions/v1/gsa-mcp/.well-known/oauth-protected-resource`
 const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`
 const AUTH_SCOPES = ['email', 'profile']
 
@@ -67,6 +67,7 @@ function createServer(req: Request) {
         project_drive: z.string(),
       },
       securitySchemes: [{ type: 'noauth' }],
+      _meta: { securitySchemes: [{ type: 'noauth' }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -99,7 +100,10 @@ function createServer(req: Request) {
         email: z.string().nullable(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: { 'openai/profile': true },
+      _meta: {
+        securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+        'openai/profile': true,
+      },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -132,6 +136,7 @@ function createServer(req: Request) {
         email: z.string().nullable(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -253,7 +258,7 @@ app.get('/health', (c) =>
   }),
 )
 
-app.get('/oauth-protected-resource', (c) =>
+app.get('/.well-known/oauth-protected-resource', (c) =>
   c.json({
     resource: MCP_RESOURCE,
     authorization_servers: [AUTH_ISSUER],
