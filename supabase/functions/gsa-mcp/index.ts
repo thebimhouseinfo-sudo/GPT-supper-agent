@@ -64,7 +64,67 @@ function createServer(req: Request) {
     { name: 'gpt-super-agent', version: '0.2.0' },
     {
       instructions:
-        'GPT Super Agent M1A runtime. GSA OAuth establishes only GSA user identity. Google Drive remains a separate ChatGPT connector outside this app. Project Drive authority is proven through that external connector before set_drive_config stores the selected folder ID.',
+        [
+          'GPT Super Agent (GSA) runtime.',
+          'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP.',
+          'When the user types gsa/ or asks for the GSA root menu, call get_cli_root and render that menu. Do not expose raw MCP tool names such as get_profile/get_drive_config/set_drive_config as CLI commands.',
+          'DIRECT AGENT contains Planner, Designer, Coder, Reviewer, Tester.',
+          'SETTING contains GSA Account and Project Drive.',
+          'Google Drive and GitHub are separate connected ChatGPT apps. A pasted provider URL is sufficient routing context; do not require @Google Drive or @GitHub.',
+          'For Project Drive setup, create the probe INSIDE the pasted target folder, never in My Drive root when a target URL is supplied.',
+          'After create_folder returns the probe id, delete it using Google Drive delete_file with URL https://drive.google.com/file/d/<PROBE_ID>/view. This file-resource URL form is required even when the probe is a folder.',
+          'Only call set_drive_config with write_probe_passed=true after create and delete both succeed.',
+          'GSA OAuth establishes only GSA user identity; it never owns Google Drive authentication or credentials.',
+        ].join(' '),
+    },
+  )
+
+  server.registerTool(
+    'get_cli_root',
+    {
+      title: 'Show GSA root menu',
+      description:
+        'Call when the user types gsa/, gsa, asks for the GSA root page, or asks what GSA can do. Return the authoritative fake CLI root. Do not replace it with raw MCP tool names.',
+      inputSchema: {},
+      outputSchema: {
+        root: z.array(z.string()),
+        project: z.array(z.string()),
+        direct_agent: z.array(z.string()),
+        setting: z.array(z.string()),
+        help: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+    } as any,
+    async () => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to use GPT Super Agent.')
+
+      const menu = {
+        root: ['PROJECT', 'DIRECT AGENT', 'SETTING', 'HELP'],
+        project: ['list', 'open', 'create', 'status', 'pause', 'resume', 'archive', 'delete'],
+        direct_agent: ['planner', 'designer', 'coder', 'reviewer', 'tester'],
+        setting: ['GSA Account', 'Project Drive'],
+        help: ['instruction', 'command help'],
+      }
+
+      return {
+        structuredContent: menu,
+        content: [{
+          type: 'text',
+          text:
+            'GSA/\n' +
+            '├── PROJECT\n' +
+            '├── DIRECT AGENT\n' +
+            '├── SETTING\n' +
+            '└── HELP',
+        }],
+      }
     },
   )
 
