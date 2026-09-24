@@ -1,4 +1,4 @@
-# User Configuration and Drive Root v1.0
+# User Configuration and Drive Root v1.1
 
 ## 1. Purpose
 
@@ -32,12 +32,63 @@ Initial Phase-2 implementation uses Supabase as that store.
 
 Supabase is configuration infrastructure only. It does not replace Google Drive as the durable Project memory/control plane and does not become source-code truth.
 
-## 4. Stable per-user record
+## 4. User identity
+
+The fake CLI root exposes `SETTING`.
+
+Initial onboarding uses Supabase Auth with Google OAuth:
+
+```text
+SETTING
+→ Sign in with Google
+→ Supabase Auth creates/resolves auth.users.id
+→ verified email is stored/displayed as account label
+```
+
+The authoritative application identity is the Supabase authenticated user ID.
+
+The verified Google email is a human-readable unique account label and may be stored for UX, but authorization/RLS binds to `auth.uid()`, not to a user-entered email string.
+
+The user must not establish identity by typing an arbitrary Gmail address.
+
+## 5. Google Drive connector prerequisite
+
+Google identity does not itself give ChatGPT Drive I/O.
+
+The ChatGPT Google Drive plugin/connector must be installed and connected before Project Drive can become READY.
+
+Onboarding must expose this dependency explicitly:
+
+```text
+Google Account     CONNECTED
+Google Drive       CONNECTED
+Project Drive      NOT_CONFIGURED | READY
+```
+
+If Google Drive connector access is unavailable:
+
+```text
+DRIVE_CONNECTOR_REQUIRED
+→ show installation/connection instructions
+→ block root-dependent work
+```
+
+Current connector evidence supports Drive listing, folder creation and deletion. Therefore Project Drive write authority can be proven operationally with a temporary folder probe inside the selected folder.
+
+The current connector does not expose a sufficiently direct authenticated-account identity contract to require or prove that its Google account is the exact same identity used for Supabase OAuth.
+
+Therefore:
+- Supabase Auth proves application-user identity;
+- successful connector access/write probe proves resource authority over the selected Drive folder;
+- exact cross-connector Google-account equality is not a required invariant unless a future connector exposes reliable identity evidence.
+
+## 6. Stable per-user record
 
 Initial logical record:
 
 ```text
 user_id
+email
 drive_root_folder_id
 drive_root_name?
 created_at
@@ -62,7 +113,7 @@ same user_id
 
 Do not create a new semantic configuration identity merely because the folder changed.
 
-## 5. Folder identity
+## 7. Folder identity
 
 Use Google Drive folder ID as the canonical locator.
 
@@ -70,7 +121,7 @@ Do not use a human-readable Drive path as durable identity because folders may b
 
 A display path/name may be shown to the user but is not authoritative.
 
-## 6. Runtime resolution
+## 8. Runtime resolution
 
 GPT/harness behavior:
 
@@ -87,14 +138,32 @@ The plugin/runtime should resolve the current root at the point the Drive root i
 
 Changing the setting therefore takes effect on subsequent resolution without requiring migration of GitHub source or a new config ID.
 
-## 7. Settings UX
+## 9. Settings UX
 
-The fake CLI/settings surface may expose:
+The fake CLI root includes:
 
 ```text
-Google Drive Root
-[Choose folder]
-[Change folder]
+PROJECT
+DIRECT AGENT
+SETTING
+HELP / INSTRUCTION
+```
+
+`SETTING` exposes at least:
+
+```text
+Google Account
+  [Sign in with Google]
+  verified email
+
+Google Drive Plugin
+  CONNECTED | REQUIRED
+  installation/connection guidance when REQUIRED
+
+Project Drive
+  current folder
+  [Choose folder]
+  [Change folder]
 ```
 
 The user chooses or changes the root.
@@ -103,7 +172,7 @@ GPT may explain the requirement but must not silently choose or change the user'
 
 The settings surface writes the selected folder ID into the stable per-user configuration record.
 
-## 8. Supabase security baseline
+## 10. Supabase security baseline
 
 Initial Supabase implementation:
 - table such as `user_drive_config`;
@@ -114,21 +183,26 @@ Initial Supabase implementation:
 
 Exact table/column naming is implementation detail as long as these semantics are preserved.
 
-## 9. Bootstrap
+## 11. Bootstrap
 
 If no user configuration exists:
 
 ```text
-Drive-root-dependent action
-→ CONFIG_REQUIRED
+first use
+→ SETTING
+→ Sign in with Google through Supabase Auth
+→ verify Google Drive plugin/connector is installed and connected
 → user selects a Google Drive folder
-→ create the stable per-user record
-→ retry root resolution
+→ create temporary probe folder under selected folder
+→ verify creation/access
+→ delete probe folder
+→ only on PASS create/update the stable per-user config record
+→ Project Drive = READY
 ```
 
 No default physical folder belonging to the repository owner is assumed for other users.
 
-## 10. Invariants
+## 12. Invariants
 
 1. GitHub contains shared code/contracts, not user-specific Drive folder IDs.
 2. Google Drive remains Project memory/control plane.
@@ -140,3 +214,7 @@ No default physical folder belonging to the repository owner is assumed for othe
 8. Conversation memory is never authoritative for the current Drive root.
 9. GPT must not silently select or change the root.
 10. RLS isolates one user's root configuration from another user's.
+11. Supabase Google OAuth, not typed Gmail, establishes application-user identity.
+12. Google Drive connector availability is a prerequisite for Project Drive readiness.
+13. Project Drive becomes READY only after an observed write/delete probe succeeds in the selected folder.
+14. Supabase identity and Drive resource authority are separate proofs; current architecture does not require unobservable cross-connector account equality.
