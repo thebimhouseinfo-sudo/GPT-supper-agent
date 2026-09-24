@@ -2,35 +2,33 @@
 
 ## 1. Purpose
 
-Google Drive Project Memory is the durable Project control plane.
+GitHub Memory Repo is the durable Project control plane.
 
 It stores enough durable state to reopen work without chat history while avoiding database-style over-normalization and shared mutable hot files.
 
 GitHub remains source-code truth.
 
-## 2. Root resolution
+## 2. Memory Repo resolution
 
-Project Memory begins only after the current user's logical `SUPER_AGENT_DRIVE_ROOT` has been resolved from per-user runtime configuration.
-
-Initial implementation stores that mapping in Supabase. The Supabase row is not part of Project Memory.
+Project Memory begins only after the authenticated user's Memory Repo has been resolved from per-user runtime configuration.
 
 ```text
-user config
-→ drive_root_folder_id
-→ SUPER_AGENT_DRIVE_ROOT
-→ Project discovery
+auth.uid()
+→ user_memory_config
+→ memory_repo_id / memory_repo_full_name / default_branch
+→ projects/<project-id>/
 ```
 
-The current Drive folder ID must not be reconstructed from chat history or GitHub source.
+The Memory Repo must not be reconstructed from chat history or from a Project source repository.
 
-Changing root updates the stable user's config record in place; no config revision counter is required.
+Changing it updates the stable user's config row in place; no config revision counter is required.
 
-See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
+See `USER-CONFIGURATION-AND-MEMORY-REPO.md`.
 
 ## 3. Minimal logical layout
 
 ```text
-<Project>/
+projects/<project-id>/
 ├── PROJECT.md
 ├── CONTROL.json              # optional/rebuildable current-state cache
 ├── WORK/
@@ -44,7 +42,7 @@ See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
 └── VERIFICATION/
 ```
 
-Physical folders may be created lazily.
+Git directories materialize lazily when files are created; empty placeholder folders are not required.
 
 ## 4. PROJECT.md
 
@@ -238,7 +236,7 @@ append unique Run/Verification/Handoff-consumption records
 + consequential-action recheck
 ```
 
-Drive conditional writes are not assumed.
+Shared mutable file updates/deletes require the current GitHub blob SHA. A stale SHA must fail and trigger refetch/reconciliation.
 
 ## 14. Cross-chat consistency
 
@@ -278,7 +276,7 @@ Do not persist by default:
 
 ## 18. No global registry
 
-Project discovery remains resolved per-user Drive root + Project folders.
+Project discovery scans `projects/` in the configured Memory Repo and reads each `projects/<project-id>/PROJECT.md`.
 
 The Supabase per-user settings table is configuration storage, not a global Project registry.
 
@@ -294,17 +292,18 @@ Before hard delete, show surviving references/consequences and obtain explicit u
 
 Cross-Project refs are provenance references, not database-like strong foreign keys.
 
-## 21. Drive record lookup and collision rule
+## 21. Git record lookup and concurrency rule
 
-Drive permits duplicate filenames, so filenames are not sufficient durable identity.
+Paths are deterministic and Project IDs are globally collision-resistant.
 
 Rules:
-- create records with stable IDs in filenames;
-- once discovered/created, update by Drive file ID, not by name;
-- folder lookup by expected record name must return exactly one candidate;
-- zero matches = missing;
-- multiple matches = collision/conflict, never guess;
-- CONTROL may cache Drive file IDs for faster access but is rebuildable.
+- Project marker: `projects/<project-id>/PROJECT.md`;
+- append records use stable IDs in filenames;
+- create uses GitHub create-file semantics and must fail if the exact path already exists;
+- update/delete first fetch the current file and use its exact blob SHA;
+- stale SHA = conflict; refetch and reconcile;
+- never force overwrite merely to complete an operation;
+- CONTROL may cache record paths/SHAs but is rebuildable.
 
 ## 22. Abandoned Runs
 
