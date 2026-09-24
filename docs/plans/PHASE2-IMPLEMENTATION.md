@@ -24,9 +24,9 @@ Do not use deleted draft, execution-pack, review, or working-note files as imple
 ```text
 PHASE = PHASE 2
 DOCUMENT = DETAILED EXECUTION PLAN
-STATUS = READY_FOR_M0
+STATUS = M1A_IN_PROGRESS
 CANONICAL = false
-PHASE_2_STARTED = NO
+PHASE_2_STARTED = YES
 ```
 
 ## 1. Objective
@@ -773,7 +773,7 @@ The exact initial file tree is defined in Part D of this document.
 ## Status
 
 ```text
-STATUS = READY_FOR_M0
+STATUS = M1A_IN_PROGRESS
 TASK_LABELS = PLANNING_ONLY
 ```
 
@@ -951,7 +951,7 @@ HUMAN_REVIEW_REQUIRED
 | AC-029 | Pilot can reconstruct end-to-end provenance after chat closure | M8 | Project Memory + GitHub evidence | pilot |
 | AC-030 | No unresolved CRITICAL/IMPORTANT theory violation at initial Phase-2 completion | M9 | final report | final review |
 | AC-031 | User identity is established by Supabase Google OAuth, not typed Gmail | M1A | authenticated session/user record | E15 |
-| AC-032 | Missing Google Drive connector blocks Project Drive readiness with install/connect guidance | M1A | bootstrap result | E15 |
+| AC-032 | Unavailable ChatGPT Google Drive capability blocks Project Drive readiness without creating a GSA-owned Drive connection flow | M1A | bootstrap result | E15 |
 | AC-033 | Selected Project Drive becomes READY only after temporary write/delete probe succeeds | M1A | Drive probe evidence | E15 |
 | AC-034 | Changing Project Drive updates the same user's config record in place | M1A | before/after config row | E15 |
 | AC-035 | System does not require unproven equality between Supabase OAuth account and Drive connector account | M1A | onboarding contract | E15 |
@@ -1078,9 +1078,9 @@ Expected:
 typed email only
 → not authenticated
 
-OAuth success + ChatGPT Drive capability unavailable
+GSA identity success + ChatGPT Drive capability unavailable
 → DRIVE_CAPABILITY_REQUIRED
-→ direct user to ChatGPT's existing Google Drive connection UI, not a GSA-owned connection flow
+→ direct user to ChatGPT's existing Google Drive plugin/connection UI, not a GSA-owned connection flow
 
 connector available + write probe FAIL
 → Project Drive NOT_READY
