@@ -145,7 +145,7 @@ M5 may start after the M2 child-Run/context contracts exist, but must not block 
 
 ## Goal
 
-Start Phase 2 from the actual closed Phase-1 architecture, not remembered summaries.
+Start Phase 2 from the current governed architecture baseline, not remembered summaries.
 
 ## Work
 
@@ -176,7 +176,7 @@ only if no required canonical artifact is missing/contradictory.
 
 ## Review
 
-No context-isolated Reviewer required unless M0 modifies canonical Phase-1 theory, which it should not.
+No Context-Isolated Reviewer is required unless M0 proposes a canonical architecture change, which it should not.
 
 If M0 discovers a semantic contradiction:
 ```text
@@ -706,7 +706,7 @@ SEMANTIC_CONTRADICTION
 → block affected work and reopen architecture
 ```
 
-No Phase-2 artifact silently overrides canonical Phase 1.
+No Phase-2 artifact silently overrides the canonical architecture baseline.
 
 ---
 
@@ -715,7 +715,7 @@ No Phase-2 artifact silently overrides canonical Phase 1.
 Context-Isolated Reviewer is required when:
 - mandatory mechanical review floor triggers;
 - milestone topology explicitly requests it;
-- a change modifies Phase-1 canonical architecture;
+- a change modifies canonical architecture;
 - a harness change changes authority/completion/merge semantics.
 
 Context-Isolated Reviewer is not required for every documentation/template edit unless the mechanical review floor triggers.
@@ -1086,7 +1086,7 @@ Expected:
 # Milestone gates
 
 ## M0
-PASS when canonical source set and Phase-1 closure are verified.
+PASS when the canonical source set and governed-baseline entry conditions are verified.
 
 ## M1A
 PASS when AC-027, AC-028 and AC-031..035 are MET and the harness-loading path is OBSERVED.
@@ -1180,7 +1180,9 @@ harness/
     ├── job.json.tpl
     ├── run.json.tpl
     ├── handoff.json.tpl
+    ├── handoff-consumption.json.tpl
     ├── verification.json.tpl
+    ├── retest-request.json.tpl
     ├── knowledge.md.tpl
     ├── asset-requirement.json.tpl
     ├── human-gate.json.tpl
@@ -1193,7 +1195,9 @@ schemas/
 ├── job.schema.json
 ├── run.schema.json
 ├── handoff.schema.json
+├── handoff-consumption.schema.json
 ├── verification.schema.json
+├── retest-request.schema.json
 ├── knowledge.schema.json
 ├── asset-requirement.schema.json
 ├── human-gate.schema.json
@@ -1208,7 +1212,7 @@ evals/
 │   ├── E04-scope-conflict.md
 │   ├── E05-review-floor.md
 │   ├── E05b-review-floor-adversarial.md
-│   ├── E06-reviewer-independence.md
+│   ├── E06-reviewer-context-isolation.md
 │   ├── E07-child-designer.md
 │   ├── E08-pass-retest-required.md
 │   ├── E09-post-completion-retest-fail.md
@@ -1242,7 +1246,7 @@ No standalone service is implied.
 
 Machine-checkable serialization contracts for durable Drive records.
 
-These are implementation artifacts derived from Phase-1 semantic contracts.
+These are implementation artifacts derived from canonical architecture contracts.
 
 ## evals/
 
@@ -1309,6 +1313,8 @@ schemas/handoff-consumption.schema.json
 ```text
 harness/roles/planner.md
 harness/roles/coder.md
+harness/templates/knowledge.md.tpl
+schemas/knowledge.schema.json
 ```
 
 ## M4 creates
@@ -1332,6 +1338,8 @@ schemas/asset-requirement.schema.json
 harness/roles/tester.md
 harness/workflows/retest.md
 harness/workflows/release.md
+harness/templates/retest-request.json.tpl
+schemas/retest-request.schema.json
 ```
 
 ## Cross-cutting policy created when first needed after M1A
@@ -1350,11 +1358,11 @@ evals/fixtures/*
 
 # 4. File ownership / mutation rules
 
-## Phase-1 canonical docs
+## Canonical architecture docs
 ```text
 docs/architecture/*
 ```
-are read-only for normal Phase-2 implementation.
+are governance-protected for normal Phase-2 implementation.
 
 A material semantic contradiction triggers architecture governance before modifying them.
 
@@ -1660,7 +1668,7 @@ UPDATE = during milestones and pilot
 ## P-00 — Supabase per-user Drive-root configuration
 
 ```text
-Timing = M1 before Project discovery implementation
+Timing = M1A before Project discovery implementation
 Current = TO_PROVE
 Required = create/read/update same stable user record + RLS isolation
 Change behavior = update drive_root_folder_id in place; no revision counter
