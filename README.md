@@ -94,13 +94,11 @@ No Project open → shallow root-wide Project scan
 
 See `docs/architecture/DOCUMENT-INDEX-v1.md`.
 
-Phase-1 closure evidence:
-- `docs/working-notes/CLAUDE-ROUND2-DISPOSITION.md`
-- `docs/working-notes/PHASE1-PLATFORM-PROBES-v0.1.md`
-- `docs/working-notes/FINAL-PHASE1-CONSISTENCY-REVIEW-PASS-03.md`
-
 ## Phase 2
 
 Phase 2 is now permitted but has **not** started.
+
+Single implementation source of truth:
+`docs/plans/PHASE2-IMPLEMENTATION.md`
 
 It should begin as a thin operational harness/skills/actions layer, not a heavyweight autonomous runtime.
