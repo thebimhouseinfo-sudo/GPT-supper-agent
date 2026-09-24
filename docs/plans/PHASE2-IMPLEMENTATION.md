@@ -225,35 +225,36 @@ SETTING
 HELP / INSTRUCTION
 ```
 
-Minimum neutral command verbs:
+Minimum neutral command verbs and stable shortcuts:
 
 ```text
-project list
-project open <handle>
-project create
-project status
-project pause
-project resume
-project delete <handle>
+PROJECT
+  list     [ls]
+  open     [op]
+  create   [new]
+  status   [st]
+  pause    [pa]
+  resume   [rs]
+  archive  [ar]
+  delete   [rm]
 
-job list
-job open <handle>
-job create
-job status
-job cancel <handle>
+DIRECT AGENT
+  planner   [pl]
+  designer  [ds]
+  coder     [cd]
+  reviewer  [rv]
+  tester    [ts]
 
-agent planner
-agent designer
-agent coder
-agent reviewer
-agent tester
+SETTING
+  GSA Account    [acct]
+  Project Drive  [drive]
 
-handoff list
-handoff take <handle>
-
-setting
-help
+HELP
+  instruction   [guide]
+  command help  [help]
 ```
+
+Root groups have no shortcuts. Every displayed subcommand includes a one-line description. Aliases are stable and must not be invented dynamically.
 
 `DIRECT AGENT` maps to the `agent <role>` family. Job commands operate only within the currently open Project unless an explicit Project target is supplied.
 
