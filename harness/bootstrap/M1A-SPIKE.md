@@ -343,3 +343,35 @@ Never:
 - claim connector delete/move support from guesswork rather than the available tool surface.
 
 GSA MCP v9 implements this policy and keeps the old `write_probe_passed` field for backward compatibility.
+
+
+### Hard Project Drive sandbox
+
+Human decision: GSA must never mutate outside the configured Project Drive root because an accidental delete/move could damage unrelated user data.
+
+Runtime enforcement added in GSA MCP v12:
+
+```text
+get_drive_config
+→ exact configured drive_root_folder_id
+→ resolve target/parent ancestry through Google Drive metadata
+→ authorize_drive_mutation
+→ ALLOW or DENY
+→ external Drive mutation only on ALLOW
+```
+
+Guard rules:
+- no configured Project Drive → DENY;
+- create parent must be root or proven descendant;
+- update target must be root or proven descendant;
+- move source + destination must both remain inside root; moving the Project Drive root itself is denied;
+- delete the Project Drive root is always denied;
+- automatic delete requires exact target ID + same-Run GSA creation evidence;
+- deleting pre-existing user content requires explicit Human Gate;
+- unknown or ambiguous ancestry → DENY;
+- Drive literal `root` is forbidden as a GSA mutation parent.
+
+Important implementation boundary:
+the Google Drive connector is a separate ChatGPT app, so GSA cannot change Google's own connector permissions. The hard boundary is enforced by GSA orchestration: any GSA-initiated Drive mutation must pass the guard before the connector is invoked.
+
+The setup flow now prefers permission metadata and therefore normally performs no destructive probe at all.
