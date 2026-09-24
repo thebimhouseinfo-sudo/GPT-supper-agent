@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GPT Super Agent · Sign in</title>
+  <meta name="description" content="Sign in to GPT Super Agent with Google." />
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top, color-mix(in srgb, CanvasText 6%, transparent), transparent 36%),
+        Canvas;
+    }
+    main {
+      width: min(520px, 100%);
+      border: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+      border-radius: 20px;
+      padding: 28px;
+      background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+      box-shadow: 0 20px 60px color-mix(in srgb, CanvasText 10%, transparent);
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { line-height: 1.55; margin: 8px 0; }
+    .muted { opacity: .68; }
+    .panel {
+      margin: 20px 0;
+      padding: 16px;
+      border-radius: 14px;
+      background: color-mix(in srgb, CanvasText 6%, transparent);
+    }
+    .row { display: flex; gap: 10px; margin-top: 12px; }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 11px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    .primary { background: CanvasText; color: Canvas; }
+    .secondary { background: color-mix(in srgb, CanvasText 10%, transparent); color: CanvasText; }
+    .success { color: #2e9d55; }
+    .error { color: #d14b4b; white-space: pre-wrap; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>GPT Super Agent</h1>
+  <p class="muted">
+    Sign in with Google so GSA can identify your account and remember your Project Drive setting.
+    Google Drive remains a separate ChatGPT connection.
+  </p>
+
+  <div id="status" class="panel">Checking your GSA account…</div>
+  <div id="details" class="panel" hidden></div>
+  <div id="error" class="error" hidden></div>
+
+  <button id="login" class="primary" hidden>Continue with Google</button>
+
+  <div id="consent" hidden>
+    <div class="row">
+      <button id="approve" class="primary">Continue to GPT Super Agent</button>
+      <button id="deny" class="secondary">Cancel</button>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+  const SUPABASE_URL = "https://fbyqktduoqlpbbtkghkf.supabase.co"
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7oa0dc4bp6gtG7p5bv3wtg_vlL0w5l5"
+
+  const params = new URLSearchParams(location.search)
+  const authorizationId = params.get('authorization_id')
+
+  const status = document.querySelector('#status')
+  const details = document.querySelector('#details')
+  const errorBox = document.querySelector('#error')
+  const login = document.querySelector('#login')
+  const consent = document.querySelector('#consent')
+  const approve = document.querySelector('#approve')
+  const deny = document.querySelector('#deny')
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  })
+
+  function setError(message) {
+    errorBox.hidden = false
+    errorBox.textContent = message
+    status.textContent = 'GSA sign-in cannot continue.'
+  }
+
+  function returnUrl() {
+    const url = new URL(location.origin + location.pathname)
+    if (authorizationId) url.searchParams.set('authorization_id', authorizationId)
+    return url.toString()
+  }
+
+  async function boot() {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      setError(sessionError.message)
+      return
+    }
+
+    const session = sessionData.session
+    if (!session) {
+      status.textContent = authorizationId
+        ? 'Sign in with Google to connect this ChatGPT session to your GSA account.'
+        : 'Sign in with Google to create or open your GSA account.'
+      login.hidden = false
+      return
+    }
+
+    const email = session.user.email ?? 'Google account'
+    status.innerHTML = '<span class="success">GSA Account connected</span><br>' + email
+
+    details.hidden = false
+    details.replaceChildren()
+
+    const account = document.createElement('p')
+    account.textContent = 'Verified account: ' + email
+    details.append(account)
+
+    if (!authorizationId) {
+      const text = document.createElement('p')
+      text.className = 'muted'
+      text.textContent =
+        'Your GSA user identity is ready. Project Drive is selected separately through the Google Drive connection already available in ChatGPT.'
+      details.append(text)
+      return
+    }
+
+    const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId)
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    const client = document.createElement('p')
+    client.textContent = 'Connection request: ' + (data.client?.name ?? data.client_name ?? 'ChatGPT')
+    details.append(client)
+
+    const scopeText = document.createElement('p')
+    scopeText.className = 'muted'
+    scopeText.textContent = 'This grants ChatGPT access only to your GSA identity/configuration. It does not grant Google Drive access.'
+    details.append(scopeText)
+
+    consent.hidden = false
+  }
+
+  login.addEventListener('click', async () => {
+    login.disabled = true
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: returnUrl(),
+        scopes: 'email profile',
+      },
+    })
+    if (error) {
+      login.disabled = false
+      setError(error.message)
+    }
+  })
+
+  approve.addEventListener('click', async () => {
+    approve.disabled = true
+    deny.disabled = true
+
+    const { data, error } = await supabase.auth.oauth.approveAuthorization(authorizationId)
+    if (error) {
+      approve.disabled = false
+      deny.disabled = false
+      setError(error.message)
+      return
+    }
+
+    location.assign(data.redirect_url)
+  })
+
+  deny.addEventListener('click', async () => {
+    approve.disabled = true
+    deny.disabled = true
+
+    const { data, error } = await supabase.auth.oauth.denyAuthorization(authorizationId)
+    if (error) {
+      approve.disabled = false
+      deny.disabled = false
+      setError(error.message)
+      return
+    }
+
+    location.assign(data.redirect_url)
+  })
+
+  boot().catch((error) => setError(String(error?.message ?? error)))
+</script>
+</body>
+</html>
