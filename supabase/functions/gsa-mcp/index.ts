@@ -58,7 +58,7 @@ function createServer(req: Request) {
     {
       title: 'Get GSA runtime status',
       description:
-        'Verify that the GPT Super Agent MCP server is reachable. This anonymous tool does not prove user identity or Project Drive access.',
+        'Verify that the authenticated GPT Super Agent MCP runtime is reachable.',
       inputSchema: {},
       outputSchema: {
         phase: z.string(),
@@ -66,8 +66,8 @@ function createServer(req: Request) {
         auth: z.string(),
         project_drive: z.string(),
       },
-      securitySchemes: [{ type: 'noauth' }],
-      _meta: { securitySchemes: [{ type: 'noauth' }] },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -75,10 +75,13 @@ function createServer(req: Request) {
       },
     } as any,
     async () => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to use GPT Super Agent.')
+
       const status = {
         phase: 'M1A_BOOTSTRAP_SPIKE',
         mcp: 'SERVER_DEPLOYED',
-        auth: 'OAUTH_REQUIRED_FOR_PRIVATE_TOOLS',
+        auth: 'AUTHENTICATED',
         project_drive: 'RESOLVED_PER_USER_AFTER_CONFIGURATION',
       }
       return {
@@ -267,6 +270,28 @@ app.get('/.well-known/oauth-protected-resource', (c) =>
 )
 
 app.all('/mcp', async (c) => {
+  const authHeader = c.req.raw.headers.get('Authorization') ?? ''
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({
+        error: 'unauthorized',
+        error_description: 'Connect your GPT Super Agent account to continue.',
+      }),
+      {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': challenge(
+            'invalid_token',
+            'Connect your GPT Super Agent account to continue',
+          ),
+          'Cache-Control': 'no-store',
+        },
+      },
+    )
+  }
+
   const transport = new WebStandardStreamableHTTPServerTransport()
   const server = createServer(c.req.raw)
   await server.connect(transport)
