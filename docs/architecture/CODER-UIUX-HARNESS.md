@@ -112,7 +112,7 @@ UX/UI Coder performs:
 - applicable behavioral/visual/static checks;
 - capability-backed checks;
 - regression/diff inspection;
-- Coder Goal Recheck per `CODER-GOAL-RECHECK-v1.md`.
+- Coder Goal Recheck per `CODER-GOAL-RECHECK.md`.
 
 Self QA/QC does not replace mandatory or topology-scheduled independent review.
 
