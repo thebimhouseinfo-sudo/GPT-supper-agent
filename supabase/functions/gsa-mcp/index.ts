@@ -18,23 +18,27 @@ function challenge(error = 'invalid_token', description = 'Sign in to GPT Super 
   return `Bearer resource_metadata="${RESOURCE_METADATA}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
 }
 
-function extractDriveFolderId(input: string) {
-  try {
-    const url = new URL(input)
-    if (url.hostname !== 'drive.google.com') return null
-
-    const folderMatch = url.pathname.match(/\/folders\/([A-Za-z0-9_-]+)/)
-    if (folderMatch?.[1]) return folderMatch[1]
-
-    const id = url.searchParams.get('id')
-    return id && /^[A-Za-z0-9_-]+$/.test(id) ? id : null
-  } catch {
-    return null
+function authError(description: string) {
+  return {
+    content: [{ type: 'text' as const, text: description }],
+    isError: true,
+    _meta: { 'mcp/www_authenticate': [challenge('invalid_token', description)] },
   }
 }
 
-function ancestryContainsRoot(chain: string[] | undefined, rootId: string) {
-  return Array.isArray(chain) && chain.includes(rootId)
+async function authContext(req: Request) {
+  const authHeader = req.headers.get('Authorization') ?? ''
+  if (!authHeader.startsWith('Bearer ')) return null
+
+  const token = authHeader.slice('Bearer '.length)
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data.user) return null
+  return { token, user: data.user, supabase }
 }
 
 function uuidv7() {
@@ -54,13 +58,18 @@ function projectHandle(projectId: string) {
   return 'P-' + projectId.replace(/-/g, '').slice(-4).toUpperCase()
 }
 
-function normalizeRepoUrl(input: string) {
+function normalizeGithubRepo(input: string) {
   try {
     const url = new URL(input)
     if (url.hostname !== 'github.com') return null
     const parts = url.pathname.replace(/^\/+|\/+$/g, '').split('/')
     if (parts.length < 2 || !parts[0] || !parts[1]) return null
-    return 'https://github.com/' + parts[0] + '/' + parts[1].replace(/\.git$/, '')
+    const owner = parts[0]
+    const name = parts[1].replace(/\.git$/, '')
+    return {
+      full_name: owner + '/' + name,
+      url: 'https://github.com/' + owner + '/' + name,
+    }
   } catch {
     return null
   }
@@ -98,7 +107,7 @@ function buildProjectManifest(args: {
     '- OWNED: ' + args.repoUrl,
     '',
     '## Runtime',
-    '- Project Memory lives in this Google Drive folder.',
+    '- Project Memory lives in the configured GSA Memory Repo.',
     '- Source truth lives in the repository above.',
     '',
   ].join('\n')
@@ -135,63 +144,41 @@ function transitionProjectManifest(text: string, target: 'ACTIVE' | 'PAUSED' | '
   })
   return { parsed, next: lines.join('\n'), updated_at: now }
 }
-function authError(description: string) {
-  return {
-    content: [{ type: 'text' as const, text: description }],
-    isError: true,
-    _meta: {
-      'mcp/www_authenticate': [challenge('invalid_token', description)],
-    },
-  }
+
+function validMemoryPath(path: string) {
+  return /^projects\/[0-9a-fA-F-]{36}\//.test(path)
 }
 
-async function authContext(req: Request) {
-  const authHeader = req.headers.get('Authorization') ?? ''
-  if (!authHeader.startsWith('Bearer ')) return null
-
-  const token = authHeader.slice('Bearer '.length)
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
-  const { data, error } = await supabase.auth.getUser(token)
-  if (error || !data.user) return null
-
-  return { token, user: data.user, supabase }
+async function readMemoryConfig(auth: any) {
+  return auth.supabase
+    .from('user_memory_config')
+    .select('email, memory_repo_id, memory_repo_full_name, memory_repo_url, default_branch')
+    .eq('user_id', auth.user.id)
+    .maybeSingle()
 }
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.2.0' },
+    { name: 'gpt-super-agent', version: '0.3.0' },
     {
-      instructions:
-        [
-          'GPT Super Agent (GSA) runtime.',
-          'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
-          'When the user types gsa/ or asks for the GSA root menu, call get_cli_root. The tool returns an authoritative preformatted menu. COPY THAT MENU VERBATIM as the entire user-facing answer. Do not translate, summarize, reflow, compress, localize, reorder, add an intro sentence, change square brackets to parentheses, or put multiple commands on one line.',
-          'Stable subcommand aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Project Drive=drive; HELP instruction=guide, command help=help.',
-          'Treat a shortcut exactly as its canonical subcommand. Do not invent additional aliases.',
-          'PROJECT command routing: ls/list -> project_list; op/open -> project_open; new/create -> project_create; st/status -> project_status; pa/pause -> project_pause; rs/resume -> project_resume; ar/archive -> project_archive; rm/delete -> project_delete.',
-          'Project command handlers are orchestration contracts. When they return external_steps, execute those steps through the connected Google Drive/GitHub apps and do not report success until the connector evidence passes.',
-          'DIRECT AGENT routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent with matching role.',
-          'HELP routing: guide/instruction -> get_instruction; help/command help -> get_command_help. SETTING acct -> get_profile; drive -> get_drive_config or set_drive_config.',
-          'DIRECT AGENT contains Planner, Designer, Coder, Reviewer, Tester.',
-          'SETTING contains GSA Account and Project Drive.',
-          'Google Drive and GitHub are separate connected ChatGPT apps. A pasted provider URL is sufficient routing context; do not require @Google Drive or @GitHub.',
-          'For Project Drive setup, first resolve the REAL connected Google Drive account with the Google Drive get_profile tool. Never infer the Drive account from the GSA/Supabase email; the two identities may differ.',
-          'Then call Google Drive get_file_metadata on the pasted target folder and inspect its permissions. If the connected Drive email has role owner, writer, organizer, or fileOrganizer, write access is verified non-destructively.',
-          'Only when permission metadata is insufficient may you fall back to a create/delete probe. If a fallback probe is needed, create it INSIDE the pasted target folder and delete it with https://drive.google.com/file/d/<PROBE_ID>/view.',
-          'Call set_drive_config with write_access_verified=true after metadata verification, or with write_probe_passed=true only after a fallback create/delete probe fully succeeds.',
-          'HARD DRIVE SANDBOX: after Project Drive is configured, every GSA-initiated Google Drive mutation must stay inside that configured folder or its proven descendants. Never use the literal Drive parent root. Never mutate ancestors, siblings, or unrelated items.',
-          'Before any Drive mutation, call get_drive_config, resolve target/parent IDs and ancestry, then call authorize_drive_mutation. Proceed to the external Google Drive mutation only when the guard returns allowed=true. If ancestry is missing, ambiguous, or outside the root, STOP.',
-          'CREATE: parent must be the configured Project Drive root or a proven descendant. Setup/probe creation may only be a direct child of the selected Project Drive.',
-          'MOVE: source and destination must both be inside the same Project Drive boundary. Cross-boundary moves are forbidden.',
-          'DELETE: never delete by name. Automatic delete is allowed only for an exact Drive ID created by GSA in the same Run and still inside Project Drive. Deleting any pre-existing user item requires an explicit Human Gate naming the exact Drive ID.',
-          'Fallback probe: create one direct child under Project Drive, capture the returned ID, and delete only that same ID. Never create at My Drive root and never move the probe.',
-          'PROVEN DRIVE PROBE FLOW: create the probe directly under the target Project Drive URL using Google Drive create_folder(parent_folder=<target URL>); capture the returned item ID; remove only that newly created item using Google Drive delete_file with the connector-supported file-resource URL form built from the returned ID; never move the probe and never use My Drive root.',
-          'GSA OAuth establishes only GSA user identity; it never owns Google Drive authentication or credentials.',
-        ].join(' '),
+      instructions: [
+        'GPT Super Agent (GSA) runtime.',
+        'Google Drive is not part of GSA core and must not be used for Project Memory.',
+        'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
+        'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
+        'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
+        'All GSA memory writes are confined to the exact configured Memory Repo and paths under projects/<project-id>/.',
+        'Never write GSA memory to any other repository. Fail closed on repo mismatch or path outside projects/<project-id>/.',
+        'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
+        'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
+        'When user types gsa/ call get_cli_root and copy menu_text verbatim as the entire answer.',
+        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
+        'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
+        'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent.',
+        'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
+        'GitHub URLs are sufficient routing context; @GitHub is optional.',
+        'Do not report a command complete until returned external_steps have been executed and verified through the GitHub connector.',
+      ].join(' '),
     },
   )
 
@@ -199,19 +186,12 @@ function createServer(req: Request) {
     'get_cli_root',
     {
       title: 'Show GSA root menu',
-      description:
-        'Call when the user types gsa/, gsa, asks for the GSA root page, or asks what GSA can do. IMPORTANT: display the returned menu text verbatim as the entire answer. Do not translate, paraphrase, summarize, reformat, compress, or add commentary.',
+      description: 'For gsa/ return menu_text verbatim. Do not translate, summarize, reflow or add commentary.',
       inputSchema: {},
-      outputSchema: {
-        menu_text: z.string(),
-      },
+      outputSchema: { menu_text: z.string() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: false,
-      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
     async () => {
       const auth = await authContext(req)
@@ -235,14 +215,12 @@ function createServer(req: Request) {
         '  • tester [ts] — Verify behavior and evidence.\n\n' +
         'SETTING — Manage GSA configuration.\n' +
         '  • GSA Account [acct] — Show authenticated GSA account.\n' +
-        '  • Project Drive [drive] — View/configure Project Drive.\n\n' +
+        '  • Memory Repo [repo] — View/configure GSA Memory repository.\n\n' +
         'HELP — Usage reference.\n' +
         '  • instruction [guide] — Show GSA usage instructions.\n' +
         '  • command help [help] — Show commands and aliases.'
-      return {
-        structuredContent: { menu_text: menuText },
-        content: [{ type: 'text', text: menuText }],
-      }
+
+      return { structuredContent: { menu_text: menuText }, content: [{ type: 'text', text: menuText }] }
     },
   )
 
@@ -250,43 +228,24 @@ function createServer(req: Request) {
     'get_runtime_status',
     {
       title: 'Get GSA runtime status',
-      description:
-        'Verify that the authenticated GPT Super Agent MCP runtime is reachable.',
+      description: 'Verify authenticated GSA runtime and Memory Repo configuration state.',
       inputSchema: {},
-      outputSchema: {
-        phase: z.string(),
-        mcp: z.string(),
-        auth: z.string(),
-        project_drive: z.string(),
-      },
+      outputSchema: { phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: false,
-      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
     async () => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
-
-      const { data } = await auth.supabase
-        .from('user_drive_config')
-        .select('drive_root_folder_id')
-        .eq('user_id', auth.user.id)
-        .maybeSingle()
-
+      const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M1A_BOOTSTRAP_SPIKE',
+        phase: 'M1B_MEMORY_REPO_CUTOVER',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
-        project_drive: data?.drive_root_folder_id ? 'CONFIGURED' : 'NOT_CONFIGURED',
+        memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
       }
-      return {
-        structuredContent: status,
-        content: [{ type: 'text', text: JSON.stringify(status) }],
-      }
+      return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
     },
   )
 
@@ -294,314 +253,157 @@ function createServer(req: Request) {
     'get_profile',
     {
       title: 'Get connected GSA account',
-      description:
-        'Return the authenticated GPT Super Agent account identity. Use to confirm which account is connected before user-specific work.',
+      description: 'Return authenticated GSA account identity.',
       inputSchema: {},
-      outputSchema: {
-        user_id: z.string(),
-        email: z.string().nullable(),
-      },
+      outputSchema: { user_id: z.string(), email: z.string().nullable() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: {
-        securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-        'openai/profile': true,
-      },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: false,
-      },
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }], 'openai/profile': true },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read the connected GSA account.')
-
+      if (!auth) return authError('Authentication required to read GSA account.')
       const result = { user_id: auth.user.id, email: auth.user.email ?? null }
-      return {
-        structuredContent: result,
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
 
   server.registerTool(
-    'get_drive_config',
+    'get_memory_repo_config',
     {
-      title: 'Get Project Drive configuration',
-      description:
-        'Read the current user\'s configured Google Drive Project root. The returned folder ID is runtime configuration, not chat memory.',
+      title: 'Get GSA Memory Repo configuration',
+      description: 'Read the authenticated user\'s configured GitHub Memory Repo.',
       inputSchema: {},
       outputSchema: {
         configured: z.boolean(),
-        drive_root_folder_id: z.string().nullable(),
-        drive_root_url: z.string().nullable(),
-        drive_root_name: z.string().nullable(),
+        memory_repo_id: z.number().nullable(),
+        memory_repo_full_name: z.string().nullable(),
+        memory_repo_url: z.string().nullable(),
+        default_branch: z.string().nullable(),
         gsa_account_email: z.string().nullable(),
-        mutation_scope: z.string(),
-        mutation_policy: z.array(z.string()),
+        write_scope: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: false,
-      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read Project Drive configuration.')
-
-      const { data, error } = await auth.supabase
-        .from('user_drive_config')
-        .select('email, drive_root_folder_id, drive_root_name')
-        .eq('user_id', auth.user.id)
-        .maybeSingle()
-
-      if (error) {
-        return {
-          content: [{ type: 'text', text: `Failed to read Project Drive configuration: ${error.message}` }],
-          isError: true,
-        }
-      }
-
-      const configured = Boolean(data?.drive_root_folder_id)
-      const driveRootId = data?.drive_root_folder_id ?? null
+      if (!auth) return authError('Authentication required to read Memory Repo configuration.')
+      const { data, error } = await readMemoryConfig(auth)
+      if (error) return { content: [{ type: 'text', text: 'Failed to read Memory Repo configuration: ' + error.message }], isError: true }
       const result = {
-        configured,
-        drive_root_folder_id: driveRootId,
-        drive_root_url: driveRootId
-          ? `https://drive.google.com/drive/folders/${driveRootId}`
-          : null,
-        drive_root_name: data?.drive_root_name ?? null,
+        configured: Boolean(data?.memory_repo_full_name),
+        memory_repo_id: data?.memory_repo_id ?? null,
+        memory_repo_full_name: data?.memory_repo_full_name ?? null,
+        memory_repo_url: data?.memory_repo_url ?? null,
+        default_branch: data?.default_branch ?? null,
         gsa_account_email: data?.email ?? auth.user.email ?? null,
-        mutation_scope: configured
-          ? 'PROJECT_DRIVE_ROOT_AND_PROVEN_DESCENDANTS_ONLY'
-          : 'NO_DRIVE_MUTATION_UNTIL_PROJECT_DRIVE_CONFIGURED',
-        mutation_policy: [
-          'FORBID_DRIVE_ROOT_ALIAS',
-          'FORBID_OUTSIDE_ROOT_MUTATION',
-          'FORBID_CROSS_BOUNDARY_MOVE',
-          'FORBID_DELETE_BY_NAME',
-          'AUTO_DELETE_ONLY_SAME_RUN_GSA_CREATED_EXACT_ID',
-          'PREEXISTING_DELETE_REQUIRES_EXPLICIT_HUMAN_GATE',
-          'FAIL_CLOSED_ON_UNKNOWN_ANCESTRY',
-        ],
+        write_scope: data?.memory_repo_full_name
+          ? 'EXACT_CONFIGURED_REPO_AND_PROJECTS_PREFIX_ONLY'
+          : 'NO_MEMORY_WRITE_UNTIL_CONFIGURED',
       }
-      return {
-        structuredContent: result,
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
 
   server.registerTool(
-    'authorize_drive_mutation',
+    'set_memory_repo_config',
     {
-      title: 'Authorize Drive mutation inside Project Drive sandbox',
-      description:
-        'Mandatory guard before any GSA-initiated Google Drive create/update/move/delete. Reads the configured Project Drive root and fails closed unless supplied ancestry proves the mutation stays inside that boundary.',
+      title: 'Set GSA Memory Repo configuration',
+      description: 'Persist a verified private GitHub repository as this user\'s GSA Memory Repo. GitHub connector verification must happen before calling this tool.',
       inputSchema: {
-        operation: z.enum(['create', 'update', 'move', 'delete']),
-        target_id: z.string().min(1).optional(),
-        target_ancestry: z.array(z.string().min(1)).optional(),
-        destination_parent_id: z.string().min(1).optional(),
-        destination_ancestry: z.array(z.string().min(1)).optional(),
-        created_by_gsa_same_run: z.boolean().optional(),
+        repository_url: z.string().url(),
+        repository_id: z.number().int().positive(),
+        repository_full_name: z.string().min(3),
+        default_branch: z.string().min(1),
+        visibility: z.literal('private'),
+        push_verified: z.literal(true),
+      },
+      outputSchema: {
+        saved: z.boolean(),
+        memory_repo_id: z.number(),
+        memory_repo_full_name: z.string(),
+        memory_repo_url: z.string(),
+        default_branch: z.string(),
+        write_scope: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    } as any,
+    async ({ repository_url, repository_id, repository_full_name, default_branch }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to configure Memory Repo.')
+      const normalized = normalizeGithubRepo(repository_url)
+      if (!normalized || normalized.full_name.toLowerCase() !== String(repository_full_name).toLowerCase()) {
+        return { content: [{ type: 'text', text: 'Repository URL/full-name mismatch.' }], isError: true }
+      }
+      const payload = {
+        user_id: auth.user.id,
+        email: auth.user.email ?? '',
+        memory_repo_id: repository_id,
+        memory_repo_full_name: normalized.full_name,
+        memory_repo_url: normalized.url,
+        default_branch,
+        updated_at: new Date().toISOString(),
+      }
+      const { data, error } = await auth.supabase
+        .from('user_memory_config')
+        .upsert(payload, { onConflict: 'user_id' })
+        .select('memory_repo_id, memory_repo_full_name, memory_repo_url, default_branch')
+        .single()
+      if (error) return { content: [{ type: 'text', text: 'Failed to save Memory Repo configuration: ' + error.message }], isError: true }
+      const result = {
+        saved: true,
+        memory_repo_id: Number(data.memory_repo_id),
+        memory_repo_full_name: data.memory_repo_full_name,
+        memory_repo_url: data.memory_repo_url,
+        default_branch: data.default_branch,
+        write_scope: 'EXACT_CONFIGURED_REPO_AND_PROJECTS_PREFIX_ONLY',
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'authorize_memory_mutation',
+    {
+      title: 'Authorize a GSA Memory Repo mutation',
+      description: 'Mandatory guard before GSA writes/deletes Project Memory. Fails closed on wrong repo or path outside projects/<project-id>/.',
+      inputSchema: {
+        repository_full_name: z.string().min(3),
+        path: z.string().min(1),
+        operation: z.enum(['create', 'update', 'delete']),
         human_gate_approved: z.boolean().optional(),
       },
       outputSchema: {
         allowed: z.boolean(),
         reason: z.string(),
-        drive_root_folder_id: z.string().nullable(),
+        configured_repo: z.string().nullable(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        openWorldHint: false,
-      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({
-      operation,
-      target_id,
-      target_ancestry,
-      destination_parent_id,
-      destination_ancestry,
-      created_by_gsa_same_run,
-      human_gate_approved,
-    }: any) => {
+    async ({ repository_full_name, path, operation, human_gate_approved }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to authorize Drive mutation.')
-
-      const { data, error } = await auth.supabase
-        .from('user_drive_config')
-        .select('drive_root_folder_id')
-        .eq('user_id', auth.user.id)
-        .maybeSingle()
-
-      if (error || !data?.drive_root_folder_id) {
-        return {
-          structuredContent: {
-            allowed: false,
-            reason: 'Project Drive is not configured. Drive mutation is blocked.',
-            drive_root_folder_id: null,
-          },
-          content: [{ type: 'text', text: 'DENY: Project Drive is not configured.' }],
-        }
+      if (!auth) return authError('Authentication required to authorize memory mutation.')
+      const { data, error } = await readMemoryConfig(auth)
+      if (error || !data?.memory_repo_full_name) {
+        const result = { allowed: false, reason: 'Memory Repo is not configured.', configured_repo: null }
+        return { structuredContent: result, content: [{ type: 'text', text: 'DENY: Memory Repo is not configured.' }] }
       }
-
-      const rootId = data.drive_root_folder_id as string
-      const targetInside =
-        target_id === rootId || ancestryContainsRoot(target_ancestry, rootId)
-      const destinationInside =
-        destination_parent_id === rootId ||
-        ancestryContainsRoot(destination_ancestry, rootId)
-
-      let allowed = false
-      let reason = 'Mutation denied by Project Drive sandbox.'
-
-      if (operation === 'create') {
-        allowed = destinationInside
-        reason = allowed
-          ? 'Create parent is inside Project Drive.'
-          : 'Create parent is outside or not proven inside Project Drive.'
-      } else if (operation === 'update') {
-        allowed = targetInside
-        reason = allowed
-          ? 'Update target is inside Project Drive.'
-          : 'Update target is outside or not proven inside Project Drive.'
-      } else if (operation === 'move') {
-        allowed =
-          targetInside &&
-          destinationInside &&
-          target_id !== rootId
-        reason = allowed
-          ? 'Move source and destination are inside the same Project Drive boundary.'
-          : 'Cross-boundary move, Project Drive root move, or unproven ancestry is forbidden.'
-      } else if (operation === 'delete') {
-        allowed =
-          targetInside &&
-          target_id !== rootId &&
-          (created_by_gsa_same_run === true || human_gate_approved === true)
-        reason = allowed
-          ? 'Delete target is inside Project Drive and has required deletion authority.'
-          : 'Delete denied: target outside/unproven, Project Drive root, or lacks same-Run creation evidence / explicit Human Gate.'
+      const sameRepo = data.memory_repo_full_name.toLowerCase() === String(repository_full_name).toLowerCase()
+      const safePath = validMemoryPath(path)
+      let allowed = sameRepo && safePath
+      let reason = allowed ? 'Mutation is inside configured Memory Repo projects/ scope.' : 'Wrong repository or path outside projects/<project-id>/.'
+      if (operation === 'delete' && human_gate_approved !== true) {
+        allowed = false
+        reason = 'Delete requires explicit Human Gate approval.'
       }
-
-      return {
-        structuredContent: {
-          allowed,
-          reason,
-          drive_root_folder_id: rootId,
-        },
-        content: [{
-          type: 'text',
-          text: `${allowed ? 'ALLOW' : 'DENY'}: ${reason}`,
-        }],
-      }
-    },
-  )
-
-  server.registerTool(
-    'set_drive_config',
-    {
-      title: 'Set Project Drive configuration',
-      description:
-        'Store the current user\'s Google Drive Project root from a pasted Google Drive folder URL after write authority has been verified. Preferred verification is connected-Drive-profile plus target-folder permission metadata; a create/delete probe is fallback only. The server extracts and stores the canonical folder ID.',
-      inputSchema: {
-        drive_root_url: z.string().url(),
-        drive_root_name: z.string().min(1).optional(),
-        write_access_verified: z.literal(true).optional(),
-        write_probe_passed: z.literal(true).optional(),
-        verification_method: z.enum(['permission_metadata', 'create_delete_probe']).optional(),
-      },
-      outputSchema: {
-        saved: z.boolean(),
-        user_id: z.string(),
-        drive_root_folder_id: z.string(),
-        drive_root_url: z.string(),
-        drive_root_name: z.string().nullable(),
-      },
-      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    } as any,
-    async ({ drive_root_url, drive_root_name, write_access_verified, write_probe_passed, verification_method }: any) => {
-      const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to change Project Drive configuration.')
-
-      const verified = write_access_verified === true || write_probe_passed === true
-      if (!verified) {
-        return {
-          content: [{ type: 'text', text: 'Project Drive write authority must be verified before saving configuration. Prefer Drive profile + folder permission metadata; use create/delete probe only as fallback.' }],
-          isError: true,
-        }
-      }
-
-      if (verification_method === 'permission_metadata' && write_access_verified !== true) {
-        return {
-          content: [{ type: 'text', text: 'permission_metadata verification requires write_access_verified=true.' }],
-          isError: true,
-        }
-      }
-
-      if (verification_method === 'create_delete_probe' && write_probe_passed !== true) {
-        return {
-          content: [{ type: 'text', text: 'create_delete_probe verification requires write_probe_passed=true.' }],
-          isError: true,
-        }
-      }
-
-      const drive_root_folder_id = extractDriveFolderId(drive_root_url)
-      if (!drive_root_folder_id) {
-        return {
-          content: [{ type: 'text', text: 'A valid Google Drive folder URL is required.' }],
-          isError: true,
-        }
-      }
-
-      const canonicalUrl = `https://drive.google.com/drive/folders/${drive_root_folder_id}`
-
-      const payload = {
-        user_id: auth.user.id,
-        email: auth.user.email ?? '',
-        drive_root_folder_id,
-        drive_root_name: drive_root_name ?? null,
-        updated_at: new Date().toISOString(),
-      }
-
-      const { data, error } = await auth.supabase
-        .from('user_drive_config')
-        .upsert(payload, { onConflict: 'user_id' })
-        .select('user_id, drive_root_folder_id, drive_root_name')
-        .single()
-
-      if (error) {
-        return {
-          content: [{ type: 'text', text: `Failed to save Project Drive configuration: ${error.message}` }],
-          isError: true,
-        }
-      }
-
-      const result = {
-        saved: true,
-        user_id: data.user_id,
-        drive_root_folder_id: data.drive_root_folder_id,
-        drive_root_url: canonicalUrl,
-        drive_root_name: data.drive_root_name,
-      }
-
-      return {
-        structuredContent: result,
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      }
+      const result = { allowed, reason, configured_repo: data.memory_repo_full_name }
+      return { structuredContent: result, content: [{ type: 'text', text: (allowed ? 'ALLOW: ' : 'DENY: ') + reason }] }
     },
   )
 
@@ -609,9 +411,13 @@ function createServer(req: Request) {
     'project_list',
     {
       title: 'List GSA Projects',
-      description: 'Handler for PROJECT list / ls. Resolve the configured Project Drive and return the exact discovery workflow.',
+      description: 'Handler for PROJECT list / ls using the configured GitHub Memory Repo.',
       inputSchema: {},
-      outputSchema: { command: z.string(), drive_root_folder_id: z.string().nullable(), drive_root_url: z.string().nullable(), external_steps: z.array(z.string()) },
+      outputSchema: {
+        memory_repo_full_name: z.string().nullable(),
+        default_branch: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -619,20 +425,16 @@ function createServer(req: Request) {
     async () => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to list Projects.')
-      const { data, error } = await auth.supabase.from('user_drive_config').select('drive_root_folder_id').eq('user_id', auth.user.id).maybeSingle()
-      if (error) return { content: [{ type: 'text', text: 'Failed to resolve Project Drive: ' + error.message }], isError: true }
-      const rootId = data?.drive_root_folder_id ?? null
-      const rootUrl = rootId ? 'https://drive.google.com/drive/folders/' + rootId : null
+      const { data } = await readMemoryConfig(auth)
       const result = {
-        command: 'PROJECT list [ls]',
-        drive_root_folder_id: rootId,
-        drive_root_url: rootUrl,
-        external_steps: rootUrl ? [
-          'Google Drive: list_folder on drive_root_url, direct children only.',
-          'For each candidate folder, require exactly one PROJECT.md child; zero means not a Project and multiple means collision/conflict.',
-          'Read PROJECT.md; include ACTIVE and PAUSED. Hide ARCHIVED unless explicitly requested.',
-          'Return compact choices with Project name, lifecycle and handle. Never guess between duplicates.',
-        ] : ['Project Drive is not configured. Run SETTING -> Project Drive first.'],
+        memory_repo_full_name: data?.memory_repo_full_name ?? null,
+        default_branch: data?.default_branch ?? null,
+        external_steps: data?.memory_repo_full_name ? [
+          'GitHub: list/fetch directory projects/ in the configured Memory Repo at default_branch.',
+          'For each direct project-id directory, fetch projects/<project-id>/PROJECT.md.',
+          'Include ACTIVE and PAUSED. Hide ARCHIVED unless explicitly requested.',
+          'Return Project name, lifecycle and short handle. Never guess duplicate/ambiguous targets.',
+        ] : ['Memory Repo is not configured. Run SETTING -> Memory Repo first.'],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -642,12 +444,22 @@ function createServer(req: Request) {
     'project_create',
     {
       title: 'Create a GSA Project',
-      description: 'Handler for PROJECT create / new. Produce canonical Project identity, PROJECT.md and exact external connector steps.',
-      inputSchema: { name: z.string().min(1), repository_url: z.string().url(), purpose: z.string().optional() },
+      description: 'Handler for PROJECT create / new. Project Memory is a single PROJECT.md file under projects/<uuid>/ in the configured Memory Repo.',
+      inputSchema: {
+        name: z.string().min(1),
+        repository_url: z.string().url(),
+        purpose: z.string().optional(),
+      },
       outputSchema: {
-        command: z.string(), project_id: z.string(), handle: z.string(), project_name: z.string(), project_folder_name: z.string(),
-        lifecycle: z.string(), repository_url: z.string(), project_drive_root_id: z.string(), project_drive_root_url: z.string(),
-        project_manifest_text: z.string(), required_folders: z.array(z.string()), external_steps: z.array(z.string())
+        project_id: z.string(),
+        handle: z.string(),
+        project_name: z.string(),
+        lifecycle: z.string(),
+        source_repository_url: z.string(),
+        memory_repo_full_name: z.string(),
+        memory_path: z.string(),
+        project_manifest_text: z.string(),
+        external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -656,31 +468,41 @@ function createServer(req: Request) {
     async ({ name, repository_url, purpose }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to create a Project.')
-      const repoUrl = normalizeRepoUrl(repository_url)
-      if (!repoUrl) return { content: [{ type: 'text', text: 'A canonical GitHub repository URL is required.' }], isError: true }
-      const { data, error } = await auth.supabase.from('user_drive_config').select('drive_root_folder_id').eq('user_id', auth.user.id).maybeSingle()
-      if (error || !data?.drive_root_folder_id) return { content: [{ type: 'text', text: 'Project Drive is not configured. Configure SETTING -> Project Drive before creating a Project.' }], isError: true }
+      const source = normalizeGithubRepo(repository_url)
+      if (!source) return { content: [{ type: 'text', text: 'A canonical GitHub source repository URL is required.' }], isError: true }
+      const { data, error } = await readMemoryConfig(auth)
+      if (error || !data?.memory_repo_full_name) {
+        return { content: [{ type: 'text', text: 'Memory Repo is not configured. Configure SETTING -> Memory Repo first.' }], isError: true }
+      }
       const projectId = uuidv7()
-      const handle = projectHandle(projectId)
       const cleanName = safeProjectName(name)
       const now = new Date().toISOString()
-      const rootId = data.drive_root_folder_id as string
-      const rootUrl = 'https://drive.google.com/drive/folders/' + rootId
-      const manifest = buildProjectManifest({ projectId, name: cleanName, lifecycle: 'ACTIVE', repoUrl, purpose: purpose ?? null, createdAt: now, updatedAt: now })
+      const path = 'projects/' + projectId + '/PROJECT.md'
+      const manifest = buildProjectManifest({
+        projectId,
+        name: cleanName,
+        lifecycle: 'ACTIVE',
+        repoUrl: source.url,
+        purpose: purpose ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
       const result = {
-        command: 'PROJECT create [new]',
-        project_id: projectId, handle, project_name: cleanName, project_folder_name: cleanName, lifecycle: 'ACTIVE', repository_url: repoUrl,
-        project_drive_root_id: rootId, project_drive_root_url: rootUrl, project_manifest_text: manifest,
-        required_folders: ['WORK','WORK/jobs','WORK/runs','WORK/handoffs','WORK/gates','WORK/assets','WORK/releases','KNOWLEDGE','VERIFICATION'],
+        project_id: projectId,
+        handle: projectHandle(projectId),
+        project_name: cleanName,
+        lifecycle: 'ACTIVE',
+        source_repository_url: source.url,
+        memory_repo_full_name: data.memory_repo_full_name,
+        memory_path: path,
+        project_manifest_text: manifest,
         external_steps: [
-          'GitHub: resolve repository_url and verify the repository is accessible. Read only during Project creation.',
-          'Google Drive: list direct children of project_drive_root_url and refuse/ask if the intended Project folder target is ambiguous.',
-          'Call authorize_drive_mutation(operation=create, destination_parent_id=project_drive_root_id, destination_ancestry=[project_drive_root_id]); continue only on ALLOW.',
-          'Google Drive: create the Project folder directly under project_drive_root_url. Never use My Drive root.',
-          'Create every required_folders entry as descendants of the new Project folder only.',
-          'Create exactly one PROJECT.md inside the Project folder using an in-folder copy/upload/template route; write project_manifest_text into it.',
-          'Verify exactly one PROJECT.md exists and all required folders exist.',
-          'Read PROJECT.md back and verify project_id, repository_url and lifecycle=ACTIVE before reporting success.',
+          'GitHub source repo: verify repository_url is accessible. Read-only during Project creation.',
+          'Memory Repo: scan existing projects/*/PROJECT.md and reject duplicate OWNED claim for the same source repo.',
+          'Call authorize_memory_mutation(operation=create, repository_full_name=memory_repo_full_name, path=memory_path). Continue only on ALLOW.',
+          'GitHub Memory Repo: create_file at memory_path on configured default branch with project_manifest_text.',
+          'Fetch memory_path back and verify project_id, lifecycle=ACTIVE and source repo URL. Record returned blob SHA as current revision.',
+          'Do not create empty directory placeholders; Git paths materialize only when records exist.',
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -691,19 +513,42 @@ function createServer(req: Request) {
     'project_open',
     {
       title: 'Open a GSA Project',
-      description: 'Handler for PROJECT open / op. Validate an exact PROJECT.md already read from the selected Drive Project folder.',
-      inputSchema: { project_folder_url: z.string().url(), project_manifest_text: z.string().min(1) },
-      outputSchema: { command: z.string(), project_id: z.string(), handle: z.string(), name: z.string(), lifecycle: z.string(), repository_url: z.string(), project_folder_url: z.string(), openable: z.boolean(), warning: z.string().nullable() },
+      description: 'Validate an exact PROJECT.md fetched from the configured Memory Repo.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+      },
+      outputSchema: {
+        project_id: z.string(),
+        handle: z.string(),
+        name: z.string(),
+        lifecycle: z.string(),
+        source_repository_url: z.string(),
+        memory_path: z.string(),
+        project_manifest_sha: z.string(),
+        openable: z.boolean(),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_folder_url, project_manifest_text }: any) => {
+    async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to open a Project.')
+      if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
       const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract. Project open is blocked.' }], isError: true }
-      const result = { command: 'PROJECT open [op]', project_id: parsed.project_id, handle: projectHandle(parsed.project_id), name: parsed.name, lifecycle: parsed.lifecycle, repository_url: parsed.repo_url, project_folder_url, openable: parsed.lifecycle !== 'ARCHIVED', warning: parsed.lifecycle === 'ARCHIVED' ? 'Project is ARCHIVED.' : null }
+      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+      const result = {
+        project_id: parsed.project_id,
+        handle: projectHandle(parsed.project_id),
+        name: parsed.name,
+        lifecycle: parsed.lifecycle,
+        source_repository_url: parsed.repo_url,
+        memory_path,
+        project_manifest_sha,
+        openable: parsed.lifecycle !== 'ARCHIVED',
+      }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
@@ -712,120 +557,140 @@ function createServer(req: Request) {
     'project_status',
     {
       title: 'Show GSA Project status',
-      description: 'Handler for PROJECT status / st. Parse PROJECT.md and return lifecycle/source facts.',
-      inputSchema: { project_manifest_text: z.string().min(1) },
-      outputSchema: { command: z.string(), project_id: z.string(), handle: z.string(), name: z.string(), lifecycle: z.string(), repository_url: z.string(), phase_detail: z.string() },
+      description: 'Parse current PROJECT.md from Memory Repo.',
+      inputSchema: { project_manifest_text: z.string().min(1), project_manifest_sha: z.string().min(7) },
+      outputSchema: {
+        project_id: z.string(),
+        handle: z.string(),
+        name: z.string(),
+        lifecycle: z.string(),
+        source_repository_url: z.string(),
+        project_manifest_sha: z.string(),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_manifest_text }: any) => {
+    async ({ project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to show Project status.')
       const parsed = parseProjectManifest(project_manifest_text)
       if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
-      const result = { command: 'PROJECT status [st]', project_id: parsed.project_id, handle: projectHandle(parsed.project_id), name: parsed.name, lifecycle: parsed.lifecycle, repository_url: parsed.repo_url, phase_detail: 'M1B lifecycle status; Job/Run/CONTROL enrichment is added by later milestones.' }
+      const result = {
+        project_id: parsed.project_id,
+        handle: projectHandle(parsed.project_id),
+        name: parsed.name,
+        lifecycle: parsed.lifecycle,
+        source_repository_url: parsed.repo_url,
+        project_manifest_sha,
+      }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
 
-  server.registerTool(
-    'project_pause',
-    {
-      title: 'Pause a GSA Project',
-      description: 'Handler for PROJECT pause / pa. Return exact updated PROJECT.md text for in-place update by exact Drive document ID.',
-      inputSchema: { project_manifest_text: z.string().min(1) },
-      outputSchema: { command: z.string(), from: z.string(), to: z.string(), updated_manifest_text: z.string(), external_steps: z.array(z.string()) },
-      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    } as any,
-    async ({ project_manifest_text }: any) => {
-      const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to pause a Project.')
-      const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
-      if (parsed.lifecycle === 'ARCHIVED') return { content: [{ type: 'text', text: 'ARCHIVED Project cannot be paused.' }], isError: true }
-      const tr = transitionProjectManifest(project_manifest_text, 'PAUSED')!
-      const result = { command: 'PROJECT pause [pa]', from: parsed.lifecycle, to: 'PAUSED', updated_manifest_text: tr.next, external_steps: ['Update the existing PROJECT.md by exact Drive document ID; do not create a second PROJECT.md.','Read PROJECT.md back and verify lifecycle=PAUSED.','Block consequential Project work while PAUSED.'] }
-      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
-  )
+  const transitionTool = (
+    toolName: string,
+    title: string,
+    target: 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
+    allowedFrom: string[],
+  ) => {
+    server.registerTool(
+      toolName,
+      {
+        title,
+        description: 'Return exact PROJECT.md replacement and require GitHub update_file with the current blob SHA.',
+        inputSchema: {
+          memory_path: z.string().min(1),
+          project_manifest_text: z.string().min(1),
+          project_manifest_sha: z.string().min(7),
+        },
+        outputSchema: {
+          from: z.string(),
+          to: z.string(),
+          memory_path: z.string(),
+          expected_sha: z.string(),
+          updated_manifest_text: z.string(),
+          external_steps: z.array(z.string()),
+        },
+        securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+        _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      } as any,
+      async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
+        const auth = await authContext(req)
+        if (!auth) return authError('Authentication required to change Project lifecycle.')
+        if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
+        const parsed = parseProjectManifest(project_manifest_text)
+        if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+        if (!allowedFrom.includes(parsed.lifecycle)) {
+          return { content: [{ type: 'text', text: 'Lifecycle transition blocked from ' + parsed.lifecycle + ' to ' + target + '.' }], isError: true }
+        }
+        const tr = transitionProjectManifest(project_manifest_text, target)!
+        const result = {
+          from: parsed.lifecycle,
+          to: target,
+          memory_path,
+          expected_sha: project_manifest_sha,
+          updated_manifest_text: tr.next,
+          external_steps: [
+            'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
+            'GitHub Memory Repo: update_file at memory_path using expected_sha exactly. A stale SHA failure must cause refetch/reconcile, never force overwrite.',
+            'Fetch memory_path back and verify lifecycle=' + target + '.',
+          ],
+        }
+        return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+      },
+    )
+  }
 
-  server.registerTool(
-    'project_resume',
-    {
-      title: 'Resume a GSA Project',
-      description: 'Handler for PROJECT resume / rs. Resume only a PAUSED Project.',
-      inputSchema: { project_manifest_text: z.string().min(1) },
-      outputSchema: { command: z.string(), from: z.string(), to: z.string(), updated_manifest_text: z.string(), external_steps: z.array(z.string()) },
-      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    } as any,
-    async ({ project_manifest_text }: any) => {
-      const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to resume a Project.')
-      const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
-      if (parsed.lifecycle !== 'PAUSED') return { content: [{ type: 'text', text: 'Only PAUSED Projects can resume; current lifecycle=' + parsed.lifecycle + '.' }], isError: true }
-      const tr = transitionProjectManifest(project_manifest_text, 'ACTIVE')!
-      const result = { command: 'PROJECT resume [rs]', from: 'PAUSED', to: 'ACTIVE', updated_manifest_text: tr.next, external_steps: ['Update the existing PROJECT.md by exact Drive document ID.','Read PROJECT.md back and verify lifecycle=ACTIVE before consequential work.'] }
-      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
-  )
-
-  server.registerTool(
-    'project_archive',
-    {
-      title: 'Archive a GSA Project',
-      description: 'Handler for PROJECT archive / ar. Archive Project Memory without deleting or modifying source repository.',
-      inputSchema: { project_manifest_text: z.string().min(1) },
-      outputSchema: { command: z.string(), from: z.string(), to: z.string(), updated_manifest_text: z.string(), external_steps: z.array(z.string()) },
-      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
-      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    } as any,
-    async ({ project_manifest_text }: any) => {
-      const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to archive a Project.')
-      const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
-      const tr = transitionProjectManifest(project_manifest_text, 'ARCHIVED')!
-      const result = { command: 'PROJECT archive [ar]', from: parsed.lifecycle, to: 'ARCHIVED', updated_manifest_text: tr.next, external_steps: ['Update the existing PROJECT.md by exact Drive document ID.','Read PROJECT.md back and verify lifecycle=ARCHIVED.','Do not delete or alter GitHub source repository.','Default PROJECT list must hide this Project.'] }
-      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
-  )
+  transitionTool('project_pause', 'Pause a GSA Project', 'PAUSED', ['ACTIVE'])
+  transitionTool('project_resume', 'Resume a GSA Project', 'ACTIVE', ['PAUSED'])
+  transitionTool('project_archive', 'Archive a GSA Project', 'ARCHIVED', ['ACTIVE','PAUSED'])
 
   server.registerTool(
     'project_delete',
     {
       title: 'Delete GSA Project Memory',
-      description: 'Handler for PROJECT delete / rm. Never deletes source repository and requires explicit human confirmation.',
-      inputSchema: { project_folder_id: z.string().min(1), project_manifest_text: z.string().min(1), project_root_ancestry: z.array(z.string().min(1)), confirmed: z.boolean() },
-      outputSchema: { command: z.string(), allowed: z.boolean(), project_id: z.string().nullable(), reason: z.string(), external_steps: z.array(z.string()) },
+      description: 'Delete all files under one projects/<project-id>/ prefix after explicit Human Gate. Source repo is never deleted.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        confirmed: z.boolean(),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        project_prefix: z.string(),
+        reason: z.string(),
+        external_steps: z.array(z.string()),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_folder_id, project_manifest_text, project_root_ancestry, confirmed }: any) => {
+    async ({ project_id, confirmed }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to delete Project Memory.')
-      const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
-      if (confirmed !== true) {
-        const result = { command: 'PROJECT delete [rm]', allowed: false, project_id: parsed.project_id, reason: 'Explicit human confirmation is required. This deletes Project Memory only; the GitHub repository is never deleted.', external_steps: ['Show exact Project name, Project ID, Drive folder ID and source repository URL; ask the human to confirm deletion.'] }
+      const prefix = 'projects/' + project_id + '/'
+      if (!confirmed) {
+        const result = {
+          allowed: false,
+          project_prefix: prefix,
+          reason: 'Explicit human confirmation is required. Source repository will not be deleted.',
+          external_steps: ['Show exact Project identity and source repository, then ask for explicit confirmation.'],
+        }
         return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
       }
-      const { data } = await auth.supabase.from('user_drive_config').select('drive_root_folder_id').eq('user_id', auth.user.id).maybeSingle()
-      const rootId = data?.drive_root_folder_id ?? null
-      const inside = Boolean(rootId && ancestryContainsRoot(project_root_ancestry, rootId))
       const result = {
-        command: 'PROJECT delete [rm]',
-        allowed: inside,
-        project_id: parsed.project_id,
-        reason: inside ? 'Human confirmed and Project folder ancestry is inside configured Project Drive. Source repository remains untouched.' : 'Delete blocked because Project folder ancestry is not proven inside configured Project Drive.',
-        external_steps: inside ? ['Call authorize_drive_mutation for exact project_folder_id with human_gate_approved=true.','Proceed only on ALLOW.','Google Drive: delete exactly project_folder_id, never by name.','Verify Project folder no longer exists.','Do not mutate GitHub source.'] : [],
+        allowed: true,
+        project_prefix: prefix,
+        reason: 'Human confirmed Project Memory deletion only.',
+        external_steps: [
+          'GitHub Memory Repo: enumerate every file under project_prefix.',
+          'For each file, call authorize_memory_mutation(operation=delete, repository_full_name=configured Memory Repo, path=file path, human_gate_approved=true).',
+          'Fetch current blob SHA immediately before each delete_file call.',
+          'Delete each exact file path with its current SHA. Never delete outside project_prefix.',
+          'Verify no files remain under project_prefix.',
+          'Do not mutate or delete the source repository.',
+        ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -835,9 +700,23 @@ function createServer(req: Request) {
     'start_direct_agent',
     {
       title: 'Start a Direct Agent',
-      description: 'Handler for DIRECT AGENT shortcuts pl/ds/cd/rv/ts. Returns the role contract for ephemeral direct work.',
-      inputSchema: { role: z.enum(['planner','designer','coder','reviewer','tester']), objective: z.string().optional(), target_url: z.string().url().optional() },
-      outputSchema: { role: z.string(), mode: z.string(), ephemeral: z.boolean(), purpose: z.string(), source_write: z.boolean(), expected_output: z.string(), objective: z.string().nullable(), target_url: z.string().nullable(), rules: z.array(z.string()) },
+      description: 'Handler for pl/ds/cd/rv/ts. Direct work is ephemeral by default.',
+      inputSchema: {
+        role: z.enum(['planner','designer','coder','reviewer','tester']),
+        objective: z.string().optional(),
+        target_url: z.string().url().optional(),
+      },
+      outputSchema: {
+        role: z.string(),
+        mode: z.string(),
+        ephemeral: z.boolean(),
+        purpose: z.string(),
+        source_write: z.boolean(),
+        expected_output: z.string(),
+        objective: z.string().nullable(),
+        target_url: z.string().nullable(),
+        rules: z.array(z.string()),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -854,8 +733,14 @@ function createServer(req: Request) {
       }
       const contract = contracts[role]
       const result = {
-        role, mode: 'DIRECT_AGENT', ephemeral: true, purpose: contract.purpose, source_write: contract.source_write, expected_output: contract.output,
-        objective: objective ?? null, target_url: target_url ?? null,
+        role,
+        mode: 'DIRECT_AGENT',
+        ephemeral: true,
+        purpose: contract.purpose,
+        source_write: contract.source_write,
+        expected_output: contract.output,
+        objective: objective ?? null,
+        target_url: target_url ?? null,
         rules: [
           'Direct work is ephemeral by default.',
           'If target belongs to an existing owning Project, Project governance wins.',
@@ -871,7 +756,7 @@ function createServer(req: Request) {
     'get_instruction',
     {
       title: 'Show GSA usage instructions',
-      description: 'Handler for HELP instruction / guide. Return concise authoritative usage guidance.',
+      description: 'Handler for guide.',
       inputSchema: {},
       outputSchema: { instruction_text: z.string() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -883,13 +768,12 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to read GSA instructions.')
       const instructionText = [
         'GSA usage',
-        '1. Configure SETTING -> Project Drive once.',
-        '2. PROJECT create [new] creates durable Project Memory in that Drive root and binds a GitHub repository.',
-        '3. PROJECT open [op] selects exact Project context; ambiguous names must show choices.',
-        '4. DIRECT AGENT is ephemeral by default; promote explicitly if durable governance is needed.',
-        '5. Paste Google Drive or GitHub URLs directly; @mentions are optional.',
-        '6. GSA never mutates Google Drive outside the configured Project Drive sandbox.',
-        '7. Merge/release and destructive actions require applicable explicit human authorization.',
+        '1. Configure SETTING -> Memory Repo once using a private GitHub repository.',
+        '2. Project Memory is stored only under projects/<project-id>/ in that repo.',
+        '3. PROJECT create [new] binds a separate GitHub source repository to durable Project Memory.',
+        '4. Paste GitHub URLs directly; @GitHub is optional.',
+        '5. Updates use blob SHA optimistic concurrency; stale writes must refetch/reconcile.',
+        '6. Supabase stores user configuration only, never Project/Job/Run memory.',
       ].join('\n')
       return { structuredContent: { instruction_text: instructionText }, content: [{ type: 'text', text: instructionText }] }
     },
@@ -899,7 +783,7 @@ function createServer(req: Request) {
     'get_command_help',
     {
       title: 'Show GSA command help',
-      description: 'Handler for HELP command help / help. Show canonical commands and aliases.',
+      description: 'Handler for help.',
       inputSchema: { command: z.string().optional() },
       outputSchema: { help_text: z.string() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -909,9 +793,14 @@ function createServer(req: Request) {
     async ({ command }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to read command help.')
-      const helpText = command ?
-        'Command help requested for: ' + command + '. Use canonical aliases exactly; show choices rather than guessing ambiguous targets.' :
-        ['PROJECT: list[ls], open[op], create[new], status[st], pause[pa], resume[rs], archive[ar], delete[rm]','DIRECT AGENT: planner[pl], designer[ds], coder[cd], reviewer[rv], tester[ts]','SETTING: GSA Account[acct], Project Drive[drive]','HELP: instruction[guide], command help[help]'].join('\n')
+      const helpText = command
+        ? 'Command help requested for: ' + command + '. Use canonical aliases exactly.'
+        : [
+            'PROJECT: list[ls], open[op], create[new], status[st], pause[pa], resume[rs], archive[ar], delete[rm]',
+            'DIRECT AGENT: planner[pl], designer[ds], coder[cd], reviewer[rv], tester[ts]',
+            'SETTING: GSA Account[acct], Memory Repo[repo]',
+            'HELP: instruction[guide], command help[help]',
+          ].join('\n')
       return { structuredContent: { help_text: helpText }, content: [{ type: 'text', text: helpText }] }
     },
   )
@@ -929,7 +818,7 @@ app.get('/selftest', (c) => {
     projectId,
     name: 'Selftest Project',
     lifecycle: 'ACTIVE',
-    repoUrl: 'https://github.com/example/example',
+    repoUrl: 'https://github.com/example/source',
     purpose: 'selftest',
     createdAt: now,
     updatedAt: now,
@@ -937,59 +826,42 @@ app.get('/selftest', (c) => {
   const parsed = parseProjectManifest(manifest)
   const paused = transitionProjectManifest(manifest, 'PAUSED')
   const resumed = paused ? transitionProjectManifest(paused.next, 'ACTIVE') : null
-
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
     pause_transition: Boolean(paused && parseProjectManifest(paused.next)?.lifecycle === 'PAUSED'),
     resume_transition: Boolean(resumed && parseProjectManifest(resumed.next)?.lifecycle === 'ACTIVE'),
-    repo_normalization: normalizeRepoUrl('https://github.com/example/example.git') === 'https://github.com/example/example',
-    invalid_repo_rejected: normalizeRepoUrl('https://example.com/not-github') === null,
+    memory_path_accept: validMemoryPath('projects/' + projectId + '/PROJECT.md'),
+    memory_path_reject: !validMemoryPath('README.md') && !validMemoryPath('../projects/' + projectId + '/PROJECT.md'),
+    repo_normalization: normalizeGithubRepo('https://github.com/example/memory.git')?.full_name === 'example/memory',
   }
   const pass = Object.values(checks).every(Boolean)
   return c.json({ pass, checks })
 })
 
 app.get('/health', (c) =>
-  c.json({
-    ok: true,
-    service: 'gpt-super-agent',
-    phase: 'M1A',
-    oauth_private_tools: true,
-  }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M1B_MEMORY_REPO_CUTOVER', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
-  c.json({
-    resource: MCP_RESOURCE,
-    authorization_servers: [AUTH_ISSUER],
-    scopes_supported: AUTH_SCOPES,
-  }),
+  c.json({ resource: MCP_RESOURCE, authorization_servers: [AUTH_ISSUER], scopes_supported: AUTH_SCOPES }),
 )
 
 app.all('/mcp', async (c) => {
   const authHeader = c.req.raw.headers.get('Authorization') ?? ''
-
   if (!authHeader.startsWith('Bearer ')) {
     return new Response(
-      JSON.stringify({
-        error: 'unauthorized',
-        error_description: 'Connect your GPT Super Agent account to continue.',
-      }),
+      JSON.stringify({ error: 'unauthorized', error_description: 'Connect your GPT Super Agent account to continue.' }),
       {
         status: 401,
         headers: {
           'Content-Type': 'application/json',
-          'WWW-Authenticate': challenge(
-            'invalid_token',
-            'Connect your GPT Super Agent account to continue',
-          ),
+          'WWW-Authenticate': challenge('invalid_token', 'Connect your GPT Super Agent account to continue'),
           'Cache-Control': 'no-store',
         },
       },
     )
   }
-
   const transport = new WebStandardStreamableHTTPServerTransport()
   const server = createServer(c.req.raw)
   await server.connect(transport)
