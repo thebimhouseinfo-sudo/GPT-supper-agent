@@ -57,7 +57,7 @@ MCP endpoint:
 Protected-resource metadata:
 `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/oauth-protected-resource`
 
-Authorization UI source:
+Authorization UI source of truth:
 `auth-ui/`
 
 Supabase Edge Functions cannot serve HTML; the former `gsa-auth` Edge Function is intentionally deprecated. The static frontend must be deployed on a real frontend host such as Vercel.
@@ -66,7 +66,7 @@ Supabase OAuth issuer:
 `https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1`
 
 Observed:
-- both Edge Functions deployed ACTIVE;
+- `gsa-mcp` deployed ACTIVE; the former `gsa-auth` Edge Function is intentionally deprecated because Edge Functions cannot serve HTML;
 - MCP server declares one anonymous bootstrap tool;
 - MCP server declares OAuth-protected `get_profile`, `get_drive_config`, `set_drive_config`;
 - protected-resource metadata is implemented;
@@ -153,7 +153,7 @@ These settings cannot be changed by the currently exposed Supabase/ChatGPT conne
 1. ChatGPT initializes the MCP endpoint and discovers all four tools.
 2. Anonymous `get_runtime_status` call succeeds.
 3. First protected-tool call launches the OAuth linking UI.
-4. Google sign-in returns to `gsa-auth`.
+4. Google sign-in returns to the deployed `auth-ui` frontend.
 5. Consent approval returns control to ChatGPT.
 6. `get_profile` returns the authenticated Supabase `auth.uid()` and verified email.
 7. `get_drive_config` is empty before setup.
