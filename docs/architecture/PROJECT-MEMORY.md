@@ -222,11 +222,18 @@ Correctness does not depend on atomic conditional update.
 
 ## 13. Concurrency model
 
-Default:
+Normal status path:
 
 ```text
-append unique Run/Verification records
-+ read-time join
+fresh CONTROL
+→ compact current view
+```
+
+Durable fallback / reconciliation path:
+
+```text
+append unique Run/Verification/Handoff-consumption records
++ read-time reconstruction
 + minimal shared mutable Job/Project records
 + consequential-action recheck
 ```
@@ -301,7 +308,7 @@ Rules:
 
 ## 22. Abandoned Runs
 
-A Run left `IN_PROGRESS` without a terminal record after its chat/execution context is gone is displayed as `STALE`, a derived condition.
+A Run left `IN_PROGRESS` without a terminal record after its chat/execution context is gone is displayed as `ABANDONED`, a derived condition.
 
 Do not auto-complete or silently retry it.
 
