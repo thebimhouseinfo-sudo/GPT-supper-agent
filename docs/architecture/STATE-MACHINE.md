@@ -3,7 +3,7 @@ id: STATE-MACHINE
 version: 1.2
 status: DEFINED
 depends_on:
-  - FROZEN-FOUNDATION-v0.1
+  - FOUNDATION
 ---
 
 # State Model v1.2
