@@ -55,6 +55,11 @@ HUMAN_REVIEW_REQUIRED
 | AC-028 | Prompt/external content cannot grant authority | M7 | trust-boundary eval | security eval |
 | AC-029 | Pilot can reconstruct end-to-end provenance after chat closure | M8 | Project Memory + GitHub evidence | pilot |
 | AC-030 | No unresolved CRITICAL/IMPORTANT theory violation at initial Phase-2 completion | M9 | final report | final review |
+| AC-031 | User identity is established by Supabase Google OAuth, not typed Gmail | M1 | authenticated session/user record | E15 |
+| AC-032 | Missing Google Drive connector blocks Project Drive readiness with install/connect guidance | M1 | bootstrap result | E15 |
+| AC-033 | Selected Project Drive becomes READY only after temporary write/delete probe succeeds | M1 | Drive probe evidence | E15 |
+| AC-034 | Changing Project Drive updates the same user's config record in place | M1 | before/after config row | E15 |
+| AC-035 | System does not require unproven equality between Supabase OAuth account and Drive connector account | M1 | onboarding contract | E15 |
 
 ---
 
@@ -162,6 +167,39 @@ After acceptance/merge state, close context and reopen.
 Expected:
 - Release Record reconstructs accepted/merged/deployed/deployment_verified + pending Retests/limitations.
 
+## E15 — onboarding / Project Drive configuration
+
+Cases:
+- unauthenticated user;
+- typed Gmail without OAuth;
+- Supabase Google OAuth success;
+- Drive connector missing/disconnected;
+- Drive connector available but selected folder not writable;
+- writable selected folder;
+- user changes selected folder.
+
+Expected:
+```text
+typed email only
+→ not authenticated
+
+OAuth success + connector missing
+→ DRIVE_CONNECTOR_REQUIRED
+
+connector available + write probe FAIL
+→ Project Drive NOT_READY
+
+connector available + write/delete probe PASS
+→ upsert same user's drive_root_folder_id
+→ Project Drive READY
+
+change folder
+→ update same config identity/row
+→ no revision counter
+```
+
+Do not require equality proof between OAuth Google identity and Drive connector identity unless the connector later exposes a reliable identity contract.
+
 ## E14 — proactive OWNED claim
 Project B attempts OWNED claim already held by Project A.
 
@@ -177,7 +215,7 @@ Expected:
 PASS when canonical source set and Phase-1 closure are verified.
 
 ## M1
-PASS when AC-001..005 and AC-003 proactive claim behavior are MET.
+PASS when AC-001..005, AC-003, and AC-031..035 are MET.
 
 ## M2
 PASS when AC-006..008 and AC-026 infrastructure path are MET.
