@@ -199,11 +199,12 @@ Observed on 2026-09-24:
 Supabase project health                  OBSERVED / ACTIVE_HEALTHY
 user_drive_config table creation         OBSERVED
 RLS enabled on user_drive_config         OBSERVED
-M1A Edge Function deployment             OBSERVED / ACTIVE
+M1A gsa-mcp Edge Function deployment     OBSERVED / ACTIVE v3
+M1A gsa-auth consent UI deployment        OBSERVED / ACTIVE v1
 MCP protocol call through deployed URL   UNKNOWN
 ChatGPT Developer Mode connection        UNKNOWN
-Supabase OAuth 2.1 server enablement      UNKNOWN
-Google OAuth user session                 UNKNOWN
+Supabase OAuth 2.1 server enablement      UNKNOWN / UI GATE
+Google provider/user OAuth session        UNKNOWN / UI GATE
 per-user RLS CRUD under auth.uid()        TO_PROVE
 ```
 
