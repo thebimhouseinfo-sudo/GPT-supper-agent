@@ -30,15 +30,15 @@ function page() {
 <body>
 <main>
   <h1>GPT Super Agent</h1>
-  <p class="muted">Connect your account and approve ChatGPT access to your GSA configuration.</p>
+  <p class="muted">Sign in once with Google so GPT Super Agent can identify your account and remember your Project Drive setting.</p>
 
-  <div id="status" class="box">Checking authorization request…</div>
+  <div id="status" class="box">Checking GPT Super Agent sign-in…</div>
   <div id="details" class="box" hidden></div>
   <div id="error" hidden></div>
 
   <button id="login" class="primary" hidden>Continue with Google</button>
-  <button id="approve" class="primary" hidden>Allow access</button>
-  <button id="deny" class="secondary" hidden>Deny</button>
+  <button id="approve" class="primary" hidden>Continue to GPT Super Agent</button>
+  <button id="deny" class="secondary" hidden>Cancel</button>
 </main>
 
 <script type="module">
