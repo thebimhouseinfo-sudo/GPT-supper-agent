@@ -375,3 +375,43 @@ Important implementation boundary:
 the Google Drive connector is a separate ChatGPT app, so GSA cannot change Google's own connector permissions. The hard boundary is enforced by GSA orchestration: any GSA-initiated Drive mutation must pass the guard before the connector is invoked.
 
 The setup flow now prefers permission metadata and therefore normally performs no destructive probe at all.
+
+
+### Project command backend implementation
+
+GSA MCP v19 now exposes concrete handlers for every currently visible menu command family.
+
+PROJECT:
+- `project_list`
+- `project_create`
+- `project_open`
+- `project_status`
+- `project_pause`
+- `project_resume`
+- `project_archive`
+- `project_delete`
+
+DIRECT AGENT:
+- `start_direct_agent(role)`
+
+SETTING:
+- `get_profile`
+- `get_drive_config`
+- `set_drive_config`
+
+HELP:
+- `get_instruction`
+- `get_command_help`
+
+The Project handlers are thin orchestration handlers: they generate/validate deterministic Project contracts while Google Drive and GitHub connectors perform the actual external reads/writes.
+
+Real-repo acceptance was exercised against `thebimhouseinfo-sudo/KE-Math-Grade1` without source modification.
+
+Observed:
+- real repository accessible;
+- Project folder tree created inside the granted Project Drive boundary;
+- exactly one PROJECT.md created and read back;
+- lifecycle ACTIVE → PAUSED → ACTIVE verified;
+- runtime pure self-test passed all checks.
+
+See `evals/E1-project-lifecycle.md` and `evals/M1B-real-repo-acceptance.md`.
