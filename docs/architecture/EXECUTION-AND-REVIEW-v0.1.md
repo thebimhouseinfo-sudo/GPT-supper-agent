@@ -1,4 +1,4 @@
-# Execution and Review Model v1.2
+# Execution and Review Model
 
 ## 1. Work hierarchy
 
@@ -27,7 +27,7 @@ Normal work is topology-driven; not every Task/PR/milestone/Job receives Reviewe
 
 ## 4. Mandatory review floor
 
-Independent fresh-chat review is mandatory for mechanically sensitive changes:
+Context-isolated fresh-chat review is mandatory for mechanically sensitive changes:
 - shared contracts/interfaces/schema;
 - persisted-data migrations/formats;
 - auth/permission/security-sensitive logic;
@@ -77,7 +77,7 @@ Before handoff/PR-ready:
 - identify out-of-scope changes;
 - fix/escalate applicable gaps.
 
-Self recheck is not independent proof.
+Self recheck is not context-isolated proof.
 
 ## 8. Capability-backed evidence
 
@@ -112,7 +112,7 @@ Post-completion Retest FAIL creates linked remediation Job.
 
 Before requesting merge authorization, generate Review Coverage Summary:
 ```text
-Independent review
+Context-isolated review
 CI/checks
 Tester
 Retest
@@ -124,6 +124,13 @@ Target revision
 ```
 
 Human then explicitly authorizes merge.
+
+Immediately before merge:
+1. re-read the PR/change-set head revision;
+2. require it to equal the exact revision covered by the accepted review/evidence and the human authorization;
+3. if head changed, invalidate merge authorization for that revision and re-run the required review/coverage path.
+
+Never merge a newer head under authorization granted for an older revision.
 
 ## 12. PR / Change Set
 
