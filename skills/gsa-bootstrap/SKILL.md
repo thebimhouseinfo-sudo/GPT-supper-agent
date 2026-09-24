@@ -108,3 +108,19 @@ command [shortcut] — short description
 ```
 
 Treat the shortcut exactly as its canonical subcommand. Do not invent extra aliases.
+
+
+## Root menu rendering
+
+For `gsa/`, call `get_cli_root` and return its `menu_text` verbatim as the entire answer.
+
+Do not:
+- translate;
+- localize;
+- paraphrase;
+- summarize;
+- compress commands onto one line;
+- replace square brackets with parentheses;
+- add an intro or outro.
+
+The root menu text returned by the MCP tool is the authoritative user-facing representation.
