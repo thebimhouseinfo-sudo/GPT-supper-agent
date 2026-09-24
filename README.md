@@ -6,7 +6,9 @@ GPT Super Agent is a ChatGPT orchestration/harness design for durable project wo
 
 ```text
 PHASE 1 = GOVERNED BASELINE
-PHASE 2 = READY FOR M0 / NOT STARTED
+M0      = PASS
+PHASE 2 = STARTED
+CURRENT = M1A BOOTSTRAP SPIKE / IN PROGRESS
 ```
 
 Git history records review/amendment history; README does not duplicate peer-review chronology.
