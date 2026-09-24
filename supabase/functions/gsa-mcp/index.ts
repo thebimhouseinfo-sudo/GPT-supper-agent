@@ -225,7 +225,7 @@ function createServer(req: Request) {
         drive_root_folder_id: z.string().nullable(),
         drive_root_url: z.string().nullable(),
         drive_root_name: z.string().nullable(),
-        email: z.string().nullable(),
+        gsa_account_email: z.string().nullable(),
         mutation_scope: z.string(),
         mutation_policy: z.array(z.string()),
       },
@@ -263,7 +263,7 @@ function createServer(req: Request) {
           ? `https://drive.google.com/drive/folders/${driveRootId}`
           : null,
         drive_root_name: data?.drive_root_name ?? null,
-        email: data?.email ?? auth.user.email ?? null,
+        gsa_account_email: data?.email ?? auth.user.email ?? null,
         mutation_scope: configured
           ? 'PROJECT_DRIVE_ROOT_AND_PROVEN_DESCENDANTS_ONLY'
           : 'NO_DRIVE_MUTATION_UNTIL_PROJECT_DRIVE_CONFIGURED',
