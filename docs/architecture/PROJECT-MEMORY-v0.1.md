@@ -1,4 +1,4 @@
-# Project Memory Model v1.2
+# Project Memory Model v1.3
 
 ## 1. Purpose
 
@@ -8,7 +8,26 @@ It stores enough durable state to reopen work without chat history while avoidin
 
 GitHub remains source-code truth.
 
-## 2. Minimal logical layout
+## 2. Root resolution
+
+Project Memory begins only after the current user's logical `SUPER_AGENT_DRIVE_ROOT` has been resolved from per-user runtime configuration.
+
+Initial implementation stores that mapping in Supabase. The Supabase row is not part of Project Memory.
+
+```text
+user config
+→ drive_root_folder_id
+→ SUPER_AGENT_DRIVE_ROOT
+→ Project discovery
+```
+
+The current Drive folder ID must not be reconstructed from chat history or GitHub source.
+
+Changing root updates the stable user's config record in place; no config revision counter is required.
+
+See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
+
+## 3. Minimal logical layout
 
 ```text
 <Project>/
@@ -23,7 +42,7 @@ GitHub remains source-code truth.
 
 Physical folders may be created lazily.
 
-## 3. PROJECT.md
+## 4. PROJECT.md
 
 PROJECT.md is:
 - Project marker;
@@ -32,7 +51,7 @@ PROJECT.md is:
 
 Structured identity/ownership fields must not exist only as prose.
 
-## 4. Repository claims
+## 5. Repository claims
 
 Each repo relationship is structured.
 
@@ -53,7 +72,7 @@ detected
 → human resolves
 ```
 
-## 5. Job record — planning/control record, not Run write-back target
+## 6. Job record — planning/control record, not Run write-back target
 
 The Job record is intentionally **not** a completion write-back sink for every Run.
 
@@ -83,7 +102,7 @@ Tasks/topology are rewritten only through an explicit Planner/control action, no
 
 This is the read-time join model.
 
-## 6. Derived Job view
+## 7. Derived Job view
 
 Current Job view may be derived from:
 - stable Job planning record;
@@ -100,7 +119,7 @@ Therefore:
 - asset refs are not authoritative Job fields;
 - ordinary Task completion/progress is derived from execution/verification records rather than parallel Run write-back.
 
-## 7. Run records
+## 8. Run records
 
 Runs are separate unique append-preserving records.
 
@@ -120,7 +139,7 @@ A Run includes:
 
 Executed Run records are not normally overwritten/deleted.
 
-## 8. Handoff representation
+## 9. Handoff representation
 
 Handoff is a compact durable transition contract.
 
@@ -134,7 +153,7 @@ Preserve:
 
 Consumed history remains traceable.
 
-## 9. Verification storage
+## 10. Verification storage
 
 Review, Evidence, Test, Retest and Goal Recheck remain semantically distinct but may share one verification record family:
 
@@ -146,7 +165,7 @@ Findings remain embedded in Review.
 
 Records carry job_id/task_id back-references for read-time joins.
 
-## 10. KNOWLEDGE
+## 11. KNOWLEDGE
 
 KNOWLEDGE stores durable semantic truth:
 - architecture;
@@ -167,7 +186,7 @@ Knowledge artifacts use compact structured front matter/record metadata so causa
 
 The body may remain Markdown/human-readable.
 
-## 11. CONTROL.json
+## 12. CONTROL.json
 
 CONTROL.json is optional/rebuildable materialized view.
 
@@ -183,7 +202,7 @@ No unique durable fact may exist only in CONTROL.
 
 Correctness does not depend on atomic conditional update.
 
-## 12. Concurrency model
+## 13. Concurrency model
 
 Default:
 
@@ -196,7 +215,7 @@ append unique Run/Verification records
 
 Drive conditional writes are not assumed.
 
-## 13. Cross-chat consistency
+## 14. Cross-chat consistency
 
 Consistency is eventual.
 
@@ -206,19 +225,19 @@ Before source write, handoff consumption, destructive action, merge/deploy or ma
 - detect conflict;
 - block/reconcile when necessary.
 
-## 14. Retest
+## 15. Retest
 
 Pending Retests remain visible even when originating Job is COMPLETED.
 
 Later Retest FAIL after completion creates linked remediation Job.
 
-## 15. Assets
+## 16. Assets
 
 Asset Requirement is separately addressable when durable, carries job_id/task_id, and is joined at read time rather than appended into Job file.
 
 Final binaries normally live in Project-owned source.
 
-## 16. Persistence exclusions
+## 17. Persistence exclusions
 
 Do not persist by default:
 - raw chats;
@@ -228,23 +247,25 @@ Do not persist by default:
 - redundant source copies;
 - ephemeral Direct Agent work before promotion.
 
-## 17. No global registry
+## 18. No global registry
 
-Project discovery remains configured Drive root + Project folders.
+Project discovery remains resolved per-user Drive root + Project folders.
+
+The Supabase per-user settings table is configuration storage, not a global Project registry.
 
 Cross-Project status/handoff discovery may use shallow Project CONTROL caches; stale/missing cache falls back to the durable Project records.
 
-## 18. Job deletion
+## 19. Job deletion
 
 No initial tombstone machinery.
 
 Before hard delete, show surviving references/consequences and obtain explicit user decision.
 
-## 19. Cross-Project references
+## 20. Cross-Project references
 
 Cross-Project refs are provenance references, not database-like strong foreign keys.
 
-## 20. Direct Agent promotion
+## 21. Direct Agent promotion
 
 Promotion creates new Project/Job state from a compact packet:
 - objective;
