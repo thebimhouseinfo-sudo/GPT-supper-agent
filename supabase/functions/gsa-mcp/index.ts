@@ -18,6 +18,21 @@ function challenge(error = 'invalid_token', description = 'Sign in to GPT Super 
   return `Bearer resource_metadata="${RESOURCE_METADATA}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
 }
 
+function extractDriveFolderId(input: string) {
+  try {
+    const url = new URL(input)
+    if (url.hostname !== 'drive.google.com') return null
+
+    const folderMatch = url.pathname.match(/\/folders\/([A-Za-z0-9_-]+)/)
+    if (folderMatch?.[1]) return folderMatch[1]
+
+    const id = url.searchParams.get('id')
+    return id && /^[A-Za-z0-9_-]+$/.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
 function authError(description: string) {
   return {
     content: [{ type: 'text' as const, text: description }],
@@ -78,11 +93,17 @@ function createServer(req: Request) {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
 
+      const { data } = await auth.supabase
+        .from('user_drive_config')
+        .select('drive_root_folder_id')
+        .eq('user_id', auth.user.id)
+        .maybeSingle()
+
       const status = {
         phase: 'M1A_BOOTSTRAP_SPIKE',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
-        project_drive: 'RESOLVED_PER_USER_AFTER_CONFIGURATION',
+        project_drive: data?.drive_root_folder_id ? 'CONFIGURED' : 'NOT_CONFIGURED',
       }
       return {
         structuredContent: status,
@@ -181,9 +202,9 @@ function createServer(req: Request) {
     {
       title: 'Set Project Drive configuration',
       description:
-        'Store the current user\'s Google Drive Project root after the ChatGPT Google Drive connector has successfully completed a temporary write/delete probe in that folder. Replaces the folder value in the same stable user record.',
+        'Store the current user\'s Google Drive Project root from a pasted Google Drive folder URL after the connected Google Drive app has successfully completed a temporary write/delete probe. The server extracts and stores the canonical folder ID.',
       inputSchema: {
-        drive_root_folder_id: z.string().min(1),
+        drive_root_url: z.string().url(),
         drive_root_name: z.string().min(1).optional(),
         write_probe_passed: z.literal(true),
       },
@@ -191,9 +212,11 @@ function createServer(req: Request) {
         saved: z.boolean(),
         user_id: z.string(),
         drive_root_folder_id: z.string(),
+        drive_root_url: z.string(),
         drive_root_name: z.string().nullable(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -201,7 +224,7 @@ function createServer(req: Request) {
         openWorldHint: false,
       },
     } as any,
-    async ({ drive_root_folder_id, drive_root_name, write_probe_passed }: any) => {
+    async ({ drive_root_url, drive_root_name, write_probe_passed }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to change Project Drive configuration.')
       if (write_probe_passed !== true) {
@@ -210,6 +233,16 @@ function createServer(req: Request) {
           isError: true,
         }
       }
+
+      const drive_root_folder_id = extractDriveFolderId(drive_root_url)
+      if (!drive_root_folder_id) {
+        return {
+          content: [{ type: 'text', text: 'A valid Google Drive folder URL is required.' }],
+          isError: true,
+        }
+      }
+
+      const canonicalUrl = `https://drive.google.com/drive/folders/${drive_root_folder_id}`
 
       const payload = {
         user_id: auth.user.id,
@@ -236,6 +269,7 @@ function createServer(req: Request) {
         saved: true,
         user_id: data.user_id,
         drive_root_folder_id: data.drive_root_folder_id,
+        drive_root_url: canonicalUrl,
         drive_root_name: data.drive_root_name,
       }
 
