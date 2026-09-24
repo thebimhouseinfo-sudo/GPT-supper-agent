@@ -14,34 +14,39 @@ Product/system invariants only.
 
 ```text
 Conversation = UI, not durable memory
-Google Drive = durable Project memory/control plane
-GitHub = source-code truth
+Supabase = per-user runtime configuration only
+GitHub Memory Repo = durable Project memory/control plane
+GitHub source repositories = source-code truth
 Harness / skills / loops = workflow and quality logic
 ```
 
 GPTWorker remains separate offline/local tooling.
 
-## F2. Configured Drive root
+## F2. Configured Memory Repo
 
-One logical `SUPER_AGENT_DRIVE_ROOT` is resolved from per-user runtime configuration.
+One private GitHub repository is resolved from per-user runtime configuration.
 
-Initial implementation stores the user's Google Drive root mapping in Supabase:
+Initial implementation stores:
 
 ```text
-stable user config record
-→ drive_root_folder_id
-→ SUPER_AGENT_DRIVE_ROOT
+auth.uid()
+→ user_memory_config
+→ memory_repo_id
+→ memory_repo_full_name
+→ default_branch
 ```
 
-The user-specific folder ID is configuration, not repository source, Project Memory, or conversation memory.
+The Memory Repo is configuration-selected, not inferred from chat history or from a Project source repository.
 
-Changing the root updates the existing user's configuration record in place; no configuration revision counter is required.
+Changing the Memory Repo updates the same user's configuration row in place; no configuration revision counter is required.
 
-Each valid direct child Project folder under the resolved root contains `PROJECT.md`.
+Durable Project Memory is stored under:
 
-No mandatory global Project registry or jobs/ wrapper. Supabase configuration storage is not a Project registry and does not replace Google Drive as Project memory/control plane.
+`projects/<project-id>/...`
 
-See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
+Supabase is not Project Memory and is not a Project registry.
+
+See `USER-CONFIGURATION-AND-MEMORY-REPO.md`.
 
 ## F3. Project
 
@@ -231,7 +236,7 @@ Important agent outputs carry role + Run + owning work + target/revision attribu
 
 Cross-chat consistency is eventual.
 
-Correctness must not depend on atomic Drive conditional writes.
+Correctness uses GitHub blob-SHA optimistic concurrency for shared mutable records and must not depend on silent last-write-wins.
 
 Normal status path:
 ```text
@@ -260,18 +265,18 @@ Internal IDs/signatures are product-name-neutral.
 ## F23. Foundation invariants
 
 1. Conversation is UI, not durable memory.
-2. Project is top-level durable Drive entity.
+2. Project is a top-level durable entity under the configured GitHub Memory Repo.
 3. Job is finite objective and may contain multiple role Runs.
 4. Task is optional decomposition.
 5. One active role per Run; child Runs preserve attribution.
 6. GitHub is source truth.
 7. OWNED/REFERENCED have different authority.
-8. Opening existing work is Drive-first/GitHub-selective.
+8. Opening existing work is Memory-Repo-first and source-repo-selective.
 9. Review is topology-driven with a mechanically computed mandatory floor.
 10. Merge requires explicit human authorization + coverage visibility.
 11. State/result/validity/delivery facts remain separate.
 12. Cross-chat consistency is eventual.
 13. Account identity is not role identity or human approval.
 14. Shared Job progress is served from fresh CONTROL when available and reconstructed from durable records when CONTROL is missing/stale/conflicted; completing Runs never parallel-write aggregate progress into the Job record.
-15. User-specific Drive root is resolved from per-user runtime configuration and is never authoritative from chat/source.
-16. Changing Drive root updates the stable per-user config record in place; no revision counter is required.
+15. User-specific Memory Repo is resolved from per-user runtime configuration and is never authoritative from chat/source.
+16. Changing Memory Repo updates the stable per-user config record in place; no revision counter is required.
