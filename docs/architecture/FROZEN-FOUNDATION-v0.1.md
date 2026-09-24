@@ -1,4 +1,4 @@
-# Frozen Foundation v0.4
+# Frozen Foundation v0.5
 
 ## Status
 
@@ -21,11 +21,25 @@ GPTWorker remains separate offline/local tooling.
 
 ## F2. Configured Drive root
 
-One configured `SUPER_AGENT_DRIVE_ROOT`.
+One logical `SUPER_AGENT_DRIVE_ROOT` is resolved from per-user runtime configuration.
 
-Each valid direct child Project folder contains `PROJECT.md`.
+Initial implementation stores the user's Google Drive root mapping in Supabase:
 
-No mandatory global registry or jobs/ wrapper.
+```text
+stable user config record
+→ drive_root_folder_id
+→ SUPER_AGENT_DRIVE_ROOT
+```
+
+The user-specific folder ID is configuration, not repository source, Project Memory, or conversation memory.
+
+Changing the root updates the existing user's configuration record in place; no configuration revision counter is required.
+
+Each valid direct child Project folder under the resolved root contains `PROJECT.md`.
+
+No mandatory global Project registry or jobs/ wrapper. Supabase configuration storage is not a Project registry and does not replace Google Drive as Project memory/control plane.
+
+See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
 
 ## F3. Project
 
@@ -246,3 +260,5 @@ Internal IDs/signatures are product-name-neutral.
 12. Cross-chat consistency is eventual.
 13. Account identity is not role identity or human approval.
 14. Shared Job progress is read-time joined rather than parallel Run write-back.
+15. User-specific Drive root is resolved from per-user runtime configuration and is never authoritative from chat/source.
+16. Changing Drive root updates the stable per-user config record in place; no revision counter is required.
