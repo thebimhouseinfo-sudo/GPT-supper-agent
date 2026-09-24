@@ -71,9 +71,10 @@ function createServer(req: Request) {
           'DIRECT AGENT contains Planner, Designer, Coder, Reviewer, Tester.',
           'SETTING contains GSA Account and Project Drive.',
           'Google Drive and GitHub are separate connected ChatGPT apps. A pasted provider URL is sufficient routing context; do not require @Google Drive or @GitHub.',
-          'For Project Drive setup, create the probe INSIDE the pasted target folder, never in My Drive root when a target URL is supplied.',
-          'After create_folder returns the probe id, delete it using Google Drive delete_file with URL https://drive.google.com/file/d/<PROBE_ID>/view. This file-resource URL form is required even when the probe is a folder.',
-          'Only call set_drive_config with write_probe_passed=true after create and delete both succeed.',
+          'For Project Drive setup, first resolve the REAL connected Google Drive account with the Google Drive get_profile tool. Never infer the Drive account from the GSA/Supabase email; the two identities may differ.',
+          'Then call Google Drive get_file_metadata on the pasted target folder and inspect its permissions. If the connected Drive email has role owner, writer, organizer, or fileOrganizer, write access is verified non-destructively.',
+          'Only when permission metadata is insufficient may you fall back to a create/delete probe. If a fallback probe is needed, create it INSIDE the pasted target folder and delete it with https://drive.google.com/file/d/<PROBE_ID>/view.',
+          'Call set_drive_config with write_access_verified=true after metadata verification, or with write_probe_passed=true only after a fallback create/delete probe fully succeeds.',
           'GSA OAuth establishes only GSA user identity; it never owns Google Drive authentication or credentials.',
         ].join(' '),
     },
@@ -262,11 +263,13 @@ function createServer(req: Request) {
     {
       title: 'Set Project Drive configuration',
       description:
-        'Store the current user\'s Google Drive Project root from a pasted Google Drive folder URL after the connected Google Drive app has successfully completed a temporary write/delete probe. The server extracts and stores the canonical folder ID.',
+        'Store the current user\'s Google Drive Project root from a pasted Google Drive folder URL after write authority has been verified. Preferred verification is connected-Drive-profile plus target-folder permission metadata; a create/delete probe is fallback only. The server extracts and stores the canonical folder ID.',
       inputSchema: {
         drive_root_url: z.string().url(),
         drive_root_name: z.string().min(1).optional(),
-        write_probe_passed: z.literal(true),
+        write_access_verified: z.literal(true).optional(),
+        write_probe_passed: z.literal(true).optional(),
+        verification_method: z.enum(['permission_metadata', 'create_delete_probe']).optional(),
       },
       outputSchema: {
         saved: z.boolean(),
@@ -284,12 +287,28 @@ function createServer(req: Request) {
         openWorldHint: false,
       },
     } as any,
-    async ({ drive_root_url, drive_root_name, write_probe_passed }: any) => {
+    async ({ drive_root_url, drive_root_name, write_access_verified, write_probe_passed, verification_method }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to change Project Drive configuration.')
-      if (write_probe_passed !== true) {
+
+      const verified = write_access_verified === true || write_probe_passed === true
+      if (!verified) {
         return {
-          content: [{ type: 'text', text: 'Project Drive write/delete probe must pass before saving configuration.' }],
+          content: [{ type: 'text', text: 'Project Drive write authority must be verified before saving configuration. Prefer Drive profile + folder permission metadata; use create/delete probe only as fallback.' }],
+          isError: true,
+        }
+      }
+
+      if (verification_method === 'permission_metadata' && write_access_verified !== true) {
+        return {
+          content: [{ type: 'text', text: 'permission_metadata verification requires write_access_verified=true.' }],
+          isError: true,
+        }
+      }
+
+      if (verification_method === 'create_delete_probe' && write_probe_passed !== true) {
+        return {
+          content: [{ type: 'text', text: 'create_delete_probe verification requires write_probe_passed=true.' }],
           isError: true,
         }
       }
