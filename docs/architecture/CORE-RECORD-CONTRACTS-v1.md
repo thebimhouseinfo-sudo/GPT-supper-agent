@@ -1,4 +1,4 @@
-# Core Record Contracts v1.1
+# Core Record Contracts
 
 ## Purpose
 
@@ -130,9 +130,27 @@ remaining
 required_inputs[]
 blocker_or_gate?
 expected_next_outcome
-state
-successor_run_id?
+created_at?
 ```
+
+Handoff is immutable after creation.
+
+## Handoff Consumption
+
+```text
+consumption_id
+handoff_id
+project_id
+job_id
+successor_run_id
+consumed_by_role
+created_at?
+```
+
+Current Handoff state is derived:
+- no valid consumption → PENDING;
+- one valid consumption → CONSUMED;
+- multiple conflicting consumptions → CONFLICTED.
 
 ## Verification Record
 
@@ -175,18 +193,26 @@ routing
 waiver_ref?
 ```
 
-Retest extension:
+Retest Request:
 
 ```text
 retest_id
+project_id
+job_id
+task_id?
 steps[]
 expected
 reason_practical_verification_needed
-status = PENDING | BLOCKED | PASS | FAIL | SUPERSEDED
-attempt_history[]
 originating_job_id
-remediation_job_id?
+created_at?
 ```
+
+Retest attempts are separate append-preserving Verification records with `kind = RETEST` and `retest_id`.
+
+Derived Retest state is computed from those attempt records:
+`PENDING | BLOCKED | PASS | FAIL | SUPERSEDED`.
+
+Do not maintain mutable `attempt_history[]` in a shared Retest record.
 
 ## Knowledge Artifact
 
@@ -246,7 +272,7 @@ dependent_work_refs[]
 Required before merge authorization:
 
 ```text
-independent_review_status
+context_isolated_review_status
 ci_check_status
 tester_status
 retest_status
