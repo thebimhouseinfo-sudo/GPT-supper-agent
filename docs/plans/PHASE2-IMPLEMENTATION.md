@@ -4,9 +4,9 @@
 
 ```text
 PHASE = PHASE 2
-STATUS = READY_FOR_M0
+STATUS = M1A_IN_PROGRESS
 AUTHORITY = SINGLE IMPLEMENTATION SOURCE OF TRUTH
-PHASE_2_STARTED = NO
+PHASE_2_STARTED = YES
 ```
 
 This document is the sole Phase-2 implementation planning authority.
@@ -759,7 +759,7 @@ Context-Isolated Reviewer is not required for every documentation/template edit 
 
 # 16. Execution rule
 
-Start only with M0.
+M0 has passed. Current execution starts/continues with M1A; do not skip a milestone gate.
 
 Do not create all downstream artifacts speculatively before the milestone that owns them.
 
