@@ -15,8 +15,9 @@ Task labels below are plan handles, not runtime canonical IDs.
 | P2-T002 | M0 | Planner | T001 | Phase-1 gate verification record | No |
 | P2-T003 | M0 | Coder | T002 | initial implementation tree skeleton | No |
 | P2-T004 | M0 | Reviewer | T001-T003 | M0 consistency spot-check | Only if canonical mismatch/change occurs |
-| P2-T010 | M1 | Coder | M0 | PROJECT.md template + validation contract | No |
-| P2-T011 | M1 | Coder | T010 | Project discovery/open/status behavior | No |
+| P2-T009 | M1 | Coder | M0 | Supabase per-user Drive-root config + RLS + resolver | Review if auth/RLS semantics change |
+| P2-T010 | M1 | Coder | T009 | PROJECT.md template + validation contract | No |
+| P2-T011 | M1 | Coder | T009,T010 | Project discovery/open/status behavior using resolved current root | No |
 | P2-T012 | M1 | Coder | T010 | Repo Claim template/schema | No |
 | P2-T013 | M1 | Coder | T012 | proactive OWNED claim scan | No |
 | P2-T014 | M1 | Coder | T010 | Job + embedded Task schema/template | No |
