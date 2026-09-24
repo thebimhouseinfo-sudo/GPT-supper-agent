@@ -26,7 +26,7 @@ Pinned domains:
 - State Model
 - Governance / Artifact Lifecycle
 - Security / Trust Boundaries
-- User Configuration / Drive Root
+- User Configuration / Memory Repo
 - Agent Harnesses
 - Execution / Review
 - Dispatch / Handoff
@@ -58,11 +58,11 @@ Pinned domains:
 ## Capability snapshot relevant to M1A
 
 ```text
-Google Drive root listing                 OBSERVED
-Google Drive temporary folder create      OBSERVED
-Google Drive temporary folder delete      OBSERVED
-Google Drive raw file round-trip           OBSERVED
-Drive connector authenticated account ID   NOT EXPOSED AS RELIABLE CONTRACT
+GitHub repository metadata/read             OBSERVED
+GitHub text create/update/delete            OBSERVED
+GitHub blob/tree/commit                     OBSERVED
+GitHub PR create/read/merge                 OBSERVED
+GitHub branch delete                        UNAVAILABLE
 
 Supabase per-user OAuth/config chain        TO_PROVE in M1A
 Harness delivery/loading into ChatGPT       TO_PROVE in M1A
@@ -103,3 +103,16 @@ SEMANTIC_CONTRADICTION → stop affected work and reopen architecture governance
 The current governed architecture is coherent enough to begin Phase 2.
 
 Proceed to P2-T005: M1A harness/runtime bootstrap spike.
+
+
+## Storage backend amendment
+
+The M0 semantic baseline remains valid, but the physical Project Memory backend was later amended by explicit human decision:
+
+```text
+Project Memory backend = per-user private GitHub Memory Repo
+Supabase = user identity + Memory Repo config only
+Source repositories = separate source-code truth
+```
+
+Current implementation must follow the canonical Memory Repo architecture, not superseded storage experiments.
