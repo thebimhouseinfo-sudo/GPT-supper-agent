@@ -615,7 +615,7 @@ Start only with M0.
 
 Do not create all downstream artifacts speculatively before the milestone that owns them.
 
-The exact initial file tree is defined separately in `PHASE2-INITIAL-ARTIFACT-LAYOUT-v0.1.md`.
+The exact initial file tree is defined in Part D of this document.
 
 
 ---
@@ -1093,12 +1093,7 @@ evals/
 
 docs/
 └── plans/
-    └── phase2/
-        ├── PHASE2-EXECUTION-PACK-INDEX-v0.1.md
-        ├── PHASE2-DETAILED-EXECUTION-PLAN-v0.1.md
-        ├── PHASE2-TASK-LIST-v0.1.md
-        ├── PHASE2-ACCEPTANCE-EVAL-MATRIX-v0.1.md
-        └── PHASE2-INITIAL-ARTIFACT-LAYOUT-v0.1.md
+    └── PHASE2-IMPLEMENTATION.md
 ```
 
 ---
