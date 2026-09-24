@@ -3,7 +3,7 @@
   "mcpServers": {
     "gsa-bootstrap": {
       "type": "streamable-http",
-      "url": "https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp"
+      "url": "https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp"
     }
   }
 }
