@@ -75,6 +75,36 @@ Observed:
 Important:
 deployment ACTIVE does not yet prove ChatGPT has initialized the MCP protocol or completed OAuth.
 
+## Corrected identity / Drive boundary
+
+User-visible setup is intentionally simple:
+
+```text
+Connect GSA
+→ Continue with Google
+→ Supabase Auth resolves auth.uid() + verified email
+→ GSA account connected
+```
+
+This authentication is only for GSA identity and per-user configuration.
+
+Google Drive is NOT authenticated through GSA:
+
+```text
+ChatGPT Google Drive plugin
+= separate existing ChatGPT connection
+= outside GSA
+
+GSA Supabase config
+= auth.uid() + verified email + selected drive_root_folder_id
+```
+
+GSA never requests Google Drive scopes, never stores Drive credentials, and never tries to reproduce ChatGPT's Google Drive connection.
+
+The selected folder ID is saved only after ChatGPT's external Drive connector successfully probes write/delete authority on that folder.
+
+The internal MCP OAuth 2.1 exchange remains necessary only so ChatGPT can carry the same authenticated GSA identity across tool calls. It is transport/session plumbing, not a second user account and not a Google Drive connection.
+
 ## Current package bootstrap
 
 Portable plugin files:
@@ -113,8 +143,8 @@ These settings cannot be changed by the currently exposed Supabase/ChatGPT conne
 5. Consent approval returns control to ChatGPT.
 6. `get_profile` returns the authenticated Supabase `auth.uid()` and verified email.
 7. `get_drive_config` is empty before setup.
-8. ChatGPT Google Drive connector write/delete probe succeeds in a chosen folder.
-9. `set_drive_config` writes the same user's row through RLS.
+8. Separately connected ChatGPT Google Drive capability can write/delete probe a chosen folder.
+9. GSA does not perform any Google Drive authentication; `set_drive_config` only stores the resulting folder ID in the same user's row through RLS.
 10. `get_drive_config` reads the saved folder in a fresh call/chat.
 11. A second identity cannot read/update the first identity's row.
 12. Only then mark M1A PASS.
