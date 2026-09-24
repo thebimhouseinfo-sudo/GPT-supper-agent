@@ -233,12 +233,21 @@ Cross-chat consistency is eventual.
 
 Correctness must not depend on atomic Drive conditional writes.
 
+Normal status path:
 ```text
-append-preserving Run/Verification records
-+ read-time joins
+fresh CONTROL
+→ compact current view
+```
+
+Durable fallback/reconciliation path:
+```text
+append-preserving Run/Verification/Handoff-consumption records
++ read-time reconstruction
 + minimal shared mutation
 + recheck before consequential action
 ```
+
+CONTROL is rebuildable and never sole authority.
 
 Completing Runs do not write progress/reference arrays back into shared Job records.
 
@@ -263,6 +272,6 @@ Internal IDs/signatures are product-name-neutral.
 11. State/result/validity/delivery facts remain separate.
 12. Cross-chat consistency is eventual.
 13. Account identity is not role identity or human approval.
-14. Shared Job progress is read-time joined rather than parallel Run write-back.
+14. Shared Job progress is served from fresh CONTROL when available and reconstructed from durable records when CONTROL is missing/stale/conflicted; completing Runs never parallel-write aggregate progress into the Job record.
 15. User-specific Drive root is resolved from per-user runtime configuration and is never authoritative from chat/source.
 16. Changing Drive root updates the stable per-user config record in place; no revision counter is required.
