@@ -33,6 +33,10 @@ function extractDriveFolderId(input: string) {
   }
 }
 
+function ancestryContainsRoot(chain: string[] | undefined, rootId: string) {
+  return Array.isArray(chain) && chain.includes(rootId)
+}
+
 function authError(description: string) {
   return {
     content: [{ type: 'text' as const, text: description }],
@@ -76,7 +80,7 @@ function createServer(req: Request) {
           'Only when permission metadata is insufficient may you fall back to a create/delete probe. If a fallback probe is needed, create it INSIDE the pasted target folder and delete it with https://drive.google.com/file/d/<PROBE_ID>/view.',
           'Call set_drive_config with write_access_verified=true after metadata verification, or with write_probe_passed=true only after a fallback create/delete probe fully succeeds.',
           'HARD DRIVE SANDBOX: after Project Drive is configured, every GSA-initiated Google Drive mutation must stay inside that configured folder or its proven descendants. Never use the literal Drive parent root. Never mutate ancestors, siblings, or unrelated items.',
-          'Before any Drive mutation, call get_drive_config, obtain the exact drive_root_folder_id, resolve target/parent IDs, and prove ancestry reaches that root. If ancestry is missing, ambiguous, or outside the root, STOP.',
+          'Before any Drive mutation, call get_drive_config, resolve target/parent IDs and ancestry, then call authorize_drive_mutation. Proceed to the external Google Drive mutation only when the guard returns allowed=true. If ancestry is missing, ambiguous, or outside the root, STOP.',
           'CREATE: parent must be the configured Project Drive root or a proven descendant. Setup/probe creation may only be a direct child of the selected Project Drive.',
           'MOVE: source and destination must both be inside the same Project Drive boundary. Cross-boundary moves are forbidden.',
           'DELETE: never delete by name. Automatic delete is allowed only for an exact Drive ID created by GSA in the same Run and still inside Project Drive. Deleting any pre-existing user item requires an explicit Human Gate naming the exact Drive ID.',
@@ -280,6 +284,115 @@ function createServer(req: Request) {
       return {
         structuredContent: result,
         content: [{ type: 'text', text: JSON.stringify(result) }],
+      }
+    },
+  )
+
+  server.registerTool(
+    'authorize_drive_mutation',
+    {
+      title: 'Authorize Drive mutation inside Project Drive sandbox',
+      description:
+        'Mandatory guard before any GSA-initiated Google Drive create/update/move/delete. Reads the configured Project Drive root and fails closed unless supplied ancestry proves the mutation stays inside that boundary.',
+      inputSchema: {
+        operation: z.enum(['create', 'update', 'move', 'delete']),
+        target_id: z.string().min(1).optional(),
+        target_ancestry: z.array(z.string().min(1)).optional(),
+        destination_parent_id: z.string().min(1).optional(),
+        destination_ancestry: z.array(z.string().min(1)).optional(),
+        created_by_gsa_same_run: z.boolean().optional(),
+        human_gate_approved: z.boolean().optional(),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        reason: z.string(),
+        drive_root_folder_id: z.string().nullable(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+    } as any,
+    async ({
+      operation,
+      target_id,
+      target_ancestry,
+      destination_parent_id,
+      destination_ancestry,
+      created_by_gsa_same_run,
+      human_gate_approved,
+    }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to authorize Drive mutation.')
+
+      const { data, error } = await auth.supabase
+        .from('user_drive_config')
+        .select('drive_root_folder_id')
+        .eq('user_id', auth.user.id)
+        .maybeSingle()
+
+      if (error || !data?.drive_root_folder_id) {
+        return {
+          structuredContent: {
+            allowed: false,
+            reason: 'Project Drive is not configured. Drive mutation is blocked.',
+            drive_root_folder_id: null,
+          },
+          content: [{ type: 'text', text: 'DENY: Project Drive is not configured.' }],
+        }
+      }
+
+      const rootId = data.drive_root_folder_id as string
+      const targetInside =
+        target_id === rootId || ancestryContainsRoot(target_ancestry, rootId)
+      const destinationInside =
+        destination_parent_id === rootId ||
+        ancestryContainsRoot(destination_ancestry, rootId)
+
+      let allowed = false
+      let reason = 'Mutation denied by Project Drive sandbox.'
+
+      if (operation === 'create') {
+        allowed = destinationInside
+        reason = allowed
+          ? 'Create parent is inside Project Drive.'
+          : 'Create parent is outside or not proven inside Project Drive.'
+      } else if (operation === 'update') {
+        allowed = targetInside
+        reason = allowed
+          ? 'Update target is inside Project Drive.'
+          : 'Update target is outside or not proven inside Project Drive.'
+      } else if (operation === 'move') {
+        allowed =
+          targetInside &&
+          destinationInside &&
+          target_id !== rootId
+        reason = allowed
+          ? 'Move source and destination are inside the same Project Drive boundary.'
+          : 'Cross-boundary move, Project Drive root move, or unproven ancestry is forbidden.'
+      } else if (operation === 'delete') {
+        allowed =
+          targetInside &&
+          target_id !== rootId &&
+          (created_by_gsa_same_run === true || human_gate_approved === true)
+        reason = allowed
+          ? 'Delete target is inside Project Drive and has required deletion authority.'
+          : 'Delete denied: target outside/unproven, Project Drive root, or lacks same-Run creation evidence / explicit Human Gate.'
+      }
+
+      return {
+        structuredContent: {
+          allowed,
+          reason,
+          drive_root_folder_id: rootId,
+        },
+        content: [{
+          type: 'text',
+          text: `${allowed ? 'ALLOW' : 'DENY'}: ${reason}`,
+        }],
       }
     },
   )
