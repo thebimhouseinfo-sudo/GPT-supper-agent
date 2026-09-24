@@ -1,0 +1,8 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gpt-super-agent",
+  "version": "0.1.0",
+  "description": "Durable project orchestration for ChatGPT using Google Drive Project Memory and controlled MCP tools.",
+  "repository": "https://github.com/thebimhouseinfo-sudo/GPT-supper-agent",
+  "keywords": ["project-orchestration", "workflow", "google-drive", "github"]
+}

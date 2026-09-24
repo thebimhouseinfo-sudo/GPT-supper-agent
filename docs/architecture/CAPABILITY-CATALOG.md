@@ -191,6 +191,26 @@ All MUST probes have been executed and classified.
 ### NOT NEEDED FOR PHASE-2 ENTRY
 - Google Drive comment workflow unless later selected as load-bearing.
 
+## 6A. Phase-2 M1A bootstrap observations
+
+Observed on 2026-09-24:
+
+```text
+Supabase project health                  OBSERVED / ACTIVE_HEALTHY
+user_drive_config table creation         OBSERVED
+RLS enabled on user_drive_config         OBSERVED
+M1A Edge Function deployment             OBSERVED / ACTIVE
+MCP protocol call through deployed URL   UNKNOWN
+ChatGPT Developer Mode connection        UNKNOWN
+Supabase OAuth 2.1 server enablement      UNKNOWN
+Google OAuth user session                 UNKNOWN
+per-user RLS CRUD under auth.uid()        TO_PROVE
+```
+
+The deployed bootstrap MCP surface is intentionally read-only and unauthenticated. Its deployment proves hosting, not user authentication or Project Drive authority.
+
+Do not promote MCP protocol, OAuth, or per-user configuration to OBSERVED until an actual ChatGPT/MCP client completes the corresponding end-to-end flow.
+
 ## 7. Rule
 
 Probe results update capability evidence only.
