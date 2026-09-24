@@ -85,7 +85,18 @@ paste Drive folder URL
 
 The `@` app mention remains an optional explicit routing mechanism, not a GSA requirement.
 
-GSA asks ChatGPT to prove authority over the selected folder with a temporary create/delete probe before saving its folder ID.
+Preferred write-authority verification is non-destructive permission metadata:
+
+```text
+Drive get_profile
++ target folder get_file_metadata
+→ match connected Drive email against folder permission role
+→ owner/writer/organizer/fileOrganizer = write-authority verified
+```
+
+Only when permission metadata is insufficient should ChatGPT fall back to a temporary create/delete probe.
+
+GSA must never infer the Google Drive connector account from the GSA/Supabase email; they are independent identities and may differ.
 
 No equality between the Supabase Google account and the ChatGPT Google Drive account is required. The proofs are intentionally independent:
 - Supabase Auth proves GSA application-user identity;
@@ -201,8 +212,11 @@ first use
 → Supabase resolves stable auth.users.id + verified email
 → user pastes the Google Drive folder URL
 → ChatGPT automatically routes that URL to the already-connected Google Drive app
-→ Drive connector creates/deletes a temporary probe inside that folder
-→ only on PASS create/update the stable per-user config record
+→ resolve the actual connected Drive account with Drive profile
+→ inspect target-folder permission metadata
+→ if current Drive account has write-capable role, authority PASS
+→ otherwise, only if metadata is insufficient, use create/delete probe fallback
+→ on PASS create/update the stable per-user config record
 → Project Drive = READY
 ```
 
