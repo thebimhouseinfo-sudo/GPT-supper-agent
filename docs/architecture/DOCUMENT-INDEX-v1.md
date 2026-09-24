@@ -1,4 +1,4 @@
-# Architecture Document Index v1.3
+# Architecture Document Index v1.4
 
 ## Purpose
 
@@ -6,13 +6,14 @@ Legacy filename suffixes are stable repository paths, not current internal versi
 
 | Stable path | Current internal version | Status |
 |---|---:|---|
-| FROZEN-FOUNDATION-v0.1.md | 0.4 | FROZEN |
-| ARCHITECTURE-v0.1.md | 0.4 | SYNTHESIZED |
-| PROJECT-MEMORY-v0.1.md | 1.2 | SYNTHESIZED |
+| FROZEN-FOUNDATION-v0.1.md | 0.5 | FROZEN |
+| ARCHITECTURE-v0.1.md | 0.5 | SYNTHESIZED |
+| PROJECT-MEMORY-v0.1.md | 1.3 | SYNTHESIZED |
 | JOB-LIFECYCLE-v0.1.md | 1.2 | SYNTHESIZED |
 | STATE-MACHINE-v1.md | 1.2 | SYNTHESIZED |
 | GOVERNANCE-AND-ARTIFACT-LIFECYCLE-v0.1.md | 1.1 | SYNTHESIZED |
-| SECURITY-AND-TRUST-BOUNDARIES-v0.1.md | 1.1 | SYNTHESIZED |
+| SECURITY-AND-TRUST-BOUNDARIES-v0.1.md | 1.2 | SYNTHESIZED |
+| USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md | 1.0 | SYNTHESIZED |
 | AGENT-HARNESSES-v0.1.md | 1.2 | DEFINED |
 | EXECUTION-AND-REVIEW-v0.1.md | 1.2 | SYNTHESIZED |
 | PLANNER-SCOPE-AND-UIUX-v0.1.md | 1.2 | DEFINED |
