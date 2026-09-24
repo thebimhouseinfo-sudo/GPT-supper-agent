@@ -94,13 +94,32 @@ Drive get_profile
 → owner/writer/organizer/fileOrganizer = write-authority verified
 ```
 
-Only when permission metadata is insufficient should ChatGPT fall back to a temporary create/delete probe.
+Only when permission metadata is insufficient should ChatGPT fall back to a temporary create/delete probe. That fallback may create only one direct child inside the selected Project Drive root and may delete only the exact returned ID from that creation.
 
 GSA must never infer the Google Drive connector account from the GSA/Supabase email; they are independent identities and may differ.
 
 No equality between the Supabase Google account and the ChatGPT Google Drive account is required. The proofs are intentionally independent:
 - Supabase Auth proves GSA application-user identity;
 - the ChatGPT Google Drive connector proves practical authority over the selected folder.
+
+
+## 5A. Project Drive mutation boundary
+
+Once configured, `drive_root_folder_id` is not only a locator; it is the absolute GSA Drive mutation boundary.
+
+GSA may mutate only:
+- the configured Project Drive folder itself where the operation is meaningful;
+- descendants whose ancestry is proven to reach that folder.
+
+GSA must never mutate:
+- My Drive root;
+- folders/files outside the configured root;
+- ancestors/siblings;
+- targets whose ancestry cannot be proven.
+
+For any mutation, provider-visible names are insufficient. Stable Drive IDs and parent ancestry must be used.
+
+Automatic delete is limited to GSA-created ephemeral items from the same Run. Pre-existing user items require explicit Human Gate confirmation by exact Drive item ID.
 
 ## 6. Stable per-user record
 
