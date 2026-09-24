@@ -66,4 +66,4 @@ Recommended order:
 1. Reviewer derives criterion status from requirements + target + evidence;
 2. then compares Coder Goal Recheck for omissions/disagreement.
 
-Coder self-recheck cannot substitute for mandatory independent review.
+Coder self-recheck cannot substitute for mandatory context-isolated review.
