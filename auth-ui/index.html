@@ -160,6 +160,15 @@
       return
     }
 
+    // Supabase may auto-approve a previously consented client.
+    // In that case getAuthorizationDetails returns redirect_url and no authorization_id.
+    // Redirect immediately instead of calling approveAuthorization again.
+    if (!('authorization_id' in data) && data.redirect_url) {
+      status.textContent = 'GSA account already authorized. Returning to ChatGPT…'
+      location.assign(data.redirect_url)
+      return
+    }
+
     const client = document.createElement('p')
     client.textContent = 'Connection request: ' + (data.client?.name ?? data.client_name ?? 'ChatGPT')
     details.append(client)
