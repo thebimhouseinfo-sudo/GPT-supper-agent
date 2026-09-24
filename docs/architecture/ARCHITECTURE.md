@@ -4,8 +4,9 @@
 
 ```text
 Conversation = interaction UI
-Google Drive Project Memory = durable Project memory/control plane
-GitHub = source-code truth
+Supabase = per-user runtime configuration only
+GitHub Memory Repo = durable Project memory/control plane
+GitHub source repositories = source-code truth
 Harness / Skills / Loops = workflow, role, quality and tool-use logic
 ```
 
@@ -25,18 +26,21 @@ Milestone/stage is topology, not ownership hierarchy.
 
 ## 3. Project / repository model
 
-`SUPER_AGENT_DRIVE_ROOT` is a logical per-user root resolved at runtime.
-
-Initial implementation resolves it from Supabase per-user configuration using the current `drive_root_folder_id`. GitHub does not store user-specific root IDs, and conversation context is not authoritative for the current root.
-
-Changing the user's root updates the same configuration record in place; no config revision is required.
-
-Each direct child folder under the currently resolved `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
-
-See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
+Each authenticated user configures one private GitHub Memory Repo.
 
 ```text
-OWNED → writable within approved scope
+auth.uid()
+→ user_memory_config
+→ memory_repo_id / owner-name / default branch
+→ projects/<project-id>/
+```
+
+The Memory Repo is never inferred from chat context or from a Project source repository.
+
+See `USER-CONFIGURATION-AND-MEMORY-REPO.md`.
+
+```text
+OWNED → writable within approved Project source scope
 REFERENCED → read-only
 ```
 
@@ -44,9 +48,11 @@ Structured ownership claims include repo-specific review-sensitive path metadata
 
 ## 4. Project Memory
 
-Drive is not treated as a relational DB.
+Project Memory is Git-native Markdown/JSON under the configured Memory Repo.
 
-Supabase is used only for per-user plugin/runtime configuration such as the Drive root mapping. It is not Project Memory and is not source-code truth.
+Supabase is used only for per-user plugin/runtime configuration. It is not Project Memory and is not source-code truth.
+
+Updates/deletes use the current GitHub blob SHA so stale writes fail instead of silently overwriting newer state.
 
 Use:
 - stable Project/Job planning-control records;
@@ -130,7 +136,7 @@ Pending/consumed state is derived from append-preserving records. The Handoff it
 
 Default discovery:
 - Project open → current Project;
-- no Project open → shallow root-wide Project scan using CONTROL caches where available.
+- no Project open → shallow `projects/` scan in the configured Memory Repo using CONTROL caches where available.
 
 ## 10. Review / QA
 
@@ -161,7 +167,7 @@ UNKNOWN
 Only OBSERVED may support an operational success claim.
 
 Phase-1 MUST probes confirmed:
-- raw Drive file round-trip;
+- GitHub text create/update/delete with blob SHA;
 - GitHub binary commit/read-back;
 - PR merge behavior.
 
@@ -238,4 +244,4 @@ Until this is observed, harness injection/loading remains an implementation capa
 
 ## 18. Current implementation boundary
 
-Phase 1 architecture is closed as a governed baseline. Phase 2 implementation is not started until M0 passes against the current repository state.
+Phase 1 remains the governed semantic baseline. Phase 2 is active; the physical Project Memory backend is the configured GitHub Memory Repo.
