@@ -128,7 +128,7 @@ Removing planned review requires human-visible topology change.
 ## 14. Merge coverage
 
 Before requesting human merge authorization, show:
-- independent review status;
+- context-isolated review status;
 - CI/check status;
 - Tester/Retest status;
 - self-recheck-only areas;
