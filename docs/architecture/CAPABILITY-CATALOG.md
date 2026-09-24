@@ -210,11 +210,16 @@ MCP protected-resource metadata           OBSERVED / HTTP 200
 MCP OAuth challenge                       OBSERVED / mcp/www_authenticate
 MCP transport OAuth challenge               OBSERVED / HTTP 401 + WWW-Authenticate
 Supabase dynamic client registration        OBSERVED / registration_endpoint published
+ChatGPT dynamic OAuth client registration    OBSERVED / client register 201
+ChatGPT OAuth consent approval               OBSERVED
+ChatGPT OAuth token exchange                  OBSERVED / 200
+ChatGPT authenticated MCP request             OBSERVED / openai-mcp + authenticated JWT
+auth.uid() resolution inside MCP              OBSERVED / Supabase /user 200
 Supabase JWT public signing key             OBSERVED / ES256 JWKS
 ChatGPT Developer Mode connection         UNKNOWN / UI GATE
 Supabase OAuth 2.1 server enablement      OBSERVED / ENABLED
 Google provider                          OBSERVED / ENABLED
-Google end-user OAuth session               TO_PROVE
+Google end-user OAuth session               OBSERVED
 per-user RLS CRUD under auth.uid()        TO_PROVE
 ```
 
