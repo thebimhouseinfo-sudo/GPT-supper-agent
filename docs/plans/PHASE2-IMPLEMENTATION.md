@@ -305,6 +305,34 @@ GitHub URL       → GitHub app
 
 The user should not need `@Google Drive` or `@GitHub` when the URL already identifies the provider. The model may still invoke the corresponding connector internally.
 
+### M1A-F Drive mutation sandbox
+
+Before any GSA-initiated Google Drive mutation:
+
+```text
+load configured drive_root_folder_id
+→ resolve target/parent IDs
+→ prove target ancestry is root-or-descendant
+→ otherwise BLOCK
+```
+
+Mandatory policy:
+- literal Drive `root` is forbidden for mutations;
+- create only under configured root/descendants;
+- move only within the same configured boundary;
+- automatic delete only for exact IDs created by GSA in the same Run;
+- deleting pre-existing user content requires an explicit Human Gate with exact target ID;
+- probe fallback creates one direct child under Project Drive and deletes only the returned ID;
+- no mutation by filename/name matching.
+
+Add acceptance coverage for:
+- root mutation blocked;
+- sibling/ancestor mutation blocked;
+- ambiguous ancestry blocked;
+- cross-boundary move blocked;
+- deletion of pre-existing item blocked without Human Gate;
+- exact same-Run probe delete allowed.
+
 ### M1A-E Bounded fallback
 If Supabase/Auth bootstrap proves impractical, evaluate the already-approved fallback:
 
@@ -322,7 +350,8 @@ M1A passes only when:
 3. RLS-backed root config create/read/update works;
 4. GSA does not absorb or duplicate Google Drive connection/authentication;
 5. pasted Drive folder URL auto-routes through ChatGPT's external Drive capability and write authority is verified by permission metadata or, only if needed, fallback create/delete probe;
-6. root-dependent work blocks rather than guesses when setup is incomplete.
+6. root-dependent work blocks rather than guesses when setup is incomplete;
+7. all GSA Drive mutations fail closed outside the configured Project Drive boundary.
 
 ## Mandatory evals
 
