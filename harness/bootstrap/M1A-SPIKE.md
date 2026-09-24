@@ -44,20 +44,36 @@ OAuth-authenticated CRUD is not yet observed because no end-user OAuth session h
 
 ### MCP bootstrap hosting
 
-Supabase Edge Function:
-`gsa-mcp`
+Supabase Edge Functions:
+
+```text
+gsa-mcp  = ACTIVE / version 3
+gsa-auth = ACTIVE / version 1
+```
+
+MCP endpoint:
+`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp`
+
+Protected-resource metadata:
+`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/oauth-protected-resource`
+
+Authorization UI:
+`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`
+
+Supabase OAuth issuer:
+`https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1`
 
 Observed:
-- deployment status = ACTIVE;
-- version = 1;
-- public bootstrap mode = read-only;
-- tool declared = `get_runtime_status`.
-
-Endpoint:
-`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp`
+- both Edge Functions deployed ACTIVE;
+- MCP server declares one anonymous bootstrap tool;
+- MCP server declares OAuth-protected `get_profile`, `get_drive_config`, `set_drive_config`;
+- protected-resource metadata is implemented;
+- authenticated handlers forward the Bearer token into Supabase so RLS applies;
+- `set_drive_config` requires `write_probe_passed = true`;
+- OAuth scopes are `email profile`; GSA does not request `openid`, so an ID token/asymmetric signing key is not required for this flow.
 
 Important:
-deployment ACTIVE does not prove an MCP client has successfully initialized/called the endpoint.
+deployment ACTIVE does not yet prove ChatGPT has initialized the MCP protocol or completed OAuth.
 
 ## Current package bootstrap
 
@@ -68,19 +84,39 @@ Portable plugin files:
 
 The skill contains only bootstrap truth and does not duplicate full architecture/harness contracts.
 
+## Manual UI gates still required
+
+These settings cannot be changed by the currently exposed Supabase/ChatGPT connector actions and must be configured in their product UIs:
+
+1. Supabase Dashboard → Authentication → Providers → Google:
+   - enable Google;
+   - provide Google OAuth Client ID and Client Secret.
+2. Google Cloud OAuth client:
+   - authorized redirect URI = `https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1/callback`.
+3. Supabase Auth URL Configuration:
+   - allow redirect to `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`.
+4. Supabase Dashboard → Authentication → OAuth Server:
+   - enable OAuth 2.1 server;
+   - authorization path = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`;
+   - enable Dynamic Client Registration.
+5. ChatGPT → Settings → Security and login:
+   - enable Developer mode.
+6. ChatGPT → Plugins → +:
+   - MCP URL = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp`.
+
 ## Still TO_PROVE before M1A PASS
 
-1. Enable/configure Supabase OAuth 2.1 server.
-2. Configure Google as a Supabase Auth provider.
-3. Provide the OAuth consent route.
-4. Ensure asymmetric Supabase JWT signing suitable for MCP OAuth middleware.
-5. Protect the MCP function with Supabase OAuth protected-resource middleware.
-6. Connect the MCP URL in ChatGPT Developer Mode.
-7. Observe ChatGPT initialization/tool discovery and call `get_runtime_status`.
-8. Complete Google sign-in/consent from ChatGPT.
-9. Observe `auth.uid()` through the authenticated MCP call.
-10. Create/read/update the same `user_drive_config` row through RLS.
-11. Verify a second identity cannot read/update the first identity's row.
+1. ChatGPT initializes the MCP endpoint and discovers all four tools.
+2. Anonymous `get_runtime_status` call succeeds.
+3. First protected-tool call launches the OAuth linking UI.
+4. Google sign-in returns to `gsa-auth`.
+5. Consent approval returns control to ChatGPT.
+6. `get_profile` returns the authenticated Supabase `auth.uid()` and verified email.
+7. `get_drive_config` is empty before setup.
+8. ChatGPT Google Drive connector write/delete probe succeeds in a chosen folder.
+9. `set_drive_config` writes the same user's row through RLS.
+10. `get_drive_config` reads the saved folder in a fresh call/chat.
+11. A second identity cannot read/update the first identity's row.
 12. Only then mark M1A PASS.
 
 ## Existing unrelated security warning
