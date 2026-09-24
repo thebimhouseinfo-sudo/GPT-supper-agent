@@ -13,13 +13,13 @@ File names are stable semantic names. Git history is the version authority; no v
 | FOUNDATION.md | governed product/system invariants |
 | ARCHITECTURE.md | synthesized system model |
 | SYSTEM-DEFINITION.md | concise current system map |
-| PROJECT-MEMORY.md | durable Drive memory model |
+| PROJECT-MEMORY.md | durable GitHub Memory Repo model |
 | CORE-RECORD-CONTRACTS.md | semantic record contracts |
 | JOB-LIFECYCLE.md | Job semantics/lifecycle |
 | STATE-MACHINE.md | lifecycle/result/condition model |
 | GOVERNANCE-AND-ARTIFACT-LIFECYCLE.md | governance and artifact validity |
 | SECURITY-AND-TRUST-BOUNDARIES.md | trust, authority and sensitive paths |
-| USER-CONFIGURATION-AND-DRIVE-ROOT.md | Supabase/Google identity and Drive-root config |
+| USER-CONFIGURATION-AND-MEMORY-REPO.md | Supabase identity and per-user GitHub Memory Repo config |
 | AGENT-HARNESSES.md | role contracts and harness-loading boundary |
 | EXECUTION-AND-REVIEW.md | execution, review floor and merge guard |
 | DISPATCH-AND-HANDOFF.md | dispatch and immutable Handoff consumption |
