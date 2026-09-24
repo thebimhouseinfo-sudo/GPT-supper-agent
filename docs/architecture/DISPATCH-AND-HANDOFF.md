@@ -51,7 +51,7 @@ Project already open
 → show pending Handoffs in that Project
 
 No Project open
-→ shallow cross-Project discovery under SUPER_AGENT_DRIVE_ROOT
+→ shallow cross-Project discovery under `projects/` in the configured Memory Repo
 → list valid Projects
 → read small CONTROL pending_handoff_handles[] when present
 → if CONTROL missing/stale, fall back to that Project's durable Handoff/Job records
