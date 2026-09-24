@@ -47,8 +47,8 @@ OAuth-authenticated CRUD is not yet observed because no end-user OAuth session h
 Supabase Edge Functions:
 
 ```text
-gsa-mcp  = ACTIVE / version 3
-gsa-auth = ACTIVE / version 1
+gsa-mcp  = ACTIVE / version 5
+gsa-auth = DEPRECATED / API-only 410 response
 ```
 
 MCP endpoint:
@@ -57,8 +57,10 @@ MCP endpoint:
 Protected-resource metadata:
 `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/oauth-protected-resource`
 
-Authorization UI:
-`https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`
+Authorization UI source:
+`auth-ui/`
+
+Supabase Edge Functions cannot serve HTML; the former `gsa-auth` Edge Function is intentionally deprecated. The static frontend must be deployed on a real frontend host such as Vercel.
 
 Supabase OAuth issuer:
 `https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1`
@@ -133,16 +135,17 @@ These settings cannot be changed by the currently exposed Supabase/ChatGPT conne
    - provide Google OAuth Client ID and Client Secret.
 2. Google Cloud OAuth client:
    - authorized redirect URI = `https://fbyqktduoqlpbbtkghkf.supabase.co/auth/v1/callback`.
-3. Supabase Auth URL Configuration:
-   - allow redirect to `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`.
-4. Supabase Dashboard → Authentication → OAuth Server:
+3. Deploy repository directory `auth-ui/` as a static frontend (Vercel recommended).
+4. Supabase Auth URL Configuration:
+   - add the deployed `auth-ui` URL as an allowed redirect URL.
+5. Supabase Dashboard → Authentication → OAuth Server:
    - current probe result: `feature_disabled / OAuth server is disabled`;
    - enable OAuth 2.1 server;
-   - authorization path = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`;
+   - authorization path = the deployed `auth-ui` URL;
    - enable Dynamic Client Registration.
-5. ChatGPT → Settings → Security and login:
+6. ChatGPT → Settings → Security and login:
    - enable Developer mode.
-6. ChatGPT → Plugins → +:
+7. ChatGPT → Plugins → +:
    - MCP URL = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp`.
 
 ## Still TO_PROVE before M1A PASS
