@@ -67,7 +67,7 @@ Therefore externally visible/durable agent output requiring attribution includes
 - owning work context;
 - exact target/revision.
 
-Human approval must be explicitly human-originated and cannot be inferred from an agent-authored GitHub/Drive comment.
+Human approval must be explicitly human-originated and cannot be inferred from an agent-authored comment, commit, or Project Memory record.
 
 ## 8. Concurrency
 
