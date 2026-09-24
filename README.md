@@ -2,16 +2,14 @@
 
 GPT Super Agent is a ChatGPT orchestration/harness design for durable project work using Google Drive as Project memory/control plane and GitHub as source-code truth.
 
-## Current phase
+## Status
 
 ```text
-PHASE 1              = COMPLETE / CLOSED
-CLAUDE ROUND 1       = DISPOSITIONED/FIXED
-CLAUDE ROUND 2       = CONDITIONAL READY; CONDITIONS SATISFIED
-MUST PLATFORM PROBES = COMPLETE
-FINAL CONSISTENCY    = PASS
-PHASE 2              = READY, NOT STARTED
+PHASE 1 = GOVERNED BASELINE
+PHASE 2 = READY FOR M0 / NOT STARTED
 ```
+
+Git history records review/amendment history; README does not duplicate peer-review chronology.
 
 ## Core model
 
@@ -43,7 +41,7 @@ Completing Runs do not write progress/reference arrays back into parent Job.
 
 Normal review is topology-driven.
 
-Mechanically sensitive changes trigger independent review from actual changed-file/operation evidence against structured repo-sensitive paths + universal patterns.
+Mechanically sensitive changes trigger context-isolated review from actual changed-file/operation evidence against structured repo-sensitive paths + universal patterns.
 
 Merge requires explicit human authorization + Review Coverage Summary.
 
