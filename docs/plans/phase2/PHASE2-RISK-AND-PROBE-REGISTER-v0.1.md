@@ -26,10 +26,24 @@ UPDATE = during milestones and pilot
 | R-14 | Job scope creep | Planner scope-growth rule | new work no longer fits finite objective | Yes until linked Job |
 | R-15 | Retest history duplication | one semantic Retest record family + append attempts | inconsistent PASS/FAIL reconstruction | Calibration/possibly blocking |
 | R-16 | Pilot too broad | one vertical slice only | pilot starts absorbing full app migration | Yes—re-scope |
+| R-17 | Per-user Drive root leakage/cross-user access | Supabase RLS + user-bound row | one user can read/update another user's config | Yes |
+| R-18 | GPT uses stale/chat-cached root | resolve current root from config when root is needed | action targets a previously configured folder after user changed Settings | Yes if wrong target |
+| R-19 | Supabase expands into Project Memory | explicit config-only boundary | Project/Job/Run/Verification data begins moving into Supabase | Architecture review |
 
 ---
 
 # Probe register
+
+## P-00 — Supabase per-user Drive-root configuration
+
+```text
+Timing = M1 before Project discovery implementation
+Current = TO_PROVE
+Required = create/read/update same stable user record + RLS isolation
+Change behavior = update drive_root_folder_id in place; no revision counter
+Fallback = CONFIG_REQUIRED / block root-dependent work rather than infer from chat or GitHub
+```
+
 
 ## P-01 — protected/default branch behavior
 
