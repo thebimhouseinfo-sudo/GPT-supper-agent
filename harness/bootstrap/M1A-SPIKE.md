@@ -233,3 +233,42 @@ Remaining M1A proof:
 5. save the URL through `set_drive_config`, which extracts/stores the canonical folder ID;
 6. read it back through RLS in a fresh call/chat;
 7. verify cross-user RLS isolation when a second test identity is available.
+
+
+### CLI root and Drive cleanup correction
+
+Observed issue from the real personal-plugin test:
+- a plugin created directly from an MCP Server URL does not automatically consume repository `skills/` files as user-facing CLI policy;
+- without an explicit MCP-side menu contract, the model exposed raw MCP tool names as fake CLI commands.
+
+Repair in `gsa-mcp` v8:
+- server instructions now define the authoritative root:
+  `PROJECT / DIRECT AGENT / SETTING / HELP`;
+- new `get_cli_root` tool is explicitly triggered by `gsa/`;
+- raw MCP tool names must not be presented as CLI commands;
+- URL-first routing remains the user-facing contract.
+
+Drive probe cleanup was also re-tested against the actual selected Project Drive folder.
+
+Observed connector quirk:
+- `create_folder` returns a normal folder URL `/drive/folders/<ID>`;
+- `delete_file` rejects that folder URL form;
+- deletion succeeds when the same Drive item ID is expressed as:
+  `https://drive.google.com/file/d/<ID>/view`.
+
+Verified end-to-end against the selected target folder:
+
+```text
+create child probe in target folder   PASS
+delete probe with file-resource URL   PASS
+list target folder after delete       probe absent
+```
+
+The earlier leaked root probe was also removed successfully.
+
+Operational rule:
+1. create probe inside the pasted target folder;
+2. capture returned probe ID;
+3. delete using `https://drive.google.com/file/d/<PROBE_ID>/view`;
+4. optionally list target folder to verify absence;
+5. only then set `write_probe_passed=true`.
