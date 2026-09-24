@@ -1,4 +1,4 @@
-# Capability Catalog v1.3
+# Capability Catalog v1.4
 
 ## 1. Capability evidence state
 
@@ -52,6 +52,10 @@ read-back updated bytes            OBSERVED
 delete raw file                    OBSERVED
 delete temporary folder            OBSERVED (via Drive file resource URL form)
 conditional/revision-aware write   UNAVAILABLE in current raw update action schema
+list My Drive root                  OBSERVED
+create temporary folder in root     OBSERVED (2026-09-24 re-probe)
+delete temporary folder              OBSERVED (Drive file resource URL form)
+authenticated connector account ID  NOT EXPOSED AS RELIABLE CONTRACT
 ```
 
 Probe evidence:
@@ -63,6 +67,21 @@ Probe evidence:
 - temporary file/folder deleted.
 
 Therefore raw Drive Project-memory file round-trip is operationally OBSERVED.
+
+2026-09-24 onboarding feasibility re-probe:
+- current connected Google Drive connector listed My Drive root successfully;
+- created `GSA-write-probe-2026-09-24` successfully;
+- connector returned a concrete Drive folder ID;
+- cleanup succeeded using the Drive file-resource URL form;
+- folder URL form was rejected by the delete action, so cleanup must use the supported file-resource URL form;
+- current tool surface does not provide a direct reliable "current Google account identity" contract suitable for enforcing equality with Supabase OAuth identity.
+
+Governance result:
+```text
+Supabase Google OAuth identity = application-user proof
+Drive connector write probe    = selected-folder resource-authority proof
+cross-connector account equality = NOT REQUIRED / NOT CLAIMED
+```
 
 ### GitHub
 
