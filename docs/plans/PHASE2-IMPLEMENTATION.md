@@ -208,9 +208,11 @@ ChatGPT interaction
 Define:
 - authoritative harness selection path;
 - lazy-load versus always-load policy fragments;
-- default context packet budget and overflow behavior;
+- initial context packet target <= 8k tokens and hard cap <= 16k tokens, excluding live tool output; overflow is lazy-fetched instead of silently truncated;
 - fresh-chat resume behavior;
 - failure behavior when required harness content cannot be loaded.
+
+The token numbers are Phase-2 calibration defaults, not architecture invariants.
 
 ### M1A-B Fake CLI root and command contract
 
@@ -241,6 +243,21 @@ help
 Names remain aliases, not frozen product identity. Ambiguous/destructive targets are never guessed.
 
 ### M1A-C Identity / Supabase
+
+Identity chain to prove:
+
+```text
+ChatGPT interaction
+→ plugin/app session
+→ Supabase Google OAuth session/token
+→ auth.uid()
+→ per-user config row
+```
+
+No ChatGPT account identifier is assumed or required unless the platform explicitly exposes one.
+
+Prove session persistence/recovery across a fresh chat or reconnect path.
+
 - Supabase Auth Google OAuth sign-in;
 - authoritative application user = `auth.uid()`;
 - verified email is display metadata, never typed identity proof;
@@ -390,7 +407,8 @@ Support same-chat non-independent specialist child Run.
 - immutable Handoff record;
 - append `HandoffConsumption` / successor Run reference;
 - derive PENDING/CONSUMED/CONFLICTED at read time;
-- conflicting double-consumption is surfaced, never last-write-wins.
+- conflicting double-consumption is surfaced, never last-write-wins;
+- before any consequential/source write, a successor Run re-reads all consumption records for its `handoff_id`; if more than one valid successor exists, both are blocked for human reconciliation.
 
 ## Exit criteria
 
