@@ -272,3 +272,25 @@ Operational rule:
 3. delete using `https://drive.google.com/file/d/<PROBE_ID>/view`;
 4. optionally list target folder to verify absence;
 5. only then set `write_probe_passed=true`.
+
+
+### Reinstall / reconnect auto-approval fix
+
+Observed on plugin reinstall:
+
+```text
+OAuth authorize request                  PASS
+existing user/client consent             auto_approved = true
+getAuthorizationDetails                  returned redirect_url without pending authorization_id
+old auth-ui behavior                     called approveAuthorization again
+result                                   400 authorization request is no longer pending
+```
+
+Supabase documents this as a valid reconnect case: when authorization details no longer contain an `authorization_id`, the user has previously consented and the UI must redirect directly to `redirect_url`.
+
+Repair in `auth-ui/index.html`:
+- after `getAuthorizationDetails()`, test whether `authorization_id` is present;
+- if absent and `redirect_url` exists, redirect immediately back to ChatGPT;
+- do not call `approveAuthorization()` a second time.
+
+Production Vercel deployment for commit `8eb7cff0c9b56450a69be8b3978717f30cdedfbb` reached READY.
