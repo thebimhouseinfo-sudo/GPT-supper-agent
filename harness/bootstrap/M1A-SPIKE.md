@@ -228,7 +228,8 @@ No Google Drive scope or credential participates in this chain.
 Remaining M1A proof:
 1. call/read the authenticated GSA profile through the plugin;
 2. verify `get_drive_config` returns not configured before setup;
-3. use ChatGPT's separate Google Drive plugin to select a folder and pass a write/delete probe;
-4. save that folder ID through `set_drive_config`;
-5. read it back through RLS in a fresh call/chat;
-6. verify cross-user RLS isolation when a second test identity is available.
+3. paste a Google Drive folder URL and let ChatGPT auto-route it to the already-connected Drive app;
+4. pass a write/delete probe on that folder;
+5. save the URL through `set_drive_config`, which extracts/stores the canonical folder ID;
+6. read it back through RLS in a fresh call/chat;
+7. verify cross-user RLS isolation when a second test identity is available.
