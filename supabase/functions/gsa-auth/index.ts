@@ -30,7 +30,7 @@ function page() {
 <body>
 <main>
   <h1>GPT Super Agent</h1>
-  <p class="muted">Sign in once with Google so GPT Super Agent can identify your account and remember your Project Drive setting.</p>
+  <p class="muted">Sign in with Google so GPT Super Agent can identify your account. Google Drive remains a separate ChatGPT connection.</p>
 
   <div id="status" class="box">Checking GPT Super Agent sign-in…</div>
   <div id="details" class="box" hidden></div>
@@ -70,24 +70,38 @@ function page() {
     status.textContent = 'Authorization cannot continue.'
   }
 
-  function consentUrl() {
+  function returnUrl() {
     const u = new URL(location.href)
     u.search = ''
     u.hash = ''
-    u.searchParams.set('authorization_id', authorizationId)
+    if (authorizationId) u.searchParams.set('authorization_id', authorizationId)
     return u.toString()
   }
 
   async function boot() {
-    if (!authorizationId) {
-      showError('Missing authorization_id. Start the connection from ChatGPT Developer Mode.')
+    const { data: sessionData } = await supabase.auth.getSession()
+
+    if (!sessionData.session) {
+      status.textContent = authorizationId
+        ? 'Sign in with Google to connect ChatGPT to your GSA account.'
+        : 'Sign in with Google to create or open your GSA account.'
+      login.hidden = false
       return
     }
 
-    const { data: sessionData } = await supabase.auth.getSession()
-    if (!sessionData.session) {
-      status.textContent = 'Sign in with your Google account to continue.'
-      login.hidden = false
+    const email = sessionData.session.user.email ?? 'Google user'
+    status.textContent = 'GSA Account connected: ' + email
+
+    if (!authorizationId) {
+      details.hidden = false
+      details.replaceChildren()
+
+      const title = document.createElement('strong')
+      title.textContent = 'Account ready'
+      const text = document.createElement('p')
+      text.textContent =
+        'Your Supabase user ID is linked to this verified Google account. Project Drive is configured separately through ChatGPT Google Drive.'
+      details.append(title, text)
       return
     }
 
@@ -97,14 +111,13 @@ function page() {
       return
     }
 
-    status.textContent = 'Signed in as ' + (sessionData.session.user.email ?? 'Google user')
     details.hidden = false
     details.replaceChildren()
 
     const title = document.createElement('strong')
     title.textContent = data.client?.name ?? data.client_name ?? 'ChatGPT'
     const text = document.createElement('p')
-    text.textContent = 'Requested scopes: ' + ((data.scopes ?? []).join(', ') || 'email')
+    text.textContent = 'Allow this ChatGPT connection to use your GSA account configuration.'
 
     details.append(title, text)
     approve.hidden = false
@@ -115,7 +128,7 @@ function page() {
     login.disabled = true
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: consentUrl() },
+      options: { redirectTo: returnUrl() },
     })
     if (error) {
       login.disabled = false
