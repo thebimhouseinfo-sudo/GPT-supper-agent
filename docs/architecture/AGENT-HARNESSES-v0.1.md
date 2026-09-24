@@ -1,4 +1,4 @@
-# Agent Contracts v1.2
+# Agent Contracts
 
 ## 1. Shared role model
 
@@ -74,14 +74,14 @@ Completing Runs do not write progress/reference arrays back into the parent Job 
 
 ## 6. Reviewer
 
-Independent Reviewer:
+Context-Isolated Reviewer:
 - uses fresh chat;
 - reads exact target/revision and applicable requirements/evidence;
 - source implementation read-only;
 - produces findings/results;
 - does not fix source.
 
-Reviewer independently derives judgement.
+Reviewer derives judgement without prior-chat reasoning context.
 
 Reviewer is topology-driven except when the mechanically computed mandatory review floor triggers.
 
@@ -118,7 +118,7 @@ parent Run yields
 → parent resumes
 ```
 
-Independent review remains fresh-chat.
+Context-isolated review remains fresh-chat.
 
 ## 10. Direct Agent
 
@@ -136,11 +136,22 @@ Promotion creates new Project/Job from a promotion packet.
 
 Direct Coder cannot bypass an existing owning Project.
 
-## 11. Context discipline
+## 11. Context discipline and harness loading
 
 Use minimum sufficient role context.
 
 Reviewer/Tester may receive intentionally isolated context.
+
+The repository files are not assumed to appear in ChatGPT context automatically.
+
+Phase 2 must define and prove:
+- which plugin/action selects the role harness;
+- which canonical policy fragments are loaded for that Run;
+- maximum/default context packet budget;
+- what is fetched lazily versus included up front;
+- how the same behavior resumes in a fresh chat.
+
+Until proven, harness loading is an implementation capability, not an architecture assumption.
 
 ## 12. Handoff
 
