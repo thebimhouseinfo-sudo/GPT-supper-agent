@@ -63,8 +63,8 @@
 <main>
   <h1>GPT Super Agent</h1>
   <p class="muted">
-    Sign in with Google so GSA can identify your account and remember your Project Drive setting.
-    Google Drive remains a separate ChatGPT connection.
+    Sign in with Google so GSA can identify your account and remember your Memory Repo setting.
+    Project Memory is stored in the private GitHub Memory Repo you configure in GSA.
   </p>
 
   <div id="status" class="panel">Checking your GSA account…</div>
@@ -149,7 +149,7 @@
       const text = document.createElement('p')
       text.className = 'muted'
       text.textContent =
-        'Your GSA user identity is ready. Project Drive is selected separately through the Google Drive connection already available in ChatGPT.'
+        'Your GSA user identity is ready. Configure a private GitHub Memory Repo in GSA Settings.'
       details.append(text)
       return
     }
@@ -175,7 +175,7 @@
 
     const scopeText = document.createElement('p')
     scopeText.className = 'muted'
-    scopeText.textContent = 'This grants ChatGPT access only to your GSA identity/configuration. It does not grant Google Drive access.'
+    scopeText.textContent = 'This grants ChatGPT access only to your GSA identity/configuration. GitHub repository access remains managed by ChatGPT's GitHub connection.'
     details.append(scopeText)
 
     consent.hidden = false
