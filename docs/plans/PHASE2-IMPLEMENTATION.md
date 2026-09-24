@@ -412,7 +412,7 @@ Persist in this order:
 
 A terminal Run must not reference evidence/Handoff that was never persisted.
 
-An abandoned `IN_PROGRESS` Run is displayed as derived `STALE`; user/Orchestrator decides resume, supersede, or explicit close.
+An `IN_PROGRESS` Run whose execution/chat context is gone is displayed as derived `ABANDONED`; user/Orchestrator decides resume, supersede, or explicit close.
 
 ### M2-D Child Runs
 Support same-chat non-independent specialist child Run.
@@ -584,7 +584,7 @@ Retest Request is stable; each attempt is a separate `kind = RETEST` Verificatio
 
 Derived state: PENDING/BLOCKED/PASS/FAIL/SUPERSEDED.
 
-No shared mutable `attempt_history[]`.
+Do not maintain a shared mutable Retest attempt-history array.
 
 ### M6-C PASS_RETEST_REQUIRED
 Allow Job completion while Retest stays pending.
