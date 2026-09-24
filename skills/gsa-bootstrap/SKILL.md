@@ -14,7 +14,7 @@ Use this skill only for Phase-2 M1A bootstrap and runtime verification.
 5. Until OAuth is observed end to end, report authentication as unproven.
 6. GSA authentication is only for GSA identity/configuration. Never present Google Drive connection as part of GSA account setup.
 7. Google Drive is an external ChatGPT connector. Use it only to select/probe the user's chosen Project Drive folder.
-8. Project work requiring a Drive root remains blocked until both GSA identity is known and the selected folder has passed the external Drive write/delete probe.
+8. Project work requiring a Drive root remains blocked until both GSA identity is known and write authority for the selected folder has been verified. Prefer permission metadata; create/delete probe is fallback only.
 
 This bootstrap skill is intentionally small. Full Orchestrator/role workflows are added only after M1A proves the loading and authentication path.
 
