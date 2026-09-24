@@ -201,14 +201,27 @@ user_drive_config table creation         OBSERVED
 RLS enabled on user_drive_config         OBSERVED
 M1A gsa-mcp Edge Function deployment     OBSERVED / ACTIVE v3
 M1A gsa-auth consent UI deployment        OBSERVED / ACTIVE v1
-MCP protocol call through deployed URL   UNKNOWN
-ChatGPT Developer Mode connection        UNKNOWN
-Supabase OAuth 2.1 server enablement      UNKNOWN / UI GATE
+MCP health endpoint                      OBSERVED / HTTP 200
+MCP initialize                            OBSERVED / protocol 2025-11-25
+MCP tools/list                            OBSERVED / 4 tools
+MCP anonymous tool call                   OBSERVED / get_runtime_status
+MCP protected-resource metadata           OBSERVED / HTTP 200
+MCP OAuth challenge                       OBSERVED / mcp/www_authenticate
+ChatGPT Developer Mode connection         UNKNOWN / UI GATE
+Supabase OAuth 2.1 server enablement      UNAVAILABLE CURRENTLY / DISABLED
 Google provider/user OAuth session        UNKNOWN / UI GATE
 per-user RLS CRUD under auth.uid()        TO_PROVE
 ```
 
-The deployed bootstrap MCP surface is intentionally read-only and unauthenticated. Its deployment proves hosting, not user authentication or Project Drive authority.
+The deployed MCP surface has now been protocol-probed from inside Supabase:
+- health = HTTP 200;
+- MCP initialize = PASS;
+- tools/list = PASS with four tools;
+- anonymous get_runtime_status = PASS;
+- protected-resource metadata = PASS;
+- unauthenticated get_profile returns the expected OAuth challenge.
+
+This proves MCP server/protocol/auth signaling, but not end-user OAuth or Project Drive configuration.
 
 Do not promote MCP protocol, OAuth, or per-user configuration to OBSERVED until an actual ChatGPT/MCP client completes the corresponding end-to-end flow.
 
