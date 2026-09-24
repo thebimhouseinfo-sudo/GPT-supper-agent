@@ -72,8 +72,18 @@ Observed:
 - `set_drive_config` requires `write_probe_passed = true`;
 - OAuth scopes are `email profile`; GSA does not request `openid`, so an ID token/asymmetric signing key is not required for this flow.
 
-Important:
-deployment ACTIVE does not yet prove ChatGPT has initialized the MCP protocol or completed OAuth.
+Protocol probes completed through the Supabase database HTTP extension:
+
+```text
+GET /health                                 PASS / 200
+POST /mcp initialize                        PASS / protocol 2025-11-25
+POST /mcp tools/list                        PASS / 4 tools discovered
+POST /mcp get_runtime_status                PASS
+GET /.well-known/oauth-protected-resource   PASS / 200
+POST /mcp get_profile without token         PASS / OAuth challenge emitted
+```
+
+The remaining unproven layer is the real ChatGPT client OAuth/linking session.
 
 ## Corrected identity / Drive boundary
 
@@ -126,6 +136,7 @@ These settings cannot be changed by the currently exposed Supabase/ChatGPT conne
 3. Supabase Auth URL Configuration:
    - allow redirect to `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`.
 4. Supabase Dashboard → Authentication → OAuth Server:
+   - current probe result: `feature_disabled / OAuth server is disabled`;
    - enable OAuth 2.1 server;
    - authorization path = `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-auth`;
    - enable Dynamic Client Registration.
