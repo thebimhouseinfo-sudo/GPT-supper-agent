@@ -68,7 +68,7 @@ If multiple pending Handoffs exist, show compact choices and do not guess.
 
 ## 6. Fresh chat
 
-Independent Reviewer Handoff:
+Context-Isolated Reviewer Handoff:
 ```text
 user invokes Reviewer in fresh chat
 → Handoff context loads
