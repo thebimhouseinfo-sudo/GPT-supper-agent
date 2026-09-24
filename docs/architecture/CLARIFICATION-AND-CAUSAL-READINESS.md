@@ -155,7 +155,7 @@ Examples:
 - capability available;
 - Human Gate resolved.
 
-Canonical lifecycle/status semantics live in STATE-MACHINE-v1.md and specialist domain definitions.
+Canonical lifecycle/status semantics live in STATE-MACHINE.md and specialist domain definitions.
 
 ---
 
