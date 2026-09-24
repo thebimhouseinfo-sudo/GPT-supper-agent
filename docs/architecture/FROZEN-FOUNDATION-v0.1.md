@@ -1,12 +1,14 @@
-# Frozen Foundation v0.5
+# Foundation
 
 ## Status
 
 ```text
-FOUNDATION_STATUS = FROZEN
+FOUNDATION_STATUS = GOVERNED_BASELINE
 ```
 
-Product/system invariants only. Theory-construction rules live in `THEORY-PROCESS-v1.md`.
+Product/system invariants only.
+
+`GOVERNED_BASELINE` means these invariants are protected by architecture governance, not immutable forever. A human-approved architecture amendment may change them; Git history is the version record.
 
 ## F1. Product boundary
 
@@ -152,7 +154,7 @@ Effective authority is constrained by Project/Job/Task/role/Run/human/capability
 
 Normal review is topology-driven; not every PR/Task/milestone/Job requires Reviewer.
 
-Independent review is mandatory for mechanically detectable sensitive classes:
+Context-isolated review is mandatory for mechanically detectable sensitive classes:
 - shared contracts/interfaces/schema;
 - persisted-data migration/format;
 - auth/permission/security-sensitive logic;
@@ -216,6 +218,8 @@ Current orchestration:
 ```text
 pull-based + human-dispatched + durable-state persistent
 ```
+
+Handoff contracts are append-preserving. Consumption is recorded as a separate durable event/Run reference; the original Handoff is not mutated from PENDING to CONSUMED.
 
 ## F20. Shared identity
 
