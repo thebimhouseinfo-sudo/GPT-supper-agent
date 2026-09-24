@@ -288,7 +288,9 @@ Prove session persistence/recovery across a fresh chat or reconnect path.
 - GSA does not install, connect, authenticate, or store credentials for Google Drive;
 - normal UX is URL-first: user pastes the Project Drive folder URL;
 - the Drive URL itself routes ChatGPT to the connected Google Drive app; no `@Google Drive` mention is required;
-- create/delete temporary child-folder probe before READY;
+- first verify write authority non-destructively: Drive profile email + target-folder permission metadata;
+- roles owner/writer/organizer/fileOrganizer satisfy write authority;
+- create/delete probe is fallback only when permission metadata cannot determine authority;
 - GSA extracts and stores the canonical Drive folder ID from the accepted URL;
 - exact Supabase-Google-account == Drive-connector-account equality is neither required nor assumed.
 
@@ -319,7 +321,7 @@ M1A passes only when:
 2. Supabase Google OAuth session can identify the application user;
 3. RLS-backed root config create/read/update works;
 4. GSA does not absorb or duplicate Google Drive connection/authentication;
-5. pasted Drive folder URL auto-routes through ChatGPT's external Drive capability and the selected-folder create/delete probe succeeds;
+5. pasted Drive folder URL auto-routes through ChatGPT's external Drive capability and write authority is verified by permission metadata or, only if needed, fallback create/delete probe;
 6. root-dependent work blocks rather than guesses when setup is incomplete.
 
 ## Mandatory evals
