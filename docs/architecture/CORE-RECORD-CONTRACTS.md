@@ -305,7 +305,7 @@ human_authorization_ref?
 
 ## Scope Claim
 
-See `ATTRIBUTION-AND-SCOPE-CLAIMS-v1.md`.
+See `ATTRIBUTION-AND-SCOPE-CLAIMS.md`.
 
 ## CONTROL materialized view
 
