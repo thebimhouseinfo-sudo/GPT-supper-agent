@@ -10,7 +10,7 @@ ARCHIVED
 
 Project Open shows ACTIVE + PAUSED and hides ARCHIVED.
 
-Project delete removes Drive Project memory, not repos.
+Project delete removes Project Memory under the configured Memory Repo, not source repositories.
 
 ## 2. Project creation/open
 
