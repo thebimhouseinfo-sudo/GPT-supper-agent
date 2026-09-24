@@ -163,7 +163,6 @@ function createServer(req: Request) {
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
-        'Google Drive is not part of GSA core and must not be used for Project Memory.',
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
