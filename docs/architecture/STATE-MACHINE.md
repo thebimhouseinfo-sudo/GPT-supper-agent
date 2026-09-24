@@ -85,9 +85,12 @@ Derived condition:
 ```text
 WAITING_HUMAN
 BLOCKED
+ABANDONED
 ```
 
-WAITING_HUMAN derives from unresolved Human Gate/confirmation condition; BLOCKED derives from explicit blocker.
+WAITING_HUMAN derives from an unresolved Human Gate/confirmation condition.
+BLOCKED derives from an explicit blocker.
+ABANDONED derives when a Run remains IN_PROGRESS after its execution/chat context is no longer live and no terminal record was written.
 
 Meaningful retry/new chat creates new linked Run.
 
@@ -95,15 +98,31 @@ Child Run has independent lifecycle + parent_run_id.
 
 ## 6. Handoff
 
+Handoff has no mutable stored lifecycle after creation.
+
+Derived state:
 ```text
 PENDING
 BLOCKED
 CONSUMED
+CONFLICTED
 SUPERSEDED
 ```
 
+Derivation:
+- PENDING = immutable Handoff exists and no valid consumption/supersession/blocker prevents dispatch;
+- BLOCKED = an applicable blocker/Human Gate prevents dispatch;
+- CONSUMED = exactly one valid HandoffConsumption/successor Run references the handoff;
+- CONFLICTED = multiple incompatible valid consumption/successor records exist;
+- SUPERSEDED = a separate supersession/control record declares this Handoff no longer actionable.
+
+The original Handoff record is not rewritten to store these states.
+
 ## 7. Retest
 
+Retest Request is stable; Retest state is derived from append-preserving attempt/verification records.
+
+Derived state:
 ```text
 PENDING
 BLOCKED
@@ -112,7 +131,7 @@ FAIL
 SUPERSEDED
 ```
 
-Attempt history append-preserving.
+Prior attempts are never rewritten or erased.
 
 ## 8. Asset Requirement
 
@@ -180,7 +199,9 @@ Run:
 - retry = new linked Run.
 
 Handoff:
-- CONSUMED/SUPERSEDED do not return PENDING.
+- derived CONSUMED/SUPERSEDED do not silently return to PENDING;
+- CONFLICTED blocks dispatch until reconciled;
+- the immutable Handoff itself is never state-mutated.
 
 Retest:
 - prior results never erased.
