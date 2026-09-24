@@ -107,9 +107,12 @@ Derived condition:
 ```text
 WAITING_HUMAN
 BLOCKED
+ABANDONED
 ```
 
 Human Gate/blocker is the durable cause; do not duplicate it as authoritative Run lifecycle.
+
+ABANDONED is derived when an IN_PROGRESS Run loses its execution/chat context without a terminal record. It is not the artifact-validity state STALE.
 
 Meaningful retry/new chat creates linked Run.
 
@@ -117,14 +120,22 @@ Child Run may use `parent_run_id`.
 
 ## 7. Handoff
 
+Source Run completes and creates an immutable Handoff.
+
+Current Handoff state is derived:
 ```text
 PENDING
 BLOCKED
 CONSUMED
+CONFLICTED
 SUPERSEDED
 ```
 
-Source Run completes; Handoff carries pending transition.
+- consumption is a separate HandoffConsumption/successor Run record;
+- blocker/Human Gate causes BLOCKED;
+- multiple incompatible consumptions cause CONFLICTED;
+- supersession is recorded separately;
+- no PENDING → CONSUMED overwrite occurs in the original Handoff.
 
 ## 8. Completion topology
 
@@ -157,11 +168,13 @@ deployment_verified
 
 Separate from lifecycle.
 
-## 11. Job history/delete
+## 11. Project / Job delete behavior
 
 No Job ARCHIVED state.
 
-Hard delete is explicit human action; show references/consequences first.
+Project delete removes Project Memory only after explicit human confirmation; it never deletes source repositories.
+
+Job hard delete is also explicit human action; show surviving references/consequences first.
 
 ## 12. PAUSED/ARCHIVED
 
