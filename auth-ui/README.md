@@ -9,7 +9,7 @@ This page does only two things:
 1. sign the user into Supabase Auth with Google;
 2. display/approve Supabase OAuth authorization requests from ChatGPT.
 
-It does **not** connect to Google Drive and requests no Google Drive scope.
+It does **not** manage GitHub credentials. Repository access remains provided by ChatGPT's GitHub connection.
 
 ## Deploy
 
