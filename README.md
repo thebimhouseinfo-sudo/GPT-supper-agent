@@ -66,7 +66,9 @@ Observed before Phase-2 entry:
 
 `SUPER_AGENT_DRIVE_ROOT` is a logical root resolved from the current user's runtime configuration.
 
-Initial implementation stores `user_id → drive_root_folder_id` in Supabase. Changing folder updates the same user's record in place; no config revision is used. User-specific folder IDs are not stored in GitHub or treated as authoritative from chat history.
+Initial implementation uses Supabase Auth with Google OAuth for application-user identity, then stores `user_id → drive_root_folder_id` in Supabase. Changing folder updates the same user's record in place; no config revision is used.
+
+The ChatGPT Google Drive plugin/connector is a separate prerequisite. Project Drive becomes READY only after the selected folder passes a temporary write/delete probe. User-specific folder IDs are not stored in GitHub or treated as authoritative from chat history.
 
 ## Project Memory
 
