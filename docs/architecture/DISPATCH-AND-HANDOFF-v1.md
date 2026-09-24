@@ -1,12 +1,12 @@
-# Dispatch and Handoff v1.1
+# Dispatch and Handoff
 
 ## 1. Current model
 
 ```text
 Run completes
-→ Handoff PENDING
+→ immutable Handoff record is created
 → user dispatches next Run
-→ next Run consumes Handoff
+→ successor Run / HandoffConsumption references handoff_id
 ```
 
 No automatic separate-chat spawning is assumed.
@@ -27,7 +27,6 @@ remaining
 required_inputs
 blocker_or_gate?
 expected_next_outcome
-state
 ```
 
 ## 3. Minimal dispatch UX
@@ -79,13 +78,22 @@ Non-independent child/specialist Run may remain same chat.
 
 ## 7. Consume rule
 
-Before consuming:
+Before dispatching from a Handoff:
 - Project ACTIVE;
 - target/revision still relevant;
 - scope/conflict checked;
-- required Human Gate satisfied.
+- required Human Gate satisfied;
+- re-check whether another successor/consumption event already references this handoff_id.
 
-Consumed Handoff remains historical.
+Consumption is append-preserving:
+
+```text
+Handoff (immutable)
++ HandoffConsumption or successor Run reference
+→ derived state = PENDING | CONSUMED | CONFLICTED
+```
+
+Two conflicting consumption events are not silently last-write-wins; they are surfaced as a conflict for reconciliation.
 
 ## 8. Unmatched command/input
 
