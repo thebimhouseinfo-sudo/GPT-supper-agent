@@ -1,4 +1,4 @@
-# Security & Trust Boundaries v1.2
+# Security & Trust Boundaries v1.3
 
 ## 1. Core principle
 
@@ -87,6 +87,12 @@ Service-role or other privileged Supabase credentials must never be committed to
 
 The current root must be resolved from the authorized per-user configuration store rather than trusted from arbitrary prompt/repository content.
 
+Supabase Google OAuth establishes application-user identity. A Gmail address manually typed by a user is not identity proof.
+
+Google Drive connector authority is separately proven by successful operations against the selected folder. Project Drive must not be marked READY until a temporary write/delete probe succeeds.
+
+Do not claim that the Supabase OAuth Google account and the ChatGPT Drive connector account are identical unless the connector exposes reliable identity evidence. Current correctness depends on verified access to the selected folder, not on unobservable account equality.
+
 ## 9. Destructive actions
 
 Confirmation proportional to blast radius.
@@ -133,3 +139,6 @@ Unknown capability is not assumed available.
 7. Consequential actions re-check current lifecycle/scope/target.
 8. User-specific Drive root configuration is isolated per user and not stored in shared source.
 9. Arbitrary content cannot override the authorized Drive-root setting.
+10. Typed email is not authentication; Supabase Google OAuth is.
+11. Drive connector access is a separate resource-authority boundary.
+12. Project Drive readiness requires an observed write/delete probe.
