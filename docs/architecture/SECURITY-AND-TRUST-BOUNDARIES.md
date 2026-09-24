@@ -113,6 +113,57 @@ Confirmation proportional to blast radius.
 
 Project delete never means repo delete.
 
+## 10A. Google Drive write sandbox
+
+The configured Project Drive folder ID is an absolute mutation boundary for GSA.
+
+Hard rules:
+
+```text
+ALLOW:
+Project Drive root itself
++ descendants of Project Drive root
+
+DENY:
+My Drive root alias
+ancestors of Project Drive
+siblings of Project Drive
+unrelated Drive folders/files
+moves crossing the Project Drive boundary
+```
+
+For every Drive mutation initiated by GSA:
+1. resolve the configured Project Drive root from authenticated user config;
+2. resolve the target item/parent by ID;
+3. prove target ancestry reaches the configured root;
+4. if ancestry cannot be proven, block;
+5. never guess from names or paths.
+
+The literal Google Drive parent `root` is forbidden for all GSA mutations.
+
+Create:
+- may create only inside Project Drive root or its descendants;
+- setup/probe creation must be a direct child of the configured Project Drive root.
+
+Move:
+- source and destination must both be inside the same configured Project Drive boundary;
+- crossing the boundary is forbidden.
+
+Delete:
+- never delete by name;
+- never delete an item outside the configured boundary;
+- never delete a pre-existing user item by default;
+- automatic deletion is allowed only for an item created by GSA in the same Run and recorded by exact item ID;
+- deletion of any pre-existing Project item requires an explicit Human Gate naming the exact target ID and consequence.
+
+Probe fallback:
+- create exactly one direct child under Project Drive;
+- record its returned ID;
+- delete only that exact ID;
+- if any step cannot be verified, stop and leave configuration unchanged.
+
+This is a fail-closed rule. Missing/ambiguous ancestry or identity means no mutation.
+
 ## 11. Consequential-action recheck
 
 Before:
