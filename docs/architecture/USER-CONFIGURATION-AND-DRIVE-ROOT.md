@@ -72,7 +72,20 @@ Supabase user_drive_config
 
 If the user's ChatGPT account does not currently have usable Google Drive access, GSA may explain that Project Drive operations cannot continue, but connection/authorization is performed through ChatGPT's own Google Drive plugin UI outside GSA.
 
-Current connector evidence supports Drive listing, folder creation and deletion. Therefore GSA can ask ChatGPT to prove authority over the selected folder with a temporary create/delete probe before saving its folder ID.
+Current connector evidence supports Drive listing, folder creation and deletion.
+
+For normal UX, the user supplies the Google Drive folder URL directly. Once Google Drive is connected in ChatGPT, the URL itself is sufficient routing context; the user does not need to prefix the request with `@Google Drive`.
+
+```text
+paste Drive folder URL
+→ ChatGPT routes the URL to the connected Google Drive app
+→ resolve/probe the folder
+→ GSA extracts/stores the canonical folder ID
+```
+
+The `@` app mention remains an optional explicit routing mechanism, not a GSA requirement.
+
+GSA asks ChatGPT to prove authority over the selected folder with a temporary create/delete probe before saving its folder ID.
 
 No equality between the Supabase Google account and the ChatGPT Google Drive account is required. The proofs are intentionally independent:
 - Supabase Auth proves GSA application-user identity;
@@ -154,8 +167,8 @@ GSA Account
 
 Project Drive
   current folder
-  [Choose folder]
-  [Change folder]
+  [Paste folder URL]
+  [Change folder URL]
 ```
 
 Google Drive connection status is not a GSA account setting. Google Drive remains a separate ChatGPT plugin/connector managed outside this app.
@@ -186,8 +199,9 @@ first use
 → SETTING
 → Sign in with Google through Supabase Auth
 → Supabase resolves stable auth.users.id + verified email
-→ user selects a Google Drive folder using ChatGPT's existing Drive capability
-→ ChatGPT Drive connector creates/deletes a temporary probe inside that folder
+→ user pastes the Google Drive folder URL
+→ ChatGPT automatically routes that URL to the already-connected Google Drive app
+→ Drive connector creates/deletes a temporary probe inside that folder
 → only on PASS create/update the stable per-user config record
 → Project Drive = READY
 ```
@@ -231,3 +245,4 @@ Reasons it is not primary:
 13. GSA stores no Google Drive credential or OAuth scope.
 14. Project Drive becomes READY only after an observed write/delete probe succeeds in the selected folder.
 15. Supabase identity and Drive resource authority are separate proofs; cross-connector account equality is not required.
+16. A recognized connected-app URL is sufficient routing context; GSA must not require the user to type `@Google Drive` or `@GitHub` when the target URL already identifies the provider.
