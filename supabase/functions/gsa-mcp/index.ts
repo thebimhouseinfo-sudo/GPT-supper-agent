@@ -174,6 +174,8 @@ function createServer(req: Request) {
           'Treat a shortcut exactly as its canonical subcommand. Do not invent additional aliases.',
           'PROJECT command routing: ls/list -> project_list; op/open -> project_open; new/create -> project_create; st/status -> project_status; pa/pause -> project_pause; rs/resume -> project_resume; ar/archive -> project_archive; rm/delete -> project_delete.',
           'Project command handlers are orchestration contracts. When they return external_steps, execute those steps through the connected Google Drive/GitHub apps and do not report success until the connector evidence passes.',
+          'DIRECT AGENT routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent with matching role.',
+          'HELP routing: guide/instruction -> get_instruction; help/command help -> get_command_help. SETTING acct -> get_profile; drive -> get_drive_config or set_drive_config.',
           'DIRECT AGENT contains Planner, Designer, Coder, Reviewer, Tester.',
           'SETTING contains GSA Account and Project Drive.',
           'Google Drive and GitHub are separate connected ChatGPT apps. A pasted provider URL is sufficient routing context; do not require @Google Drive or @GitHub.',
@@ -826,6 +828,91 @@ function createServer(req: Request) {
         external_steps: inside ? ['Call authorize_drive_mutation for exact project_folder_id with human_gate_approved=true.','Proceed only on ALLOW.','Google Drive: delete exactly project_folder_id, never by name.','Verify Project folder no longer exists.','Do not mutate GitHub source.'] : [],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'start_direct_agent',
+    {
+      title: 'Start a Direct Agent',
+      description: 'Handler for DIRECT AGENT shortcuts pl/ds/cd/rv/ts. Returns the role contract for ephemeral direct work.',
+      inputSchema: { role: z.enum(['planner','designer','coder','reviewer','tester']), objective: z.string().optional(), target_url: z.string().url().optional() },
+      outputSchema: { role: z.string(), mode: z.string(), ephemeral: z.boolean(), purpose: z.string(), source_write: z.boolean(), expected_output: z.string(), objective: z.string().nullable(), target_url: z.string().nullable(), rules: z.array(z.string()) },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({ role, objective, target_url }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to start a Direct Agent.')
+      const contracts: Record<string, { purpose: string; source_write: boolean; output: string }> = {
+        planner: { purpose: 'Plan scope, tasks, dependencies and gates.', source_write: false, output: 'Plan / Project or Job proposal' },
+        designer: { purpose: 'Define UI/UX and asset requirements.', source_write: false, output: 'Design / Asset Requirement' },
+        coder: { purpose: 'Implement approved source changes.', source_write: true, output: 'Source diff + Goal Recheck + evidence' },
+        reviewer: { purpose: 'Run context-isolated review.', source_write: false, output: 'Findings + review result' },
+        tester: { purpose: 'Verify behavior and evidence.', source_write: false, output: 'Test / Retest evidence' },
+      }
+      const contract = contracts[role]
+      const result = {
+        role, mode: 'DIRECT_AGENT', ephemeral: true, purpose: contract.purpose, source_write: contract.source_write, expected_output: contract.output,
+        objective: objective ?? null, target_url: target_url ?? null,
+        rules: [
+          'Direct work is ephemeral by default.',
+          'If target belongs to an existing owning Project, Project governance wins.',
+          'Promotion to durable Project/Job state requires an explicit promotion packet.',
+          role === 'reviewer' ? 'Reviewer is context-isolated and source read-only.' : 'Respect role authority and connected-app permissions.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'get_instruction',
+    {
+      title: 'Show GSA usage instructions',
+      description: 'Handler for HELP instruction / guide. Return concise authoritative usage guidance.',
+      inputSchema: {},
+      outputSchema: { instruction_text: z.string() },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async () => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to read GSA instructions.')
+      const instructionText = [
+        'GSA usage',
+        '1. Configure SETTING -> Project Drive once.',
+        '2. PROJECT create [new] creates durable Project Memory in that Drive root and binds a GitHub repository.',
+        '3. PROJECT open [op] selects exact Project context; ambiguous names must show choices.',
+        '4. DIRECT AGENT is ephemeral by default; promote explicitly if durable governance is needed.',
+        '5. Paste Google Drive or GitHub URLs directly; @mentions are optional.',
+        '6. GSA never mutates Google Drive outside the configured Project Drive sandbox.',
+        '7. Merge/release and destructive actions require applicable explicit human authorization.',
+      ].join('\n')
+      return { structuredContent: { instruction_text: instructionText }, content: [{ type: 'text', text: instructionText }] }
+    },
+  )
+
+  server.registerTool(
+    'get_command_help',
+    {
+      title: 'Show GSA command help',
+      description: 'Handler for HELP command help / help. Show canonical commands and aliases.',
+      inputSchema: { command: z.string().optional() },
+      outputSchema: { help_text: z.string() },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ command }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to read command help.')
+      const helpText = command ?
+        'Command help requested for: ' + command + '. Use canonical aliases exactly; show choices rather than guessing ambiguous targets.' :
+        ['PROJECT: list[ls], open[op], create[new], status[st], pause[pa], resume[rs], archive[ar], delete[rm]','DIRECT AGENT: planner[pl], designer[ds], coder[cd], reviewer[rv], tester[ts]','SETTING: GSA Account[acct], Project Drive[drive]','HELP: instruction[guide], command help[help]'].join('\n')
+      return { structuredContent: { help_text: helpText }, content: [{ type: 'text', text: helpText }] }
     },
   )
 
