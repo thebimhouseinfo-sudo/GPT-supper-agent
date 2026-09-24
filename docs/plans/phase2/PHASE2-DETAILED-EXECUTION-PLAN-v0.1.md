@@ -166,6 +166,11 @@ Make Drive-based Project memory operational and resumable.
 ## Work packages
 
 ### M1-A Bootstrap
+- fake CLI root `SETTING` entry;
+- Supabase Auth Google OAuth sign-in;
+- verified email shown as account label; typed email is not accepted as identity proof;
+- Google Drive plugin/connector prerequisite detection/guidance;
+- selected Project Drive folder write/delete probe before READY;
 - Supabase-backed per-user Drive root resolver;
 - stable one-row-per-user root configuration;
 - root change updates the existing record in place (no config revision counter);
@@ -210,11 +215,14 @@ Fresh chat can:
 4. resolve pending Handoff/Retest/Gate without chat history;
 5. detect duplicate OWNED repo claim;
 6. persist/reload a Release Record;
-7. survive missing/stale CONTROL.
+7. survive missing/stale CONTROL;
+8. reject root bootstrap when Google Drive connector is unavailable;
+9. keep Project Drive NOT_READY when write probe fails;
+10. update the same user config row when Project Drive changes.
 
 ## Mandatory evals
 
-E1, E2, E3-storage variant, E11-storage variant, plus per-user root isolation/change-in-place config eval.
+E1, E2, E3-storage variant, E11-storage variant, per-user root isolation/change-in-place config eval, and onboarding/Drive-probe evals.
 
 ---
 
