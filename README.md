@@ -18,6 +18,7 @@ PHASE 2              = READY, NOT STARTED
 ```text
 Conversation = UI
 Google Drive = durable Project memory/control plane
+Supabase = per-user plugin configuration (initially Drive root mapping only)
 GitHub = source-code truth
 Harness / Skills / Loops = operational behavior
 ```
@@ -60,6 +61,12 @@ Observed before Phase-2 entry:
 - GitHub binary blob/tree/commit/read-back;
 - PR create/read/merge;
 - branch cleanup limitation.
+
+## Per-user Drive root
+
+`SUPER_AGENT_DRIVE_ROOT` is a logical root resolved from the current user's runtime configuration.
+
+Initial implementation stores `user_id → drive_root_folder_id` in Supabase. Changing folder updates the same user's record in place; no config revision is used. User-specific folder IDs are not stored in GitHub or treated as authoritative from chat history.
 
 ## Project Memory
 
