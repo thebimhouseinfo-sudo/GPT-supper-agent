@@ -71,7 +71,7 @@ function createServer(req: Request) {
         [
           'GPT Super Agent (GSA) runtime.',
           'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
-          'When the user types gsa/ or asks for the GSA root menu, call get_cli_root and render the authoritative menu including each subcommand shortcut and short description. Do not expose raw MCP tool names such as get_profile/get_drive_config/set_drive_config as CLI commands.',
+          'When the user types gsa/ or asks for the GSA root menu, call get_cli_root. The tool returns an authoritative preformatted menu. COPY THAT MENU VERBATIM as the entire user-facing answer. Do not translate, summarize, reflow, compress, localize, reorder, add an intro sentence, change square brackets to parentheses, or put multiple commands on one line.',
           'Stable subcommand aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Project Drive=drive; HELP instruction=guide, command help=help.',
           'Treat a shortcut exactly as its canonical subcommand. Do not invent additional aliases.',
           'DIRECT AGENT contains Planner, Designer, Coder, Reviewer, Tester.',
@@ -98,33 +98,10 @@ function createServer(req: Request) {
     {
       title: 'Show GSA root menu',
       description:
-        'Call when the user types gsa/, gsa, asks for the GSA root page, or asks what GSA can do. Return the authoritative fake CLI root. Do not replace it with raw MCP tool names.',
+        'Call when the user types gsa/, gsa, asks for the GSA root page, or asks what GSA can do. IMPORTANT: display the returned menu text verbatim as the entire answer. Do not translate, paraphrase, summarize, reformat, compress, or add commentary.',
       inputSchema: {},
       outputSchema: {
-        root: z.array(z.object({
-          command: z.string(),
-          description: z.string(),
-        })),
-        project: z.array(z.object({
-          command: z.string(),
-          shortcut: z.string(),
-          description: z.string(),
-        })),
-        direct_agent: z.array(z.object({
-          command: z.string(),
-          shortcut: z.string(),
-          description: z.string(),
-        })),
-        setting: z.array(z.object({
-          command: z.string(),
-          shortcut: z.string(),
-          description: z.string(),
-        })),
-        help: z.array(z.object({
-          command: z.string(),
-          shortcut: z.string(),
-          description: z.string(),
-        })),
+        menu_text: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -138,60 +115,31 @@ function createServer(req: Request) {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
 
-      const menu = {
-        root: [
-          { command: 'PROJECT', description: 'Manage Projects and their lifecycle.' },
-          { command: 'DIRECT AGENT', description: 'Call a specialist role directly.' },
-          { command: 'SETTING', description: 'Manage GSA account and Project Drive.' },
-          { command: 'HELP', description: 'Show instructions and command reference.' },
-        ],
-        project: [
-          { command: 'list', shortcut: 'ls', description: 'List available Projects.' },
-          { command: 'open', shortcut: 'op', description: 'Open a Project by handle or exact target.' },
-          { command: 'create', shortcut: 'new', description: 'Create a new Project.' },
-          { command: 'status', shortcut: 'st', description: 'Show current Project status.' },
-          { command: 'pause', shortcut: 'pa', description: 'Pause the active Project.' },
-          { command: 'resume', shortcut: 'rs', description: 'Resume a paused Project.' },
-          { command: 'archive', shortcut: 'ar', description: 'Archive a Project without deleting its source repo.' },
-          { command: 'delete', shortcut: 'rm', description: 'Delete Project Memory only after explicit confirmation.' },
-        ],
-        direct_agent: [
-          { command: 'planner', shortcut: 'pl', description: 'Plan scope, tasks, dependencies and gates.' },
-          { command: 'designer', shortcut: 'ds', description: 'Define UI/UX and asset requirements.' },
-          { command: 'coder', shortcut: 'cd', description: 'Implement approved source changes.' },
-          { command: 'reviewer', shortcut: 'rv', description: 'Run context-isolated review.' },
-          { command: 'tester', shortcut: 'ts', description: 'Verify behavior and evidence.' },
-        ],
-        setting: [
-          { command: 'GSA Account', shortcut: 'acct', description: 'Show the authenticated GSA account.' },
-          { command: 'Project Drive', shortcut: 'drive', description: 'View or configure the Project Drive root.' },
-        ],
-        help: [
-          { command: 'instruction', shortcut: 'guide', description: 'Show how GSA is intended to be used.' },
-          { command: 'command help', shortcut: 'help', description: 'Show command syntax and aliases.' },
-        ],
-      }
-
-      const formatGroup = (
-        title: string,
-        description: string,
-        items: Array<{ command: string; shortcut: string; description: string }>,
-      ) =>
-        title + ' — ' + description + '\n' +
-        items.map((item) =>
-          '  • ' + item.command + ' [' + item.shortcut + '] — ' + item.description
-        ).join('\n')
-
-      const text =
-        'GSA/\n' +
-        formatGroup('PROJECT', menu.root[0].description, menu.project) + '\n' +
-        formatGroup('DIRECT AGENT', menu.root[1].description, menu.direct_agent) + '\n' +
-        formatGroup('SETTING', menu.root[2].description, menu.setting) + '\n' +
-        formatGroup('HELP', menu.root[3].description, menu.help)
-
+      const menuText =
+        'PROJECT — Manage Projects and their lifecycle.\n' +
+        '  • list [ls] — List available Projects.\n' +
+        '  • open [op] — Open a Project.\n' +
+        '  • create [new] — Create a new Project.\n' +
+        '  • status [st] — Show current Project status.\n' +
+        '  • pause [pa] — Pause the active Project.\n' +
+        '  • resume [rs] — Resume a paused Project.\n' +
+        '  • archive [ar] — Archive without deleting source repo.\n' +
+        '  • delete [rm] — Delete Project Memory after confirmation.\n\n' +
+        'DIRECT AGENT — Call a specialist role directly.\n' +
+        '  • planner [pl] — Plan scope, tasks and gates.\n' +
+        '  • designer [ds] — Define UI/UX and assets.\n' +
+        '  • coder [cd] — Implement approved changes.\n' +
+        '  • reviewer [rv] — Run context-isolated review.\n' +
+        '  • tester [ts] — Verify behavior and evidence.\n\n' +
+        'SETTING — Manage GSA configuration.\n' +
+        '  • GSA Account [acct] — Show authenticated GSA account.\n' +
+        '  • Project Drive [drive] — View/configure Project Drive.\n\n' +
+        'HELP — Usage reference.\n' +
+        '  • instruction [guide] — Show GSA usage instructions.\n' +
+        '  • command help [help] — Show commands and aliases.'
       return {
-        structuredContent: menu,
-        content: [{ type: 'text', text }],
+        structuredContent: { menu_text: menuText },
+        content: [{ type: 'text', text: menuText }],
       }
     },
   )
