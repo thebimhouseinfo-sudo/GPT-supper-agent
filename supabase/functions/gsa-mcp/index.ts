@@ -85,6 +85,7 @@ function createServer(req: Request) {
           'MOVE: source and destination must both be inside the same Project Drive boundary. Cross-boundary moves are forbidden.',
           'DELETE: never delete by name. Automatic delete is allowed only for an exact Drive ID created by GSA in the same Run and still inside Project Drive. Deleting any pre-existing user item requires an explicit Human Gate naming the exact Drive ID.',
           'Fallback probe: create one direct child under Project Drive, capture the returned ID, and delete only that same ID. Never create at My Drive root and never move the probe.',
+          'PROVEN DRIVE PROBE FLOW: create the probe directly under the target Project Drive URL using Google Drive create_folder(parent_folder=<target URL>); capture the returned item ID; remove only that newly created item using Google Drive delete_file with the connector-supported file-resource URL form built from the returned ID; never move the probe and never use My Drive root.',
           'GSA OAuth establishes only GSA user identity; it never owns Google Drive authentication or credentials.',
         ].join(' '),
     },
