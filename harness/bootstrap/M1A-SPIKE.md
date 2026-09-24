@@ -28,7 +28,7 @@ The reconnect auto-approval case is handled by redirecting immediately when Supa
 
 ## Current runtime
 
-GSA MCP v20 changed the durable control plane to a per-user private GitHub Memory Repo.
+GSA MCP v21 uses a per-user private GitHub Memory Repo as the durable control plane.
 
 Current configuration table:
 
@@ -107,3 +107,23 @@ The previous storage acceptance is superseded by the Memory Repo cutover. New M1
 7. deliberately attempt stale-SHA update and observe conflict;
 8. verify wrong-repo and outside-prefix mutation guards DENY;
 9. verify source repo remains separate and unchanged.
+
+
+## Runtime self-test
+
+Observed from the deployed MCP:
+
+```text
+/selftest = HTTP 200
+pass = true
+
+uuidv7_shape       PASS
+manifest_parse     PASS
+pause_transition   PASS
+resume_transition  PASS
+memory_path_accept PASS
+memory_path_reject PASS
+repo_normalization PASS
+```
+
+The temporary database HTTP extension used for the probe was removed immediately afterward.
