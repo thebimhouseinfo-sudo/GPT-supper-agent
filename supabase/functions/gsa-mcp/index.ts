@@ -75,6 +75,12 @@ function createServer(req: Request) {
           'Then call Google Drive get_file_metadata on the pasted target folder and inspect its permissions. If the connected Drive email has role owner, writer, organizer, or fileOrganizer, write access is verified non-destructively.',
           'Only when permission metadata is insufficient may you fall back to a create/delete probe. If a fallback probe is needed, create it INSIDE the pasted target folder and delete it with https://drive.google.com/file/d/<PROBE_ID>/view.',
           'Call set_drive_config with write_access_verified=true after metadata verification, or with write_probe_passed=true only after a fallback create/delete probe fully succeeds.',
+          'HARD DRIVE SANDBOX: after Project Drive is configured, every GSA-initiated Google Drive mutation must stay inside that configured folder or its proven descendants. Never use the literal Drive parent root. Never mutate ancestors, siblings, or unrelated items.',
+          'Before any Drive mutation, call get_drive_config, obtain the exact drive_root_folder_id, resolve target/parent IDs, and prove ancestry reaches that root. If ancestry is missing, ambiguous, or outside the root, STOP.',
+          'CREATE: parent must be the configured Project Drive root or a proven descendant. Setup/probe creation may only be a direct child of the selected Project Drive.',
+          'MOVE: source and destination must both be inside the same Project Drive boundary. Cross-boundary moves are forbidden.',
+          'DELETE: never delete by name. Automatic delete is allowed only for an exact Drive ID created by GSA in the same Run and still inside Project Drive. Deleting any pre-existing user item requires an explicit Human Gate naming the exact Drive ID.',
+          'Fallback probe: create one direct child under Project Drive, capture the returned ID, and delete only that same ID. Never create at My Drive root and never move the probe.',
           'GSA OAuth establishes only GSA user identity; it never owns Google Drive authentication or credentials.',
         ].join(' '),
     },
@@ -217,8 +223,11 @@ function createServer(req: Request) {
       outputSchema: {
         configured: z.boolean(),
         drive_root_folder_id: z.string().nullable(),
+        drive_root_url: z.string().nullable(),
         drive_root_name: z.string().nullable(),
         email: z.string().nullable(),
+        mutation_scope: z.string(),
+        mutation_policy: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -245,11 +254,28 @@ function createServer(req: Request) {
         }
       }
 
+      const configured = Boolean(data?.drive_root_folder_id)
+      const driveRootId = data?.drive_root_folder_id ?? null
       const result = {
-        configured: Boolean(data?.drive_root_folder_id),
-        drive_root_folder_id: data?.drive_root_folder_id ?? null,
+        configured,
+        drive_root_folder_id: driveRootId,
+        drive_root_url: driveRootId
+          ? `https://drive.google.com/drive/folders/${driveRootId}`
+          : null,
         drive_root_name: data?.drive_root_name ?? null,
         email: data?.email ?? auth.user.email ?? null,
+        mutation_scope: configured
+          ? 'PROJECT_DRIVE_ROOT_AND_PROVEN_DESCENDANTS_ONLY'
+          : 'NO_DRIVE_MUTATION_UNTIL_PROJECT_DRIVE_CONFIGURED',
+        mutation_policy: [
+          'FORBID_DRIVE_ROOT_ALIAS',
+          'FORBID_OUTSIDE_ROOT_MUTATION',
+          'FORBID_CROSS_BOUNDARY_MOVE',
+          'FORBID_DELETE_BY_NAME',
+          'AUTO_DELETE_ONLY_SAME_RUN_GSA_CREATED_EXACT_ID',
+          'PREEXISTING_DELETE_REQUIRES_EXPLICIT_HUMAN_GATE',
+          'FAIL_CLOSED_ON_UNKNOWN_ANCESTRY',
+        ],
       }
       return {
         structuredContent: result,
