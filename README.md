@@ -90,7 +90,7 @@ No Project open → shallow root-wide Project scan
 
 ## Canonical architecture
 
-See `docs/architecture/DOCUMENT-INDEX-v1.md`.
+See `docs/architecture/DOCUMENT-INDEX.md`.
 
 ## Phase 2
 
