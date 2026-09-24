@@ -49,7 +49,7 @@ function createServer(req: Request) {
     { name: 'gpt-super-agent', version: '0.2.0' },
     {
       instructions:
-        'GPT Super Agent M1A runtime. get_runtime_status is anonymous. User-specific configuration tools require OAuth. Project Drive authority is proven separately through the ChatGPT Google Drive connector before set_drive_config is called.',
+        'GPT Super Agent M1A runtime. GSA OAuth establishes only GSA user identity. Google Drive remains a separate ChatGPT connector outside this app. Project Drive authority is proven through that external connector before set_drive_config stores the selected folder ID.',
     },
   )
 
