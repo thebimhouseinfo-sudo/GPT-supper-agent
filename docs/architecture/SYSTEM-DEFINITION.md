@@ -14,10 +14,10 @@ CALIBRATION = Phase-2+ operational tuning
 ```
 
 ## S0 Product boundary — GOVERNED_BASELINE
-Conversation UI; Drive durable Project memory/control plane; GitHub source truth.
+Conversation UI; GitHub Memory Repo durable Project memory/control plane; separate GitHub source repos remain source truth.
 
-## S1 Project/Drive — GOVERNED_BASELINE / OBSERVED
-Raw Drive Project-memory file create/read/update/delete path observed.
+## S1 Project/Memory Repo — GOVERNED_BASELINE / IMPLEMENTED
+Per-user private GitHub Memory Repo configuration + path-bounded Project Memory runtime implemented.
 
 ## S2 Work hierarchy — GOVERNED_BASELINE
 ```text
@@ -119,8 +119,8 @@ Theory-development process is supporting material, not runtime architecture.
 
 ```text
 PHASE_1 = GOVERNED_BASELINE
-PHASE_2_ENTRY = READY
-PHASE_2_STARTED = NO
+PHASE_2_ENTRY = PASS
+PHASE_2_STARTED = YES
 ```
 
 Phase-2 bootstrap/calibration probes still apply before first use of capability areas not yet OBSERVED.
