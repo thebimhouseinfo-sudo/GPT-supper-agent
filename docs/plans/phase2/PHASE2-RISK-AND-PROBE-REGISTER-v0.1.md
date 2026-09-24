@@ -29,6 +29,9 @@ UPDATE = during milestones and pilot
 | R-17 | Per-user Drive root leakage/cross-user access | Supabase RLS + user-bound row | one user can read/update another user's config | Yes |
 | R-18 | GPT uses stale/chat-cached root | resolve current root from config when root is needed | action targets a previously configured folder after user changed Settings | Yes if wrong target |
 | R-19 | Supabase expands into Project Memory | explicit config-only boundary | Project/Job/Run/Verification data begins moving into Supabase | Architecture review |
+| R-20 | Drive connector absent/disconnected | explicit prerequisite + onboarding guidance | Project Drive setup attempted without connector | Blocking until connected |
+| R-21 | Selected Drive folder is readable but not writable | temporary create/delete probe | probe fails | Blocking for that folder |
+| R-22 | Assume Supabase OAuth identity equals Drive connector account without evidence | separate identity/resource-authority proofs | connector identity contract becomes available | Do not assume |
 
 ---
 
@@ -42,6 +45,11 @@ Current = TO_PROVE
 Required = create/read/update same stable user record + RLS isolation
 Change behavior = update drive_root_folder_id in place; no revision counter
 Fallback = CONFIG_REQUIRED / block root-dependent work rather than infer from chat or GitHub
+
+P-00B Drive connector bootstrap
+Current = WRITE/DELETE CAPABILITY OBSERVED in current connected environment
+Required per user/folder = connector available + selected-folder temporary create/delete probe
+Identity equality with Supabase OAuth account = NOT REQUIRED / NOT CLAIMED
 ```
 
 
