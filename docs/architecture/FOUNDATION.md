@@ -41,7 +41,7 @@ Each valid direct child Project folder under the resolved root contains `PROJECT
 
 No mandatory global Project registry or jobs/ wrapper. Supabase configuration storage is not a Project registry and does not replace Google Drive as Project memory/control plane.
 
-See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
+See `USER-CONFIGURATION-AND-DRIVE-ROOT.md`.
 
 ## F3. Project
 
