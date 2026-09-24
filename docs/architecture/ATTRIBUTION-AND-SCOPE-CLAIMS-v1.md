@@ -1,4 +1,4 @@
-# Attribution and Scope Claims v1.1
+# Attribution and Scope Claims
 
 ## 1. Problem
 
@@ -20,6 +20,16 @@ target_revision
 ```
 
 Canonical records store full IDs.
+
+Compact human-facing signature may use handles:
+
+```text
+[GSA · <role> · R-<run-handle> · J-<job-handle> · @<target-short-revision>]
+```
+
+If Task-level, optionally add `T-<task-handle>`.
+
+The compact signature is display-only; the durable record remains authoritative.
 
 ## 3. Human approval
 
@@ -44,7 +54,7 @@ target_base_revision
 
 The scope claim is advisory coordination data, not a lock.
 
-`shared_contracts_touched?` is **not** the determinant of the mandatory independent review floor.
+`shared_contracts_touched?` is **not** the determinant of the mandatory context-isolated review floor.
 
 ## 5. Mechanical review-floor classification
 
@@ -70,7 +80,7 @@ Repo-specific migration/auth/shared-contract conventions belong in structured Re
 
 Classification is computed from actual change evidence, not Coder omission/self-report.
 
-If classification triggers a mandatory class, independent fresh-chat review is required.
+If classification triggers a mandatory class, context-isolated fresh-chat review is required.
 
 ## 6. Conflict check
 
