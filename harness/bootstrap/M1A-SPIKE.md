@@ -294,3 +294,52 @@ Repair in `auth-ui/index.html`:
 - do not call `approveAuthorization()` a second time.
 
 Production Vercel deployment for commit `8eb7cff0c9b56450a69be8b3978717f30cdedfbb` reached READY.
+
+
+### Drive identity separation and non-destructive authority check
+
+A real Project Drive setup attempt exposed two problems in the model-driven flow:
+
+1. the model incorrectly reported the GSA/Supabase account email as the connected Google Drive account;
+2. it created a temporary folder at My Drive root and then attempted a move, even though the Drive connector can target a parent folder directly.
+
+Direct connector inspection proved the identities are independent in the current test environment:
+
+```text
+GSA/Supabase identity       != connected Google Drive identity
+target Project Drive folder permissions:
+- one account = owner
+- connected Drive account = writer
+```
+
+Therefore the selected folder already has verified write authority for the actual connected Drive account.
+
+Correct verification flow is now:
+
+```text
+pasted Drive folder URL
+→ Google Drive get_profile
+→ Google Drive get_file_metadata(target folder)
+→ match connected Drive email to permission role
+→ owner/writer/organizer/fileOrganizer = PASS
+→ set_drive_config(write_access_verified=true,
+                   verification_method=permission_metadata)
+```
+
+No create/move/delete operation is required when permission metadata is sufficient.
+
+Fallback only:
+
+```text
+permission metadata insufficient
+→ create child probe directly under target folder
+→ delete returned probe ID using file-resource URL
+→ PASS only if both succeed
+```
+
+Never:
+- infer Drive identity from the GSA account;
+- create a root probe and then move it;
+- claim connector delete/move support from guesswork rather than the available tool surface.
+
+GSA MCP v9 implements this policy and keeps the old `write_probe_passed` field for backward compatibility.
