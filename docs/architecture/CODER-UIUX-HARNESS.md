@@ -114,7 +114,7 @@ UX/UI Coder performs:
 - regression/diff inspection;
 - Coder Goal Recheck per `CODER-GOAL-RECHECK.md`.
 
-Self QA/QC does not replace mandatory or topology-scheduled independent review.
+Self QA/QC does not replace mandatory or topology-scheduled context-isolated review.
 
 ## 11. Evidence
 
