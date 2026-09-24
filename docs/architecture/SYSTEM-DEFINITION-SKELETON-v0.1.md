@@ -1,25 +1,25 @@
-# System Definition Skeleton v1.4
+# System Definition
 
 ## Purpose
 
-Current system map at Phase-1 close after Claude peer-review rounds 1 and 2, all accepted fix passes, mandatory platform probes, and final consistency review.
+Current concise system map. Git history contains prior review chronology; this file describes only the current governed architecture.
 
 Status:
 ```text
-FROZEN = accepted foundation
+GOVERNED_BASELINE = architecture-protected foundation
 DEFINED = semantic contract exists
 SYNTHESIZED = implementation-relevant relationships specified
 OBSERVED = required platform behavior tested
 CALIBRATION = Phase-2+ operational tuning
 ```
 
-## S0 Product boundary — FROZEN
+## S0 Product boundary — GOVERNED_BASELINE
 Conversation UI; Drive durable Project memory/control plane; GitHub source truth.
 
-## S1 Project/Drive — FROZEN / OBSERVED
+## S1 Project/Drive — GOVERNED_BASELINE / OBSERVED
 Raw Drive Project-memory file create/read/update/delete path observed.
 
-## S2 Work hierarchy — FROZEN
+## S2 Work hierarchy — GOVERNED_BASELINE
 ```text
 Project → Job → Task → Run
 ```
@@ -111,19 +111,14 @@ Knowledge Artifact + Review Coverage Summary included.
 
 Phase 2 may implement the thin harness/skills/actions without inventing material product/architecture/governance semantics.
 
-## S29 Theory process
-See THEORY-PROCESS-v1.md.
+## S29 Process references
 
-## S30 Phase-1 gate
+Theory-development process is supporting material, not runtime architecture.
+
+## S30 Current phase gate
 
 ```text
-PEER_REVIEW_ROUND_1 = COMPLETE
-PEER_REVIEW_ROUND_2 = COMPLETE
-ROUND_2_FIX_PASS = COMPLETE
-MISSING_CONTRACTS = COMPLETE
-MUST_PLATFORM_PROBES = COMPLETE
-FINAL_CONSISTENCY_REVIEW = PASS
-PHASE_1 = CLOSED
+PHASE_1 = GOVERNED_BASELINE
 PHASE_2_ENTRY = READY
 PHASE_2_STARTED = NO
 ```
