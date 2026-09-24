@@ -283,13 +283,13 @@ Prove session persistence/recovery across a fresh chat or reconnect path.
 - change folder updates the same row in place;
 - no config revision counter.
 
-### M1A-D Google Drive prerequisite
-- detect/handle missing Google Drive connector;
-- show install/connect guidance;
-- user selects Project Drive folder;
+### M1A-D External Google Drive capability boundary
+- Google Drive remains a separate built-in ChatGPT plugin/connector, outside GSA authentication/configuration;
+- GSA does not install, connect, authenticate, or store credentials for Google Drive;
+- user selects the Project Drive folder through the existing ChatGPT Drive capability;
 - create/delete temporary child-folder probe before READY;
 - canonical locator = Drive folder ID;
-- exact Supabase-Google-account == Drive-connector-account equality is not assumed.
+- exact Supabase-Google-account == Drive-connector-account equality is neither required nor assumed.
 
 ### M1A-E Bounded fallback
 If Supabase/Auth bootstrap proves impractical, evaluate the already-approved fallback:
@@ -306,8 +306,8 @@ M1A passes only when:
 1. harness loading path is observed/documented;
 2. Supabase Google OAuth session can identify the application user;
 3. RLS-backed root config create/read/update works;
-4. Drive connector prerequisite behavior is deterministic;
-5. selected-folder create/delete probe works;
+4. GSA does not absorb or duplicate Google Drive connection/authentication;
+5. selected-folder create/delete probe works through ChatGPT's external Drive capability;
 6. root-dependent work blocks rather than guesses when setup is incomplete.
 
 ## Mandatory evals
@@ -1068,8 +1068,8 @@ Cases:
 - unauthenticated user;
 - typed Gmail without OAuth;
 - Supabase Google OAuth success;
-- Drive connector missing/disconnected;
-- Drive connector available but selected folder not writable;
+- ChatGPT Google Drive capability unavailable;
+- ChatGPT Drive capability available but selected folder not writable;
 - writable selected folder;
 - user changes selected folder.
 
@@ -1078,8 +1078,9 @@ Expected:
 typed email only
 → not authenticated
 
-OAuth success + connector missing
-→ DRIVE_CONNECTOR_REQUIRED
+OAuth success + ChatGPT Drive capability unavailable
+→ DRIVE_CAPABILITY_REQUIRED
+→ direct user to ChatGPT's existing Google Drive connection UI, not a GSA-owned connection flow
 
 connector available + write probe FAIL
 → Project Drive NOT_READY
