@@ -1,4 +1,4 @@
-# GPT Super Agent — Architecture v0.5
+# GPT Super Agent — Architecture
 
 ## 1. System model
 
@@ -87,7 +87,7 @@ One active role per Run.
 
 Child Runs support non-independent specialist assistance.
 
-Independent Reviewer uses fresh chat.
+Context-Isolated Reviewer uses a fresh chat. This means context isolation, not a different model/account identity.
 
 ## 7. Work topology
 
@@ -121,9 +121,12 @@ Cross-chat consistency is eventual.
 
 ```text
 Run completes
-→ Handoff PENDING
+→ immutable Handoff is created
 → human dispatches next Run
+→ successor Run / consumption record references handoff_id
 ```
+
+Pending/consumed state is derived from append-preserving records. The Handoff itself is not mutated to mark consumption.
 
 Default discovery:
 - Project open → current Project;
@@ -144,7 +147,7 @@ Coder self QA/QC:
 - capability-backed checks;
 - Goal Recheck.
 
-Reviewer independently evaluates required criteria.
+Context-Isolated Reviewer independently evaluates required criteria within a fresh context.
 
 ## 11. Capability truth
 
@@ -211,21 +214,28 @@ Outer control surface:
 ```text
 PROJECT
 DIRECT AGENT
+SETTING
 HELP / INSTRUCTION
 ```
 
 Names/aliases are not frozen identity.
 
-## 17. Phase-1 close
+## 17. Harness delivery boundary
 
-Required:
+The architecture does not assume that Markdown files are automatically loaded into ChatGPT.
+
+Phase 2 must prove the actual delivery chain:
+
 ```text
-Claude round 1 disposition/fix
-→ Claude round 2 challenge
-→ round-2 fixes
-→ MUST platform probes
-→ final consistency review
-→ Phase 1 closed / Phase 2 may begin
+ChatGPT interaction
+→ plugin/action invocation
+→ authoritative harness/policy selection
+→ minimum role context packet
+→ connector/tool execution
 ```
 
-Claude is challenge evidence, not product authority.
+Until this is observed, harness injection/loading remains an implementation capability to prove, not an assumed platform behavior.
+
+## 18. Current implementation boundary
+
+Phase 1 architecture is closed as a governed baseline. Phase 2 implementation is not started until M0 passes against the current repository state.
