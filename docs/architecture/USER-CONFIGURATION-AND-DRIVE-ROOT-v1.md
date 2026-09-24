@@ -1,4 +1,4 @@
-# User Configuration and Drive Root v1.1
+# User Configuration and Drive Root
 
 ## 1. Purpose
 
@@ -202,7 +202,27 @@ first use
 
 No default physical folder belonging to the repository owner is assumed for other users.
 
-## 12. Invariants
+## 12. Fallback design
+
+Primary design remains Supabase-backed per-user configuration.
+
+If the Supabase/Auth identity chain proves impractical in the Phase-2 spike, the permitted fallback is discovery of one fixed marker folder under the connected user's My Drive root.
+
+```text
+My Drive root
+→ fixed marker folder
+→ Project root
+```
+
+This fallback is not implemented in parallel with the primary path. It exists only as a bounded recovery option because root listing is already OBSERVED.
+
+Reasons it is not primary:
+- weaker multi-user/account configuration semantics;
+- depends on a reserved Drive folder name;
+- less explicit settings/account UX;
+- harder to support future non-Drive per-user settings.
+
+## 13. Invariants
 
 1. GitHub contains shared code/contracts, not user-specific Drive folder IDs.
 2. Google Drive remains Project memory/control plane.
