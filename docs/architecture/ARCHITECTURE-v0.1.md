@@ -1,4 +1,4 @@
-# GPT Super Agent — Architecture v0.4
+# GPT Super Agent — Architecture v0.5
 
 ## 1. System model
 
@@ -25,7 +25,15 @@ Milestone/stage is topology, not ownership hierarchy.
 
 ## 3. Project / repository model
 
-Each direct child folder under `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
+`SUPER_AGENT_DRIVE_ROOT` is a logical per-user root resolved at runtime.
+
+Initial implementation resolves it from Supabase per-user configuration using the current `drive_root_folder_id`. GitHub does not store user-specific root IDs, and conversation context is not authoritative for the current root.
+
+Changing the user's root updates the same configuration record in place; no config revision is required.
+
+Each direct child folder under the currently resolved `SUPER_AGENT_DRIVE_ROOT` with `PROJECT.md` is a Project.
+
+See `USER-CONFIGURATION-AND-DRIVE-ROOT-v1.md`.
 
 ```text
 OWNED → writable within approved scope
@@ -37,6 +45,8 @@ Structured ownership claims include repo-specific review-sensitive path metadata
 ## 4. Project Memory
 
 Drive is not treated as a relational DB.
+
+Supabase is used only for per-user plugin/runtime configuration such as the Drive root mapping. It is not Project Memory and is not source-code truth.
 
 Use:
 - stable Project/Job planning-control records;
