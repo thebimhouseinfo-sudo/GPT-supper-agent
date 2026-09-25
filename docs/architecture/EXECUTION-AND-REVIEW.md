@@ -177,7 +177,7 @@ Critic Reviewer (CR) is separate:
 
 ```text
 Human invokes cr
-→ target-independent conversation required (new chat qualifies automatically)
+→ ignore conversation history as evidence
 → reconstruct from durable records + live source
 → independent blind review
 → independent verdict
@@ -188,6 +188,6 @@ Human invokes cr
 
 CR must not be auto-dispatched.
 
-A conversation is independent when it did not create, revise, or perform the prior review of the target. A new chat qualifies automatically; an unrelated existing chat may also qualify. If the current conversation participated in the target planning/review, return `INDEPENDENT_CONTEXT_REQUIRED`.
+CR is stateless-by-contract. Conversation history is non-authoritative and must not be used as review evidence. CR never blocks merely because the invoking chat previously discussed the target.
 
 CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
