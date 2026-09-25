@@ -102,15 +102,17 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Re-read Project lifecycle before every consequential action.',
       'Choose the next role from durable topology/state rather than chat-memory inference.',
       'Do not duplicate specialist work once it has been delegated.',
+      'Own same-turn continuation: after every tool result, evaluate durable state and immediately dispatch/call the next required role/tool until an explicit stop condition is reached.',
     ],
     loop: [
       'Resolve Project, active Job and durable current state.',
       'Identify blockers, Human Gates, pending Handoffs and exact target revision.',
       'Choose the smallest role that owns the next outcome.',
       'Load that role harness plus only relevant skills.',
-      'Start exactly one attributed Run.',
-      'After the Run, persist evidence/handoff before terminal Run state.',
+      'Start the next attributed Run or planning-review action required by topology. Multiple sequential role/tool calls may occur inside one user turn.',
+      'After each action/Run, persist required evidence/handoff/state, then continue from the returned durable state rather than ending the user turn by default.',
       'For every newly prepared or materially revised Job plan, automatically dispatch a context-isolated Reviewer before reporting planning completion. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS permits DRAFT→READY; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
+      'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
     ],
     outputs: ['routing decision', 'Run dispatch', 'current status view'],
@@ -133,8 +135,8 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'GATE: place required review/test/human checkpoints and capability requirements.',
       'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned. Record cross-repo impact assessment against every registered Project repository, even when impact is NONE.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
-      'REVIEW LOOP: hand the exact planning revision plus L0/L1 evidence to a context-isolated Reviewer. Do not report the plan as finalized yet.',
-      'ADAPT: on CHANGES_REQUIRED, fix actionable planning defects within Planner authority, increment planning_revision, persist with exact SHA, and trigger re-review. Do not ask Human for ordinary fixable planning defects.',
+      'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus L0/L1 evidence. Do not report the plan as finalized yet and do not wait for another user message merely to start review.',
+      'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, fix actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer. Do not ask Human for ordinary fixable planning defects.',
       'READY GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
     ],
     outputs: ['reviewed durable Job plan', 'repository structure evidence', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
@@ -243,7 +245,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '11. Add dependencies only when one Task genuinely needs another Task output.',
       '12. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
       '13. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
-      '14. Persist the plan as DRAFT, trigger context-isolated planning review automatically, revise/re-review until PASS or Human Gate, and only then promote READY.',
+      '14. Persist the plan as DRAFT, then continue autonomously in the SAME USER TURN: load Reviewer contract, review the exact planning revision, switch back to Planner on CHANGES_REQUIRED, revise and re-review until PASS or Human Gate, and only then promote READY. Never return a final planning summary immediately after creating/updating the DRAFT.',
       '15. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
@@ -297,10 +299,10 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
     ].join('\n'),
   },
   'planning-review': {
-    description: 'Context-isolated review of one exact Job planning revision before it may become READY.',
+    description: 'Role-isolated review of one exact Job planning revision before it may become READY; normally executed automatically in the same user turn.',
     body: [
       '# Planning Review',
-      'Review the durable Job plan, not the Planner reasoning.',
+      'Review the durable Job plan, not the Planner reasoning. Planning review is role-isolated and normally runs in the same user turn; fresh-chat isolation is not required for this quality gate.',
       '',
       '- Bind to exact job_id + planning_revision.',
       '- Require L0 repository-structure evidence: top-level folders, relevant subtree/file names, config/test/docs/assets/CI-deploy surfaces as applicable.',
@@ -547,7 +549,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.9.0' },
+    { name: 'gpt-super-agent', version: '0.9.1' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -572,6 +574,10 @@ function createServer(req: Request) {
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
         'GitHub URLs are sufficient routing context; @GitHub is optional.',
         'Do not report a command complete until returned external_steps have been executed and verified through the GitHub connector.',
+        'A tool result is an intermediate state unless it reaches an explicit stop condition. Within the same user turn, continue issuing the next required tool calls autonomously according to durable state/topology.',
+        'Do not stop after job_prepare, job_revise_plan, plan_review_record, job_transition or run_complete merely because the call succeeded. Re-read the returned state and continue the role/tool chain until the current objective reaches READY/COMPLETED, a concrete Human Gate, or a real blocker/capability boundary.',
+        'For planning work, one user request is expected to cover the complete same-turn loop: Planner discovery -> DRAFT -> planning Reviewer -> Planner repair if needed -> re-review -> DRAFT->READY. The MCP server does not call ChatGPT back; ChatGPT itself must perform each successive tool call in that turn.',
+        'When a tool returns external_steps, next_role, handoff, pending review, or required transition, treat that as continuation instructions, not as a user-facing completion summary.',
       ].join(' '),
     },
   )
@@ -640,7 +646,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_MULTI_REPO_PILOT',
+        phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -1393,7 +1399,7 @@ function createServer(req: Request) {
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
           'GitHub Memory Repo: create_file at memory_path with job_record_text.',
           'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
-          'Immediately trigger a context-isolated Reviewer planning review for this exact revision. Do not report planning completion to the user yet.',
+          'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
           'Do not modify source during Planner Job persistence.',
         ],
       }
@@ -1566,7 +1572,7 @@ function createServer(req: Request) {
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
           'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
           'Read back the DRAFT Job and verify the incremented planning_revision.',
-          'Automatically trigger a new context-isolated planning review for this exact revision before any user-facing planning-complete report.',
+          'Immediately continue in this SAME USER TURN with a new Reviewer planning review for this exact revision before any user-facing planning-complete report.',
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -1658,7 +1664,7 @@ function createServer(req: Request) {
       if (result === 'PASS') {
         steps.push('Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.')
       } else if (result === 'CHANGES_REQUIRED') {
-        steps.push('Automatically dispatch Planner with the findings. Planner revises the DRAFT Job using job_revise_plan, then automatically re-dispatch Reviewer. Do not report a final plan yet.')
+        steps.push('In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.')
       } else if (result === 'HUMAN_REVIEW_REQUIRED') {
         steps.push('Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.')
       } else {
@@ -2122,7 +2128,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_MULTI_REPO_PILOT', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
