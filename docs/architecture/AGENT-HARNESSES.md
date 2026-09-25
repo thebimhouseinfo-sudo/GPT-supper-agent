@@ -176,3 +176,46 @@ Human owns material product/architecture/governance/subjective acceptance and me
 ## 15. Phase 2
 
 Exact prompts/skills/tool procedures remain Phase-2 implementation after Phase-1 gate closes.
+
+
+## Brownfield Planner discovery floor
+
+For an existing repository, Planner must not rely only on README, TASKS, roadmap or remembered architecture.
+
+Discovery is two-stage:
+
+```text
+L0 STRUCTURE SCAN
+→ repository tree / top-level folders / filenames
+→ configs / tests / docs / assets / CI-deploy surfaces
+→ infer candidate implementation areas
+
+L1 SELECTIVE CONTENT READ
+→ read only the files needed to validate current objective and assumptions
+```
+
+File and folder names are legitimate evidence. A repository with weak or stale documentation is still plannable from its live structure.
+
+A durable brownfield Job must persist enough structure evidence for Reviewer to verify that Planner did not plan from stale descriptions alone.
+
+## Automatic planning review loop
+
+A newly prepared or materially revised Job plan is not READY merely because Planner persisted it.
+
+```text
+Planner
+→ DRAFT planning revision
+→ context-isolated Reviewer
+→ PASS
+   └→ DRAFT → READY
+→ CHANGES_REQUIRED
+   └→ Planner revise → new planning_revision → Reviewer again
+→ HUMAN_REVIEW_REQUIRED
+   └→ Human decision → Planner revise → Reviewer again
+→ BLOCKED
+   └→ report concrete blocker
+```
+
+Planner fixes ordinary review findings without asking the user.
+Reviewer never rewrites the plan.
+Every revised planning revision invalidates prior planning-review PASS.
