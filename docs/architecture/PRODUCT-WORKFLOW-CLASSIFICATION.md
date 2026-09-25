@@ -166,7 +166,7 @@ objective
 
 > In UX_FIRST, each Job may receive the minimum temporary UI needed to execute and test the UX, while durable UI improvements are collected and shipped later as coherent UI Update Packs.
 
-Temporary UI is **not** a visual-design contract. It is execution scaffolding.
+Temporary UI is **not** a final visual-design contract. It is execution scaffolding, but it is still user-facing product behavior and therefore may require Human approval.
 
 Planner should prefer temporary UI that:
 - reuses the current shell, components and visual language;
@@ -174,6 +174,37 @@ Planner should prefer temporary UI that:
 - avoids creating new permanent visual architecture unless unavoidable;
 - is easy to replace/refine in a later UI Update Pack;
 - records what is provisional and which durable UI requirement it exposed.
+
+### Human approval for temporary UI
+
+"Temporary" never means "agent-decided by default."
+
+If the temporary UI changes or introduces user-visible interaction structure, Planner must present a concrete proposal and obtain Human approval before implementation.
+
+Examples that require Human decision:
+- fake CLI command groups, ordering, names and aliases;
+- menu hierarchy or navigation order;
+- primary versus secondary actions;
+- whether a command/button is visible, hidden or contextual;
+- step order in a workflow;
+- labels that materially affect user understanding;
+- layout regions that change how the product is operated.
+
+Examples such as CadGPT or GPTWorker fake CLIs still require planning with the user even when no polished visual design is involved.
+
+A valid UX_FIRST temporary-UI planning sequence is:
+
+```text
+UX need
+→ Planner drafts TEMPORARY_UI proposal
+→ Human reviews/adjusts interaction structure
+→ Human approval
+→ Coder implements provisional UI
+→ observed usage exposes more durable UI needs
+→ collect into backlog
+```
+
+Human approval may be lightweight, but it must be explicit for material user-facing choices.
 
 Examples:
 
@@ -271,6 +302,8 @@ Before persisting a UI-bearing Job, Planner must answer:
 5. If UX_FIRST:
    - what temporary UI is required now to make the UX executable?
    - which parts of that temporary UI are explicitly provisional?
+   - which user-visible interaction decisions require Human approval before implementation?
+   - has that temporary UI proposal been explicitly approved?
    - where are newly discovered durable UI requirements persisted?
    - what milestone/threshold groups them into a UI Update Pack?
 6. Is Coder being asked to make a material product/design decision that belongs to Planner/Designer/Human?
