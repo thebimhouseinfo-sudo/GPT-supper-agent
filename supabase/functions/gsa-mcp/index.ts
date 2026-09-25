@@ -121,15 +121,17 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Own Job objective/scope/non-goals, task topology, dependencies, completion/evidence requirements and planned gates.',
       'Read source selectively; do not implement source changes. For brownfield work, always inspect repository structure/tree and filenames before choosing content files to read.',
       'Keep one Job finite. Materially different objectives become linked Jobs rather than silent scope expansion.',
+      'For multi-repo Projects, require one working repository per executable Job while preserving Project-wide dependency/impact awareness.',
     ],
     loop: [
-      'OBSERVE L0: inspect repository structure/tree first: top-level folders, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat file/folder names as evidence even when no descriptive docs exist.',
+      'OBSERVE L0: inspect repository structure/tree first: top-level folders, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat file/folder names as evidence even when no descriptive docs exist. Also inspect links/config/routes/docs that reveal sibling or dependent repositories.',
+      'REPO TOPOLOGY: compare discovered repo relationships with the Project repository registry. If likely Project repos are missing, pause for Human confirmation and register them before planning is finalized. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1: after L0, selectively read only the files needed to validate the requested outcome and avoid planning from stale documentation.',
       'CLASSIFY PRODUCT WORKFLOW: determine UI_FIRST or UX_FIRST before planning UI-bearing work. Preserve an existing explicit classification unless Planner has evidence and Human approval to change it.',
       'FRAME: define objective, scope, non-goals and material assumptions.',
       'DECOMPOSE: create bounded Tasks with dependency order and explicit completion criteria.',
       'GATE: place required review/test/human checkpoints and capability requirements.',
-      'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned.',
+      'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned. Record cross-repo impact assessment against every registered Project repository, even when impact is NONE.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
       'REVIEW LOOP: hand the exact planning revision plus L0/L1 evidence to a context-isolated Reviewer. Do not report the plan as finalized yet.',
       'ADAPT: on CHANGES_REQUIRED, fix actionable planning defects within Planner authority, increment planning_revision, persist with exact SHA, and trigger re-review. Do not ask Human for ordinary fixable planning defects.',
@@ -230,17 +232,19 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       '1. Read the Project purpose and the exact user objective.',
       '2. Brownfield discovery is two-stage: L0 scan repository tree/filenames/config/tests/docs/assets/CI-deploy surfaces first; L1 then selectively read content files chosen from that structure.',
-      '3. Do not treat README/TASKS/roadmaps as source truth when live structure or implementation disagrees.',
-      '4. State objective, scope and non-goals separately.',
-      '5. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
-      '6. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
-      '7. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
-      '8. Break work into Tasks that each have an observable completion criterion.',
-      '9. Add dependencies only when one Task genuinely needs another Task output.',
-      '10. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
-      '11. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
-      '12. Persist the plan as DRAFT, trigger context-isolated planning review automatically, revise/re-review until PASS or Human Gate, and only then promote READY.',
-      '13. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
+      '3. During L0, detect evidence of sibling/dependent repositories. Compare it with the Project repository registry; missing likely Project repos require Human confirmation before finalizing the plan.',
+      '4. For a multi-repo Project, explicitly select/confirm one working repository for this Job and assess impact on every other registered repository.',
+      '5. Do not treat README/TASKS/roadmaps as source truth when live structure or implementation disagrees.',
+      '6. State objective, scope and non-goals separately.',
+      '7. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
+      '8. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
+      '9. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
+      '10. Break work into Tasks that each have an observable completion criterion.',
+      '11. Add dependencies only when one Task genuinely needs another Task output.',
+      '12. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
+      '13. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
+      '14. Persist the plan as DRAFT, trigger context-isolated planning review automatically, revise/re-review until PASS or Human Gate, and only then promote READY.',
+      '15. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
   'coding-loop': {
@@ -300,6 +304,8 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       '- Bind to exact job_id + planning_revision.',
       '- Require L0 repository-structure evidence: top-level folders, relevant subtree/file names, config/test/docs/assets/CI-deploy surfaces as applicable.',
+      '- Read the Project repository registry. If discovery suggests unregistered sibling/dependent repos, return HUMAN_REVIEW_REQUIRED so the user can confirm the Project repo set.',
+      '- For multi-repo Projects, require exactly one declared working repository for the Job and a cross-repo impact assessment covering every registered repo.',
       '- If Planner skipped structure discovery and planned only from README/TASKS/known descriptions, return CHANGES_REQUIRED.',
       '- Re-read Project contract and selectively open files needed to test Planner assumptions.',
       '- Check objective, scope, non-goals, task decomposition, dependencies, topology, completion criteria, verification requirements, UI_FIRST/UX_FIRST policy and Human Gates.',
@@ -399,6 +405,9 @@ function buildProjectManifest(args: {
     'lifecycle: ' + args.lifecycle,
     'created_at: ' + args.createdAt,
     'updated_at: ' + args.updatedAt,
+    'repo_mode: SINGLE',
+    'repo_registry_status: CONFIRMED',
+    'primary_repo_url: ' + args.repoUrl,
     'repo_relation: OWNED',
     'repo_url: ' + args.repoUrl,
     purpose ? 'purpose: ' + purpose : 'purpose:',
@@ -406,12 +415,12 @@ function buildProjectManifest(args: {
     '',
     '# Project: ' + args.name,
     '',
-    '## Repository',
-    '- OWNED: ' + args.repoUrl,
+    '## Repositories',
+    '- PRIMARY | OWNED | ' + args.repoUrl,
     '',
     '## Runtime',
     '- Project Memory lives in the configured GSA Memory Repo.',
-    '- Source truth lives in the repository above.',
+    '- Source truth lives in the registered Project repositories above.',
     '',
   ].join('\n')
 }
@@ -428,12 +437,88 @@ function parseProjectManifest(text: string) {
   const project_id = values.project_id ?? ''
   const name = values.name ?? ''
   const lifecycle = values.lifecycle ?? ''
-  const repo_url = values.repo_url ?? ''
+  const legacyRepo = values.repo_url ?? ''
+  const primary_repo_url = values.primary_repo_url || legacyRepo
   const purpose = values.purpose ?? ''
   const created_at = values.created_at ?? ''
   const updated_at = values.updated_at ?? ''
-  if (!project_id || !name || !repo_url || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
-  return { project_id, name, lifecycle, repo_url, purpose, created_at, updated_at }
+  if (!project_id || !name || !primary_repo_url || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
+
+  const repositories: Array<{ role: string; relation: string; url: string }> = []
+  for (const rawLine of text.split('\n')) {
+    const m = rawLine.match(/^\s*-\s*(PRIMARY|DEPENDENCY|SUPPORT|REFERENCE)\s*\|\s*(OWNED|REFERENCED)\s*\|\s*(https:\/\/github\.com\/[^\s]+)\s*$/i)
+    if (m) repositories.push({ role: m[1].toUpperCase(), relation: m[2].toUpperCase(), url: m[3].replace(/\.git$/, '') })
+  }
+  if (!repositories.length) repositories.push({ role: 'PRIMARY', relation: 'OWNED', url: primary_repo_url })
+  const dedup = [...new Map(repositories.map((r) => [r.url.toLowerCase(), r])).values()]
+  const repo_mode = values.repo_mode === 'MULTI' || dedup.length > 1 ? 'MULTI' : 'SINGLE'
+  const repo_registry_status = values.repo_registry_status || (values.repo_mode ? 'CONFIRMED' : 'LEGACY_UNASSESSED')
+  return {
+    project_id,
+    name,
+    lifecycle,
+    repo_url: primary_repo_url,
+    primary_repo_url,
+    repo_mode,
+    repo_registry_status,
+    repositories: dedup,
+    purpose,
+    created_at,
+    updated_at,
+  }
+}
+
+function renderProjectRepositoryManifest(text: string, repositories: Array<{ role: string; relation: string; url: string }>) {
+  const parsed = parseProjectManifest(text)
+  if (!parsed) return null
+  const normalized = repositories.map((r) => {
+    const repo = normalizeGithubRepo(r.url)
+    if (!repo) throw new Error('Invalid repository URL: ' + r.url)
+    return { role: r.role.toUpperCase(), relation: r.relation.toUpperCase(), url: repo.url }
+  })
+  const primaries = normalized.filter((r) => r.role === 'PRIMARY')
+  if (primaries.length !== 1) throw new Error('Exactly one PRIMARY repository is required.')
+  const lines = text.split('\n')
+  const out: string[] = []
+  let inRepos = false
+  let inserted = false
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]
+    if (line.startsWith('repo_mode:')) line = 'repo_mode: ' + (normalized.length > 1 ? 'MULTI' : 'SINGLE')
+    else if (line.startsWith('repo_registry_status:')) line = 'repo_registry_status: CONFIRMED'
+    else if (line.startsWith('primary_repo_url:')) line = 'primary_repo_url: ' + primaries[0].url
+    else if (line.startsWith('repo_url:')) line = 'repo_url: ' + primaries[0].url
+
+    if (line === '## Repositories') {
+      out.push(line)
+      for (const r of normalized) out.push('- ' + r.role + ' | ' + r.relation + ' | ' + r.url)
+      inserted = true
+      inRepos = true
+      continue
+    }
+    if (inRepos) {
+      if (line.startsWith('## ')) {
+        inRepos = false
+        out.push('')
+        out.push(line)
+      }
+      continue
+    }
+    out.push(line)
+  }
+  if (!inserted) {
+    out.push('', '## Repositories')
+    for (const r of normalized) out.push('- ' + r.role + ' | ' + r.relation + ' | ' + r.url)
+  }
+  if (!out.some((l) => l.startsWith('repo_mode:'))) {
+    const idx = out.indexOf('---', 1)
+    if (idx > 0) out.splice(idx, 0,
+      'repo_mode: ' + (normalized.length > 1 ? 'MULTI' : 'SINGLE'),
+      'repo_registry_status: CONFIRMED',
+      'primary_repo_url: ' + primaries[0].url
+    )
+  }
+  return out.join('\n')
 }
 
 function transitionProjectManifest(text: string, target: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') {
@@ -462,12 +547,15 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.8.0' },
+    { name: 'gpt-super-agent', version: '0.9.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
+        'A GSA Project may own or reference multiple source repositories. PROJECT.md repository registry is the durable source of truth for Project repo topology.',
+        'For brownfield discovery, if live evidence suggests additional dependent/owned repos that are not registered, stop at a Human Gate and ask the user to confirm the Project repo set before finalizing planning.',
+        'Every executable Job must identify one working repository. Even when only one repo is modified, Planner/Reviewer must inspect the registered Project repo map for cross-repo impact and record that assessment.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
         'All GSA memory writes are confined to the exact configured Memory Repo and paths under projects/<project-id>/.',
         'Never write GSA memory to any other repository. Fail closed on repo mismatch or path outside projects/<project-id>/.',
@@ -552,7 +640,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_REVIEWED_JOB_PILOT',
+        phase: 'M2_MULTI_REPO_PILOT',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -822,6 +910,65 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'project_register_repositories',
+    {
+      title: 'Register Project source repositories',
+      description: 'Update one Project repository registry after explicit Human confirmation. Supports single- and multi-repo Projects.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+        human_confirmed: z.literal(true),
+        repositories: z.array(z.object({
+          role: z.enum(['PRIMARY','DEPENDENCY','SUPPORT','REFERENCE']),
+          relation: z.enum(['OWNED','REFERENCED']),
+          url: z.string().url(),
+        })).min(1),
+      },
+      outputSchema: {
+        repository_mode: z.string(),
+        registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
+        memory_path: z.string(),
+        expected_sha: z.string(),
+        updated_manifest_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, human_confirmed, repositories }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to register Project repositories.')
+      if (!human_confirmed) return { content: [{ type: 'text', text: 'Explicit Human confirmation is required.' }], isError: true }
+      if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
+      let updated: string
+      try {
+        updated = renderProjectRepositoryManifest(project_manifest_text, repositories)!
+      } catch (err) {
+        return { content: [{ type: 'text', text: String(err) }], isError: true }
+      }
+      const parsed = parseProjectManifest(updated)
+      if (!parsed) return { content: [{ type: 'text', text: 'Updated PROJECT.md would be invalid.' }], isError: true }
+      const result = {
+        repository_mode: parsed.repo_mode,
+        registered_repositories: parsed.repositories,
+        memory_path,
+        expected_sha: project_manifest_sha,
+        updated_manifest_text: updated,
+        external_steps: [
+          'GitHub: verify every supplied repository URL is accessible and resolve its canonical identity.',
+          'For every OWNED repository, scan other Project manifests and reject conflicting OWNED claims.',
+          'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
+          'Update PROJECT.md with updated_manifest_text using expected_sha exactly; stale SHA requires refetch/reconcile.',
+          'Read back PROJECT.md and verify repository_mode, PRIMARY repo and full registered repository set.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
     'project_open',
     {
       title: 'Open a GSA Project',
@@ -837,6 +984,9 @@ function createServer(req: Request) {
         name: z.string(),
         lifecycle: z.string(),
         source_repository_url: z.string(),
+        repository_mode: z.string(),
+        repo_registry_status: z.string(),
+        registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
         memory_path: z.string(),
         project_manifest_sha: z.string(),
         openable: z.boolean(),
@@ -856,7 +1006,10 @@ function createServer(req: Request) {
         handle: projectHandle(parsed.project_id),
         name: parsed.name,
         lifecycle: parsed.lifecycle,
-        source_repository_url: parsed.repo_url,
+        source_repository_url: parsed.primary_repo_url,
+        repository_mode: parsed.repo_mode,
+        repo_registry_status: parsed.repo_registry_status,
+        registered_repositories: parsed.repositories,
         memory_path,
         project_manifest_sha,
         openable: parsed.lifecycle !== 'ARCHIVED',
@@ -877,6 +1030,9 @@ function createServer(req: Request) {
         name: z.string(),
         lifecycle: z.string(),
         source_repository_url: z.string(),
+        repository_mode: z.string(),
+        repo_registry_status: z.string(),
+        registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
         project_manifest_sha: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -893,7 +1049,10 @@ function createServer(req: Request) {
         handle: projectHandle(parsed.project_id),
         name: parsed.name,
         lifecycle: parsed.lifecycle,
-        source_repository_url: parsed.repo_url,
+        source_repository_url: parsed.primary_repo_url,
+        repository_mode: parsed.repo_mode,
+        repo_registry_status: parsed.repo_registry_status,
+        registered_repositories: parsed.repositories,
         project_manifest_sha,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -1109,6 +1268,14 @@ function createServer(req: Request) {
         non_goals: z.array(z.string()).default([]),
         repository_structure_evidence: z.array(z.string()).min(1),
         selected_source_evidence: z.array(z.string()).default([]),
+        project_repository_mode: z.enum(['SINGLE','MULTI']),
+        registered_repositories: z.array(z.string().url()).min(1),
+        working_repository_url: z.string().url(),
+        cross_repo_impact: z.array(z.object({
+          repository_url: z.string().url(),
+          impact: z.enum(['NONE','READ_ONLY_CONTRACT_CHECK','COORDINATED_CHANGE_REQUIRED','UNKNOWN']),
+          reason: z.string().min(1),
+        })).min(1),
         product_workflow: z.enum(['UI_FIRST','UX_FIRST']).optional(),
         temporary_ui: z.array(z.string()).default([]),
         collected_ui_requirements: z.array(z.string()).default([]),
@@ -1136,11 +1303,24 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
       if (!data?.memory_repo_full_name) return { content: [{ type: 'text', text: 'Memory Repo is not configured.' }], isError: true }
+      const normalizedRegistered = (registered_repositories ?? []).map((u: string) => normalizeGithubRepo(u)?.url).filter(Boolean)
+      const normalizedWorking = normalizeGithubRepo(working_repository_url)?.url
+      if (!normalizedWorking || !normalizedRegistered.includes(normalizedWorking)) {
+        return { content: [{ type: 'text', text: 'Working repository must be one of the registered Project repositories.' }], isError: true }
+      }
+      const impactUrls = new Set((cross_repo_impact ?? []).map((x: any) => normalizeGithubRepo(x.repository_url)?.url).filter(Boolean))
+      const missingImpact = normalizedRegistered.filter((u: string) => !impactUrls.has(u))
+      if (missingImpact.length) {
+        return { content: [{ type: 'text', text: 'Cross-repo impact assessment must cover every registered repository: ' + missingImpact.join(', ') }], isError: true }
+      }
+      if (project_repository_mode === 'MULTI' && normalizedRegistered.length < 2) {
+        return { content: [{ type: 'text', text: 'MULTI Project requires at least two registered repositories.' }], isError: true }
+      }
       const jobId = uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -1169,6 +1349,12 @@ function createServer(req: Request) {
         repository_discovery: {
           structure_evidence: repository_structure_evidence,
           selected_source_evidence: selected_source_evidence ?? [],
+        },
+        repository_context: {
+          project_repository_mode,
+          registered_repositories: normalizedRegistered,
+          working_repository_url: normalizedWorking,
+          cross_repo_impact: cross_repo_impact ?? [],
         },
         product_workflow: product_workflow ?? null,
         ui_strategy: product_workflow === 'UX_FIRST' ? {
@@ -1531,6 +1717,15 @@ function createServer(req: Request) {
       }
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (
+        role === 'coder' &&
+        target_ref &&
+        owningJob.repository_context?.working_repository_url &&
+        normalizeGithubRepo(target_ref)?.url &&
+        normalizeGithubRepo(target_ref)?.url !== owningJob.repository_context.working_repository_url
+      ) {
+        return { content: [{ type: 'text', text: 'Coder target repository does not match the Job working repository.' }], isError: true }
       }
       if (
         role === 'coder' &&
@@ -1927,7 +2122,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_REVIEWED_JOB_PILOT', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_MULTI_REPO_PILOT', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
