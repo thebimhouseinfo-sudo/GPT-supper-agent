@@ -59,7 +59,7 @@ CONTROL is optional/rebuildable; durable records remain authoritative.
 
 Normal review is topology-driven. Sensitive changes trigger context-isolated review from actual changed-file/operation evidence.
 
-An optional Human-only **Critic Reviewer (CR)** provides a second independent peer review. CR must run from a target-independent conversation context. A new chat qualifies automatically; an unrelated existing chat may also qualify. CR reconstructs from durable records/source truth, forms its own verdict before reading the prior Reviewer verdict, and persists only `CRITIC_REVIEW` evidence. It never auto-runs or mutates Job lifecycle.
+An optional Human-only **Critic Reviewer (CR)** provides a second independent peer review. CR is stateless-by-contract: it ignores conversation history as evidence, reconstructs from durable records/source truth, forms its own verdict before reading the prior Reviewer verdict, and persists only `CRITIC_REVIEW` evidence. It never auto-runs or mutates Job lifecycle.
 
 Merge requires Review Coverage Summary + explicit human authorization.
 
