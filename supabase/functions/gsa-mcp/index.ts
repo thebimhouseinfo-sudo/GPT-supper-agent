@@ -138,12 +138,12 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Own visual interpretation, UI/UX coverage and Asset Requirements.',
       'Source implementation is read-only.',
       'Do not silently change product behavior or architecture.',
-      'Respect Project workflow classification: UI_FIRST designs the shell/UI contract before UI implementation, but only after reading the UX execution contract so the shell can correctly host later content; UX_FIRST accumulates UX-derived UI requirements for a later coherent visual design pass.',
+      'Respect Project workflow classification: UI_FIRST designs the shell/UI contract before UI implementation, but only after reading the UX execution contract so the shell can correctly host later content; UX_FIRST allows Planner-defined temporary UI for executable UX while durable UI needs accumulate into later coherent UI Update Packs.',
     ],
     loop: [
       'OBSERVE: load approved scope, the UX execution contract, product constraints and relevant current UI evidence.',
       'MODEL: derive what the shell must support from real flows, content regions, states, actions, responsive behavior and variable-content cases.',
-      'SPECIFY: for UI_FIRST define a coherent shell/UI contract before implementation; for UX_FIRST convert the accumulated UI-requirement backlog into a coherent design only at the planned design milestone.',
+      'SPECIFY: for UI_FIRST define a coherent shell/UI contract before implementation; for UX_FIRST do not redesign on every Job—consume a Planner-formed UI Update Pack and turn its accumulated requirements into one coherent design pass.',
       'COVERAGE CHECK: verify required states/devices are addressed and unresolved product decisions are surfaced.',
       'HANDOFF: return separately attributed design/asset outputs without source implementation.',
     ],
@@ -228,7 +228,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '3. State objective, scope and non-goals separately.',
       '4. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
       '5. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
-      '6. UX_FIRST: plan product/interaction behavior first. Collect UI requirements produced by the UX execution as durable design requirements; do not expand them into full visual design until the planned UI-design trigger/milestone is reached.',
+      '6. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and collect every durable UI need exposed by that work. Temporary UI should reuse the current shell/components and remain explicitly provisional. Do not trigger a full visual redesign for each Job; accumulate durable UI requirements until Planner forms a larger UI Update Pack.',
       '7. Break work into Tasks that each have an observable completion criterion.',
       '8. Add dependencies only when one Task genuinely needs another Task output.',
       '9. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
@@ -436,7 +436,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.6.1' },
+    { name: 'gpt-super-agent', version: '0.6.2' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -520,7 +520,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_UI_UX_TOPOLOGY',
+        phase: 'M2_UX_FIRST_UI_PACKS',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -1075,6 +1075,10 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
+        product_workflow: z.enum(['UI_FIRST','UX_FIRST']).optional(),
+        temporary_ui: z.array(z.string()).default([]),
+        collected_ui_requirements: z.array(z.string()).default([]),
+        ui_update_pack_trigger: z.string().optional(),
         tasks: z.array(z.object({
           task_id: z.string().optional(),
           objective: z.string().min(1),
@@ -1097,7 +1101,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1127,6 +1131,13 @@ function createServer(req: Request) {
         objective,
         scope,
         non_goals,
+        product_workflow: product_workflow ?? null,
+        ui_strategy: product_workflow === 'UX_FIRST' ? {
+          temporary_ui: temporary_ui ?? [],
+          collected_ui_requirements: collected_ui_requirements ?? [],
+          ui_update_pack_trigger: ui_update_pack_trigger ?? null,
+          temporary_ui_policy: 'MINIMUM_EXECUTION_SCAFFOLD_REUSE_CURRENT_SHELL_PROVISIONAL',
+        } : null,
         tasks: normalizedTasks,
         topology,
         dependencies: [],
@@ -1569,7 +1580,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_UI_UX_TOPOLOGY', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_UX_FIRST_UI_PACKS', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
