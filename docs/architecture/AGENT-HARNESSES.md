@@ -258,3 +258,36 @@ cross_repo_impact = NONE | READ_ONLY_CONTRACT_CHECK | COORDINATED_CHANGE_REQUIRE
 ```
 
 If coordinated changes are required in more than one repo, Planner should normally split them into linked finite Jobs, one working repo each, with explicit dependency ordering.
+
+
+## Critic Reviewer (CR)
+
+Critic Reviewer is an independent, Human-invoked second-review role.
+
+Command alias:
+
+```text
+cr
+```
+
+Contract:
+
+- CR is never automatically dispatched by Orchestrator, Planner, Reviewer, Coder or Tester.
+- CR requires a genuinely fresh chat/reasoning context. Telling the current conversation to "forget" prior context is not sufficient.
+- If fresh context cannot be established, CR fails closed with `FRESH_CHAT_REQUIRED`.
+- CR reconstructs the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth only.
+- CR forms its own criteria, findings and verdict before reading the prior Reviewer verdict.
+- Only after the independent verdict exists may CR compare it with the prior Reviewer and record agreement/disagreement.
+- CR is read-only for source and Job state. It writes only a `CRITIC_REVIEW` Verification artifact.
+- CR never changes Job lifecycle. Human decides what to do with CR findings.
+
+Verdicts:
+
+```text
+PASS
+PASS_WITH_FINDINGS
+FAIL
+BLOCKED
+```
+
+CR is a peer-review backstop, not part of the normal automatic planning-review loop.
