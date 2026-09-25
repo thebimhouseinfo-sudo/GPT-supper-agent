@@ -2,159 +2,235 @@
 
 ## Purpose
 
-Every product/application Project that can contain material UI/UX work must have one planning classification:
+Every application Project with material UI/UX work is classified as:
 
 ```text
 UI_FIRST
 UX_FIRST
 ```
 
-This classification is independent of whether the repository is greenfield or brownfield.
+This classification is independent from:
 
-Planner owns classification and topology consequences.
-Changing an existing explicit classification is a material planning decision and requires Human approval.
+```text
+GREENFIELD | BROWNFIELD
+```
+
+Planner owns the classification and its topology consequences.
+Changing an already-approved classification is a material planning decision and requires Human approval.
+
+---
+
+## Shared prerequisite: UX execution contract
+
+UI and UX are not independent tracks.
+
+Before visual architecture is finalized, Planner/Designer must understand the **UX execution contract** for the affected product surface: what the user does, what information appears, what states exist, what actions/navigation are required, and how content changes through the flow.
+
+The UX execution contract does **not** require visual styling. It answers:
+
+- what the shell must hold;
+- which content regions exist;
+- navigation and primary/secondary actions;
+- empty/loading/error/success/disabled states;
+- content density and variable-length cases;
+- responsive behavioral needs;
+- persistent versus replaceable regions;
+- product-flow constraints that can change component boundaries.
+
+The difference between UI_FIRST and UX_FIRST is **when the visual system is designed and frozen enough for implementation**, not whether UX is understood.
+
+---
 
 ## UI_FIRST
 
-Use when visual structure/design is a primary product contract and implementation will depend materially on that design.
+Use when the visual system/shell is an early product contract and later content/features are expected to fit into it without repeatedly changing layout architecture.
 
-Workflow:
-
-```text
-objective
-→ Planner
-→ inspect existing UI/design artifacts
-→ detailed-enough UI contract?
-   ├─ YES → implementation topology
-   └─ NO  → Designer/UI-definition first
-→ Human review when design choice is material
-→ Coder implementation
-→ visual/behavior verification
-```
-
-Rule:
-
-> Do not develop UI screen-by-screen opportunistically when the Project is UI_FIRST and the affected surface lacks a sufficiently detailed design contract.
-
-Reason:
-incremental visual invention changes layout, component boundaries, asset needs and implementation sequencing, forcing repeated replanning and rework.
-
-A UI_FIRST contract should cover, as applicable:
-- page/screen structure;
-- navigation and major states;
-- layout hierarchy;
-- responsive behavior;
-- reusable components;
-- interaction states;
-- visual language/design-system constraints;
-- required assets;
-- acceptance examples or references.
-
-It does not require pixel-perfect design for every trivial state before any code can start. Planner decides whether the contract is sufficiently detailed for the affected implementation scope.
-
-## UX_FIRST
-
-Use when product behavior, task flow, information architecture or interaction logic must stabilize before visual design is worth freezing.
-
-Workflow:
+### Core workflow
 
 ```text
 objective
 → Planner
-→ UX/product-flow work
-→ implementation/prototype where topology allows
-→ collect UI requirements produced by real UX needs
-→ durable UI-requirement backlog
-→ UI-design trigger/milestone
-→ Designer creates coherent UI contract from accumulated requirements
-→ visual implementation/refinement
+→ read / define UX execution contract
+→ Designer derives UI requirements from UX execution
+→ design coherent UI shell + affected UI contract
+→ Human review when material
+→ implementation against approved shell
+→ later content/features plug into the shell
+→ visual + behavioral verification
 ```
 
-Rule:
+### Key rule
 
-> UI requirements discovered during UX_FIRST work are collected; they are not automatically expanded into full visual design at every discovery point.
+> UI_FIRST means UI is designed before UI implementation, but it is designed from UX execution needs rather than from visual guesswork.
 
-Examples of collected requirements:
-- this flow needs a confirmation state;
-- mobile needs a persistent primary action;
-- this lesson needs an illustration slot;
-- error state must preserve entered data;
-- parent settings need a compact tablet layout.
+The Designer must read the UX execution contract before defining the shell.
 
-These remain durable requirements until the planned UI design pass.
+The shell should anticipate the real execution needs sufficiently that later content can be inserted without recurring structural redesign.
 
-Coder must not use UX_FIRST as permission to invent permanent visual architecture. Temporary/prototype presentation is allowed only when topology and scope say so.
+### UI shell contract
 
-## Brownfield behavior
+Depending on the product, the shell may define:
+
+- application frame/header/sidebar/footer;
+- page/content canvas;
+- navigation regions;
+- content slots and hierarchy;
+- reusable card/panel/dialog patterns;
+- action placement;
+- state containers;
+- responsive breakpoints/behavior;
+- spacing/typography/component primitives;
+- asset/illustration slots;
+- constraints for variable content;
+- interaction/state affordances.
+
+The goal is not to pre-design every future content item. The goal is to define a stable visual structure into which those items can be assembled.
+
+### Insufficient UI_FIRST planning
+
+This is invalid:
+
+```text
+screen 1 code
+→ discover new UX need
+→ alter shell
+→ screen 2 code
+→ alter navigation
+→ mobile breaks
+→ redesign components
+→ repeat
+```
+
+When this happens repeatedly, Planner should route back to Designer/Planner because the shell was under-specified.
+
+### Brownfield UI_FIRST
 
 For an existing repository:
 
 ```text
 Planner
-→ read existing Project Memory + design/UX artifacts + live implementation
-→ infer candidate classification from actual product workflow
-→ preserve explicit existing classification when present
-→ review whether existing artifacts are sufficient
-→ upgrade only gaps required by the current objective
+→ read existing UX execution + live UI implementation + design artifacts
+→ review whether current shell really covers execution needs
+→ KEEP stable pieces
+→ UPGRADE missing/incorrect shell contracts
+→ only then plan affected implementation
 ```
 
-Brownfield does not mean "keep every old UI decision".
-It means understand and review before changing it.
+Existing code is evidence, not automatically the desired design contract.
 
-For UI_FIRST brownfield:
-- existing UI may already be the design contract;
-- Planner reviews consistency/completeness;
-- Designer is inserted only where affected surfaces lack sufficient definition or need material redesign.
+If the current shell already works, preserve it.
+If the objective exposes structural gaps, fix the shell/design contract before extending content into it.
 
-For UX_FIRST brownfield:
-- existing screens are evidence of current interaction needs;
-- Planner may collect missing/changed UI requirements while UX work continues;
-- full visual redesign is deferred until its planned trigger unless the current objective specifically is UI redesign.
-
-## Greenfield behavior
+### Greenfield UI_FIRST
 
 For a new repository:
 
 ```text
 Planner research
-→ nominate UI_FIRST or UX_FIRST with rationale/trade-offs
-→ Human Gate on material workflow choice
-→ persist classification
-→ build topology consistent with it
+→ define/narrow UX execution contract with Human
+→ nominate UI architecture/shell approach
+→ Designer creates shell/UI contract
+→ Human approves material design choices
+→ Coder builds shell
+→ feature/content Jobs assemble into that shell
 ```
 
-UI_FIRST greenfield normally needs early Designer involvement.
+Designer involvement is early and intentional.
 
-UX_FIRST greenfield normally needs product/flow definition first and a durable UI-requirement collection mechanism.
+---
+
+## UX_FIRST
+
+Use when product behavior, task flow, interaction logic or information architecture needs to evolve before it is useful to freeze the final visual system.
+
+### Core workflow
+
+```text
+objective
+→ Planner
+→ UX/product-flow execution
+→ implementation/prototype where topology allows
+→ collect UI requirements generated by real UX needs
+→ durable UI-requirement backlog
+→ UI design trigger/milestone
+→ Designer creates coherent UI shell/visual system
+→ visual implementation/refinement
+```
+
+### Key rule
+
+> In UX_FIRST, UI needs discovered during UX work are collected first; they do not trigger a complete visual redesign at every discovery point.
+
+Examples:
+
+- flow needs a confirmation state;
+- mobile requires persistent primary action;
+- a lesson needs an illustration slot;
+- error state must preserve entered data;
+- table needs dense and expanded variants;
+- a workflow needs two simultaneous information panes.
+
+These are durable UI requirements.
+
+They accumulate until the planned UI-design pass has enough evidence to produce a coherent system.
+
+Coder must not interpret UX_FIRST as permission to invent a permanent visual architecture. Temporary/prototype presentation is acceptable only when the Job topology explicitly allows it.
+
+### Brownfield UX_FIRST
+
+Existing screens provide evidence about current behavior.
+
+Planner reviews:
+
+- actual interaction flows;
+- accumulated UI constraints;
+- gaps exposed by the new objective.
+
+UI requirements continue to accumulate until the agreed UI-design trigger, unless the current Job itself is a visual redesign Job.
+
+### Greenfield UX_FIRST
+
+Planner and Human establish the product/interaction model first.
+
+A durable UI-requirement collection mechanism is created so later Designer work is based on observed product needs rather than speculative screens.
+
+---
 
 ## Planner topology rules
 
 Before persisting a UI-bearing Job, Planner must answer:
 
-1. What is the Project workflow classification?
-2. Does the affected scope already have enough UI/UX contract to execute?
-3. If UI_FIRST and UI contract is insufficient, where is the Designer/UI-definition predecessor?
-4. If UX_FIRST, where are discovered UI requirements recorded?
-5. What event/milestone triggers the coherent UI design pass?
-6. Does the proposed topology accidentally ask Coder to invent a material product/design decision?
+1. Is this Project UI_FIRST or UX_FIRST?
+2. What is the UX execution contract for the affected surface?
+3. Which UI requirements follow from that execution contract?
+4. If UI_FIRST:
+   - is the shell/UI contract already sufficiently defined?
+   - if not, where is the Designer predecessor?
+   - can planned content fit without structural redesign?
+5. If UX_FIRST:
+   - where are newly discovered UI requirements persisted?
+   - what milestone/event triggers the coherent UI design pass?
+6. Is Coder being asked to make a material product/design decision that belongs to Planner/Designer/Human?
 
-If any answer is missing, the plan is incomplete.
+Missing answers mean the plan is incomplete.
 
-## Relationship to greenfield/brownfield intake
+---
 
-These are orthogonal dimensions:
+## Relationship to repository maturity
+
+The two dimensions are orthogonal:
 
 ```text
-             UI_FIRST              UX_FIRST
-greenfield   research + design      research + UX + collect UI
-brownfield   review UI + upgrade    review UX + collect/upgrade
+                     UI_FIRST                              UX_FIRST
+GREENFIELD   UX execution → shell design → dev      UX execution → collect UI → later design
+BROWNFIELD   review UX+shell → upgrade → dev        review UX → collect/upgrade → later design
 ```
 
-So GSA Planner evaluates both:
+GSA Planner therefore evaluates:
 
 ```text
 Repository maturity: GREENFIELD | BROWNFIELD
 Product workflow:    UI_FIRST | UX_FIRST
 ```
 
-The combination determines the planning strategy.
+The combination determines planning topology.
