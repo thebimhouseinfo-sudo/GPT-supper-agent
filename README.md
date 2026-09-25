@@ -9,7 +9,7 @@ PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
 CURRENT = M2 / REVIEWED JOB PILOT
-RUNTIME = GSA MCP v31
+RUNTIME = GSA MCP v32
 ```
 
 ## Core model
@@ -58,6 +58,8 @@ CONTROL is optional/rebuildable; durable records remain authoritative.
 ## Review
 
 Normal review is topology-driven. Sensitive changes trigger context-isolated review from actual changed-file/operation evidence.
+
+An optional Human-only **Critic Reviewer (CR)** provides a second independent peer review. CR must run from a genuinely fresh chat context, reconstruct from durable records/source truth, form its own verdict before reading the prior Reviewer verdict, and persist only `CRITIC_REVIEW` evidence. It never auto-runs or mutates Job lifecycle.
 
 Merge requires Review Coverage Summary + explicit human authorization.
 
