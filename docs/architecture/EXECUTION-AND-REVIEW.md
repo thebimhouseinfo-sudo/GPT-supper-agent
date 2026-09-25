@@ -167,3 +167,27 @@ Run completes
 → user selects/takes
 → next Run starts
 ```
+
+
+## 16. Human-invoked Critic Reviewer
+
+The normal Reviewer remains topology-driven and may be automatically used by the planning loop.
+
+Critic Reviewer (CR) is separate:
+
+```text
+Human invokes cr
+→ fresh chat required
+→ reconstruct from durable records + live source
+→ independent blind review
+→ independent verdict
+→ read prior Reviewer result last
+→ record CRITIC_REVIEW
+→ Human decides next action
+```
+
+CR must not be auto-dispatched.
+
+A prompt that asks the current conversation to ignore prior context does not satisfy independence. If a genuinely fresh reasoning context is unavailable, return `FRESH_CHAT_REQUIRED`.
+
+CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
