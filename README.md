@@ -8,7 +8,8 @@ GPT Super Agent is a thin ChatGPT orchestration/harness system for durable proje
 PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
-CURRENT = M1B / GITHUB MEMORY REPO CUTOVER
+CURRENT = M2 / MINIMAL JOB RUNTIME SPIKE
+RUNTIME = GSA MCP v22
 ```
 
 ## Core model
@@ -89,3 +90,21 @@ See `docs/architecture/DOCUMENT-INDEX.md`.
 Phase-2 implementation source of truth:
 
 `docs/plans/PHASE2-IMPLEMENTATION.md`
+
+
+## Minimal Job runtime
+
+The first durable Job vertical slice is now available:
+
+```text
+Planner harness
+→ job_prepare
+→ run_begin
+→ specialist harness loop
+→ Verification / Goal Recheck
+→ optional Handoff
+→ run_complete
+```
+
+Runtime role contracts are loaded through `get_agent_harness`.
+See `skills/gsa-job-runtime/SKILL.md` and `evals/E17-minimal-job-runtime.md`.
