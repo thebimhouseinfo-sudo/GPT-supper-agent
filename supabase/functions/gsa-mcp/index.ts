@@ -13,6 +13,7 @@ const MCP_RESOURCE = `${SUPABASE_URL}/functions/v1/gsa-mcp/mcp`
 const RESOURCE_METADATA = `${SUPABASE_URL}/functions/v1/gsa-mcp/.well-known/oauth-protected-resource`
 const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`
 const AUTH_SCOPES = ['email', 'profile']
+const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gpt-supper-agent.vercel.app/api/browser'
 
 function challenge(error = 'invalid_token', description = 'Sign in to GPT Super Agent to continue') {
   return `Bearer resource_metadata="${RESOURCE_METADATA}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
@@ -24,6 +25,33 @@ function authError(description: string) {
     isError: true,
     _meta: { 'mcp/www_authenticate': [challenge('invalid_token', description)] },
   }
+}
+
+async function callBrowserBridge(req: Request, payload: Record<string, unknown>) {
+  const authHeader = req.headers.get('Authorization') ?? ''
+  if (!authHeader.startsWith('Bearer ')) throw new Error('Authentication required for browser QA.')
+
+  const response = await fetch(BROWSER_BRIDGE_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(110_000),
+  })
+
+  const text = await response.text()
+  let data: any = null
+  try { data = JSON.parse(text) } catch {
+    throw new Error('Browser bridge returned invalid JSON (HTTP ' + response.status + ').')
+  }
+
+  if (!response.ok || !data?.ok) {
+    throw new Error('Browser bridge failed: ' + String(data?.error ?? ('HTTP ' + response.status)))
+  }
+
+  return data
 }
 
 async function authContext(req: Request) {
@@ -93,6 +121,8 @@ const BASE_AGENT_HARNESS = [
   '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
+  '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
+  '- Browser tool presence is SURFACE_PRESENT only. Treat browser evidence as OBSERVED only after the exact call succeeds against the exact target URL/revision.',
 ].join('\n')
 
 const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outputs: string[]; canonical_refs: string[] }> = {
@@ -150,7 +180,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Respect Project workflow classification: UI_FIRST designs the shell/UI contract before UI implementation, but only after reading the UX execution contract so the shell can correctly host later content; UX_FIRST allows Planner-defined temporary UI for executable UX while durable UI needs accumulate into later coherent UI Update Packs.',
     ],
     loop: [
-      'OBSERVE: load approved scope, the UX execution contract, product constraints and relevant current UI evidence.',
+      'OBSERVE: load approved scope, the UX execution contract, product constraints and relevant current UI evidence. When a public runnable UI URL exists, use browser_ui_inspect to observe the rendered UI rather than inferring visual correctness only from source.',
       'MODEL: derive what the shell must support from real flows, content regions, states, actions, responsive behavior and variable-content cases.',
       'SPECIFY: for UI_FIRST define a coherent shell/UI contract before implementation; for UX_FIRST do not redesign on every Job—consume a Planner-formed UI Update Pack and turn its accumulated requirements into one coherent design pass.',
       'COVERAGE CHECK: verify required states/devices are addressed and unresolved product decisions are surfaced.',
@@ -224,8 +254,8 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     loop: [
       'GROUND: resolve exact target revision and observable acceptance behavior.',
-      'CAPABILITY: determine which checks can actually be executed in this environment.',
-      'EXECUTE: run practical verification only for OBSERVED capabilities; otherwise create precise Human Retest steps.',
+      'CAPABILITY: determine which checks can actually be executed in this environment. For public web UI targets, browser_test_flow is the preferred basic interaction/runtime check when available.',
+      'EXECUTE: run practical verification only for OBSERVED capabilities. A successful browser_test_flow call may establish browser QA as OBSERVED for that exact target/run; otherwise create precise Human Retest steps.',
       'INTERPRET: distinguish product failure, test-harness failure and environment limitation.',
       'RECORD: persist reproducible evidence and limitations.',
       'ROUTE: send failures causally to the active owning work.',
@@ -584,7 +614,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.9.4' },
+    { name: 'gpt-super-agent', version: '0.9.5' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -607,6 +637,7 @@ function createServer(req: Request) {
         'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
+        'Internal browser QA: Designer may use browser_ui_inspect for rendered visual evidence; Tester may use browser_test_flow for bounded non-destructive functional verification. These are GPT tools, not user CLI commands.',
         'GitHub URLs are sufficient routing context; @GitHub is optional.',
         'Do not report a command complete until returned external_steps have been executed and verified through the GitHub connector.',
         'A tool result is an intermediate state unless it reaches an explicit stop condition. Within the same user turn, continue issuing the next required tool calls autonomously according to durable state/topology.',
@@ -688,6 +719,165 @@ function createServer(req: Request) {
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'browser_ui_inspect',
+    {
+      title: 'Inspect rendered UI in browser',
+      description: 'Internal GPT capability for Designer/UI inspection. Open a public runnable web UI in Vercel Sandbox with agent-browser and return accessibility snapshot, annotated screenshots, console output and page errors. Not a user-facing command.',
+      inputSchema: {
+        url: z.string().url(),
+        viewports: z.array(z.object({
+          width: z.number().int().min(320).max(1920),
+          height: z.number().int().min(480).max(1440),
+          label: z.string().max(40).optional(),
+        })).max(3).optional(),
+      },
+      outputSchema: {
+        observed: z.boolean(),
+        title: z.string(),
+        url: z.string(),
+        snapshot: z.string(),
+        console: z.string(),
+        page_errors: z.string(),
+        screenshot_count: z.number().int(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({ url, viewports }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to inspect UI.')
+      try {
+        const data = await callBrowserBridge(req, { mode: 'ui_inspect', url, viewports })
+        const screenshots = Array.isArray(data.screenshots) ? data.screenshots : []
+        const summary = {
+          observed: true,
+          title: String(data.title ?? ''),
+          url: String(data.url ?? url),
+          snapshot: String(data.snapshot ?? ''),
+          console: String(data.console ?? ''),
+          page_errors: String(data.page_errors ?? ''),
+          screenshot_count: screenshots.length,
+        }
+        const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
+        for (const shot of screenshots) {
+          if (shot?.data) {
+            content.push({
+              type: 'image',
+              data: String(shot.data),
+              mimeType: String(shot.mimeType ?? 'image/png'),
+            })
+          }
+        }
+        return { structuredContent: summary, content }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          structuredContent: {
+            observed: false,
+            title: '',
+            url,
+            snapshot: '',
+            console: '',
+            page_errors: message,
+            screenshot_count: 0,
+          },
+          content: [{ type: 'text', text: 'Browser UI inspection unavailable: ' + message }],
+          isError: true,
+        }
+      }
+    },
+  )
+
+  server.registerTool(
+    'browser_test_flow',
+    {
+      title: 'Run basic browser test flow',
+      description: 'Internal GPT capability for Tester. Execute one bounded non-destructive web-app flow in a Vercel Sandbox using semantic locators/CSS, then return step evidence, final snapshot, console/page errors and an annotated screenshot. Not a user-facing command.',
+      inputSchema: {
+        url: z.string().url(),
+        viewport: z.object({
+          width: z.number().int().min(320).max(1920),
+          height: z.number().int().min(480).max(1440),
+          label: z.string().max(40).optional(),
+        }).optional(),
+        stop_on_failure: z.boolean().optional(),
+        steps: z.array(z.object({
+          action: z.enum(['click', 'fill', 'check', 'hover', 'select', 'press', 'wait_text', 'assert_text']),
+          by: z.enum(['css', 'text', 'label', 'placeholder', 'testid', 'role']).optional(),
+          target: z.string().max(500).optional(),
+          name: z.string().max(300).optional(),
+          value: z.string().max(4000).optional(),
+        })).max(20),
+      },
+      outputSchema: {
+        observed: z.boolean(),
+        passed: z.boolean(),
+        url: z.string(),
+        initial_snapshot: z.string(),
+        final_snapshot: z.string(),
+        console: z.string(),
+        page_errors: z.string(),
+        steps: z.array(z.any()),
+        screenshot_count: z.number().int(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({ url, viewport, stop_on_failure, steps }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to run browser testing.')
+      try {
+        const data = await callBrowserBridge(req, {
+          mode: 'test_flow',
+          url,
+          viewport,
+          stop_on_failure,
+          steps,
+        })
+        const summary = {
+          observed: true,
+          passed: Boolean(data.passed),
+          url: String(data.url ?? url),
+          initial_snapshot: String(data.initial_snapshot ?? ''),
+          final_snapshot: String(data.final_snapshot ?? ''),
+          console: String(data.console ?? ''),
+          page_errors: String(data.page_errors ?? ''),
+          steps: Array.isArray(data.steps) ? data.steps : [],
+          screenshot_count: data.screenshot?.data ? 1 : 0,
+        }
+        const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
+        if (data.screenshot?.data) {
+          content.push({
+            type: 'image',
+            data: String(data.screenshot.data),
+            mimeType: String(data.screenshot.mimeType ?? 'image/png'),
+          })
+        }
+        return { structuredContent: summary, content }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          structuredContent: {
+            observed: false,
+            passed: false,
+            url,
+            initial_snapshot: '',
+            final_snapshot: '',
+            console: '',
+            page_errors: message,
+            steps: [],
+            screenshot_count: 0,
+          },
+          content: [{ type: 'text', text: 'Browser functional testing unavailable: ' + message }],
+          isError: true,
+        }
+      }
     },
   )
 
