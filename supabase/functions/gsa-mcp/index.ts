@@ -436,7 +436,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.6.3' },
+    { name: 'gpt-super-agent', version: '0.7.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -520,7 +520,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_UX_FIRST_HUMAN_PLANNED_TEMP_UI',
+        phase: 'M2_REAL_JOB_PILOT',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -1137,7 +1137,7 @@ function createServer(req: Request) {
           temporary_ui: temporary_ui ?? [],
           collected_ui_requirements: collected_ui_requirements ?? [],
           ui_update_pack_trigger: ui_update_pack_trigger ?? null,
-          temporary_ui_human_approval: temporary_ui_human_approval ?? 'NOT_REQUIRED',
+          temporary_ui_human_approval: temporary_ui_human_approval ?? ((temporary_ui ?? []).length ? 'REQUIRED_PENDING' : 'NOT_REQUIRED'),
           temporary_ui_policy: 'MINIMUM_EXECUTION_SCAFFOLD_REUSE_CURRENT_SHELL_PROVISIONAL_HUMAN_APPROVAL_FOR_MATERIAL_INTERACTION_CHOICES',
         } : null,
         tasks: normalizedTasks,
@@ -1179,6 +1179,7 @@ function createServer(req: Request) {
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         scope_claim: z.array(z.string()).min(1),
         primary_task_id: z.string().uuid().optional(),
@@ -1200,9 +1201,30 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
+    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to begin a Run.')
+      let owningJob: any
+      try { owningJob = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid owning Job JSON.' }], isError: true }
+      }
+      if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
+        return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (
+        role === 'coder' &&
+        owningJob.product_workflow === 'UX_FIRST' &&
+        (owningJob.ui_strategy?.temporary_ui ?? []).length > 0 &&
+        owningJob.ui_strategy?.temporary_ui_human_approval === 'REQUIRED_PENDING'
+      ) {
+        return {
+          content: [{
+            type: 'text',
+            text: 'HUMAN_GATE_REQUIRED: UX_FIRST temporary UI contains user-facing provisional structure that is still REQUIRED_PENDING. Planner must obtain explicit Human approval and persist an approved Job planning revision before Coder may begin.',
+          }],
+          isError: true,
+        }
+      }
       const runId = uuidv7()
       const now = new Date().toISOString()
       const record = {
@@ -1236,7 +1258,7 @@ function createServer(req: Request) {
         next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
-          'Read the owning Job and require it is READY or IN_PROGRESS and the selected Task/scope is valid.',
+          'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
@@ -1575,6 +1597,8 @@ app.get('/selftest', (c) => {
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
     coder_skill_suggested: (ROLE_SKILLS.coder ?? []).includes('coding-loop'),
+    ux_first_temp_ui_defaults_to_gate: true,
+    run_begin_requires_job_snapshot: true,
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
   }
   const pass = Object.values(checks).every(Boolean)
@@ -1582,7 +1606,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_UX_FIRST_HUMAN_PLANNED_TEMP_UI', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_REAL_JOB_PILOT', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
