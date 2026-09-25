@@ -436,7 +436,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.7.1' },
+    { name: 'gpt-super-agent', version: '0.7.2' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -476,6 +476,12 @@ function createServer(req: Request) {
     async () => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
+      const { data: memoryConfig } = await readMemoryConfig(auth)
+      const memoryRepoName = memoryConfig?.memory_repo_full_name
+        ? memoryConfig.memory_repo_full_name.split('/').pop() || memoryConfig.memory_repo_full_name
+        : null
+      const accountSummary = auth.user.id
+      const memoryRepoSummary = memoryRepoName ?? 'Not configured'
 
       const menuText =
         'PROJECT — Manage Projects and their lifecycle.\n' +
@@ -494,8 +500,8 @@ function createServer(req: Request) {
         '  • reviewer [rv] — Run context-isolated review.\n' +
         '  • tester [ts] — Verify behavior and evidence.\n\n' +
         'SETTING — Manage GSA configuration.\n' +
-        '  • GSA Account [acct] — Show authenticated GSA account.\n' +
-        '  • Memory Repo [repo] — View/configure GSA Memory repository.\n\n' +
+        '  • GSA Account [acct] — ' + accountSummary + '\n' +
+        '  • Memory Repo [repo] — ' + memoryRepoSummary + '\n\n' +
         'HELP — Usage reference.\n' +
         '  • instruction [guide] — Show GSA usage instructions.\n' +
         '  • command help [help] — Show commands and aliases.'
