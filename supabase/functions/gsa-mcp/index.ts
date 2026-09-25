@@ -436,7 +436,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.7.0' },
+    { name: 'gpt-super-agent', version: '0.7.1' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -1168,6 +1168,84 @@ function createServer(req: Request) {
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_transition',
+    {
+      title: 'Transition a durable GSA Job',
+      description: 'Serialized Job lifecycle update using the exact current Job record and blob SHA. Use READY→IN_PROGRESS when execution starts and IN_PROGRESS→COMPLETED only after completion evidence exists.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        job_record_sha: z.string().min(7),
+        target_lifecycle: z.enum(['IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
+        result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
+        completion_evidence_refs: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        memory_path: z.string(),
+        expected_job_sha: z.string(),
+        next_job_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to transition a Job.')
+      let current: any
+      try { current = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.job_id !== job_id || current.project_id !== project_id) {
+        return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
+      }
+      const allowed =
+        (current.lifecycle === 'READY' && ['IN_PROGRESS','CANCELLED','SUPERSEDED'].includes(target_lifecycle)) ||
+        (current.lifecycle === 'IN_PROGRESS' && ['COMPLETED','CANCELLED','SUPERSEDED'].includes(target_lifecycle))
+      if (!allowed) {
+        return { content: [{ type: 'text', text: 'Invalid Job lifecycle transition: ' + current.lifecycle + ' → ' + target_lifecycle }], isError: true }
+      }
+      if (target_lifecycle === 'COMPLETED') {
+        if (!['PASS','PASS_RETEST_REQUIRED'].includes(result ?? '')) {
+          return { content: [{ type: 'text', text: 'Completed Job requires result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+        }
+        if (!(completion_evidence_refs ?? []).length) {
+          return { content: [{ type: 'text', text: 'Completed Job requires at least one durable completion evidence reference.' }], isError: true }
+        }
+      }
+      const next = {
+        ...current,
+        lifecycle: target_lifecycle,
+        result: result ?? current.result ?? null,
+        completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
+        updated_at: new Date().toISOString(),
+      }
+      const memoryPath = recordPath(project_id, 'JOBS', job_id)
+      const externalSteps = [
+        'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
+        'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
+      ]
+      if (target_lifecycle === 'COMPLETED') {
+        externalSteps.push('Verify every completion_evidence_ref already exists and applies to the current accepted target revision before Job completion.')
+      }
+      externalSteps.push(
+        'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
+        'GitHub Memory Repo: update the Job file with next_job_record_text using expected_job_sha exactly.',
+        'Read back the Job and verify the target lifecycle/result before reporting the Job transition complete.',
+      )
+      const out = {
+        memory_path: memoryPath,
+        expected_job_sha: job_record_sha,
+        next_job_record_text: prettyJson(next),
+        external_steps: externalSteps,
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
