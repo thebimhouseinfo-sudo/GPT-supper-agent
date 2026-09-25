@@ -123,6 +123,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     loop: [
       'OBSERVE: read Project contract and only enough live source to understand the requested outcome.',
+      'CLASSIFY PRODUCT WORKFLOW: determine UI_FIRST or UX_FIRST before planning UI-bearing work. Preserve an existing explicit classification unless Planner has evidence and Human approval to change it.',
       'FRAME: define objective, scope, non-goals and material assumptions.',
       'DECOMPOSE: create bounded Tasks with dependency order and explicit completion criteria.',
       'GATE: place required review/test/human checkpoints and capability requirements.',
@@ -137,6 +138,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Own visual interpretation, UI/UX coverage and Asset Requirements.',
       'Source implementation is read-only.',
       'Do not silently change product behavior or architecture.',
+      'Respect Project workflow classification: UI_FIRST may require a complete enough UI contract before Coder starts; UX_FIRST turns accumulated UX-derived UI requirements into a later coherent visual design pass.',
     ],
     loop: [
       'OBSERVE: load approved scope, product constraints and relevant current UI evidence.',
@@ -224,11 +226,14 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '1. Read the Project purpose and the exact user objective.',
       '2. Inspect only enough live source to avoid planning from false assumptions.',
       '3. State objective, scope and non-goals separately.',
-      '4. Break work into Tasks that each have an observable completion criterion.',
-      '5. Add dependencies only when one Task genuinely needs another Task output.',
-      '6. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
-      '7. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
-      '8. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
+      '4. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
+      '5. UI_FIRST: if a sufficiently detailed UI contract does not exist for the affected surface, schedule Designer/UI definition BEFORE implementation. Do not let Coder invent screens incrementally because that creates plan churn and rework.',
+      '6. UX_FIRST: plan product/interaction behavior first. Collect UI requirements produced by the UX flow as durable design requirements; do not expand them into full visual design until the planned UI-design trigger/milestone is reached.',
+      '7. Break work into Tasks that each have an observable completion criterion.',
+      '8. Add dependencies only when one Task genuinely needs another Task output.',
+      '9. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
+      '10. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
+      '11. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
   'coding-loop': {
@@ -431,7 +436,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.5.0' },
+    { name: 'gpt-super-agent', version: '0.6.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -515,7 +520,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_AGENT_RUNTIME_V2',
+        phase: 'M2_PRODUCT_WORKFLOW_CLASSIFICATION',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -1564,7 +1569,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AGENT_RUNTIME_V2', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_PRODUCT_WORKFLOW_CLASSIFICATION', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
