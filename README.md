@@ -8,8 +8,8 @@ GPT Super Agent is a thin ChatGPT orchestration/harness system for durable proje
 PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
-CURRENT = M2 / REAL JOB PILOT
-RUNTIME = GSA MCP v29
+CURRENT = M2 / REVIEWED JOB PILOT
+RUNTIME = GSA MCP v31
 ```
 
 ## Core model
@@ -130,3 +130,19 @@ A new durable objective enters through Planner. For UX_FIRST temporary UI, mater
 Use E18 for the first bounded real Project test. Merge and deployment remain explicit Human actions.
 
 Job lifecycle is serialized with `job_transition`: READY→IN_PROGRESS when execution begins, and IN_PROGRESS→COMPLETED only with durable completion evidence.
+
+
+## Brownfield planning floor
+
+Existing repositories use structure-first discovery:
+
+```text
+L0 repository tree + filenames
+→ L1 selective content reads
+→ Job DRAFT
+→ automatic context-isolated planning review
+→ Planner repair/re-review loop
+→ READY
+```
+
+Planner may not treat README/TASKS/roadmaps as sufficient source truth. See `evals/E19-planning-review-loop.md`.
