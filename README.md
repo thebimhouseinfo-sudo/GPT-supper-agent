@@ -9,7 +9,7 @@ PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
 CURRENT = M2 / REAL JOB PILOT
-RUNTIME = GSA MCP v28
+RUNTIME = GSA MCP v29
 ```
 
 ## Core model
@@ -128,3 +128,5 @@ See `docs/architecture/PRODUCT-WORKFLOW-CLASSIFICATION.md`.
 A new durable objective enters through Planner. For UX_FIRST temporary UI, material user-facing choices must be explicitly approved before a Coder Run can begin. `run_begin` requires the current owning Job snapshot and fails closed when the temporary-UI Human Gate is pending.
 
 Use E18 for the first bounded real Project test. Merge and deployment remain explicit Human actions.
+
+Job lifecycle is serialized with `job_transition`: READY→IN_PROGRESS when execution begins, and IN_PROGRESS→COMPLETED only with durable completion evidence.
