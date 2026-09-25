@@ -15,6 +15,7 @@ The pilot should use a bounded real change in an existing Project repository.
   - `get_skill_catalog`
   - `load_skill`
   - `job_prepare`
+  - `job_transition`
   - `run_begin`
   - `goal_recheck_record`
   - `run_complete`
@@ -86,7 +87,19 @@ PASS:
 - Coder cannot start while approval is pending.
 - “Temporary” is never treated as permission for agent-authored product decisions.
 
-## Stage C — Coder Run
+## Stage C — Job activation and Coder Run
+
+Before the first execution Run, the durable Job transitions:
+
+```text
+READY
+→ job_transition with exact current blob SHA
+→ IN_PROGRESS
+```
+
+Then the Coder Run starts.
+
+
 
 Coder:
 1. receives the current Job snapshot;
@@ -136,6 +149,19 @@ If practical behavior verification is required:
 
 ## Stage F — Durable completion
 
+After required Run/Verification/Handoff work is satisfied, the Job itself transitions:
+
+```text
+IN_PROGRESS
+→ verify durable completion evidence
+→ job_transition
+→ COMPLETED + PASS | PASS_RETEST_REQUIRED
+```
+
+A Job must not remain READY after real execution begins, and a terminal Run alone is not the Job terminal state.
+
+
+
 Persistence order:
 
 ```text
@@ -158,8 +184,9 @@ E18 passes only when:
 6. Coder performs evidence-driven implementation loop;
 7. Goal Recheck is persisted;
 8. required Reviewer/Tester path is honored;
-9. durable state supports fresh-chat continuation;
-10. no merge/deploy occurs without explicit Human authorization.
+9. Job lifecycle reaches IN_PROGRESS and then COMPLETED only through exact-SHA serialized transitions;
+10. durable state supports fresh-chat continuation;
+11. no merge/deploy occurs without explicit Human authorization.
 
 ## Recommended first pilot prompt
 
