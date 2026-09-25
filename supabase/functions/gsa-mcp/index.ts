@@ -231,8 +231,8 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '1. Read the Project purpose and the exact user objective.',
       '2. Brownfield discovery is two-stage: L0 scan repository tree/filenames/config/tests/docs/assets/CI-deploy surfaces first; L1 then selectively read content files chosen from that structure.',
       '3. Do not treat README/TASKS/roadmaps as source truth when live structure or implementation disagrees.',
-      '4. State objective, scope and non-goals separately.'
-      '5. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.'
+      '4. State objective, scope and non-goals separately.',
+      '5. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
       '6. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
       '7. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
       '8. Break work into Tasks that each have an observable completion criterion.',
