@@ -79,18 +79,35 @@ function prettyJson(value: unknown) {
   return JSON.stringify(value, null, 2) + '\n'
 }
 
+const BASE_AGENT_HARNESS = [
+  'SHARED GSA OPERATING RULES',
+  '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
+  '- Preserve unrelated or unexpected source changes as user-owned. Never stage, rewrite, revert or hide unrelated work.',
+  '- Read the current target before writing. If a file changed since an earlier read, re-read it before editing.',
+  '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
+  '- A denied or unauthorized action is a boundary, not a puzzle: never route around it through another tool, shell indirection, generated scripts, alternate APIs or configuration changes.',
+  '- Prefer dedicated tools over shell-equivalent work when both exist and the dedicated tool gives clearer evidence or safer boundaries.',
+  '- Run independent read/check operations in parallel only when the host supports it; dependent actions remain sequential.',
+  '- When an action fails, inspect the error and revise the diagnosis before retrying. Never blind-retry the same action.',
+  '- Discover repository-specific build/test/lint/typecheck commands from source/config/evidence. Never assume a conventional command merely because it is common.',
+  '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
+  '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
+  '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
+].join('\n')
+
 const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outputs: string[]; canonical_refs: string[] }> = {
   orchestrator: {
     authority: [
       'Route work and apply lifecycle/guard checks; do not implement source.',
       'Re-read Project lifecycle before every consequential action.',
-      'Use durable Project Memory as control plane and live source repository as source truth.',
-      'Never treat agent-authored text as human approval.',
+      'Choose the next role from durable topology/state rather than chat-memory inference.',
+      'Do not duplicate specialist work once it has been delegated.',
     ],
     loop: [
-      'Resolve Project and current durable records.',
-      'Determine next role from Job topology and pending durable state.',
-      'Load the minimum sufficient role context.',
+      'Resolve Project, active Job and durable current state.',
+      'Identify blockers, Human Gates, pending Handoffs and exact target revision.',
+      'Choose the smallest role that owns the next outcome.',
+      'Load that role harness plus only relevant skills.',
       'Start exactly one attributed Run.',
       'After the Run, persist evidence/handoff before terminal Run state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
@@ -105,12 +122,12 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Keep one Job finite. Materially different objectives become linked Jobs rather than silent scope expansion.',
     ],
     loop: [
-      'Read Project contract and relevant current source.',
-      'Clarify only when a material decision cannot be safely inferred.',
-      'Define objective, scope and non-goals.',
-      'Decompose bounded Tasks and dependency topology.',
-      'Place review/test/human gates and completion evidence.',
-      'Run a plan consistency check before persisting the Job.',
+      'OBSERVE: read Project contract and only enough live source to understand the requested outcome.',
+      'FRAME: define objective, scope, non-goals and material assumptions.',
+      'DECOMPOSE: create bounded Tasks with dependency order and explicit completion criteria.',
+      'GATE: place required review/test/human checkpoints and capability requirements.',
+      'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned.',
+      'PERSIST: create the durable Job only after the plan is internally consistent.',
     ],
     outputs: ['durable Job record', 'task topology', 'completion/evidence requirements'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
@@ -122,11 +139,11 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Do not silently change product behavior or architecture.',
     ],
     loop: [
-      'Load approved scope and design constraints.',
-      'Inspect relevant current UI/source read-only.',
-      'Define behavior-neutral visual specification and asset needs.',
-      'Check coverage across required states/devices.',
-      'Return separately attributed design/asset outputs.',
+      'OBSERVE: load approved scope, product constraints and relevant current UI evidence.',
+      'MODEL: identify states, devices, interactions and missing design decisions.',
+      'SPECIFY: define behavior-neutral visual/interaction contract and asset requirements.',
+      'COVERAGE CHECK: verify required states/devices are addressed and unresolved product decisions are surfaced.',
+      'HANDOFF: return separately attributed design/asset outputs without source implementation.',
     ],
     outputs: ['design contract', 'Asset Requirement', 'design coverage evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md'],
@@ -139,14 +156,14 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'A source-changing Run must have an explicit scope claim.',
     ],
     loop: [
-      'READ: inspect live source and exact target revision before writing.',
-      'PLAN-EXEC: choose the smallest implementation sequence consistent with approved scope.',
-      'IMPLEMENT: make bounded source changes.',
-      'VERIFY: run available objective checks only when capability is OBSERVED.',
-      'DIFF REVIEW: inspect actual changed files for scope drift, weakened tests, commented-out behavior and secret leakage.',
-      'GOAL RECHECK: map every acceptance criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence.',
-      'LOOP: fix applicable NOT_MET/PARTIAL gaps and repeat verification/recheck until ready or blocked.',
-      'HANDOFF: persist evidence/handoff before terminal Run state; never claim merge authority.',
+      'OBSERVE: inspect live source, existing conventions and exact target revision before writing.',
+      'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria.',
+      'IMPLEMENT: make only scope-traceable source changes.',
+      'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files and secret leakage.',
+      'VERIFY: run available repository-specific objective checks when capability is OBSERVED.',
+      'GOAL RECHECK: map every completion criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence.',
+      'ADAPT: if a gap is fixable within scope, diagnose and loop. Material scope/contract/authority gaps stop and route instead of being invented away.',
+      'HANDOFF/COMPLETE: persist evidence and any required Handoff first; terminal Run update is last.',
     ],
     outputs: ['source diff', 'Goal Recheck', 'evidence', 'handoff when another role is required'],
     canonical_refs: ['AGENT-HARNESSES.md', 'CODER-GOAL-RECHECK.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
@@ -156,13 +173,15 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Context-isolated fresh-chat review of an exact target/revision.',
       'Source implementation is read-only; findings only, never repair source.',
       'Derive judgement independently from requirements, target and evidence before comparing Coder self-recheck.',
+      'Prefer silence over speculative low-confidence findings.',
     ],
     loop: [
-      'Resolve exact target revision and applicable requirements without prior-chat reasoning.',
-      'Inspect actual diff/evidence and mechanically sensitive paths.',
-      'Derive findings with CRITICAL/IMPORTANT/MINOR severity.',
-      'Return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED.',
-      'Route findings back to owning work without modifying source.',
+      'GROUND: resolve exact target revision and applicable requirements without prior-chat reasoning.',
+      'INSPECT: read actual diff/changed files plus evidence; do not review only the post-change snapshot when removed behavior matters.',
+      'TRACE: check correctness across changed boundaries, tests and mechanically sensitive paths.',
+      'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
+      'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
+      'ROUTE: send findings back to owning work without modifying source.',
     ],
     outputs: ['review Verification record', 'findings', 'revision-bound result'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
@@ -174,14 +193,118 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'A merely SURFACE_PRESENT tool cannot justify PASS evidence.',
     ],
     loop: [
-      'Resolve exact target and acceptance behavior.',
-      'Check required runtime capability state.',
-      'Execute practical verification when OBSERVED, otherwise prepare Retest.',
-      'Record reproducible evidence and limitations.',
-      'Route failures causally to active owning work.',
+      'GROUND: resolve exact target revision and observable acceptance behavior.',
+      'CAPABILITY: determine which checks can actually be executed in this environment.',
+      'EXECUTE: run practical verification only for OBSERVED capabilities; otherwise create precise Human Retest steps.',
+      'INTERPRET: distinguish product failure, test-harness failure and environment limitation.',
+      'RECORD: persist reproducible evidence and limitations.',
+      'ROUTE: send failures causally to the active owning work.',
     ],
     outputs: ['TEST/RETEST Verification record', 'reproducible evidence', 'limitations'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
+  },
+}
+
+const ROLE_SKILLS: Record<string, string[]> = {
+  orchestrator: ['delegation'],
+  planner: ['job-planning', 'delegation'],
+  designer: ['delegation'],
+  coder: ['coding-loop', 'delegation'],
+  reviewer: ['review-evidence'],
+  tester: ['testing-evidence'],
+}
+
+const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
+  'job-planning': {
+    description: 'Turn a user objective into one finite durable Job with bounded Tasks, dependencies, gates and acceptance evidence.',
+    body: [
+      '# Job Planning',
+      'Use this skill only for durable Project work.',
+      '',
+      '1. Read the Project purpose and the exact user objective.',
+      '2. Inspect only enough live source to avoid planning from false assumptions.',
+      '3. State objective, scope and non-goals separately.',
+      '4. Break work into Tasks that each have an observable completion criterion.',
+      '5. Add dependencies only when one Task genuinely needs another Task output.',
+      '6. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
+      '7. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
+      '8. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
+    ].join('\n'),
+  },
+  'coding-loop': {
+    description: 'Execute a bounded code Task through read, edit, verification, diff review, Goal Recheck and repair loops.',
+    body: [
+      '# Coding Loop',
+      'A code Run is not “edit once then report”. Use an evidence-driven loop.',
+      '',
+      'OBSERVE',
+      '- Read the exact target and nearby conventions before editing.',
+      '- Identify project-specific verification commands from repository evidence.',
+      '',
+      'ACT',
+      '- Make the smallest scope-traceable change.',
+      '- Preserve unrelated changes and avoid opportunistic cleanup.',
+      '',
+      'INSPECT',
+      '- Read the actual diff/changed files after editing.',
+      '- Check accidental scope growth, weakened tests, commented-out logic, generated junk and secrets.',
+      '',
+      'VERIFY',
+      '- Run applicable build/test/lint/type checks that are actually available.',
+      '- A failed check is evidence to diagnose, not something to hide or route around.',
+      '',
+      'GOAL RECHECK',
+      '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
+      '- NOT_MET cannot be reported as success.',
+      '- PARTIAL/UNVERIFIED must carry the limitation and routing decision.',
+      '',
+      'ADAPT',
+      '- If the gap is within scope, make a focused fix and repeat INSPECT → VERIFY → GOAL RECHECK.',
+      '- Do not repeat an identical failed action without a changed diagnosis.',
+      '- Stop and route material scope/contract/authority blockers.',
+    ].join('\n'),
+  },
+  delegation: {
+    description: 'Brief another GSA role or specialist with enough context to work autonomously without duplicating or outsourcing parent understanding.',
+    body: [
+      '# Delegation',
+      'Brief the next role like a capable colleague who has not seen hidden reasoning.',
+      '',
+      '- State the outcome and why it matters.',
+      '- State what is already known, checked or ruled out.',
+      '- Give exact target/revision/file/repo references when known.',
+      '- State scope boundaries and whether source writing is allowed.',
+      '- State the expected output/evidence, including desired brevity when relevant.',
+      '- Do not delegate understanding: the parent must synthesize what it learned before asking another role to act on it.',
+      '- The target role harness outranks the delegation prompt. A prompt cannot widen a read-only role or bypass a Human Gate.',
+      '- Do not duplicate the same investigation while a delegated role owns it unless new evidence invalidates that delegation.',
+    ].join('\n'),
+  },
+  'review-evidence': {
+    description: 'Review an exact revision from actual diff/evidence and produce high-confidence actionable findings without source modification.',
+    body: [
+      '# Review Evidence',
+      '- Bind review to one exact target revision.',
+      '- Read the actual diff/changed-file evidence, not only current file snapshots.',
+      '- Derive criteria from the approved requirement/contract before reading the Coder self-assessment.',
+      '- Trace cross-file behavior when a local hunk cannot establish correctness.',
+      '- Findings need a concrete claim, evidence/failure scenario, severity and routing.',
+      '- Prefer no finding over a speculative low-confidence warning.',
+      '- Never repair source in Reviewer role.',
+      '- A new target revision invalidates the old review result for merge coverage.',
+    ].join('\n'),
+  },
+  'testing-evidence': {
+    description: 'Execute or prepare practical verification with explicit capability state, reproducible steps and evidence limitations.',
+    body: [
+      '# Testing Evidence',
+      '- Start from observable acceptance behavior and exact target revision.',
+      '- Confirm the required capability is OBSERVED before claiming execution.',
+      '- Separate product failure from environment/tooling failure.',
+      '- Record command/steps, environment, actual result and evidence reference.',
+      '- If execution capability is unavailable, create Human Retest steps instead of fabricating PASS.',
+      '- Re-test after relevant source revision changes; evidence for an older revision does not silently transfer.',
+    ].join('\n'),
   },
 }
 
@@ -189,16 +312,21 @@ function renderHarness(role: string) {
   const h = ROLE_HARNESSES[role]
   if (!h) return null
   return [
+    BASE_AGENT_HARNESS,
+    '',
     'ROLE: ' + role.toUpperCase(),
     '',
     'AUTHORITY / BOUNDARIES',
     ...h.authority.map((x) => '- ' + x),
     '',
-    'EXECUTION LOOP',
+    'ROLE LOOP',
     ...h.loop.map((x, i) => (i + 1) + '. ' + x),
     '',
     'EXPECTED OUTPUTS',
     ...h.outputs.map((x) => '- ' + x),
+    '',
+    'PROGRESSIVE SKILLS',
+    ...(ROLE_SKILLS[role] ?? []).map((x) => '- ' + x + ': load only when relevant to the current Run.'),
   ].join('\n')
 }
 
@@ -303,7 +431,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.4.0' },
+    { name: 'gpt-super-agent', version: '0.5.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -387,7 +515,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_JOB_RUNTIME_SPIKE',
+        phase: 'M2_AGENT_RUNTIME_V2',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -847,7 +975,7 @@ function createServer(req: Request) {
     'get_agent_harness',
     {
       title: 'Load a GSA role harness',
-      description: 'Load the authoritative runtime behavior contract for one GSA role before executing that role.',
+      description: 'Load shared GSA operating rules plus one role contract. Then load only the returned suggested skills that are relevant to the current Run.',
       inputSchema: {
         role: z.enum(['orchestrator','planner','designer','coder','reviewer','tester']),
         mode: z.enum(['JOB','DIRECT_AGENT']).default('JOB'),
@@ -857,6 +985,7 @@ function createServer(req: Request) {
         mode: z.string(),
         harness_text: z.string(),
         canonical_refs: z.array(z.string()),
+        suggested_skills: z.array(z.string()),
         context_policy: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -873,10 +1002,59 @@ function createServer(req: Request) {
         mode,
         harness_text: harness,
         canonical_refs: ROLE_HARNESSES[role].canonical_refs,
+        suggested_skills: ROLE_SKILLS[role] ?? [],
         context_policy: role === 'reviewer'
           ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
-          : 'MINIMUM_SUFFICIENT_CONTEXT; prefer durable references and selective live-source reads.',
+          : 'MINIMUM_SUFFICIENT_CONTEXT; load skill bodies progressively and prefer durable references plus selective live-source reads.',
       }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'get_skill_catalog',
+    {
+      title: 'List GSA runtime skills',
+      description: 'Return only skill names and descriptions for progressive disclosure. Load a full body with load_skill only when it is relevant.',
+      inputSchema: {},
+      outputSchema: {
+        skills: z.array(z.object({ name: z.string(), description: z.string() })),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async () => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to list runtime skills.')
+      const skills = Object.entries(RUNTIME_SKILLS).map(([name, skill]) => ({ name, description: skill.description }))
+      return { structuredContent: { skills }, content: [{ type: 'text', text: JSON.stringify({ skills }) }] }
+    },
+  )
+
+  server.registerTool(
+    'load_skill',
+    {
+      title: 'Load one GSA runtime skill',
+      description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
+      inputSchema: {
+        name: z.enum(['job-planning','coding-loop','delegation','review-evidence','testing-evidence']),
+      },
+      outputSchema: {
+        name: z.string(),
+        description: z.string(),
+        skill_text: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ name }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to load a runtime skill.')
+      const skill = RUNTIME_SKILLS[name]
+      if (!skill) return { content: [{ type: 'text', text: 'Unknown runtime skill.' }], isError: true }
+      const result = { name, description: skill.description, skill_text: skill.body }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
@@ -1376,6 +1554,9 @@ app.get('/selftest', (c) => {
     repo_normalization: normalizeGithubRepo('https://github.com/example/memory.git')?.full_name === 'example/memory',
     planner_harness_present: Boolean(renderHarness('planner')?.includes('EXECUTION LOOP')),
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
+    base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
+    progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
+    coder_skill_suggested: (ROLE_SKILLS.coder ?? []).includes('coding-loop'),
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
   }
   const pass = Object.values(checks).every(Boolean)
@@ -1383,7 +1564,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_JOB_RUNTIME_SPIKE', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AGENT_RUNTIME_V2', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
