@@ -139,11 +139,15 @@ protected/default branch behavior       UNKNOWN / permission-dependent
 
 ```text
 public web fetch/search                  OBSERVED
-general deployed-app interaction         UNKNOWN
+general deployed-app interaction         SURFACE_PRESENT via Vercel Sandbox bridge
 authenticated/private preview            UNKNOWN
-localhost/private runtime                UNAVAILABLE without another executor
-interactive screenshot testing          UNKNOWN
+localhost/private runtime                UNAVAILABLE by design for cloud browser QA
+interactive screenshot testing          SURFACE_PRESENT via agent-browser + Vercel Sandbox
 ```
+
+Browser QA surface is implemented through the authenticated Vercel Sandbox bridge documented in `BROWSER-QA.md`.
+
+Tool presence is only SURFACE_PRESENT. A successful browser call against the exact target URL/revision upgrades that check to OBSERVED evidence for the current Run. Bridge/runtime failure remains an environment limitation.
 
 Tester practical execution remains capability-gated; Human Retest is fallback.
 
