@@ -8,8 +8,8 @@ GPT Super Agent is a thin ChatGPT orchestration/harness system for durable proje
 PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
-CURRENT = M2 / MINIMAL JOB RUNTIME SPIKE
-RUNTIME = GSA MCP v23
+CURRENT = M2 / REAL JOB PILOT
+RUNTIME = GSA MCP v28
 ```
 
 ## Core model
@@ -107,4 +107,24 @@ Planner harness
 ```
 
 Runtime role contracts are loaded through `get_agent_harness`; task skills are discovered with `get_skill_catalog` and loaded on demand with `load_skill`.
-See `skills/gsa-job-runtime/SKILL.md` and `evals/E17-minimal-job-runtime.md`.
+See `skills/gsa-job-runtime/SKILL.md`, `evals/E17-minimal-job-runtime.md`, and `evals/E18-real-job-pilot.md`.
+
+
+## Product workflow planning
+
+For UI/UX-bearing application Jobs, Planner classifies both repository maturity and product workflow:
+
+```text
+GREENFIELD | BROWNFIELD
+UI_FIRST   | UX_FIRST
+```
+
+UI_FIRST derives a stable shell from the UX execution contract before UI implementation.
+UX_FIRST may use Human-approved provisional UI to execute UX, while durable UI needs accumulate into larger UI Update Packs.
+See `docs/architecture/PRODUCT-WORKFLOW-CLASSIFICATION.md`.
+
+## Real Job pilot
+
+A new durable objective enters through Planner. For UX_FIRST temporary UI, material user-facing choices must be explicitly approved before a Coder Run can begin. `run_begin` requires the current owning Job snapshot and fails closed when the temporary-UI Human Gate is pending.
+
+Use E18 for the first bounded real Project test. Merge and deployment remain explicit Human actions.
