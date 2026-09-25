@@ -13,11 +13,22 @@ project_id
 name
 lifecycle
 purpose?
+repository_mode = SINGLE | MULTI
+repo_registry_status
+primary_repo
 owned_repo_claims[]
 referenced_repos[]
 created_at?
 updated_at?
 ```
+
+A Project may contain multiple source repositories.
+
+The Project repository registry is durable Project Memory and is Human-confirmed when additional owned/dependent repositories are discovered.
+
+For brownfield work, if live structure/configuration reveals likely sibling/dependent repositories that are missing from the registry, Planner must stop at a Human Gate and request confirmation before finalizing the Job plan.
+
+Every executable Job selects exactly one working_repository, while planning/review still evaluates cross-repository impact across the complete registered Project repo set.
 
 ## Repo Claim
 
@@ -55,6 +66,12 @@ dependencies[]
 completion_requirements
 verification_requirements
 review_triggers[]
+repository_context {
+  project_repository_mode
+  registered_repositories[]
+  working_repository
+  cross_repo_impact[]
+}
 planning_revision
 lifecycle
 result?
