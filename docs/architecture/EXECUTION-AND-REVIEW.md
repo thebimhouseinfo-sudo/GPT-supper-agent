@@ -177,7 +177,7 @@ Critic Reviewer (CR) is separate:
 
 ```text
 Human invokes cr
-→ fresh chat required
+→ target-independent conversation required (new chat qualifies automatically)
 → reconstruct from durable records + live source
 → independent blind review
 → independent verdict
@@ -188,6 +188,6 @@ Human invokes cr
 
 CR must not be auto-dispatched.
 
-A prompt that asks the current conversation to ignore prior context does not satisfy independence. If a genuinely fresh reasoning context is unavailable, return `FRESH_CHAT_REQUIRED`.
+A conversation is independent when it did not create, revise, or perform the prior review of the target. A new chat qualifies automatically; an unrelated existing chat may also qualify. If the current conversation participated in the target planning/review, return `INDEPENDENT_CONTEXT_REQUIRED`.
 
 CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
