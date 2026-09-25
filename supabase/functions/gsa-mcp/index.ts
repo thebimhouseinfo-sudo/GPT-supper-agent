@@ -197,6 +197,25 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     outputs: ['review Verification record', 'findings', 'revision-bound result'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
   },
+  critic_reviewer: {
+    authority: [
+      'Human-invoked independent peer review only. Orchestrator, Planner, Reviewer, Coder and Tester must never auto-dispatch this role.',
+      'Fresh-chat isolation is mandatory. If the current host/session still carries the conversation that produced the target, stop with FRESH_CHAT_REQUIRED instead of pretending to forget it.',
+      'Reconstruct from persisted Project Memory, exact Job/revision, existing Verification references and live source truth only. Do not use unpersisted conversation context.',
+      'Source and Job state are read-only. CR may only produce a CRITIC_REVIEW Verification artifact; it never repairs source, rewrites the plan, or changes lifecycle.',
+      'Do not inspect the prior Reviewer verdict until after an independent verdict and findings have been formed.',
+    ],
+    loop: [
+      'FRESH CONTEXT GATE: confirm this invocation came directly from Human command cr/critic reviewer and that the reasoning context is fresh. Otherwise stop.',
+      'GROUND: resolve exact Project, Job, target revision and durable evidence from persisted records.',
+      'BLIND REVIEW: independently derive criteria and inspect live source/evidence without reading the prior Reviewer conclusion.',
+      'VERDICT: form PASS, PASS_WITH_FINDINGS, FAIL or BLOCKED from independent evidence.',
+      'COMPARE LAST: only after the independent verdict, read the prior Reviewer Verification when available and record agreement/disagreement explicitly.',
+      'RECORD: persist a CRITIC_REVIEW Verification artifact. Do not mutate Job lifecycle or source.',
+    ],
+    outputs: ['CRITIC_REVIEW Verification record', 'independent findings', 'prior-review comparison'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
+  },
   tester: {
     authority: [
       'Source implementation is read-only.',
@@ -222,10 +241,26 @@ const ROLE_SKILLS: Record<string, string[]> = {
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
   reviewer: ['review-evidence', 'planning-review'],
+  critic_reviewer: ['review-evidence', 'critic-review'],
   tester: ['testing-evidence'],
 }
 
 const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
+  'critic-review': {
+    description: 'Run a Human-invoked, fresh-context independent second review and compare with the prior Reviewer only after forming an independent verdict.',
+    body: [
+      '# Critic Review',
+      'CR is an independent peer-review path, never part of automatic orchestration.',
+      '',
+      '1. Require explicit Human invocation via cr / critic reviewer.',
+      '2. Require a genuinely fresh chat/reasoning context. A prompt instruction to ignore prior context is not sufficient.',
+      '3. Reconstruct the target only from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
+      '4. Do not read or rely on the prior Reviewer verdict until independent criteria, findings and verdict are already formed.',
+      '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
+      '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
+      '7. CR result never auto-promotes, blocks, completes or otherwise mutates Job lifecycle; Human decides what to do with it.',
+    ].join('\n'),
+  },
   'job-planning': {
     description: 'Turn a user objective into one finite durable Job with bounded Tasks, dependencies, gates and acceptance evidence.',
     body: [
@@ -549,7 +584,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.9.1' },
+    { name: 'gpt-super-agent', version: '0.9.2' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -564,11 +599,11 @@ function createServer(req: Request) {
         'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
         'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
         'When user types gsa/ call get_cli_root and copy menu_text verbatim as the entire answer.',
-        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
+        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
-        'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent.',
+        'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
         'Durable Project work uses the Job runtime spine: Planner -> repository structure scan -> selective source reads -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
-        'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract.',
+        'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract. Critic Reviewer is HUMAN-INVOKED ONLY and requires a genuinely fresh chat context; if fresh context cannot be established, fail closed instead of simulating independence.',
         'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
@@ -618,6 +653,7 @@ function createServer(req: Request) {
         '  • designer [ds] — Define UI/UX and assets.\n' +
         '  • coder [cd] — Implement approved changes.\n' +
         '  • reviewer [rv] — Run context-isolated review.\n' +
+        '  • critic reviewer [cr] — Human-only independent peer review; fresh chat required.\n' +
         '  • tester [ts] — Verify behavior and evidence.\n\n' +
         'SETTING — Manage GSA configuration.\n' +
         '  • GSA Account [acct] — ' + accountSummary + '\n' +
@@ -1179,7 +1215,7 @@ function createServer(req: Request) {
       title: 'Load a GSA role harness',
       description: 'Load shared GSA operating rules plus one role contract. Then load only the returned suggested skills that are relevant to the current Run.',
       inputSchema: {
-        role: z.enum(['orchestrator','planner','designer','coder','reviewer','tester']),
+        role: z.enum(['orchestrator','planner','designer','coder','reviewer','critic_reviewer','tester']),
         mode: z.enum(['JOB','DIRECT_AGENT']).default('JOB'),
       },
       outputSchema: {
@@ -1205,9 +1241,11 @@ function createServer(req: Request) {
         harness_text: harness,
         canonical_refs: ROLE_HARNESSES[role].canonical_refs,
         suggested_skills: ROLE_SKILLS[role] ?? [],
-        context_policy: role === 'reviewer'
-          ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
-          : 'MINIMUM_SUFFICIENT_CONTEXT; load skill bodies progressively and prefer durable references plus selective live-source reads.',
+        context_policy: role === 'critic_reviewer'
+          ? 'FRESH_CHAT_REQUIRED_HUMAN_ONLY; do not execute in the conversation that produced the target. Reconstruct from durable records and live source only; compare prior Reviewer verdict last.'
+          : role === 'reviewer'
+            ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
+            : 'MINIMUM_SUFFICIENT_CONTEXT; load skill bodies progressively and prefer durable references plus selective live-source reads.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -1240,7 +1278,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','delegation','planning-review','review-evidence','testing-evidence']),
+        name: z.enum(['job-planning','coding-loop','delegation','planning-review','review-evidence','critic-review','testing-evidence']),
       },
       outputSchema: {
         name: z.string(),
@@ -1685,6 +1723,185 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'start_critic_review',
+    {
+      title: 'Start Human-only Critic Reviewer',
+      description: 'Human-invoked CR entrypoint for an independent second review. Requires a genuinely fresh chat context; never call automatically.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        job_record_sha: z.string().min(7),
+        human_invoked: z.literal(true),
+        fresh_context_confirmed: z.boolean(),
+        target_ref: z.string().optional(),
+        target_revision: z.string().optional(),
+        prior_review_verification_ref: z.string().optional(),
+      },
+      outputSchema: {
+        role: z.string(),
+        allowed: z.boolean(),
+        status: z.string(),
+        context_policy: z.string(),
+        project_id: z.string(),
+        job_id: z.string(),
+        planning_revision: z.number().nullable(),
+        target_ref: z.string().nullable(),
+        target_revision: z.string().nullable(),
+        prior_review_verification_ref: z.string().nullable(),
+        durable_inputs_only: z.boolean(),
+        next_step: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, human_invoked, fresh_context_confirmed, target_ref, target_revision, prior_review_verification_ref }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to start Critic Reviewer.')
+      let current: any
+      try { current = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.job_id !== job_id || current.project_id !== project_id) {
+        return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
+      }
+      if (human_invoked !== true) {
+        return { content: [{ type: 'text', text: 'HUMAN_INVOCATION_REQUIRED: CR can only be started by an explicit Human command.' }], isError: true }
+      }
+      if (fresh_context_confirmed !== true) {
+        const blocked = {
+          role: 'critic_reviewer',
+          allowed: false,
+          status: 'FRESH_CHAT_REQUIRED',
+          context_policy: 'Open a genuinely fresh chat and invoke gsa/ cr <job>. Prompting the current conversation to forget context does not count.',
+          project_id,
+          job_id,
+          planning_revision: current.planning_revision ?? null,
+          target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
+          target_revision: target_revision ?? null,
+          prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
+          durable_inputs_only: true,
+          next_step: 'Start a fresh conversation, open the Project/Job from durable Memory, then call CR again with fresh_context_confirmed=true.',
+        }
+        return { structuredContent: blocked, content: [{ type: 'text', text: JSON.stringify(blocked) }] }
+      }
+      const result = {
+        role: 'critic_reviewer',
+        allowed: true,
+        status: 'READY_FOR_INDEPENDENT_REVIEW',
+        context_policy: 'Use only persisted Project/Job/Verification records plus live source truth. Form independent verdict before reading prior Reviewer verdict.',
+        project_id,
+        job_id,
+        planning_revision: current.planning_revision ?? null,
+        target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
+        target_revision: target_revision ?? null,
+        prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
+        durable_inputs_only: true,
+        next_step: 'Load critic_reviewer harness + critic-review skill, perform blind review, then compare prior Reviewer last and persist with critic_review_record.',
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'critic_review_record',
+    {
+      title: 'Record independent Critic Reviewer Verification',
+      description: 'Persist CRITIC_REVIEW evidence only. Does not modify Job lifecycle or source.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        planning_revision: z.number().int().positive().optional(),
+        human_invoked: z.literal(true),
+        fresh_context_confirmed: z.literal(true),
+        result: z.enum(['PASS','PASS_WITH_FINDINGS','FAIL','BLOCKED']),
+        findings: z.array(z.object({
+          severity: z.enum(['CRITICAL','IMPORTANT','MINOR']),
+          finding: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          suggested_followup: z.string().optional(),
+        })).default([]),
+        limitations: z.array(z.string()).default([]),
+        prior_review_verification_ref: z.string().optional(),
+        prior_review_comparison: z.object({
+          compared_after_independent_verdict: z.literal(true),
+          agreement: z.enum(['AGREE','PARTIAL_DISAGREEMENT','DISAGREE','NO_PRIOR_REVIEW']),
+          notes: z.array(z.string()).default([]),
+        }),
+        target_ref: z.string().optional(),
+        target_revision: z.string().optional(),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        job_mutated: z.boolean(),
+        next_role: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, fresh_context_confirmed, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to record Critic Review.')
+      if (human_invoked !== true || fresh_context_confirmed !== true) {
+        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: explicit Human invocation and fresh context are mandatory.' }], isError: true }
+      }
+      let current: any
+      try { current = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.job_id !== job_id || current.project_id !== project_id) {
+        return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
+      }
+      if (planning_revision != null && current.planning_revision !== planning_revision) {
+        return { content: [{ type: 'text', text: 'Critic review planning revision does not match the supplied Job snapshot.' }], isError: true }
+      }
+      if (result === 'PASS' && (findings ?? []).length > 0) {
+        return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
+      }
+      const verificationId = uuidv7()
+      const memoryPath = verificationPath(project_id, verificationId)
+      const verification = {
+        verification_id: verificationId,
+        kind: 'CRITIC_REVIEW',
+        project_id,
+        job_id,
+        planning_revision: planning_revision ?? current.planning_revision ?? null,
+        producer: 'critic_reviewer',
+        human_invoked: true,
+        fresh_context_confirmed: true,
+        target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
+        target_revision: target_revision ?? null,
+        result,
+        findings: findings ?? [],
+        limitations: limitations ?? [],
+        prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
+        prior_review_comparison,
+        job_lifecycle_at_review: current.lifecycle,
+        created_at: new Date().toISOString(),
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: memoryPath,
+        verification_record_text: prettyJson(verification),
+        job_mutated: false,
+        next_role: 'human',
+        external_steps: [
+          'Persist verification_record_text at verification_memory_path after authorize_memory_mutation(create).',
+          'Do not update the Job record or lifecycle from CR output.',
+          'Present the independent verdict and any disagreement to Human for the next decision.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
     'run_begin',
     {
       title: 'Begin a GSA Job Run',
@@ -1980,7 +2197,7 @@ function createServer(req: Request) {
     'start_direct_agent',
     {
       title: 'Start a Direct Agent',
-      description: 'Handler for pl/ds/cd/rv/ts. Direct work is ephemeral by default.',
+      description: 'Handler for pl/ds/cd/rv/ts. CR uses the separate Human-only start_critic_review path. Direct work is ephemeral by default.',
       inputSchema: {
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         objective: z.string().optional(),
@@ -2077,7 +2294,7 @@ function createServer(req: Request) {
         ? 'Command help requested for: ' + command + '. Use canonical aliases exactly.'
         : [
             'PROJECT: list[ls], open[op], create[new], status[st], pause[pa], resume[rs], archive[ar], delete[rm]',
-            'DIRECT AGENT: planner[pl], designer[ds], coder[cd], reviewer[rv], tester[ts]',
+            'DIRECT AGENT: planner[pl], designer[ds], coder[cd], reviewer[rv], critic reviewer[cr] (Human-only, fresh chat), tester[ts]',
             'SETTING: GSA Account[acct], Memory Repo[repo]',
             'HELP: instruction[guide], command help[help]',
           ].join('\n')
@@ -2119,6 +2336,10 @@ app.get('/selftest', (c) => {
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
     coder_skill_suggested: (ROLE_SKILLS.coder ?? []).includes('coding-loop'),
+    critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('FRESH CONTEXT GATE')),
+    critic_skill_suggested: (ROLE_SKILLS.critic_reviewer ?? []).includes('critic-review'),
+    critic_is_human_only: Boolean(renderHarness('critic_reviewer')?.includes('Human-invoked independent peer review only')),
+    critic_requires_fresh_chat: Boolean(renderHarness('critic_reviewer')?.includes('Fresh-chat isolation is mandatory')),
     ux_first_temp_ui_defaults_to_gate: true,
     run_begin_requires_job_snapshot: true,
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
