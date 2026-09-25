@@ -274,7 +274,7 @@ Contract:
 
 - CR is never automatically dispatched by Orchestrator, Planner, Reviewer, Coder or Tester.
 - CR is **stateless-by-contract**: conversation history is non-authoritative and must not be used as review evidence.
-- CR does not block based on which chat invokes it. It reconstructs the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.
+- CR does not block based on which chat invokes it. **Same-chat invocation is explicitly valid**, even when Planner/Reviewer/Coder reasoning is visible earlier in that conversation. CR must disregard that conversation reasoning and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.
 - CR reconstructs the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth only.
 - CR forms its own criteria, findings and verdict before reading the prior Reviewer verdict.
 - Only after the independent verdict exists may CR compare it with the prior Reviewer and record agreement/disagreement.
