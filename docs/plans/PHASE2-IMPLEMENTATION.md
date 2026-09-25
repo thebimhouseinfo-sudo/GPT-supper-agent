@@ -4,7 +4,7 @@
 
 ```text
 PHASE = PHASE 2
-STATUS = M2_JOB_RUNTIME_SPIKE
+STATUS = M2_REAL_JOB_PILOT
 AUTHORITY = SINGLE IMPLEMENTATION SOURCE OF TRUTH
 PHASE_2_STARTED = YES
 ```
@@ -24,7 +24,7 @@ Do not use deleted draft, execution-pack, review, or working-note files as imple
 ```text
 PHASE = PHASE 2
 DOCUMENT = DETAILED EXECUTION PLAN
-STATUS = M2_JOB_RUNTIME_SPIKE
+STATUS = M2_REAL_JOB_PILOT
 CANONICAL = false
 PHASE_2_STARTED = YES
 ```
@@ -411,7 +411,7 @@ E1, E2, E3 storage variant, E11 storage variant.
 
 Create reliable execution-attempt boundaries and cross-chat continuity.
 
-Implementation status: STARTED. The minimal Job/Run/Harness/Goal-Recheck/Handoff spine is deployed in GSA MCP v22 for E17 acceptance.
+Implementation status: REAL JOB PILOT. The layered harness/skill runtime, UI_FIRST/UX_FIRST planning policy, UX_FIRST temporary-UI Human Gate, Job/Run/Goal-Recheck/Handoff spine are deployed for E17/E18 acceptance.
 
 ## Work packages
 
@@ -806,7 +806,7 @@ The exact initial file tree is defined in Part D of this document.
 ## Status
 
 ```text
-STATUS = M2_JOB_RUNTIME_SPIKE
+STATUS = M2_REAL_JOB_PILOT
 TASK_LABELS = PLANNING_ONLY
 ```
 
