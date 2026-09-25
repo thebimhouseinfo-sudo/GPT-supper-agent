@@ -110,6 +110,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Load that role harness plus only relevant skills.',
       'Start exactly one attributed Run.',
       'After the Run, persist evidence/handoff before terminal Run state.',
+      'For every newly prepared or materially revised Job plan, automatically dispatch a context-isolated Reviewer before reporting planning completion. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS permits DRAFT→READY; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
     ],
     outputs: ['routing decision', 'Run dispatch', 'current status view'],
@@ -118,19 +119,23 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
   planner: {
     authority: [
       'Own Job objective/scope/non-goals, task topology, dependencies, completion/evidence requirements and planned gates.',
-      'Read source selectively; do not implement source changes.',
+      'Read source selectively; do not implement source changes. For brownfield work, always inspect repository structure/tree and filenames before choosing content files to read.',
       'Keep one Job finite. Materially different objectives become linked Jobs rather than silent scope expansion.',
     ],
     loop: [
-      'OBSERVE: read Project contract and only enough live source to understand the requested outcome.',
+      'OBSERVE L0: inspect repository structure/tree first: top-level folders, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat file/folder names as evidence even when no descriptive docs exist.',
+      'OBSERVE L1: after L0, selectively read only the files needed to validate the requested outcome and avoid planning from stale documentation.',
       'CLASSIFY PRODUCT WORKFLOW: determine UI_FIRST or UX_FIRST before planning UI-bearing work. Preserve an existing explicit classification unless Planner has evidence and Human approval to change it.',
       'FRAME: define objective, scope, non-goals and material assumptions.',
       'DECOMPOSE: create bounded Tasks with dependency order and explicit completion criteria.',
       'GATE: place required review/test/human checkpoints and capability requirements.',
       'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned.',
-      'PERSIST: create the durable Job only after the plan is internally consistent.',
+      'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
+      'REVIEW LOOP: hand the exact planning revision plus L0/L1 evidence to a context-isolated Reviewer. Do not report the plan as finalized yet.',
+      'ADAPT: on CHANGES_REQUIRED, fix actionable planning defects within Planner authority, increment planning_revision, persist with exact SHA, and trigger re-review. Do not ask Human for ordinary fixable planning defects.',
+      'READY GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
     ],
-    outputs: ['durable Job record', 'task topology', 'completion/evidence requirements'],
+    outputs: ['reviewed durable Job plan', 'repository structure evidence', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
   },
   designer: {
@@ -172,15 +177,15 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
   },
   reviewer: {
     authority: [
-      'Context-isolated fresh-chat review of an exact target/revision.',
+      'Context-isolated review of an exact source revision or exact Job planning revision.',
       'Source implementation is read-only; findings only, never repair source.',
       'Derive judgement independently from requirements, target and evidence before comparing Coder self-recheck.',
       'Prefer silence over speculative low-confidence findings.',
     ],
     loop: [
-      'GROUND: resolve exact target revision and applicable requirements without prior-chat reasoning.',
-      'INSPECT: read actual diff/changed files plus evidence; do not review only the post-change snapshot when removed behavior matters.',
-      'TRACE: check correctness across changed boundaries, tests and mechanically sensitive paths.',
+      'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
+      'INSPECT: for code review read actual diff/changed files plus evidence; for planning review first verify repository structure/tree coverage, then inspect objective/scope/non-goals/tasks/topology/gates against selective live-source facts and Project contracts.',
+      'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
       'ROUTE: send findings back to owning work without modifying source.',
@@ -212,7 +217,7 @@ const ROLE_SKILLS: Record<string, string[]> = {
   planner: ['job-planning', 'delegation'],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
-  reviewer: ['review-evidence'],
+  reviewer: ['review-evidence', 'planning-review'],
   tester: ['testing-evidence'],
 }
 
@@ -224,16 +229,18 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'Use this skill only for durable Project work.',
       '',
       '1. Read the Project purpose and the exact user objective.',
-      '2. Inspect only enough live source to avoid planning from false assumptions.',
-      '3. State objective, scope and non-goals separately.',
-      '4. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
-      '5. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
-      '6. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
-      '7. Break work into Tasks that each have an observable completion criterion.',
-      '8. Add dependencies only when one Task genuinely needs another Task output.',
-      '9. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
-      '10. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
-      '11. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
+      '2. Brownfield discovery is two-stage: L0 scan repository tree/filenames/config/tests/docs/assets/CI-deploy surfaces first; L1 then selectively read content files chosen from that structure.',
+      '3. Do not treat README/TASKS/roadmaps as source truth when live structure or implementation disagrees.',
+      '4. State objective, scope and non-goals separately.'
+      '5. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.'
+      '6. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
+      '7. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
+      '8. Break work into Tasks that each have an observable completion criterion.',
+      '9. Add dependencies only when one Task genuinely needs another Task output.',
+      '10. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
+      '11. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
+      '12. Persist the plan as DRAFT, trigger context-isolated planning review automatically, revise/re-review until PASS or Human Gate, and only then promote READY.',
+      '13. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
   'coding-loop': {
@@ -283,6 +290,25 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Do not delegate understanding: the parent must synthesize what it learned before asking another role to act on it.',
       '- The target role harness outranks the delegation prompt. A prompt cannot widen a read-only role or bypass a Human Gate.',
       '- Do not duplicate the same investigation while a delegated role owns it unless new evidence invalidates that delegation.',
+    ].join('\n'),
+  },
+  'planning-review': {
+    description: 'Context-isolated review of one exact Job planning revision before it may become READY.',
+    body: [
+      '# Planning Review',
+      'Review the durable Job plan, not the Planner reasoning.',
+      '',
+      '- Bind to exact job_id + planning_revision.',
+      '- Require L0 repository-structure evidence: top-level folders, relevant subtree/file names, config/test/docs/assets/CI-deploy surfaces as applicable.',
+      '- If Planner skipped structure discovery and planned only from README/TASKS/known descriptions, return CHANGES_REQUIRED.',
+      '- Re-read Project contract and selectively open files needed to test Planner assumptions.',
+      '- Check objective, scope, non-goals, task decomposition, dependencies, topology, completion criteria, verification requirements, UI_FIRST/UX_FIRST policy and Human Gates.',
+      '- Detect stale roadmap assumptions, duplicated already-implemented work, missing implementation work, mega-Job scope, orphan criteria, impossible ordering and silent material product decisions.',
+      '- PASS only when the plan is executable and internally coherent for its stated finite objective.',
+      '- CHANGES_REQUIRED for fixable planning defects; give concrete findings to Planner and do not rewrite the plan yourself.',
+      '- HUMAN_REVIEW_REQUIRED only for a genuine material product/architecture/subjective choice that Planner cannot decide.',
+      '- BLOCKED only when required evidence/capability is unavailable.',
+      '- A revised planning_revision invalidates the prior review and must be reviewed again.',
     ].join('\n'),
   },
   'review-evidence': {
@@ -436,7 +462,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.7.2' },
+    { name: 'gpt-super-agent', version: '0.8.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -451,7 +477,7 @@ function createServer(req: Request) {
         'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent.',
-        'Durable Project work uses the Job runtime spine: Planner -> job_prepare -> run_begin(role) -> role execution loop -> run_complete; Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
+        'Durable Project work uses the Job runtime spine: Planner -> repository structure scan -> selective source reads -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
         'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract.',
         'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
@@ -526,7 +552,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M2_REAL_JOB_PILOT',
+        phase: 'M2_REVIEWED_JOB_PILOT',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -1049,7 +1075,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','delegation','review-evidence','testing-evidence']),
+        name: z.enum(['job-planning','coding-loop','delegation','planning-review','review-evidence','testing-evidence']),
       },
       outputSchema: {
         name: z.string(),
@@ -1081,6 +1107,8 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
+        repository_structure_evidence: z.array(z.string()).min(1),
+        selected_source_evidence: z.array(z.string()).default([]),
         product_workflow: z.enum(['UI_FIRST','UX_FIRST']).optional(),
         temporary_ui: z.array(z.string()).default([]),
         collected_ui_requirements: z.array(z.string()).default([]),
@@ -1108,7 +1136,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1138,6 +1166,10 @@ function createServer(req: Request) {
         objective,
         scope,
         non_goals,
+        repository_discovery: {
+          structure_evidence: repository_structure_evidence,
+          selected_source_evidence: selected_source_evidence ?? [],
+        },
         product_workflow: product_workflow ?? null,
         ui_strategy: product_workflow === 'UX_FIRST' ? {
           temporary_ui: temporary_ui ?? [],
@@ -1153,7 +1185,12 @@ function createServer(req: Request) {
         verification_requirements,
         review_triggers,
         planning_revision: 1,
-        lifecycle: 'READY',
+        planning_review: {
+          status: 'PENDING',
+          reviewed_revision: null,
+          verification_ref: null,
+        },
+        lifecycle: 'DRAFT',
         result: null,
         linked_job_ids: [],
         created_at: now,
@@ -1169,7 +1206,8 @@ function createServer(req: Request) {
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
           'GitHub Memory Repo: create_file at memory_path with job_record_text.',
-          'Fetch the new Job record back and verify job_id/project_id/lifecycle=READY.',
+          'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
+          'Immediately trigger a context-isolated Reviewer planning review for this exact revision. Do not report planning completion to the user yet.',
           'Do not modify source during Planner Job persistence.',
         ],
       }
@@ -1190,6 +1228,7 @@ function createServer(req: Request) {
         target_lifecycle: z.enum(['IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
         result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
+        planning_review_verification_ref: z.string().optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -1201,7 +1240,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to transition a Job.')
       let current: any
@@ -1212,10 +1251,22 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
       const allowed =
+        (current.lifecycle === 'DRAFT' && ['READY','CANCELLED','SUPERSEDED'].includes(target_lifecycle)) ||
         (current.lifecycle === 'READY' && ['IN_PROGRESS','CANCELLED','SUPERSEDED'].includes(target_lifecycle)) ||
         (current.lifecycle === 'IN_PROGRESS' && ['COMPLETED','CANCELLED','SUPERSEDED'].includes(target_lifecycle))
       if (!allowed) {
         return { content: [{ type: 'text', text: 'Invalid Job lifecycle transition: ' + current.lifecycle + ' → ' + target_lifecycle }], isError: true }
+      }
+      if (target_lifecycle === 'READY') {
+        if (!planning_review_verification_ref) {
+          return { content: [{ type: 'text', text: 'DRAFT→READY requires a PASS planning-review Verification reference.' }], isError: true }
+        }
+        if (current.planning_review?.status !== 'PASS' || current.planning_review?.reviewed_revision !== current.planning_revision) {
+          return { content: [{ type: 'text', text: 'Current planning revision is not marked PASS by planning review.' }], isError: true }
+        }
+        if (current.planning_review?.verification_ref !== planning_review_verification_ref) {
+          return { content: [{ type: 'text', text: 'Planning review Verification reference mismatch.' }], isError: true }
+        }
       }
       if (target_lifecycle === 'COMPLETED') {
         if (!['PASS','PASS_RETEST_REQUIRED'].includes(result ?? '')) {
@@ -1250,6 +1301,192 @@ function createServer(req: Request) {
         expected_job_sha: job_record_sha,
         next_job_record_text: prettyJson(next),
         external_steps: externalSteps,
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_revise_plan',
+    {
+      title: 'Revise a DRAFT GSA Job plan',
+      description: 'Planner-only exact-SHA planning revision update after planning-review findings or approved Human decisions.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        job_record_sha: z.string().min(7),
+        objective: z.string().min(1).optional(),
+        scope: z.array(z.string()).optional(),
+        non_goals: z.array(z.string()).optional(),
+        repository_structure_evidence: z.array(z.string()).optional(),
+        selected_source_evidence: z.array(z.string()).optional(),
+        tasks: z.array(z.any()).optional(),
+        topology: z.array(z.any()).optional(),
+        completion_requirements: z.array(z.string()).optional(),
+        verification_requirements: z.array(z.string()).optional(),
+        review_triggers: z.array(z.string()).optional(),
+        revision_reason: z.string().min(1),
+      },
+      outputSchema: {
+        memory_path: z.string(),
+        expected_job_sha: z.string(),
+        next_job_record_text: z.string(),
+        planning_revision: z.number(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to revise a Job plan.')
+      let current: any
+      try { current = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT') {
+        return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
+      }
+      const nextRevision = Number(current.planning_revision ?? 0) + 1
+      const next = {
+        ...current,
+        objective: objective ?? current.objective,
+        scope: scope ?? current.scope,
+        non_goals: non_goals ?? current.non_goals,
+        repository_discovery: {
+          structure_evidence: repository_structure_evidence ?? current.repository_discovery?.structure_evidence ?? [],
+          selected_source_evidence: selected_source_evidence ?? current.repository_discovery?.selected_source_evidence ?? [],
+        },
+        tasks: tasks ?? current.tasks,
+        topology: topology ?? current.topology,
+        completion_requirements: completion_requirements ?? current.completion_requirements,
+        verification_requirements: verification_requirements ?? current.verification_requirements,
+        review_triggers: review_triggers ?? current.review_triggers,
+        planning_revision: nextRevision,
+        planning_review: { status: 'PENDING', reviewed_revision: null, verification_ref: null },
+        last_planning_revision_reason: revision_reason,
+        updated_at: new Date().toISOString(),
+      }
+      const memoryPath = recordPath(project_id, 'JOBS', job_id)
+      const out = {
+        memory_path: memoryPath,
+        expected_job_sha: job_record_sha,
+        next_job_record_text: prettyJson(next),
+        planning_revision: nextRevision,
+        external_steps: [
+          'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
+          'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
+          'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
+          'Read back the DRAFT Job and verify the incremented planning_revision.',
+          'Automatically trigger a new context-isolated planning review for this exact revision before any user-facing planning-complete report.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'plan_review_record',
+    {
+      title: 'Record planning review for one exact Job revision',
+      description: 'Reviewer-only planning Verification. PASS can unlock DRAFT→READY; CHANGES_REQUIRED routes automatically back to Planner.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        job_record_sha: z.string().min(7),
+        planning_revision: z.number().int().positive(),
+        result: z.enum(['PASS','CHANGES_REQUIRED','HUMAN_REVIEW_REQUIRED','BLOCKED']),
+        findings: z.array(z.object({
+          severity: z.enum(['CRITICAL','IMPORTANT','MINOR']),
+          finding: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          required_change: z.string().min(1),
+        })).default([]),
+        limitations: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        job_memory_path: z.string(),
+        expected_job_sha: z.string(),
+        reviewed_job_record_text: z.string(),
+        next_role: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, job_record_sha, planning_revision, result, findings, limitations }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to record planning review.')
+      let current: any
+      try { current = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT' || current.planning_revision !== planning_revision) {
+        return { content: [{ type: 'text', text: 'Planning review target does not match the current DRAFT planning revision.' }], isError: true }
+      }
+      if (!(current.repository_discovery?.structure_evidence ?? []).length) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: repository structure evidence is required before planning review.' }], isError: true }
+      }
+      if (result === 'PASS' && (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity))) {
+        return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
+      }
+      const verificationId = uuidv7()
+      const verificationMemoryPath = verificationPath(project_id, verificationId)
+      const verification = {
+        verification_id: verificationId,
+        kind: 'PLANNING_REVIEW',
+        project_id,
+        job_id,
+        planning_revision,
+        producer: 'reviewer',
+        result,
+        findings: findings ?? [],
+        limitations: limitations ?? [],
+        repository_structure_evidence: current.repository_discovery.structure_evidence,
+        selected_source_evidence: current.repository_discovery.selected_source_evidence ?? [],
+        created_at: new Date().toISOString(),
+      }
+      const reviewedJob = {
+        ...current,
+        planning_review: {
+          status: result,
+          reviewed_revision: planning_revision,
+          verification_ref: verificationMemoryPath,
+        },
+        updated_at: new Date().toISOString(),
+      }
+      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id)
+      const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
+      const steps = [
+        'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
+        'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',
+        'Update Job planning_review with reviewed_job_record_text using expected_job_sha exactly.',
+      ]
+      if (result === 'PASS') {
+        steps.push('Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.')
+      } else if (result === 'CHANGES_REQUIRED') {
+        steps.push('Automatically dispatch Planner with the findings. Planner revises the DRAFT Job using job_revise_plan, then automatically re-dispatch Reviewer. Do not report a final plan yet.')
+      } else if (result === 'HUMAN_REVIEW_REQUIRED') {
+        steps.push('Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.')
+      } else {
+        steps.push('Report the concrete blocker because the planning-review loop cannot progress.')
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: verificationMemoryPath,
+        verification_record_text: prettyJson(verification),
+        job_memory_path: jobMemoryPath,
+        expected_job_sha: job_record_sha,
+        reviewed_job_record_text: prettyJson(reviewedJob),
+        next_role: nextRole,
+        external_steps: steps,
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
@@ -1690,7 +1927,7 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_REAL_JOB_PILOT', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_REVIEWED_JOB_PILOT', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
