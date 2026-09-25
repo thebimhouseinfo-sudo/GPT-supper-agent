@@ -131,7 +131,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'PERSIST: create the durable Job only after the plan is internally consistent.',
     ],
     outputs: ['durable Job record', 'task topology', 'completion/evidence requirements'],
-    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
   },
   designer: {
     authority: [
