@@ -614,7 +614,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.9.5' },
+    { name: 'gpt-super-agent', version: '0.9.6' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -1916,7 +1916,7 @@ function createServer(req: Request) {
     'start_critic_review',
     {
       title: 'Start Human-only Critic Reviewer',
-      description: 'Human-invoked CR entrypoint for an independent second review. Requires a genuinely fresh chat context; never call automatically.',
+      description: 'Human-invoked CR entrypoint for an independent second review. Same-chat invocation is allowed. Conversation history is non-authoritative and must be ignored as review evidence; reconstruct from durable records and live source truth. Never call automatically.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -1962,7 +1962,7 @@ function createServer(req: Request) {
         role: 'critic_reviewer',
         allowed: true,
         status: 'READY_FOR_STATELESS_REVIEW',
-        context_policy: 'Ignore conversation history as evidence. Use only persisted Project/Job/Verification records plus live source truth. Form independent verdict before reading prior Reviewer verdict.',
+        context_policy: 'Same-chat invocation is explicitly allowed. Ignore all conversation history, including Planner/Reviewer reasoning visible in this chat, as review evidence. Reconstruct the target only from persisted Project/Job/Verification records plus live source truth. Form the independent verdict before reading prior Reviewer verdict.',
         project_id,
         job_id,
         planning_revision: current.planning_revision ?? null,
@@ -1970,7 +1970,7 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
         durable_inputs_only: true,
-        next_step: 'Load critic_reviewer harness + critic-review skill, perform blind review, then compare prior Reviewer last and persist with critic_review_record.',
+        next_step: 'Proceed now even if Planner/Reviewer ran earlier in this same chat. Load critic_reviewer harness + critic-review skill, disregard chat-history reasoning, reconstruct from durable records/live source, perform blind review, then compare prior Reviewer last and persist with critic_review_record.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
