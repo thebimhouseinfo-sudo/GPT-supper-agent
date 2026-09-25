@@ -188,6 +188,6 @@ Human invokes cr
 
 CR must not be auto-dispatched.
 
-CR is stateless-by-contract. Conversation history is non-authoritative and must not be used as review evidence. CR never blocks merely because the invoking chat previously discussed the target.
+CR is stateless-by-contract. Conversation history is non-authoritative and must not be used as review evidence. **Same-chat invocation is valid**, including after Planner/Reviewer/Coder work in that conversation; CR never blocks merely because the invoking chat previously discussed the target.
 
 CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
