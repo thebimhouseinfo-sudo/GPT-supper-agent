@@ -614,7 +614,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.9.6' },
+    { name: 'gpt-super-agent', version: '0.9.7' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -1639,13 +1639,13 @@ function createServer(req: Request) {
     'job_transition',
     {
       title: 'Transition a durable GSA Job',
-      description: 'Serialized Job lifecycle update using the exact current Job record and blob SHA. Use READY→IN_PROGRESS when execution starts and IN_PROGRESS→COMPLETED only after completion evidence exists.',
+      description: 'Serialized Job lifecycle update using the exact current Job record and blob SHA. Supports DRAFT→READY only after PASS planning review, READY→IN_PROGRESS when execution starts, and IN_PROGRESS→COMPLETED only after completion evidence exists.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         job_record_sha: z.string().min(7),
-        target_lifecycle: z.enum(['IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
+        target_lifecycle: z.enum(['READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
         result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
         planning_review_verification_ref: z.string().optional(),
