@@ -9,7 +9,7 @@ PHASE 1 = GOVERNED BASELINE
 M0      = PASS
 PHASE 2 = STARTED
 CURRENT = M2 / MINIMAL JOB RUNTIME SPIKE
-RUNTIME = GSA MCP v22
+RUNTIME = GSA MCP v23
 ```
 
 ## Core model
@@ -94,7 +94,7 @@ Phase-2 implementation source of truth:
 
 ## Minimal Job runtime
 
-The first durable Job vertical slice is now available:
+The first durable Job vertical slice is now available with layered role harnesses and progressive task skills:
 
 ```text
 Planner harness
@@ -106,5 +106,5 @@ Planner harness
 → run_complete
 ```
 
-Runtime role contracts are loaded through `get_agent_harness`.
+Runtime role contracts are loaded through `get_agent_harness`; task skills are discovered with `get_skill_catalog` and loaded on demand with `load_skill`.
 See `skills/gsa-job-runtime/SKILL.md` and `evals/E17-minimal-job-runtime.md`.
