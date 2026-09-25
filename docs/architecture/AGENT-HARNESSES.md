@@ -219,3 +219,42 @@ Planner
 Planner fixes ordinary review findings without asking the user.
 Reviewer never rewrites the plan.
 Every revised planning revision invalidates prior planning-review PASS.
+
+
+## Multi-repo Project planning
+
+A Project is not assumed to equal one repository.
+
+Planner uses the durable Project repository registry:
+
+```text
+Project
+├─ PRIMARY repo
+├─ DEPENDENCY repo(s)
+├─ SUPPORT repo(s)
+└─ REFERENCED repo(s)
+```
+
+During brownfield L0 discovery, links, routes, deploy rewrites, package references, docs, local orchestration or integration contracts may reveal additional repositories.
+
+If likely Project repos are missing:
+
+```text
+discover candidate repo relationship
+→ HUMAN_REVIEW_REQUIRED
+→ Human confirms repo set/roles
+→ update Project repository registry
+→ re-run planning review
+```
+
+For a MULTI Project, every executable Job has exactly one working repository.
+
+Before Job READY, Planner and Reviewer must still assess all registered repos:
+
+```text
+working repo = where this Job may write
+other registered repos = read for dependency/contract impact as needed
+cross_repo_impact = NONE | READ_ONLY_CONTRACT_CHECK | COORDINATED_CHANGE_REQUIRED | UNKNOWN
+```
+
+If coordinated changes are required in more than one repo, Planner should normally split them into linked finite Jobs, one working repo each, with explicit dependency ordering.
