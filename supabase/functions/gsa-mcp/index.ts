@@ -58,6 +58,150 @@ function projectHandle(projectId: string) {
   return 'P-' + projectId.replace(/-/g, '').slice(-4).toUpperCase()
 }
 
+
+function jobHandle(jobId: string) {
+  return 'J-' + jobId.replace(/-/g, '').slice(-4).toUpperCase()
+}
+
+function runHandle(runId: string) {
+  return 'R-' + runId.replace(/-/g, '').slice(-4).toUpperCase()
+}
+
+function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS', recordId: string) {
+  return 'projects/' + projectId + '/WORK/' + family + '/' + recordId + '.json'
+}
+
+function verificationPath(projectId: string, verificationId: string) {
+  return 'projects/' + projectId + '/VERIFICATION/' + verificationId + '.json'
+}
+
+function prettyJson(value: unknown) {
+  return JSON.stringify(value, null, 2) + '\n'
+}
+
+const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outputs: string[]; canonical_refs: string[] }> = {
+  orchestrator: {
+    authority: [
+      'Route work and apply lifecycle/guard checks; do not implement source.',
+      'Re-read Project lifecycle before every consequential action.',
+      'Use durable Project Memory as control plane and live source repository as source truth.',
+      'Never treat agent-authored text as human approval.',
+    ],
+    loop: [
+      'Resolve Project and current durable records.',
+      'Determine next role from Job topology and pending durable state.',
+      'Load the minimum sufficient role context.',
+      'Start exactly one attributed Run.',
+      'After the Run, persist evidence/handoff before terminal Run state.',
+      'Reconstruct current status from durable records when CONTROL is absent or stale.',
+    ],
+    outputs: ['routing decision', 'Run dispatch', 'current status view'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'DISPATCH-AND-HANDOFF.md', 'STATE-MACHINE.md'],
+  },
+  planner: {
+    authority: [
+      'Own Job objective/scope/non-goals, task topology, dependencies, completion/evidence requirements and planned gates.',
+      'Read source selectively; do not implement source changes.',
+      'Keep one Job finite. Materially different objectives become linked Jobs rather than silent scope expansion.',
+    ],
+    loop: [
+      'Read Project contract and relevant current source.',
+      'Clarify only when a material decision cannot be safely inferred.',
+      'Define objective, scope and non-goals.',
+      'Decompose bounded Tasks and dependency topology.',
+      'Place review/test/human gates and completion evidence.',
+      'Run a plan consistency check before persisting the Job.',
+    ],
+    outputs: ['durable Job record', 'task topology', 'completion/evidence requirements'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
+  },
+  designer: {
+    authority: [
+      'Own visual interpretation, UI/UX coverage and Asset Requirements.',
+      'Source implementation is read-only.',
+      'Do not silently change product behavior or architecture.',
+    ],
+    loop: [
+      'Load approved scope and design constraints.',
+      'Inspect relevant current UI/source read-only.',
+      'Define behavior-neutral visual specification and asset needs.',
+      'Check coverage across required states/devices.',
+      'Return separately attributed design/asset outputs.',
+    ],
+    outputs: ['design contract', 'Asset Requirement', 'design coverage evidence'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md'],
+  },
+  coder: {
+    authority: [
+      'Implement only approved Project-owned source within Job/Task/Run scope.',
+      'Refine implementation HOW without silently changing approved objective, product behavior or contracts.',
+      'Do not infer merge/release authority.',
+      'A source-changing Run must have an explicit scope claim.',
+    ],
+    loop: [
+      'READ: inspect live source and exact target revision before writing.',
+      'PLAN-EXEC: choose the smallest implementation sequence consistent with approved scope.',
+      'IMPLEMENT: make bounded source changes.',
+      'VERIFY: run available objective checks only when capability is OBSERVED.',
+      'DIFF REVIEW: inspect actual changed files for scope drift, weakened tests, commented-out behavior and secret leakage.',
+      'GOAL RECHECK: map every acceptance criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence.',
+      'LOOP: fix applicable NOT_MET/PARTIAL gaps and repeat verification/recheck until ready or blocked.',
+      'HANDOFF: persist evidence/handoff before terminal Run state; never claim merge authority.',
+    ],
+    outputs: ['source diff', 'Goal Recheck', 'evidence', 'handoff when another role is required'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'CODER-GOAL-RECHECK.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
+  },
+  reviewer: {
+    authority: [
+      'Context-isolated fresh-chat review of an exact target/revision.',
+      'Source implementation is read-only; findings only, never repair source.',
+      'Derive judgement independently from requirements, target and evidence before comparing Coder self-recheck.',
+    ],
+    loop: [
+      'Resolve exact target revision and applicable requirements without prior-chat reasoning.',
+      'Inspect actual diff/evidence and mechanically sensitive paths.',
+      'Derive findings with CRITICAL/IMPORTANT/MINOR severity.',
+      'Return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED.',
+      'Route findings back to owning work without modifying source.',
+    ],
+    outputs: ['review Verification record', 'findings', 'revision-bound result'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
+  },
+  tester: {
+    authority: [
+      'Source implementation is read-only.',
+      'Execute practical tests only with OBSERVED capability; otherwise prepare Human Retest steps.',
+      'A merely SURFACE_PRESENT tool cannot justify PASS evidence.',
+    ],
+    loop: [
+      'Resolve exact target and acceptance behavior.',
+      'Check required runtime capability state.',
+      'Execute practical verification when OBSERVED, otherwise prepare Retest.',
+      'Record reproducible evidence and limitations.',
+      'Route failures causally to active owning work.',
+    ],
+    outputs: ['TEST/RETEST Verification record', 'reproducible evidence', 'limitations'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
+  },
+}
+
+function renderHarness(role: string) {
+  const h = ROLE_HARNESSES[role]
+  if (!h) return null
+  return [
+    'ROLE: ' + role.toUpperCase(),
+    '',
+    'AUTHORITY / BOUNDARIES',
+    ...h.authority.map((x) => '- ' + x),
+    '',
+    'EXECUTION LOOP',
+    ...h.loop.map((x, i) => (i + 1) + '. ' + x),
+    '',
+    'EXPECTED OUTPUTS',
+    ...h.outputs.map((x) => '- ' + x),
+  ].join('\n')
+}
+
 function normalizeGithubRepo(input: string) {
   try {
     const url = new URL(input)
@@ -159,7 +303,7 @@ async function readMemoryConfig(auth: any) {
 
 function createServer(req: Request) {
   const server = new McpServer(
-    { name: 'gpt-super-agent', version: '0.3.0' },
+    { name: 'gpt-super-agent', version: '0.4.0' },
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
@@ -174,6 +318,10 @@ function createServer(req: Request) {
         'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent.',
+        'Durable Project work uses the Job runtime spine: Planner -> job_prepare -> run_begin(role) -> role execution loop -> run_complete; Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
+        'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract.',
+        'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
+        'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
         'GitHub URLs are sufficient routing context; @GitHub is optional.',
         'Do not report a command complete until returned external_steps have been executed and verified through the GitHub connector.',
@@ -239,7 +387,7 @@ function createServer(req: Request) {
       if (!auth) return authError('Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
-        phase: 'M1B_MEMORY_REPO_CUTOVER',
+        phase: 'M2_JOB_RUNTIME_SPIKE',
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
@@ -696,6 +844,399 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'get_agent_harness',
+    {
+      title: 'Load a GSA role harness',
+      description: 'Load the authoritative runtime behavior contract for one GSA role before executing that role.',
+      inputSchema: {
+        role: z.enum(['orchestrator','planner','designer','coder','reviewer','tester']),
+        mode: z.enum(['JOB','DIRECT_AGENT']).default('JOB'),
+      },
+      outputSchema: {
+        role: z.string(),
+        mode: z.string(),
+        harness_text: z.string(),
+        canonical_refs: z.array(z.string()),
+        context_policy: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ role, mode }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to load a role harness.')
+      const harness = renderHarness(role)
+      if (!harness) return { content: [{ type: 'text', text: 'Unknown role harness.' }], isError: true }
+      const result = {
+        role,
+        mode,
+        harness_text: harness,
+        canonical_refs: ROLE_HARNESSES[role].canonical_refs,
+        context_policy: role === 'reviewer'
+          ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
+          : 'MINIMUM_SUFFICIENT_CONTEXT; prefer durable references and selective live-source reads.',
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_prepare',
+    {
+      title: 'Prepare a durable GSA Job',
+      description: 'Planner finalization tool. Builds one finite Job record after the Planner harness has produced an approved plan.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        type: z.enum(['plan','code','design','review']),
+        objective: z.string().min(1),
+        scope: z.array(z.string()).min(1),
+        non_goals: z.array(z.string()).default([]),
+        tasks: z.array(z.object({
+          task_id: z.string().optional(),
+          objective: z.string().min(1),
+          scope: z.array(z.string()).default([]),
+          dependencies: z.array(z.string()).default([]),
+          completion_criteria: z.array(z.string()).min(1),
+        })).min(1),
+        completion_requirements: z.array(z.string()).min(1),
+        verification_requirements: z.array(z.string()).default([]),
+        review_triggers: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        job_id: z.string(),
+        handle: z.string(),
+        memory_path: z.string(),
+        job_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, type, objective, scope, non_goals, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to prepare a Job.')
+      const { data } = await readMemoryConfig(auth)
+      if (!data?.memory_repo_full_name) return { content: [{ type: 'text', text: 'Memory Repo is not configured.' }], isError: true }
+      const jobId = uuidv7()
+      const now = new Date().toISOString()
+      const normalizedTasks = tasks.map((task: any) => ({
+        task_id: task.task_id || uuidv7(),
+        objective: task.objective,
+        scope: task.scope ?? [],
+        dependencies: task.dependencies ?? [],
+        completion_criteria: task.completion_criteria,
+        lifecycle: 'READY',
+      }))
+      const topology = normalizedTasks.map((task: any, index: number) => ({
+        stage: index + 1,
+        handler: type === 'design' ? 'designer' : type === 'review' ? 'reviewer' : index === 0 ? 'coder' : 'coder',
+        task_id: task.task_id,
+        depends_on: task.dependencies,
+        next: index + 1 < normalizedTasks.length ? normalizedTasks[index + 1].task_id : null,
+      }))
+      const record = {
+        job_id: jobId,
+        handle: jobHandle(jobId),
+        project_id,
+        type,
+        objective,
+        scope,
+        non_goals,
+        tasks: normalizedTasks,
+        topology,
+        dependencies: [],
+        completion_requirements,
+        verification_requirements,
+        review_triggers,
+        planning_revision: 1,
+        lifecycle: 'READY',
+        result: null,
+        linked_job_ids: [],
+        created_at: now,
+        updated_at: now,
+      }
+      const path = recordPath(project_id, 'JOBS', jobId)
+      const result = {
+        job_id: jobId,
+        handle: jobHandle(jobId),
+        memory_path: path,
+        job_record_text: prettyJson(record),
+        external_steps: [
+          'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
+          'GitHub Memory Repo: create_file at memory_path with job_record_text.',
+          'Fetch the new Job record back and verify job_id/project_id/lifecycle=READY.',
+          'Do not modify source during Planner Job persistence.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'run_begin',
+    {
+      title: 'Begin a GSA Job Run',
+      description: 'Create one attributed execution Run. Call get_agent_harness for the selected role before executing work.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        role: z.enum(['planner','designer','coder','reviewer','tester']),
+        scope_claim: z.array(z.string()).min(1),
+        primary_task_id: z.string().uuid().optional(),
+        affected_task_refs: z.array(z.string()).default([]),
+        parent_run_id: z.string().uuid().optional(),
+        target_ref: z.string().optional(),
+        target_revision: z.string().optional(),
+        input_refs: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        run_id: z.string(),
+        handle: z.string(),
+        memory_path: z.string(),
+        run_record_text: z.string(),
+        next_step: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to begin a Run.')
+      const runId = uuidv7()
+      const now = new Date().toISOString()
+      const record = {
+        run_id: runId,
+        handle: runHandle(runId),
+        project_id,
+        job_id,
+        primary_task_id: primary_task_id ?? null,
+        affected_task_refs: affected_task_refs ?? [],
+        parent_run_id: parent_run_id ?? null,
+        role,
+        target_ref: target_ref ?? null,
+        target_revision: target_revision ?? null,
+        scope_claim,
+        input_refs: input_refs ?? [],
+        lifecycle: 'IN_PROGRESS',
+        derived_condition: null,
+        result: null,
+        output_refs: [],
+        verification_refs: [],
+        handoff_ref: null,
+        started_at: now,
+        ended_at: null,
+      }
+      const path = recordPath(project_id, 'RUNS', runId)
+      const result = {
+        run_id: runId,
+        handle: runHandle(runId),
+        memory_path: path,
+        run_record_text: prettyJson(record),
+        next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
+        external_steps: [
+          'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
+          'Read the owning Job and require it is READY or IN_PROGRESS and the selected Task/scope is valid.',
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
+          'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
+          'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'goal_recheck_record',
+    {
+      title: 'Prepare Coder Goal Recheck evidence',
+      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. Does not independently prove success.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+        task_id: z.string().uuid().optional(),
+        target_ref: z.string().min(1),
+        target_revision: z.string().min(1),
+        criteria: z.array(z.object({
+          criterion: z.string().min(1),
+          result: z.enum(['MET','PARTIAL','NOT_MET','UNVERIFIED']),
+          evidence: z.array(z.string()).default([]),
+          limitation: z.string().optional(),
+        })).min(1),
+        scope_drift: z.array(z.string()).default([]),
+        limitations: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        memory_path: z.string(),
+        verification_record_text: z.string(),
+        ready_for_success_handoff: z.boolean(),
+        blocking_reasons: z.array(z.string()),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, job_id, run_id, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to persist Goal Recheck.')
+      const verificationId = uuidv7()
+      const blocking = criteria
+        .filter((c: any) => c.result === 'NOT_MET')
+        .map((c: any) => 'NOT_MET: ' + c.criterion)
+      if ((scope_drift ?? []).length) blocking.push('Unresolved scope drift: ' + scope_drift.join('; '))
+      const record = {
+        verification_id: verificationId,
+        kind: 'GOAL_RECHECK',
+        project_id,
+        job_id,
+        task_id: task_id ?? null,
+        run_id,
+        target_ref,
+        target_revision,
+        producer: 'coder',
+        result: blocking.length ? 'CHANGES_REQUIRED' : (criteria.some((c: any) => c.result === 'PARTIAL' || c.result === 'UNVERIFIED') ? 'PASS_RETEST_REQUIRED' : 'PASS'),
+        limitations: limitations ?? [],
+        evidence_refs: criteria.flatMap((c: any) => c.evidence ?? []),
+        criteria,
+        scope_drift: scope_drift ?? [],
+        created_at: new Date().toISOString(),
+      }
+      const path = verificationPath(project_id, verificationId)
+      const result = {
+        verification_id: verificationId,
+        memory_path: path,
+        verification_record_text: prettyJson(record),
+        ready_for_success_handoff: blocking.length === 0,
+        blocking_reasons: blocking,
+        external_steps: [
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
+          'Persist this Verification record before terminal Run update.',
+          blocking.length ? 'Continue the Coder loop; do not claim success while blocking_reasons remain.' : 'If topology permits, proceed to required review/test/handoff or terminal Run completion.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'run_complete',
+    {
+      title: 'Complete a GSA Job Run',
+      description: 'Prepare optional immutable Handoff plus terminal Run replacement. Persist referenced evidence/handoff first; update the Run last using exact blob SHA.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+        role: z.enum(['planner','designer','coder','reviewer','tester']),
+        run_record_text: z.string().min(2),
+        run_record_sha: z.string().min(7),
+        lifecycle: z.enum(['COMPLETED','FAILED','CANCELLED','SUPERSEDED']),
+        result: z.string().optional(),
+        output_refs: z.array(z.string()).default([]),
+        verification_refs: z.array(z.string()).default([]),
+        handoff: z.object({
+          next_role: z.enum(['planner','designer','coder','reviewer','tester']),
+          primary_task_id: z.string().uuid().optional(),
+          target_ref: z.string().optional(),
+          target_revision: z.string().optional(),
+          completed_summary: z.string().min(1),
+          remaining: z.array(z.string()).default([]),
+          required_inputs: z.array(z.string()).default([]),
+          blocker_or_gate: z.string().optional(),
+          expected_next_outcome: z.string().min(1),
+        }).optional(),
+      },
+      outputSchema: {
+        run_memory_path: z.string(),
+        expected_run_sha: z.string(),
+        terminal_run_record_text: z.string(),
+        handoff_id: z.string().nullable(),
+        handoff_memory_path: z.string().nullable(),
+        handoff_record_text: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, handoff }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to complete a Run.')
+      let current: any
+      try { current = JSON.parse(run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Run JSON.' }], isError: true }
+      }
+      if (current.run_id !== run_id || current.project_id !== project_id || current.job_id !== job_id || current.role !== role || current.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'Run identity/lifecycle mismatch.' }], isError: true }
+      }
+      const runPath = recordPath(project_id, 'RUNS', run_id)
+      let handoffId: string | null = null
+      let handoffPath: string | null = null
+      let handoffText: string | null = null
+      if (handoff) {
+        handoffId = uuidv7()
+        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId)
+        handoffText = prettyJson({
+          handoff_id: handoffId,
+          project_id,
+          job_id,
+          source_run_id: run_id,
+          next_role: handoff.next_role,
+          primary_task_id: handoff.primary_task_id ?? null,
+          target_ref: handoff.target_ref ?? current.target_ref ?? null,
+          target_revision: handoff.target_revision ?? current.target_revision ?? null,
+          completed_summary: handoff.completed_summary,
+          remaining: handoff.remaining ?? [],
+          required_inputs: handoff.required_inputs ?? [],
+          blocker_or_gate: handoff.blocker_or_gate ?? null,
+          expected_next_outcome: handoff.expected_next_outcome,
+          created_at: new Date().toISOString(),
+        })
+      }
+      const terminal = {
+        ...current,
+        lifecycle,
+        result: result ?? null,
+        output_refs: output_refs ?? [],
+        verification_refs: verification_refs ?? [],
+        handoff_ref: handoffId,
+        ended_at: new Date().toISOString(),
+      }
+      const externalSteps = [
+        'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+      ]
+      if (handoffPath) {
+        externalSteps.push(
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=' + handoffPath + ') and persist handoff_record_text first.',
+        )
+      }
+      externalSteps.push(
+        'Fetch the current Run file immediately before update and require its blob SHA equals expected_run_sha.',
+        'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=run_memory_path).',
+        'GitHub Memory Repo: update the Run file with terminal_run_record_text using expected_run_sha exactly. On stale SHA, refetch/reconcile; never force overwrite.',
+        'Read back terminal Run and any Handoff. Only then report the Run complete.',
+      )
+      const out = {
+        run_memory_path: runPath,
+        expected_run_sha: run_record_sha,
+        terminal_run_record_text: prettyJson(terminal),
+        handoff_id: handoffId,
+        handoff_memory_path: handoffPath,
+        handoff_record_text: handoffText,
+        external_steps: externalSteps,
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
     'start_direct_agent',
     {
       title: 'Start a Direct Agent',
@@ -833,13 +1374,16 @@ app.get('/selftest', (c) => {
     memory_path_accept: validMemoryPath('projects/' + projectId + '/PROJECT.md'),
     memory_path_reject: !validMemoryPath('README.md') && !validMemoryPath('../projects/' + projectId + '/PROJECT.md'),
     repo_normalization: normalizeGithubRepo('https://github.com/example/memory.git')?.full_name === 'example/memory',
+    planner_harness_present: Boolean(renderHarness('planner')?.includes('EXECUTION LOOP')),
+    coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
+    job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
   }
   const pass = Object.values(checks).every(Boolean)
   return c.json({ pass, checks })
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M1B_MEMORY_REPO_CUTOVER', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_JOB_RUNTIME_SPIKE', oauth: true }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
