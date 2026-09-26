@@ -1681,19 +1681,25 @@ function createServer(req: Request) {
         updated_at: now,
       }
       const path = recordPath(project_id, 'JOBS', jobId)
+      const externalSteps = [
+        'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
+        'GitHub Memory Repo: create_file at memory_path with job_record_text.',
+        'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
+      ]
+      if ((relationship_assessment ?? []).length) {
+        externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
+      }
+      externalSteps.push(
+        'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
+        'Do not modify source during Planner Job persistence.',
+      )
       const result = {
         job_id: jobId,
         handle: jobHandle(jobId),
         memory_path: path,
         job_record_text: prettyJson(record),
-        external_steps: [
-          'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
-          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
-          'GitHub Memory Repo: create_file at memory_path with job_record_text.',
-          'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
-          'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
-          'Do not modify source during Planner Job persistence.',
-        ],
+        external_steps: externalSteps,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -1807,9 +1813,29 @@ function createServer(req: Request) {
         phase: z.string().min(1).optional(),
         milestone: z.string().min(1).optional(),
         relationship_scan_summary: z.string().min(1).optional(),
-        job_sizing: z.any().optional(),
-        brownfield_logic_review: z.array(z.any()).optional(),
-        relationship_assessment: z.array(z.any()).optional(),
+        job_sizing: z.object({
+          size: z.enum(['SMALL','MEDIUM','LARGE']),
+          rationale: z.string().min(1),
+          bounded_causal_chain: z.string().min(1),
+          context_boundary: z.array(z.string()).min(1),
+          independently_meaningful_completion: z.string().min(1),
+          split_or_keep_reason: z.string().min(1),
+        }).optional(),
+        brownfield_logic_review: z.array(z.object({
+          target: z.string().min(1),
+          classification: z.enum(['CANONICAL','LEGACY','ACCIDENTAL','INCORRECT','UNKNOWN']),
+          evidence: z.array(z.string()).min(1),
+          implication: z.string().min(1),
+        })).optional(),
+        relationship_assessment: z.array(z.object({
+          source: z.string().min(1),
+          target: z.string().min(1),
+          relationship: z.string().min(1),
+          precedence: z.string().min(1),
+          reason: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          reread_condition: z.string().min(1),
+        })).optional(),
         repository_structure_evidence: z.array(z.string()).optional(),
         selected_source_evidence: z.array(z.string()).optional(),
         tasks: z.array(z.any()).optional(),
