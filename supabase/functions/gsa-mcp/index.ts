@@ -314,7 +314,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '2. Progressive brownfield discovery: L0 orientation scans tree/filenames/config/tests/docs/assets/CI-deploy plus durable Project/relationship knowledge; L1 selectively reads canonical contracts, architecture entry points and implementation evidence needed for planning. Do not read the whole repo.',
       '3. During L0, detect evidence of sibling/dependent repositories. Compare it with the Project repository registry; missing likely Project repos require Human confirmation before finalizing the plan.',
       '4. For a multi-repo Project, explicitly select/confirm one working repository for this Job and assess READ/REVIEW/WRITE impact on every other registered repository. Related does not mean equal authority.',
-      '5. Brownfield logic review is mandatory before extending important existing behavior: map relevant relationships/callers/consumers, inspect enough live logic to classify it as CANONICAL/LEGACY/ACCIDENTAL/INCORRECT/UNKNOWN, and establish authority/precedence direction when evidence permits.',
+      '5. Brownfield logic review is mandatory before extending important existing behavior: map relevant relationships/callers/consumers, inspect enough live logic to classify it as CANONICAL/LEGACY/ACCIDENTAL/INCORRECT/UNKNOWN, and establish authority/precedence direction when evidence permits. Record a relationship-scan summary even when the result is NONE; when a durable precedence/reread relationship is discovered, prepare it with relationship_knowledge_prepare using existing KNOWLEDGE/ ARCHITECTURE_NOTE.',
       '6. Do not treat README/TASKS/roadmaps or existing implementation as source truth when stronger contracts/live evidence disagree.',
       '7. State objective, scope and non-goals separately.',
       '7. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
@@ -657,9 +657,9 @@ function createServer(req: Request) {
         'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
-        'Durable Project work uses the Job runtime spine: Planner -> repository structure scan -> selective source reads -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
+        'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
         'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract. Critic Reviewer is HUMAN-INVOKED ONLY. It must operate stateless-by-contract: ignore conversation history as evidence and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
-        'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
+        'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, Verification under VERIFICATION/, and durable relationship/contract knowledge under KNOWLEDGE/. Use relationship_knowledge_prepare for evidence-backed precedence/reread relationships instead of inventing a new record family.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
         'Internal browser QA: Designer may use browser_ui_inspect for rendered visual evidence; Tester may use browser_test_flow for bounded non-destructive functional verification. These are GPT tools, not user CLI commands.',
@@ -1525,8 +1525,10 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
+        work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
+        relationship_scan_summary: z.string().min(1),
         job_sizing: z.object({
           size: z.enum(['SMALL','MEDIUM','LARGE']),
           rationale: z.string().min(1),
@@ -1587,7 +1589,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, phase, milestone, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1604,6 +1606,9 @@ function createServer(req: Request) {
       }
       if (project_repository_mode === 'MULTI' && normalizedRegistered.length < 2) {
         return { content: [{ type: 'text', text: 'MULTI Project requires at least two registered repositories.' }], isError: true }
+      }
+      if (work_context === 'BROWNFIELD' && !(brownfield_logic_review ?? []).length) {
+        return { content: [{ type: 'text', text: 'BROWNFIELD_PLANNING_INCOMPLETE: relevant existing logic review evidence is required before preparing the Job.' }], isError: true }
       }
       const jobId = uuidv7()
       const now = new Date().toISOString()
@@ -1631,8 +1636,10 @@ function createServer(req: Request) {
         scope,
         non_goals,
         planning_context: {
+          work_context,
           phase,
           milestone,
+          relationship_scan_summary,
           job_sizing,
           brownfield_logic_review: brownfield_logic_review ?? [],
           relationship_assessment: relationship_assessment ?? [],
@@ -1796,8 +1803,10 @@ function createServer(req: Request) {
         objective: z.string().min(1).optional(),
         scope: z.array(z.string()).optional(),
         non_goals: z.array(z.string()).optional(),
+        work_context: z.enum(['NEW','BROWNFIELD']).optional(),
         phase: z.string().min(1).optional(),
         milestone: z.string().min(1).optional(),
+        relationship_scan_summary: z.string().min(1).optional(),
         job_sizing: z.any().optional(),
         brownfield_logic_review: z.array(z.any()).optional(),
         relationship_assessment: z.array(z.any()).optional(),
@@ -1821,7 +1830,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, phase, milestone, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to revise a Job plan.')
       let current: any
@@ -1838,8 +1847,10 @@ function createServer(req: Request) {
         scope: scope ?? current.scope,
         non_goals: non_goals ?? current.non_goals,
         planning_context: {
+          work_context: work_context ?? current.planning_context?.work_context ?? 'NEW',
           phase: phase ?? current.planning_context?.phase ?? 'UNSPECIFIED',
           milestone: milestone ?? current.planning_context?.milestone ?? 'UNSPECIFIED',
+          relationship_scan_summary: relationship_scan_summary ?? current.planning_context?.relationship_scan_summary ?? 'UNSPECIFIED',
           job_sizing: job_sizing ?? current.planning_context?.job_sizing ?? null,
           brownfield_logic_review: brownfield_logic_review ?? current.planning_context?.brownfield_logic_review ?? [],
           relationship_assessment: relationship_assessment ?? current.planning_context?.relationship_assessment ?? [],
@@ -1926,6 +1937,12 @@ function createServer(req: Request) {
       if (!current.planning_context?.job_sizing?.size || !(current.planning_context?.job_sizing?.context_boundary ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: V2 Job sizing and context boundary evidence are required before planning review.' }], isError: true }
       }
+      if (!current.planning_context?.relationship_scan_summary) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: relationship mapping summary is required before planning review.' }], isError: true }
+      }
+      if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
+      }
       if (result === 'PASS' && (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity))) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
@@ -1943,6 +1960,7 @@ function createServer(req: Request) {
         limitations: limitations ?? [],
         repository_structure_evidence: current.repository_discovery.structure_evidence,
         selected_source_evidence: current.repository_discovery.selected_source_evidence ?? [],
+        planning_context: current.planning_context ?? null,
         created_at: new Date().toISOString(),
       }
       const reviewedJob = {
@@ -2421,6 +2439,7 @@ function createServer(req: Request) {
         output_refs: z.array(z.string()).default([]),
         verification_refs: z.array(z.string()).default([]),
         goal_recheck_record_text: z.string().min(2).optional(),
+        goal_recheck_verification_ref: z.string().min(1).optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
           primary_task_id: z.string().uuid().optional(),
@@ -2446,7 +2465,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, handoff }: any) => {
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, handoff }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to complete a Run.')
       let current: any
@@ -2457,19 +2476,23 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Run identity/lifecycle mismatch.' }], isError: true }
       }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
-        if (!goal_recheck_record_text) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record is required for successful completion.' }], isError: true }
+        if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+        }
+        if (!(verification_refs ?? []).includes(goal_recheck_verification_ref)) {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK verification ref must be included in verification_refs.' }], isError: true }
         }
         let goal: any
         try { goal = JSON.parse(goal_recheck_record_text) } catch {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
         }
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id
+        const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && revisionMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
         if (!goalMatches || unresolvedNotMet || unresolvedDrift || !acceptableResult) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
       const runPath = recordPath(project_id, 'RUNS', run_id)
