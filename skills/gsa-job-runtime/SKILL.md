@@ -41,37 +41,58 @@ Do not rely on remembered role behavior when the harness can be loaded.
 ## Planner loop
 
 ```text
-read Project + selective source
+L0 orientation
+→ L1 decision context
+→ brownfield relationship + logic review
 → define finite objective/scope/non-goals
-→ decompose Tasks
+→ decompose Objective → Phase → Task → Job Pack → Milestone
+→ size the Job and declare its context boundary
 → define dependencies/topology
 → place review/test/human gates
 → define completion/evidence requirements
-→ consistency review
+→ consistency + sizing review
 → job_prepare
-→ persist Job
+→ planning review / repair loop
+→ READY
 ```
+
+Phase, Job Pack and Milestone are planning concepts expressed with the existing Job/Task topology unless later evidence proves a new persistent entity is necessary.
+
+Core invariant:
+
+```text
+Job boundary = context boundary.
+```
+
+For brownfield work, existing code is evidence rather than automatic authority. Planner must inspect enough relevant logic and relationships to distinguish canonical behavior from legacy, accidental, incorrect or unknown behavior.
 
 Planner is source read-only.
 
 ## Coder loop
 
 ```text
-READ live source + exact revision
+LOAD L2 execution context
+→ READ live source + exact revision + relevant callers/contracts/relationships
 → PLAN-EXEC smallest bounded sequence
 → IMPLEMENT approved changes
-→ VERIFY observed-capability checks
 → DIFF REVIEW
+→ VERIFY observed-capability checks
+→ SELF-REVIEW CLOSURE
+   ├─ ordinary within-scope finding → fix and re-verify
+   ├─ downstream follow-up → record, do not drift
+   └─ material scope/contract change → escalate
 → GOAL RECHECK
-   ├─ NOT_MET/PARTIAL and fixable → loop
-   ├─ material scope/contract change → escalate
+   ├─ NOT_MET or unresolved scope drift → cannot complete successfully
+   ├─ PARTIAL/UNVERIFIED → explicit limitation / retest path
    └─ ready → persist Goal Recheck
 → create required Handoff/evidence
 → terminal Run update LAST
 ```
 
 A passing test suite alone is not completion.
-Coder must inspect the actual diff and run Goal Recheck against the work definition.
+Coder must re-read the Job objective/active Task criteria, inspect the actual diff and affected relationship boundaries, repair ordinary findings, and only then persist Goal Recheck.
+
+For a successful Coder Run, `run_complete` validates the exact GOAL_RECHECK record for the same Project/Job/Run.
 
 ## Reviewer loop
 
@@ -79,12 +100,15 @@ Reviewer must be context-isolated in a fresh chat when independent review is req
 
 ```text
 exact requirements + exact target revision + evidence
-→ independent criterion derivation
-→ actual diff review
+→ size the review
+→ if large: review map → bounded sections → consolidate
+→ requirements → contract → actual diff → relationship impact → surrounding logic → evidence
 → findings
 → PASS / PASS_RETEST_REQUIRED / CHANGES_REQUIRED / BLOCKED / HUMAN_REVIEW_REQUIRED
 → Verification record
 ```
+
+Planning review also checks Job sizing/context burden, brownfield logic review and relationship/precedence direction.
 
 Reviewer never modifies source.
 

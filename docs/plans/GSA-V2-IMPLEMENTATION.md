@@ -12,6 +12,28 @@ CURRENT_SOURCE_OF_TRUTH = docs/plans/PHASE2-IMPLEMENTATION.md
 
 This plan does not replace the current Phase-2 implementation authority until it is reviewed and explicitly promoted.
 
+## Implementation checkpoint
+
+```text
+BRANCH = gsa-v2-coding-super-agent
+DRAFT_PR = #2
+BASE = 26640b1bda147ce6f2fb5929eb2faa22448c2ffa
+
+CP1 Planner / context = IMPLEMENTED IN BRANCH
+CP2 relationship / brownfield = IMPLEMENTED IN BRANCH
+CP3 Coder closure = IMPLEMENTED IN BRANCH
+CP4 Reviewer closure = IMPLEMENTED IN BRANCH
+CP5 end-to-end pilot = PENDING
+PRODUCTION DEPLOY = NOT PERFORMED
+```
+
+Verification limitation:
+- the repository currently has no CI compile/test workflow for the Edge Function;
+- production Supabase currently runs `gsa-mcp` version 39;
+- no Supabase development branch exists;
+- this implementation intentionally stops before production deployment until review/pilot evidence exists.
+
+
 ## 1. Objective
 
 Turn the current working GSA into a high-quality sequential coding-agent system that can organize complex work, control context, self-review before Human handoff, and handle brownfield/multi-repo relationships correctly.

@@ -103,6 +103,11 @@ function verificationPath(projectId: string, verificationId: string) {
   return 'projects/' + projectId + '/VERIFICATION/' + verificationId + '.json'
 }
 
+function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
+  const safeSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'knowledge'
+  return 'projects/' + projectId + '/KNOWLEDGE/' + knowledgeId + '-' + safeSlug + '.md'
+}
+
 function prettyJson(value: unknown) {
   return JSON.stringify(value, null, 2) + '\n'
 }
@@ -120,6 +125,8 @@ const BASE_AGENT_HARNESS = [
   '- Discover repository-specific build/test/lint/typecheck commands from source/config/evidence. Never assume a conventional command merely because it is common.',
   '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
+  '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
+  '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
   '- Browser tool presence is SURFACE_PRESENT only. Treat browser evidence as OBSERVED only after the exact call succeeds against the exact target URL/revision.',
@@ -150,27 +157,30 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
   },
   planner: {
     authority: [
-      'Own Job objective/scope/non-goals, task topology, dependencies, completion/evidence requirements and planned gates.',
-      'Read source selectively; do not implement source changes. For brownfield work, always inspect repository structure/tree and filenames before choosing content files to read.',
-      'Keep one Job finite. Materially different objectives become linked Jobs rather than silent scope expansion.',
-      'For multi-repo Projects, require one working repository per executable Job while preserving Project-wide dependency/impact awareness.',
+      'Own Job objective/scope/non-goals, phase/task decomposition, Job sizing/context boundary, dependencies, completion/evidence requirements and planned gates.',
+      'Read source selectively; do not implement source changes. For brownfield work, inspect structure first, then relevant relationships and existing logic before treating current behavior as a planning precedent.',
+      'Keep one Job finite and meaningful. Materially different objectives or causal chains become linked Jobs rather than silent scope expansion.',
+      'For multi-repo Projects, require one working repository per executable Job while preserving Project-wide read/review impact awareness and authority/precedence direction.',
     ],
     loop: [
-      'OBSERVE L0: inspect repository structure/tree first: top-level folders, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat file/folder names as evidence even when no descriptive docs exist. Also inspect links/config/routes/docs that reveal sibling or dependent repositories.',
-      'REPO TOPOLOGY: compare discovered repo relationships with the Project repository registry. If likely Project repos are missing, pause for Human confirmation and register them before planning is finalized. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
-      'OBSERVE L1: after L0, selectively read only the files needed to validate the requested outcome and avoid planning from stale documentation.',
+      'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
+      'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
+      'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
+      'BROWNFIELD REVIEW: map relevant callers/consumers/contracts and inspect enough existing logic to classify important behavior as CANONICAL, LEGACY, ACCIDENTAL, INCORRECT or UNKNOWN. Existing code is evidence, not authority.',
+      'AUTHORITY/PRECEDENCE: when repositories/subsystems relate, identify direction (for example A > B) from contracts/evidence. Read related repos for impact without expanding WRITE scope automatically.',
       'CLASSIFY PRODUCT WORKFLOW: determine UI_FIRST or UX_FIRST before planning UI-bearing work. Preserve an existing explicit classification unless Planner has evidence and Human approval to change it.',
       'FRAME: define objective, scope, non-goals and material assumptions.',
-      'DECOMPOSE: create bounded Tasks with dependency order and explicit completion criteria.',
+      'DECOMPOSE TOP-DOWN: Objective → Phase → Task → Job Pack → Milestone. Phase and Job Pack are planning concepts expressed with existing Job/Task topology; do not create new persistent entity types by default.',
+      'SIZE JOB: choose SMALL/MEDIUM/LARGE and prove the Job is one meaningful objective with one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
       'GATE: place required review/test/human checkpoints and capability requirements.',
-      'CHECK: verify every Task contributes to the finite objective and no important acceptance condition is orphaned. Record cross-repo impact assessment against every registered Project repository, even when impact is NONE.',
+      'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, and cross-repo impact/precedence has been assessed.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
-      'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus L0/L1 evidence. Do not report the plan as finalized yet and do not wait for another user message merely to start review.',
-      'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, fix actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer. Do not ask Human for ordinary fixable planning defects.',
+      'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
+      'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, repair actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer.',
       'READY GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
     ],
-    outputs: ['reviewed durable Job plan', 'repository structure evidence', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
-    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
+    outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
   },
   designer: {
     authority: [
@@ -197,14 +207,15 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'A source-changing Run must have an explicit scope claim.',
     ],
     loop: [
-      'OBSERVE: inspect live source, existing conventions and exact target revision before writing.',
-      'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria.',
+      'OBSERVE L2 EXECUTION CONTEXT: inspect live source, exact target revision, direct callers/consumers, relevant tests/contracts and existing relationship knowledge before writing. Expand to L3 investigation context only when evidence requires it.',
+      'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
       'IMPLEMENT: make only scope-traceable source changes.',
-      'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files and secret leakage.',
+      'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files, secret leakage and affected recorded relationships.',
       'VERIFY: run available repository-specific objective checks when capability is OBSERVED.',
-      'GOAL RECHECK: map every completion criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence.',
-      'ADAPT: if a gap is fixable within scope, diagnose and loop. Material scope/contract/authority gaps stop and route instead of being invented away.',
-      'HANDOFF/COMPLETE: persist evidence and any required Handoff first; terminal Run update is last.',
+      'SELF-REVIEW CLOSURE: re-read the original Job objective and active Task criteria, inspect the actual diff and affected relationships, and identify ordinary correctness/coverage findings before handoff.',
+      'REPAIR: fix ordinary within-scope findings autonomously, then repeat INSPECT → VERIFY. Material scope/contract/authority changes route instead of being invented away; downstream work is recorded without drifting into another Job.',
+      'GOAL RECHECK: only after repair, map every completion criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NOT_MET or unresolved scope drift cannot complete successfully.',
+      'HANDOFF/COMPLETE: persist Goal Recheck/evidence and any required Handoff first; terminal Run update is last and must validate the Goal Recheck for this exact Run.',
     ],
     outputs: ['source diff', 'Goal Recheck', 'evidence', 'handoff when another role is required'],
     canonical_refs: ['AGENT-HARNESSES.md', 'CODER-GOAL-RECHECK.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
@@ -218,9 +229,11 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     loop: [
       'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
-      'INSPECT: for code review read actual diff/changed files plus evidence; for planning review first verify repository structure/tree coverage, then inspect objective/scope/non-goals/tasks/topology/gates against selective live-source facts and Project contracts.',
-      'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets.',
+      'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
+      'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
+      'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. Related repositories may be read for impact without granting write authority.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
+      'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
       'ROUTE: send findings back to owning work without modifying source.',
     ],
@@ -298,20 +311,23 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'Use this skill only for durable Project work.',
       '',
       '1. Read the Project purpose and the exact user objective.',
-      '2. Brownfield discovery is two-stage: L0 scan repository tree/filenames/config/tests/docs/assets/CI-deploy surfaces first; L1 then selectively read content files chosen from that structure.',
+      '2. Progressive brownfield discovery: L0 orientation scans tree/filenames/config/tests/docs/assets/CI-deploy plus durable Project/relationship knowledge; L1 selectively reads canonical contracts, architecture entry points and implementation evidence needed for planning. Do not read the whole repo.',
       '3. During L0, detect evidence of sibling/dependent repositories. Compare it with the Project repository registry; missing likely Project repos require Human confirmation before finalizing the plan.',
-      '4. For a multi-repo Project, explicitly select/confirm one working repository for this Job and assess impact on every other registered repository.',
-      '5. Do not treat README/TASKS/roadmaps as source truth when live structure or implementation disagrees.',
-      '6. State objective, scope and non-goals separately.',
-      '7. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
-      '8. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
-      '9. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
-      '10. Break work into Tasks that each have an observable completion criterion.',
-      '11. Add dependencies only when one Task genuinely needs another Task output.',
-      '12. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
-      '13. Before persisting, run a coverage check: every requested outcome maps to at least one Task/criterion, every Task maps back to the objective, and no material product decision was silently invented.',
-      '14. Persist the plan as DRAFT, then continue autonomously in the SAME USER TURN: load Reviewer contract, review the exact planning revision, switch back to Planner on CHANGES_REQUIRED, revise and re-review until PASS or Human Gate, and only then promote READY. Never return a final planning summary immediately after creating/updating the DRAFT.',
-      '15. If a materially different objective appears, propose a linked Job instead of expanding this Job.',
+      '4. For a multi-repo Project, explicitly select/confirm one working repository for this Job and assess READ/REVIEW/WRITE impact on every other registered repository. Related does not mean equal authority.',
+      '5. Brownfield logic review is mandatory before extending important existing behavior: map relevant relationships/callers/consumers, inspect enough live logic to classify it as CANONICAL/LEGACY/ACCIDENTAL/INCORRECT/UNKNOWN, and establish authority/precedence direction when evidence permits. Record a relationship-scan summary even when the result is NONE; when a durable precedence/reread relationship is discovered, prepare it with relationship_knowledge_prepare using existing KNOWLEDGE/ ARCHITECTURE_NOTE.',
+      '6. Do not treat README/TASKS/roadmaps or existing implementation as source truth when stronger contracts/live evidence disagree.',
+      '7. State objective, scope and non-goals separately.',
+      '8. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
+      '9. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
+      '10. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
+      '11. Decompose top-down: Objective → Phase → Task → Job Pack → Milestone. Phase/Job Pack/Milestone are planning concepts expressed through existing Jobs/Tasks/topology unless evidence later requires schema promotion.',
+      '12. Size the executable Job as SMALL/MEDIUM/LARGE. A Job Pack must have one meaningful objective, one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
+      '13. Break work into Tasks that each have an observable completion criterion. Add dependencies only when one Task genuinely needs another Task output.',
+      '14. Split mega-Jobs when multiple causal chains or unrelated review domains would keep broad context alive too long. Do not create micro-Jobs for mechanical steps that cannot final meaningfully.',
+      '15. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
+      '16. Before persisting, run a coverage/sizing check: every requested outcome maps to a Task/criterion, every Task maps to the objective, the Job is neither mega nor meaningless micro, relationships/precedence are addressed, and no material product decision was silently invented.',
+      '17. Persist the plan as DRAFT, then continue autonomously in the SAME USER TURN: load Reviewer contract, review the exact planning revision, switch back to Planner on CHANGES_REQUIRED, revise and re-review until PASS or Human Gate, and only then promote READY. Never return a final planning summary immediately after creating/updating the DRAFT.',
+      '18. If a materially different objective or causal chain appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
   'coding-loop': {
@@ -321,6 +337,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'A code Run is not “edit once then report”. Use an evidence-driven loop.',
       '',
       'OBSERVE',
+      '- Load L2 execution context: exact target, direct callers/consumers, relevant tests/contracts and recorded relationships. Expand to L3 only when findings/failures reveal a need.',
       '- Read the exact target and nearby conventions before editing.',
       '- Identify project-specific verification commands from repository evidence.',
       '',
@@ -335,6 +352,12 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'VERIFY',
       '- Run applicable build/test/lint/type checks that are actually available.',
       '- A failed check is evidence to diagnose, not something to hide or route around.',
+      '',
+      'SELF-REVIEW CLOSURE',
+      '- Re-read the original Job objective and active Task criteria before success handoff.',
+      '- Inspect actual diff plus affected relationship/contract boundaries and identify ordinary defects or missed requirements.',
+      '- Repair within-scope findings and repeat INSPECT → VERIFY before Goal Recheck.',
+      '- Record downstream follow-up without drifting into another Job.',
       '',
       'GOAL RECHECK',
       '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
@@ -375,8 +398,8 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- For multi-repo Projects, require exactly one declared working repository for the Job and a cross-repo impact assessment covering every registered repo.',
       '- If Planner skipped structure discovery and planned only from README/TASKS/known descriptions, return CHANGES_REQUIRED.',
       '- Re-read Project contract and selectively open files needed to test Planner assumptions.',
-      '- Check objective, scope, non-goals, task decomposition, dependencies, topology, completion criteria, verification requirements, UI_FIRST/UX_FIRST policy and Human Gates.',
-      '- Detect stale roadmap assumptions, duplicated already-implemented work, missing implementation work, mega-Job scope, orphan criteria, impossible ordering and silent material product decisions.',
+      '- Check objective, scope, non-goals, progressive context evidence, brownfield logic review, relationship/precedence assessment, Objective→Phase→Task→Job Pack→Milestone decomposition, Job sizing/context boundary, dependencies, topology, completion criteria, verification requirements, UI_FIRST/UX_FIRST policy and Human Gates.',
+      '- Detect stale roadmap assumptions, trusting existing brownfield behavior without review, wrong contract direction, duplicated already-implemented work, missing implementation work, mega-Job scope, meaningless micro-Job fragmentation, orphan criteria, impossible ordering and silent material product decisions.',
       '- PASS only when the plan is executable and internally coherent for its stated finite objective.',
       '- CHANGES_REQUIRED for fixable planning defects; give concrete findings to Planner and do not rewrite the plan yourself.',
       '- HUMAN_REVIEW_REQUIRED only for a genuine material product/architecture/subjective choice that Planner cannot decide.',
@@ -389,9 +412,11 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
     body: [
       '# Review Evidence',
       '- Bind review to one exact target revision.',
+      '- Decide whether the review is small enough for one bounded pass; for large review, make a compact review map and close meaningful sections before consolidation.',
       '- Read the actual diff/changed-file evidence, not only current file snapshots.',
       '- Derive criteria from the approved requirement/contract before reading the Coder self-assessment.',
-      '- Trace cross-file behavior when a local hunk cannot establish correctness.',
+      '- Review in the order requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence.',
+      '- Trace cross-file and cross-repo read-only context when a local hunk cannot establish correctness.',
       '- Findings need a concrete claim, evidence/failure scenario, severity and routing.',
       '- Prefer no finding over a speculative low-confidence warning.',
       '- Never repair source in Reviewer role.',
@@ -632,9 +657,9 @@ function createServer(req: Request) {
         'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
-        'Durable Project work uses the Job runtime spine: Planner -> repository structure scan -> selective source reads -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must additionally persist GOAL_RECHECK verification before a success handoff.',
+        'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
         'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract. Critic Reviewer is HUMAN-INVOKED ONLY. It must operate stateless-by-contract: ignore conversation history as evidence and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
-        'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, and Verification under VERIFICATION/.',
+        'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, Verification under VERIFICATION/, and durable relationship/contract knowledge under KNOWLEDGE/. Use relationship_knowledge_prepare for evidence-backed precedence/reread relationships instead of inventing a new record family.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
         'Setting acct -> get_profile. Setting repo -> get_memory_repo_config or set_memory_repo_config.',
         'Internal browser QA: Designer may use browser_ui_inspect for rendered visual evidence; Tester may use browser_test_flow for bounded non-destructive functional verification. These are GPT tools, not user CLI commands.',
@@ -1500,6 +1525,33 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
+        work_context: z.enum(['NEW','BROWNFIELD']),
+        phase: z.string().min(1),
+        milestone: z.string().min(1),
+        relationship_scan_summary: z.string().min(1),
+        job_sizing: z.object({
+          size: z.enum(['SMALL','MEDIUM','LARGE']),
+          rationale: z.string().min(1),
+          bounded_causal_chain: z.string().min(1),
+          context_boundary: z.array(z.string()).min(1),
+          independently_meaningful_completion: z.string().min(1),
+          split_or_keep_reason: z.string().min(1),
+        }),
+        brownfield_logic_review: z.array(z.object({
+          target: z.string().min(1),
+          classification: z.enum(['CANONICAL','LEGACY','ACCIDENTAL','INCORRECT','UNKNOWN']),
+          evidence: z.array(z.string()).min(1),
+          implication: z.string().min(1),
+        })).default([]),
+        relationship_assessment: z.array(z.object({
+          source: z.string().min(1),
+          target: z.string().min(1),
+          relationship: z.string().min(1),
+          precedence: z.string().min(1),
+          reason: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          reread_condition: z.string().min(1),
+        })).default([]),
         repository_structure_evidence: z.array(z.string()).min(1),
         selected_source_evidence: z.array(z.string()).default([]),
         project_repository_mode: z.enum(['SINGLE','MULTI']),
@@ -1537,7 +1589,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1554,6 +1606,9 @@ function createServer(req: Request) {
       }
       if (project_repository_mode === 'MULTI' && normalizedRegistered.length < 2) {
         return { content: [{ type: 'text', text: 'MULTI Project requires at least two registered repositories.' }], isError: true }
+      }
+      if (work_context === 'BROWNFIELD' && !(brownfield_logic_review ?? []).length) {
+        return { content: [{ type: 'text', text: 'BROWNFIELD_PLANNING_INCOMPLETE: relevant existing logic review evidence is required before preparing the Job.' }], isError: true }
       }
       const jobId = uuidv7()
       const now = new Date().toISOString()
@@ -1580,6 +1635,15 @@ function createServer(req: Request) {
         objective,
         scope,
         non_goals,
+        planning_context: {
+          work_context,
+          phase,
+          milestone,
+          relationship_scan_summary,
+          job_sizing,
+          brownfield_logic_review: brownfield_logic_review ?? [],
+          relationship_assessment: relationship_assessment ?? [],
+        },
         repository_discovery: {
           structure_evidence: repository_structure_evidence,
           selected_source_evidence: selected_source_evidence ?? [],
@@ -1617,19 +1681,25 @@ function createServer(req: Request) {
         updated_at: now,
       }
       const path = recordPath(project_id, 'JOBS', jobId)
+      const externalSteps = [
+        'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
+        'GitHub Memory Repo: create_file at memory_path with job_record_text.',
+        'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
+      ]
+      if ((relationship_assessment ?? []).length) {
+        externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
+      }
+      externalSteps.push(
+        'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
+        'Do not modify source during Planner Job persistence.',
+      )
       const result = {
         job_id: jobId,
         handle: jobHandle(jobId),
         memory_path: path,
         job_record_text: prettyJson(record),
-        external_steps: [
-          'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
-          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
-          'GitHub Memory Repo: create_file at memory_path with job_record_text.',
-          'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
-          'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
-          'Do not modify source during Planner Job persistence.',
-        ],
+        external_steps: externalSteps,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -1739,6 +1809,33 @@ function createServer(req: Request) {
         objective: z.string().min(1).optional(),
         scope: z.array(z.string()).optional(),
         non_goals: z.array(z.string()).optional(),
+        work_context: z.enum(['NEW','BROWNFIELD']).optional(),
+        phase: z.string().min(1).optional(),
+        milestone: z.string().min(1).optional(),
+        relationship_scan_summary: z.string().min(1).optional(),
+        job_sizing: z.object({
+          size: z.enum(['SMALL','MEDIUM','LARGE']),
+          rationale: z.string().min(1),
+          bounded_causal_chain: z.string().min(1),
+          context_boundary: z.array(z.string()).min(1),
+          independently_meaningful_completion: z.string().min(1),
+          split_or_keep_reason: z.string().min(1),
+        }).optional(),
+        brownfield_logic_review: z.array(z.object({
+          target: z.string().min(1),
+          classification: z.enum(['CANONICAL','LEGACY','ACCIDENTAL','INCORRECT','UNKNOWN']),
+          evidence: z.array(z.string()).min(1),
+          implication: z.string().min(1),
+        })).optional(),
+        relationship_assessment: z.array(z.object({
+          source: z.string().min(1),
+          target: z.string().min(1),
+          relationship: z.string().min(1),
+          precedence: z.string().min(1),
+          reason: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          reread_condition: z.string().min(1),
+        })).optional(),
         repository_structure_evidence: z.array(z.string()).optional(),
         selected_source_evidence: z.array(z.string()).optional(),
         tasks: z.array(z.any()).optional(),
@@ -1759,7 +1856,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to revise a Job plan.')
       let current: any
@@ -1775,6 +1872,15 @@ function createServer(req: Request) {
         objective: objective ?? current.objective,
         scope: scope ?? current.scope,
         non_goals: non_goals ?? current.non_goals,
+        planning_context: {
+          work_context: work_context ?? current.planning_context?.work_context ?? 'NEW',
+          phase: phase ?? current.planning_context?.phase ?? 'UNSPECIFIED',
+          milestone: milestone ?? current.planning_context?.milestone ?? 'UNSPECIFIED',
+          relationship_scan_summary: relationship_scan_summary ?? current.planning_context?.relationship_scan_summary ?? 'UNSPECIFIED',
+          job_sizing: job_sizing ?? current.planning_context?.job_sizing ?? null,
+          brownfield_logic_review: brownfield_logic_review ?? current.planning_context?.brownfield_logic_review ?? [],
+          relationship_assessment: relationship_assessment ?? current.planning_context?.relationship_assessment ?? [],
+        },
         repository_discovery: {
           structure_evidence: repository_structure_evidence ?? current.repository_discovery?.structure_evidence ?? [],
           selected_source_evidence: selected_source_evidence ?? current.repository_discovery?.selected_source_evidence ?? [],
@@ -1854,6 +1960,15 @@ function createServer(req: Request) {
       if (!(current.repository_discovery?.structure_evidence ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: repository structure evidence is required before planning review.' }], isError: true }
       }
+      if (!current.planning_context?.job_sizing?.size || !(current.planning_context?.job_sizing?.context_boundary ?? []).length) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: V2 Job sizing and context boundary evidence are required before planning review.' }], isError: true }
+      }
+      if (!current.planning_context?.relationship_scan_summary) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: relationship mapping summary is required before planning review.' }], isError: true }
+      }
+      if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
+      }
       if (result === 'PASS' && (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity))) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
@@ -1871,6 +1986,7 @@ function createServer(req: Request) {
         limitations: limitations ?? [],
         repository_structure_evidence: current.repository_discovery.structure_evidence,
         selected_source_evidence: current.repository_discovery.selected_source_evidence ?? [],
+        planning_context: current.planning_context ?? null,
         created_at: new Date().toISOString(),
       }
       const reviewedJob = {
@@ -2178,6 +2294,86 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'relationship_knowledge_prepare',
+    {
+      title: 'Prepare durable Project relationship knowledge',
+      description: 'Prepare an existing KNOWLEDGE/ ARCHITECTURE_NOTE artifact for repo/subsystem relationship direction and reread conditions. This does not create a new record family.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        title: z.string().min(1),
+        source: z.string().min(1),
+        target: z.string().min(1),
+        relationship: z.string().min(1),
+        precedence: z.string().min(1),
+        reason: z.string().min(1),
+        evidence: z.array(z.string()).default([]),
+        reread_condition: z.string().min(1),
+        depends_on: z.array(z.string()).default([]),
+        approved_by_or_source: z.string().min(1),
+      },
+      outputSchema: {
+        knowledge_id: z.string(),
+        memory_path: z.string(),
+        knowledge_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, title, source, target, relationship, precedence, reason, evidence, reread_condition, depends_on, approved_by_or_source }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError('Authentication required to prepare relationship knowledge.')
+      const knowledgeId = uuidv7()
+      const now = new Date().toISOString()
+      const body = [
+        '---',
+        'knowledge_id: ' + knowledgeId,
+        'project_id: ' + project_id,
+        'kind: ARCHITECTURE_NOTE',
+        'title: ' + JSON.stringify(title),
+        'revision: 1',
+        'validity: CURRENT',
+        'depends_on: ' + JSON.stringify(depends_on ?? []),
+        'approved_by_or_source: ' + JSON.stringify(approved_by_or_source),
+        'updated_at: ' + now,
+        '---',
+        '',
+        '# ' + title,
+        '',
+        '## Relationship',
+        '- source: ' + source,
+        '- target: ' + target,
+        '- relationship: ' + relationship,
+        '- precedence: ' + precedence,
+        '',
+        '## Reason',
+        reason,
+        '',
+        '## Evidence',
+        ...((evidence ?? []).length ? (evidence ?? []).map((x: string) => '- ' + x) : ['- none recorded']),
+        '',
+        '## Reread condition',
+        reread_condition,
+        '',
+      ].join('\n')
+      const path = knowledgePath(project_id, knowledgeId, title)
+      const out = {
+        knowledge_id: knowledgeId,
+        memory_path: path,
+        knowledge_record_text: body,
+        external_steps: [
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
+          'Persist knowledge_record_text at memory_path in the configured Memory Repo.',
+          'Read back the Knowledge artifact before treating the relationship as durable Project memory.',
+          'When the reread condition becomes true, re-read the current source-of-truth side before downstream planning or implementation.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
     'goal_recheck_record',
     {
       title: 'Prepare Coder Goal Recheck evidence',
@@ -2268,6 +2464,8 @@ function createServer(req: Request) {
         result: z.string().optional(),
         output_refs: z.array(z.string()).default([]),
         verification_refs: z.array(z.string()).default([]),
+        goal_recheck_record_text: z.string().min(2).optional(),
+        goal_recheck_verification_ref: z.string().min(1).optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
           primary_task_id: z.string().uuid().optional(),
@@ -2293,7 +2491,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, handoff }: any) => {
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, handoff }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to complete a Run.')
       let current: any
@@ -2302,6 +2500,28 @@ function createServer(req: Request) {
       }
       if (current.run_id !== run_id || current.project_id !== project_id || current.job_id !== job_id || current.role !== role || current.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'Run identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (role === 'coder' && lifecycle === 'COMPLETED') {
+        if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+        }
+        if (!(verification_refs ?? []).includes(goal_recheck_verification_ref)) {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK verification ref must be included in verification_refs.' }], isError: true }
+        }
+        let goal: any
+        try { goal = JSON.parse(goal_recheck_record_text) } catch {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
+        }
+        const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
+        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id) : ''
+        const persistedRefMatches = expectedGoalPath === goal_recheck_verification_ref
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && revisionMatches && persistedRefMatches
+        const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
+        const unresolvedDrift = (goal.scope_drift ?? []).length > 0
+        const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
+        if (!goalMatches || unresolvedNotMet || unresolvedDrift || !acceptableResult) {
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+        }
       }
       const runPath = recordPath(project_id, 'RUNS', run_id)
       let handoffId: string | null = null
