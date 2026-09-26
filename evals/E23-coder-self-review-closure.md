@@ -31,8 +31,9 @@ A downstream issue outside the active Job must be recorded/routed rather than im
 
 For `role=coder` and `lifecycle=COMPLETED`, `run_complete` must reject completion unless supplied GOAL_RECHECK:
 
-- matches the same project_id/job_id/run_id;
+- matches the same project_id/job_id/run_id and target revision when one is present;
 - has kind = GOAL_RECHECK;
+- its persisted verification ref is included in Run verification_refs;
 - has no criterion with result NOT_MET;
 - has no unresolved scope_drift;
 - has result PASS or PASS_RETEST_REQUIRED.
@@ -52,5 +53,5 @@ FAIL when:
 - test PASS alone permits successful completion;
 - Coder reports the ordinary defect to Human without attempting an in-scope fix;
 - Coder drifts into unrelated downstream work;
-- Goal Recheck belongs to another Run/revision;
+- Goal Recheck belongs to another Run/revision or is not referenced as persisted evidence;
 - unresolved NOT_MET or scope drift still permits COMPLETED.
