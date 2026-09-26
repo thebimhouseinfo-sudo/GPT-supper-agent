@@ -317,9 +317,9 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '5. Brownfield logic review is mandatory before extending important existing behavior: map relevant relationships/callers/consumers, inspect enough live logic to classify it as CANONICAL/LEGACY/ACCIDENTAL/INCORRECT/UNKNOWN, and establish authority/precedence direction when evidence permits. Record a relationship-scan summary even when the result is NONE; when a durable precedence/reread relationship is discovered, prepare it with relationship_knowledge_prepare using existing KNOWLEDGE/ ARCHITECTURE_NOTE.',
       '6. Do not treat README/TASKS/roadmaps or existing implementation as source truth when stronger contracts/live evidence disagree.',
       '7. State objective, scope and non-goals separately.',
-      '7. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
-      '8. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
-      '9. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
+      '8. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
+      '9. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
+      '10. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
       '11. Decompose top-down: Objective → Phase → Task → Job Pack → Milestone. Phase/Job Pack/Milestone are planning concepts expressed through existing Jobs/Tasks/topology unless evidence later requires schema promotion.',
       '12. Size the executable Job as SMALL/MEDIUM/LARGE. A Job Pack must have one meaningful objective, one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
       '13. Break work into Tasks that each have an observable completion criterion. Add dependencies only when one Task genuinely needs another Task output.',
@@ -2513,12 +2513,14 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && revisionMatches
+        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id) : ''
+        const persistedRefMatches = expectedGoalPath === goal_recheck_verification_ref
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && revisionMatches && persistedRefMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
         if (!goalMatches || unresolvedNotMet || unresolvedDrift || !acceptableResult) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
       const runPath = recordPath(project_id, 'RUNS', run_id)
