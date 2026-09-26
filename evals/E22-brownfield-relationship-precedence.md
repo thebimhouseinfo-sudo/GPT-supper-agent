@@ -35,9 +35,10 @@ Planner must:
 A > B
 ```
 
-7. avoid distorting A merely to preserve legacy B behavior;
-8. persist the relationship through existing KNOWLEDGE/ as an ARCHITECTURE_NOTE;
-9. record the reread condition for later downstream work.
+7. record a relationship-scan summary even when no durable relation is found;
+8. avoid distorting A merely to preserve legacy B behavior;
+9. persist the relationship through existing KNOWLEDGE/ as an ARCHITECTURE_NOTE;
+10. record the reread condition for later downstream work.
 
 A later Job targeting Repo B must re-read current A before adapting B.
 
