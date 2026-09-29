@@ -21,8 +21,6 @@ The target Online Tester must:
 9. persist evidence that later Planner/Coder work may consume as an explicit dependency;
 10. treat browser/tool presence as discovery only, never proof of usability.
 
-TinyFish is an OPTIONAL browser provider. It is not a required dependency and must not be built into the Tester contract.
-
 The existing GSA browser tools browser_ui_inspect and browser_test_flow are also not assumed usable merely because they are exposed. Their actual capability must first be established by explicit runtime PROBE checkpoints.
 
 ## 2. Why this is an architecture change, not a Tester-prompt change
@@ -83,7 +81,6 @@ This upgrade must NOT:
 - replace Coder lightweight self-checks;
 - replace Reviewer;
 - let Tester modify product implementation;
-- make TinyFish mandatory;
 - assume the existing Vercel Sandbox browser works before probing it;
 - create a general-purpose browser agent;
 - require a new persistent entity for every planning concept;
@@ -762,9 +759,107 @@ PASS_RETEST_REQUIRED remains valid only where the approved topology explicitly p
 
 Do not use PASS_RETEST_REQUIRED as a generic escape hatch for missing mandatory Tester evidence.
 
-## 17. Browser provider architecture
+## 17. UI Test Evidence Bundle and screenshot persistence
 
-Browser is an execution provider, not Tester architecture.
+UI/browser checkpoints should produce a human-viewable evidence folder, not only a JSON verdict.
+
+The current native browser implementation already creates real PNG screenshots inside the Vercel Sandbox and returns them as base64 image content. The missing capability is durable persistence after the sandbox Run ends.
+
+Target result layout in Project Memory:
+
+~~~text
+projects/<project-id>/
+  VERIFICATION/
+    UI/
+      <verification-id>/
+        report.md
+        result.json
+        screenshots/
+          01-desktop-before.png
+          02-desktop-after.png
+          03-tablet.png
+          04-mobile.png
+        snapshots/
+          initial.txt
+          final.txt
+        console.txt
+        page-errors.txt
+~~~
+
+The exact number of files is test-dependent; do not create empty files just to satisfy the shape.
+
+### Evidence rules
+
+- Screenshot files are evidence artifacts tied to verification_id + target_revision.
+- The TEST/RETEST Verification record remains the machine-readable authority.
+- report.md is the human-readable index for the evidence bundle.
+- result.json contains structured cases, classifications, measurements and artifact references.
+- screenshots/ contains only relevant captures, not every intermediate frame by default.
+- snapshot/console/error files are persisted when they materially support the verdict.
+- Retest creates a new evidence bundle for the new target revision; do not overwrite the prior failing evidence.
+- The user should be given the folder link/path after a UI Tester checkpoint so they can inspect evidence directly.
+- A PASS must not depend on screenshots alone when the criterion requires interaction/state verification.
+- A FAIL screenshot should identify which case/step it supports in result.json/report.md.
+
+### Screenshot naming
+
+Prefer deterministic names:
+
+~~~text
+<sequence>-<viewport>-<phase-or-case>.png
+~~~
+
+Examples:
+
+~~~text
+01-desktop-initial.png
+02-desktop-after-onboarding.png
+03-mobile-dashboard.png
+04-tablet-overflow-failure.png
+~~~
+
+### Persistence implementation requirement
+
+Do not assume inline MCP image content is durable.
+
+The browser bridge currently:
+1. creates the screenshot in the sandbox;
+2. reads it as base64;
+3. returns image content through the GSA MCP tool;
+4. destroys the sandbox after execution.
+
+Upgrade the browser evidence path so screenshot bytes can be persisted into the configured Project Memory evidence folder before the Tester Run is finalized.
+
+The implementation may use a bounded binary handoff/export mechanism, but it must preserve these invariants:
+
+- writes only inside the configured Memory Repo Project prefix;
+- every artifact path is authorized by the existing memory mutation guard;
+- binary artifacts are not embedded as huge base64 strings inside Verification JSON;
+- the persisted file is read-back/verified before its ref is accepted as evidence;
+- a failed artifact write is reported as an evidence limitation and never silently treated as persisted;
+- source repositories are not used as the default screenshot store;
+- historical evidence is append-preserving.
+
+If direct binary persistence through the current GitHub connector proves awkward, introduce one narrow evidence-artifact export mechanism rather than broadening Tester/source write authority.
+
+### User-facing result
+
+A successful UI Test report should end with a compact result plus the durable evidence folder, for example:
+
+~~~text
+CP-UI-02: FAIL
+Revision: <sha>
+Cases: 5/6 passed
+Failure: mobile lesson canvas clipped at 390x844
+Evidence folder:
+projects/<project-id>/VERIFICATION/UI/<verification-id>/
+~~~
+
+This makes Tester output inspectable by Human without requiring the conversation to retain every screenshot.
+
+## 18. Native browser capability architecture
+
+Browser execution is a native GSA capability layer, not the Tester architecture itself.
 
 Logical capabilities:
 
@@ -782,25 +877,16 @@ browser.viewport
 browser.session_profile
 ~~~
 
-Providers may include:
+Current provider:
 
 1. GSA_NATIVE_SANDBOX
    - current browser_ui_inspect
    - current browser_test_flow
-   - actual capability status UNKNOWN until probe succeeds
+   - each primitive is trusted only after the corresponding probe succeeds
 
-2. TINYFISH
-   - OPTIONAL
-   - external hosted provider
-   - must be capability-probed before being trusted
-   - absence must not break GSA core behavior
+The Tester contract remains capability-based so the browser implementation can evolve without changing checkpoint semantics.
 
-3. future providers
-   - allowed without changing Tester semantics
-
-Selection policy should be capability-based, not provider-name based.
-
-## 18. Mandatory browser bootstrap probes
+## 19. Mandatory browser bootstrap probes
 
 Before treating the existing native sandbox as a reliable Tester backend, run explicit experiments.
 
@@ -849,7 +935,7 @@ Measure:
 
 Only after these probes should capabilities be marked evidence-backed.
 
-## 19. UI verification policy
+## 20. UI verification policy
 
 Observation-only UI testing is first-class and useful even if full interaction automation is unreliable.
 
@@ -877,7 +963,7 @@ Automatable objective checks include:
 
 Subjective aesthetic quality remains NEEDS_HUMAN unless objective design criteria exist.
 
-## 20. Browser QA document changes
+## 21. Browser QA document changes
 
 docs/architecture/BROWSER-QA.md should be revised after capability probes.
 
@@ -893,9 +979,9 @@ known limitations
 last probe evidence
 ~~~
 
-Do not hard-code TinyFish into this document except as an optional external provider example.
+Do not introduce an external browser provider into this document unless a later architecture decision explicitly requires one.
 
-## 21. Reviewer changes
+## 22. Reviewer changes
 
 Reviewer needs two additions.
 
@@ -919,7 +1005,7 @@ Reviewer reviews the Coder repair against:
 
 Reviewer does not modify Tester-owned expected behavior to make the repair appear successful.
 
-## 22. Coder changes
+## 23. Coder changes
 
 Coder harness needs explicit rules:
 
@@ -931,7 +1017,7 @@ Coder harness needs explicit rules:
 
 Coder self-check remains deliberately shallow compared with Tester.
 
-## 23. Direct Tester
+## 24. Direct Tester
 
 Direct Agent Tester remains useful for ad-hoc diagnosis.
 
@@ -944,7 +1030,7 @@ but direct work is ephemeral by default unless the user explicitly promotes/pers
 
 Direct Tester must not mutate durable Job topology.
 
-## 24. Capability registry strategy
+## 25. Capability registry strategy
 
 Do not build a global mutable capability database first.
 
@@ -963,7 +1049,7 @@ Later, if repeated lookup cost becomes significant, introduce a rebuildable capa
 
 A stale historical browser success must not prove current capability forever.
 
-## 25. Changes by subsystem
+## 26. Changes by subsystem
 
 | Subsystem | Change |
 |---|---|
@@ -983,12 +1069,12 @@ A stale historical browser success must not prove current capability forever.
 | Verification records | Major TEST/RETEST/MEASURE/PROBE extensions |
 | State machine | Add derived checkpoint state semantics |
 | Job completion | Enforce required checkpoint evidence |
-| Browser QA | Convert provider assumptions into capability-probed behavior |
-| TinyFish | Optional adapter only |
+| Browser QA | Convert runtime assumptions into capability-probed behavior |
+| UI evidence bundle | Persist screenshots/snapshots/logs under per-verification folder and return folder to user |
 | Review Coverage Summary | Derive checkpoint/Test/Retest coverage by exact revision |
 | Evals | Add planning/checkpoint/tester/browser-probe scenarios |
 
-## 26. Implementation milestones
+## 27. Implementation milestones
 
 ### M1 — Tester semantic foundation
 
@@ -1037,7 +1123,8 @@ Change:
 - derived checkpoint state;
 - Orchestrator dispatch;
 - FAIL → Coder → Reviewer → RETEST;
-- Handoff required evidence inputs.
+- Handoff required evidence inputs;
+- UI evidence bundle manifest/ref support (persistence may land in M5 with browser binary export).
 
 Acceptance:
 - a failed checkpoint routes to repair;
@@ -1064,25 +1151,26 @@ Acceptance:
 - no capability marked functional without successful real execution;
 - failures are classified without blaming application code prematurely.
 
-### M5 — Browser adapter integration
+### M5 — Native browser evidence integration
 
-Goal: let Tester select an execution provider by observed capability.
+Goal: let Tester use only the native GSA browser primitives that have been proven by capability probes.
 
 First:
 - native GSA browser if proven usable for the required primitive.
 
-Optional:
-- TinyFish when connected and separately proven usable.
 
 Acceptance:
-- Tester semantics do not change when provider changes;
-- provider absence can yield BLOCKED/NEEDS_HUMAN, never fabricated PASS.
+- Tester semantics remain capability-based;
+- unavailable native capability yields BLOCKED/NEEDS_HUMAN, never fabricated PASS.
 
 ### M6 — Regression accumulation and final checkpoint
 
 Goal: make final Tester verification include relevant prior checkpoint regression.
 
 Change:
+- persist native browser screenshots/snapshots/logs into the UI Test evidence folder;
+- return the human-viewable evidence-folder reference from Tester report;
+- verify binary artifact persistence/read-back;
 - checkpoint regression references;
 - final Job Tester surface;
 - Review Coverage Summary integration.
@@ -1091,7 +1179,7 @@ Acceptance:
 - final evidence identifies which prior checkpoint surfaces were rerun;
 - unrelated tests are not automatically accumulated forever.
 
-## 27. Required evals
+## 28. Required evals
 
 Add at least:
 
@@ -1140,14 +1228,6 @@ Expected capability matrix:
 - click/fill = unverified/failed;
 - observation-only UI checkpoints remain usable.
 
-### E-Tester-06 — optional provider
-
-TinyFish unavailable/not connected.
-
-Expected:
-- core Tester still works for non-TinyFish capabilities;
-- no architecture failure.
-
 ### E-Tester-07 — checkpoint overuse
 
 Planner creates Tester checkpoint after every trivial Task.
@@ -1163,7 +1243,7 @@ Expected:
 - measurement persisted;
 - no automatic PASS/FAIL performance conclusion.
 
-## 28. Migration order
+## 29. Migration order
 
 Recommended implementation order:
 
@@ -1180,13 +1260,12 @@ docs/contracts
 → evals/regression
 ~~~
 
-Do not start by wiring TinyFish.
 
 Do not start by assuming the native sandbox succeeds.
 
 The first executable browser work should itself be a Tester PROBE that produces evidence for the following implementation phase.
 
-## 29. Concrete source files expected to change
+## 30. Concrete source files expected to change
 
 Likely primary files:
 
@@ -1206,7 +1285,7 @@ Potentially add a dedicated architecture document after M1, e.g.:
 
 Do not duplicate Local's spec verbatim. Online canonical documentation should describe the shared semantics plus Online persistence/provider differences.
 
-## 30. Important implementation cautions
+## 31. Important implementation cautions
 
 1. Do not make Test Checkpoints ordinary coding Tasks just to avoid topology work.
 2. Do not let Tester become a second Reviewer.
@@ -1221,7 +1300,7 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 11. Do not make PROBE/MEASURE outputs informal chat context when later work depends on them.
 12. Do not force a new persistent record family until existing Verification/Handoff topology proves insufficient.
 
-## 31. Target end-state example
+## 32. Target end-state example
 
 ~~~text
 Planner
