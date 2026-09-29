@@ -19,7 +19,12 @@ The target Online Tester must:
 7. route product failures back to Coder, then apply the existing planned/mandatory review floor before Tester RETEST when review is actually required;
 8. bind all evidence to the exact target revision/state;
 9. persist evidence that later Planner/Coder work may consume as an explicit dependency;
-10. treat browser/tool presence as discovery only, never proof of usability.
+10. treat browser/tool presence as discovery only, never proof of usability;
+11. preserve unknown runtime facts as first-class EvidenceNeed records from planning through execution;
+12. support checkpoints whose prerequisites span multiple Tasks/Job Packs or a Milestone boundary;
+13. make checkpoint attempts crash/resume-safe and duplicate-resistant;
+14. reuse evidence only when its declared applicability dimensions still match;
+15. route newly discovered PLAN_GAP/SPEC_GAP through replanning; Tester never mutates topology itself.
 
 The existing GSA browser tools browser_ui_inspect and browser_test_flow are also not assumed usable merely because they are exposed. Their actual capability must first be established by explicit runtime PROBE checkpoints.
 
@@ -36,6 +41,18 @@ This revision incorporates the independent CR findings against revision a6b12a94
 - binary UI evidence moves to a private evidence object store with a human evidence viewer;
 - screenshot retention, privacy and size budgets are explicit;
 - screenshot persistence moves into the browser-evidence milestone, while the final milestone remains regression-only.
+
+### Local GSA CR cross-port findings
+
+The GSA Local architecture review exposed five additional invariants that also apply to Online GSA, adapted to Online's different control plane:
+
+- unknown runtime facts must survive planning as first-class evidence needs rather than prose;
+- checkpoints may guard a boundary created by multiple upstream work nodes, not only one Task;
+- checkpoint execution must be resume-safe and lease/attempt-bound;
+- evidence validity must be dimension-aware rather than "exact revision only" or unconstrained reuse;
+- Tester-discovered planning/specification gaps must force a Planner-owned plan revision and superseding topology; Tester never rewrites the graph.
+
+Online GSA does not copy Local's PlanArtifact/Job Builder/SQLite implementation literally. The equivalent Online contracts are Job planning_revision + evidence_needs[], normalized TestCheckpoint/EvidenceRequirement records, typed topology, GitHub-CAS checkpoint control, Run/Verification records and Planner revision flow.
 
 ## 2. Why this is an architecture change, not a Tester-prompt change
 
@@ -235,6 +252,7 @@ Tester must classify execution before routing:
 - NOT_READY
 - INTEGRATION_NOT_READY
 - SPEC_GAP
+- PLAN_GAP
 
 Rules:
 
@@ -243,85 +261,158 @@ Rules:
 - unavailable hosted browser is ENVIRONMENT_FAILURE, not PASS;
 - tool discovered but not callable is INTEGRATION_NOT_READY;
 - unclear expected behavior is SPEC_GAP;
+- missing/insufficient approved execution structure or newly discovered architectural uncertainty is PLAN_GAP;
+- neither SPEC_GAP nor PLAN_GAP authorizes Tester to add/change checkpoints;
 - UNVERIFIED != PASS.
+
 
 ## 8. Test Checkpoint contract
 
-A Test Checkpoint should become an explicit topology/gate contract declared by Planner.
+A Test Checkpoint is an explicit topology/gate contract. It is not an ordinary coding Task and is not assumed to belong to exactly one upstream Task.
 
-It does not need to become a new top-level hierarchy entity. It can be represented as a typed topology node / embedded checkpoint record in the Job.
+Checkpoint semantics are stored in the Job; ordering is stored only in typed topology.
 
-Proposed minimum shape:
+Proposed normalized shape:
 
-~~~json
-{
-  "checkpoint_id": "CP-UI-02",
-  "kind": "TEST_CHECKPOINT",
-  "mode": ["VERIFY"],
-  "after_task_refs": ["<task-id>"],
-  "goal": "Lesson shell renders correctly at required viewports",
-  "acceptance_criteria": [
-    "header visible",
-    "learning canvas fully visible",
-    "no horizontal overflow"
-  ],
-  "required_capabilities": [
-    "browser.open_public_url",
-    "browser.render_js",
-    "browser.screenshot"
-  ],
-  "target": {
-    "ref_source": "current reviewed revision",
-    "runtime_url_source": "deployment evidence"
-  },
-  "downstream_consumers": [
-    {
-      "task_ref": "<later-task-id>",
-      "required_output": "ui-shell-verification"
-    }
-  ],
-  "blocking_policy": "BLOCK_DOWNSTREAM_ON_UNVERIFIED"
+~~~text
+TestCheckpointSpec {
+  checkpoint_id
+  name?
+  modes[] = VERIFY | MEASURE | PROBE
+  source_evidence_need_ids[]
+  goal
+  acceptance_criteria[]
+  required_capabilities[]
+  required_outputs[]
+  blocking_policy
+  regression_scope?
+  repair_review_policy = TOPOLOGY | REQUIRED
+
+  boundary {
+    kind = AFTER_NODE_SET | BEFORE_NODE | MILESTONE_GATE | JOB_FINAL
+    prerequisite_node_refs[]
+    before_node_ref?
+    milestone_id?
+  }
 }
 ~~~
 
-Not every field must be persisted exactly in this shape, but these semantics must survive.
+Boundary rules:
+
+- AFTER_NODE_SET: checkpoint becomes due only after every prerequisite node is satisfied.
+- BEFORE_NODE: checkpoint must be satisfied before the named downstream node can become READY.
+- MILESTONE_GATE: checkpoint guards Milestone completion and may integrate outputs from several upstream Tasks/Job Packs.
+- JOB_FINAL: checkpoint belongs to final Job acceptance/regression.
+
+The same checkpoint may therefore integrate multiple implementation slices.
+
+Do not encode a second ordering source such as after_task_refs on Task records. The normalized boundary is compiled into canonical topology edges.
 
 ## 9. Planner changes
 
 Planner is the largest non-Tester impact.
 
-### 9.1 Planning decomposition
+### 9.1 First-class EvidenceNeed / UnknownRuntimeFact
 
-Current planning already uses:
+Planner must not leave required runtime facts only in prose.
 
-~~~text
-Objective → Phase → Task → Job Pack → Milestone
-~~~
-
-Upgrade this to explicitly ask at Phase/Task/Milestone boundaries:
+Add first-class planning data under the Job planning artifact:
 
 ~~~text
-What assumption becomes testable here?
-Would later work become expensive or invalid if this assumption is wrong?
-Is this a meaningful checkpoint?
-If yes:
-  VERIFY?
-  MEASURE?
-  PROBE?
-What downstream work consumes the result?
+evidence_needs[] {
+  evidence_need_id
+  kind = EVIDENCE_NEED | UNKNOWN_RUNTIME_FACT
+  question
+  purpose
+  requirement = REQUIRED | OPTIONAL
+  preferred_modes[] = VERIFY | MEASURE | PROBE
+  expected_outputs[]
+  consumer_refs[]
+  measurement_or_acceptance_intent
+  applicability_intent {
+    source_dimensions[]
+    config_dimensions[]
+    runtime_dimensions[]
+    time_sensitivity?
+  }
+}
 ~~~
 
-### 9.2 Checkpoint placement rule
+Meaning:
+
+- question = the fact that is not yet known;
+- purpose = why the project needs to know it;
+- consumer_refs = planned Task/Milestone/outcome that cannot safely proceed without it;
+- measurement_or_acceptance_intent states whether the output is a raw fact, threshold comparison, behavioral proof, etc.;
+- applicability_intent tells later execution what dimensions are expected to determine whether evidence can be reused.
+
+evidence_needs[] is part of planning_revision and therefore reviewed exactly like objective/scope/tasks.
+
+Backward compatibility:
+
+~~~text
+legacy Job without evidence_needs
+→ evidence_needs = []
+~~~
+
+### 9.2 Planner → execution transform invariant
+
+Online GSA currently has no separate Job Builder agent. Therefore job_prepare/job_revise_plan perform the equivalent normalization step.
+
+They MUST:
+
+~~~text
+read first-class evidence_needs[]
+→ normalize TestCheckpointSpec
+→ normalize EvidenceRequirement
+→ build typed topology
+~~~
+
+They MUST NOT:
+
+- infer a required empirical need from arbitrary prose;
+- invent a threshold;
+- invent a measured value;
+- silently drop a REQUIRED evidence need;
+- create a checkpoint with no trace back to its source evidence need when the checkpoint exists to satisfy that need.
+
+For every REQUIRED EvidenceNeed, normalization must produce either:
+
+~~~text
+a satisfiable checkpoint + EvidenceRequirement mapping
+OR
+PLAN_GAP
+~~~
+
+No third state.
+
+### 9.3 Planning decomposition
+
+At Phase/Task/Milestone boundaries Planner asks:
+
+~~~text
+What is still unknown?
+Does later work depend on knowing it?
+Is it already represented as EvidenceNeed?
+When does it become testable/measureable?
+Does the checkpoint require one upstream node or a set?
+Is it VERIFY, MEASURE or PROBE?
+What downstream work consumes the output?
+What dimensions determine evidence validity?
+~~~
+
+### 9.4 Checkpoint placement rule
 
 Planner SHOULD add a Test Checkpoint when one or more is true:
 
 - a functional slice becomes executable;
+- multiple implementation slices now form a meaningful integration boundary;
 - later work materially depends on behavior just implemented;
 - a protocol/state/integration boundary changed;
 - a user flow is now testable end-to-end;
 - an unverified assumption could invalidate substantial later work;
 - the next phase needs a measured runtime value;
-- the foundation should be proven before significant additional coding;
+- a Milestone should not close without integration verification;
 - final Job verification requires accumulated regression.
 
 Planner SHOULD NOT add a checkpoint:
@@ -331,40 +422,27 @@ Planner SHOULD NOT add a checkpoint:
 - where Coder build/lint/self-smoke is sufficient;
 - where no meaningful independent verification is possible.
 
-
-### 9.3 Task list impact
+### 9.5 Task list impact
 
 Do not add checkpoint linkage fields to Embedded Task as a second source of truth.
 
 Task remains focused on implementation work:
 
-~~~json
-{
-  "task_id": "...",
-  "objective": "...",
-  "scope": ["..."],
-  "dependencies": ["..."],
-  "completion_criteria": ["..."]
-}
-~~~
-
-Whether a Task is upstream/downstream of a Test Checkpoint is derived from the canonical typed topology.
-
-Status/task-list UX may display derived labels such as:
-
 ~~~text
-SELF CHECK ONLY
-AWAITING CP-2
-PROVIDES INPUT TO CP-3
+task_id
+objective
+scope[]
+dependencies[]
+completion_criteria[]
 ~~~
 
-but those labels are materialized views, not persisted Task authority.
+Whether a Task is upstream/downstream of a checkpoint is derived from canonical topology.
 
-### 9.4 Milestone impact
+Status UX may display derived labels such as AWAITING_CP / PROVIDES_INPUT_TO_CP, but those labels are not persisted authority.
 
-The current single planning_context.milestone string is not sufficient for checkpoint-aware completion.
+### 9.6 Milestone impact
 
-Keep the existing milestone string as a backward-compatible human label, and add embedded structured milestone groups rather than creating a new top-level persistent record family:
+Keep planning_context.milestone as a backward-compatible human label and add structured milestone groups:
 
 ~~~text
 milestones[] {
@@ -376,82 +454,69 @@ milestones[] {
 }
 ~~~
 
-Milestone groups reference canonical topology nodes; they do not duplicate ordering.
+A Milestone checkpoint may have multiple prerequisite nodes.
 
 Example:
 
 ~~~text
-M2 complete when:
-- T3 and T4 completion criteria are satisfied;
-- CP-2 VERIFY is PASS;
-- CP-3 PROBE required outputs exist;
-- no required node in M2 is BLOCKED or STALE.
+M2:
+  T3 + T4 + T5 complete
+  → CP-INTEGRATION-2 due
+  → CP-INTEGRATION-2 SATISFIED
+  → M2 complete
 ~~~
 
-Milestone state is derived from Task/Run/Review/Tester Verification state.
+Milestone state is derived from Tasks/Runs/Reviews/Checkpoint/Verification records.
 
-Old Jobs without milestones[] remain valid and continue using the legacy milestone label.
-
-### 9.5 Planning review impact
+### 9.7 Planning review impact
 
 Planning Reviewer must verify:
 
+- every REQUIRED evidence need is represented structurally, not only in prose;
+- every REQUIRED evidence need maps to checkpoint/evidence requirement or explicit PLAN_GAP;
 - checkpoints are meaningful rather than habitual;
-- critical assumptions are not left unverified;
+- multi-node integration boundaries include all real prerequisites;
 - later Tasks do not depend on guessed values when a feasible PROBE/MEASURE could produce them;
-- checkpoint placement does not create excessive orchestration overhead;
-- topology edges are the single ordering/dependency authority;
+- topology edges are the single ordering authority;
 - Milestone completion requirements reference valid topology/checkpoint nodes;
-- required Tester outputs have explicit downstream consumers through topology/Handoff requirements;
+- applicability intent is sufficient for important reusable evidence;
 - final regression surface is adequate;
 - capability assumptions are not falsely marked available.
-
 
 ## 10. Job record / job_prepare changes
 
 Current job_prepare persists planning context, tasks, generated topology, verification requirements and review triggers.
 
-The upgrade keeps backward compatibility but makes topology expressive enough for Tester checkpoints.
+The upgrade adds first-class empirical planning and normalized checkpoint/evidence contracts.
 
-### 10.1 Input schema
+### 10.1 Input / planning schema
 
-Add optional Planner-declared test_checkpoints[] and milestones[].
-
-Checkpoint semantic contract:
+Add:
 
 ~~~text
-test_checkpoints[] {
-  checkpoint_id?
-  name?
-  modes[] = VERIFY | MEASURE | PROBE
-  goal
-  acceptance_criteria[]
-  required_capabilities[]
-  planned_evidence[]
+evidence_needs[]
+test_checkpoints[]
+milestones[]
+~~~
+
+Planner may provide checkpoint intent explicitly, but any checkpoint satisfying an EvidenceNeed must reference source_evidence_need_ids[].
+
+Add normalized EvidenceRequirement:
+
+~~~text
+EvidenceRequirement {
+  evidence_requirement_id
+  evidence_need_id
+  checkpoint_id
   required_outputs[]
-  blocking_policy
-  regression_scope?
-  repair_review_policy = TOPOLOGY | REQUIRED
+  consumer_node_refs[]
+  applicability_requirement
 }
 ~~~
-
-Milestone contract:
-
-~~~text
-milestones[] {
-  milestone_id?
-  name
-  member_node_refs[]
-  completion_requirements[]
-  required_checkpoint_refs[]
-}
-~~~
-
-Do NOT persist after_task_refs, downstream_consumers, task.checkpoint_refs or task.verification_class as independent ordering authorities.
 
 ### 10.2 Typed topology is the ordering authority
 
-Upgrade topology from a linear Task-only list into typed nodes:
+Upgrade topology into typed nodes:
 
 ~~~text
 topology[] {
@@ -463,113 +528,220 @@ topology[] {
 }
 ~~~
 
-Checkpoint definitions own checkpoint semantics.
-Topology owns ordering/dependencies.
-Tasks own implementation scope/completion criteria.
-Milestone groups own grouping/completion requirements.
+Checkpoint boundary compiles into these edges. Multiple depends_on entries are valid and expected for integration checkpoints.
 
-Example:
+Authority split:
 
 ~~~text
-T1
- ↓
-T2
- ↓
-CP1:TESTER
- ├─ satisfied → T3
- ├─ product failure → repair route
- └─ blocked → blocking-policy route
+EvidenceNeed        = why a runtime fact/evidence is required
+TestCheckpointSpec  = what Tester must establish and at what boundary
+EvidenceRequirement = which output downstream work requires
+Topology            = ordering/dependency
+Task                = implementation scope
+Milestone           = grouping/completion gate
 ~~~
 
-No second persisted edge set should be introduced.
+### 10.3 Normalization validation
 
-### 10.3 Plan revision
+job_prepare/job_revise_plan must reject:
+
+- REQUIRED EvidenceNeed with no checkpoint/evidence requirement and no PLAN_GAP;
+- EvidenceRequirement referencing unknown need/checkpoint/output;
+- checkpoint boundary referencing missing topology node;
+- MILESTONE_GATE with missing milestone;
+- consumer node that is reachable before its required checkpoint;
+- conflicting duplicate ordering declarations.
+
+### 10.4 Plan revision and supersession binding
 
 job_revise_plan must support revision of:
+- evidence_needs[];
 - test_checkpoints[];
+- evidence_requirements[];
 - milestones[];
 - typed topology.
 
-Material changes to checkpoint goal/mode/evidence/output/blocking/review policy or topology dependency increment planning_revision and require planning review.
+Runs, checkpoint attempts and Tester Verification created under the plan must carry planning_revision.
 
-### 10.4 Existing Job compatibility
+A material plan revision produces a new topology revision bound to the new planning_revision. Pending/running nodes from the old topology cannot silently continue.
 
-Old Jobs without test_checkpoints/milestones and with Task-only topology remain valid.
+Completed evidence from an older revision may be reused only through EvidenceApplicability checks; revision mismatch alone is neither automatic reuse nor automatic invalidation.
 
-Compatibility defaults:
+### 10.5 Existing Job compatibility
+
+Old Jobs remain valid:
 
 ~~~text
+evidence_needs = []
 test_checkpoints = []
+evidence_requirements = []
 milestones = []
 legacy Task-only topology remains readable
 ~~~
 
-No migration rewrites historical Job files merely to adopt the new schema.
+No migration rewrites historical Jobs merely to adopt the new schema.
 
 ## 11. Execution topology / Orchestrator changes
 
-The Orchestrator must understand a declared Test Checkpoint as executable topology.
+The Orchestrator must treat checkpoints as resumable execution boundaries, not one-shot function calls.
 
 ### 11.1 Dispatch
 
-When prerequisites are satisfied:
+Checkpoint readiness is derived from its normalized boundary/topology.
+
+Examples:
 
 ~~~text
-reviewed prerequisite work
-→ checkpoint ready
-→ Tester Run
+AFTER_NODE_SET:
+T2 PASS + T3 PASS + T4 PASS
+→ CP1 DUE
+
+BEFORE_NODE:
+CP2 SATISFIED
+→ T7 READY
+
+MILESTONE_GATE:
+all required M2 nodes complete
+→ CP-M2 DUE
+→ CP-M2 SATISFIED
+→ M2 complete
 ~~~
 
 Tester must not be auto-inserted outside declared checkpoints, except explicit Human direct Tester invocation.
 
-### 11.2 PASS
+### 11.2 PASS / satisfaction
 
 ~~~text
-Tester PASS
-→ persist Verification/Evidence
-→ mark checkpoint satisfied via read-time join
-→ dispatch downstream topology
+Tester produces required Verification/output
+→ persist evidence
+→ applicability metadata persisted
+→ checkpoint SATISFIED
+→ downstream evidence requirements resolve
+→ topology continues
 ~~~
 
-### 11.3 FAIL
+MEASURE/PROBE checkpoints may become SATISFIED by producing required outputs even when no product PASS/FAIL verdict applies.
+
+### 11.3 Product FAIL
 
 ~~~text
-Tester FAIL
+Tester PRODUCT_FAILURE
+→ persist exact evidence
 → route to owning Coder work
 → Coder repair
 → Coder self-check + Goal Recheck
-→ if topology or mandatory review floor requires review: Reviewer
-→ Tester RETEST same checkpoint on the new target revision
+→ Reviewer only if topology / repair policy / mandatory floor requires
+→ RETEST same checkpoint on new target
 ~~~
 
-Important: Tester FAIL does not create a universal Reviewer gate. Reviewer is used only when already planned by topology, required by repair_review_policy=REQUIRED, or triggered by the mechanically computed mandatory review floor.
-
-### 11.4 BLOCKED
-
-If capability/environment prevents valid execution:
+### 11.4 BLOCKED / environment limitation
 
 ~~~text
 Tester BLOCKED
-→ do not PASS checkpoint
-→ route according to blocking policy:
-   - Human Retest;
-   - capability remediation;
-   - Planner decision if architecture assumption must change.
+→ persist evidence/limitation
+→ checkpoint BLOCKED
+→ do not satisfy dependent EvidenceRequirement
+→ Human Retest / capability remediation / Planner decision as declared
 ~~~
 
-### 11.5 PROBE/MEASURE output
+### 11.5 PLAN_GAP / SPEC_GAP replanning path
 
-A checkpoint may complete successfully without a product PASS/FAIL verdict if its required output is empirical evidence.
+Tester may discover that the approved plan/spec is materially insufficient, but Tester never mutates the graph.
 
-Example:
+The only legal path is:
 
 ~~~text
-CP-session-lifetime
-mode: PROBE
-required output: identifier stability table
+Tester observes architectural/spec uncertainty
+→ persist TEST/EVIDENCE with PLAN_GAP or SPEC_GAP classification
+→ checkpoint becomes BLOCKED / NEEDS_HUMAN
+→ pause current execution graph for dependent work
+→ Planner/Human evaluates the gap
+→ job_revise_plan creates planning_revision N+1
+→ planning Reviewer reviews N+1
+→ Human may invoke CR on N+1; CR remains human-only in Online GSA
+→ revised topology supersedes old pending graph
+→ resume from new topology
 ~~~
 
-The next Planner/Coder stage waits for that evidence rather than for a fabricated PASS condition.
+Rules:
+
+- Tester may adapt test cases inside the current checkpoint scope.
+- Tester may not add/remove/move checkpoints.
+- Tester may not weaken acceptance criteria to unblock work.
+- old running/pending checkpoint attempts are marked SUPERSEDED or STALE when their topology binding is replaced;
+- completed old evidence is considered separately through EvidenceApplicability.
+
+### 11.6 Checkpoint attempt + execution lease
+
+Introduce a narrow checkpoint execution control record, provisionally:
+
+~~~text
+projects/<project-id>/WORK/CHECKPOINTS/<checkpoint-id>.json
+~~~
+
+Minimum control fields:
+
+~~~text
+checkpoint_id
+job_id
+planning_revision
+topology_revision
+state = DUE | RUNNING | BLOCKED | NEEDS_HUMAN | SATISFIED | SUPERSEDED
+current_attempt_id?
+lease_token?
+lease_owner?
+lease_expires_at?
+target_ref?
+target_revision?
+updated_at
+~~~
+
+Tester attempts remain append-preserving records/Runs and reference:
+
+~~~text
+checkpoint_id
+attempt_id
+planning_revision
+topology_revision
+lease_token
+~~~
+
+Claim protocol:
+
+1. read current checkpoint control + exact blob SHA;
+2. CAS update DUE → RUNNING with a fresh attempt_id + lease token/expiry;
+3. only the holder may persist terminal state for that attempt;
+4. Verification/evidence is persisted before terminal control update;
+5. terminal update must CAS the same lease token;
+6. another dispatcher seeing a live RUNNING lease must not start a duplicate attempt.
+
+This is the Online equivalent of Local latest_checkpoint + execution lease. The per-checkpoint CAS record is authority; CONTROL.json may cache current/pending checkpoint handles but remains rebuildable.
+
+### 11.7 Crash/restart/resume
+
+On any new chat/orchestration resume:
+
+~~~text
+resolve current Job + planning/topology revision
+→ inspect unsatisfied checkpoint controls before dispatching later nodes
+→ if RUNNING with live lease: do not duplicate
+→ if RUNNING with stale lease: recover according to replay safety
+→ if BLOCKED/NEEDS_HUMAN: preserve block
+→ if SATISFIED: validate evidence applicability before consuming it
+~~~
+
+Each executable Tester case/step should have:
+
+~~~text
+replay_safety = OBSERVE_ONLY | IDEMPOTENT | NON_IDEMPOTENT
+~~~
+
+For stale lease recovery:
+
+- OBSERVE_ONLY/IDEMPOTENT may resume/retry under a new lease when target binding still matches;
+- uncertain NON_IDEMPOTENT work is not auto-replayed; route BLOCKED/NEEDS_HUMAN or a dedicated recovery adapter.
+
+Even though native browser tests are intended to be non-destructive, the generic Tester architecture must not assume every future checkpoint action is replay-safe.
 
 ## 12. Tester Run lifecycle
 
@@ -664,19 +836,18 @@ After source changes:
 3. bind evidence to the new revision.
 
 
+
 ## 13. Verification record upgrade
 
-Current Verification common envelope remains the canonical durable family and stays flat at:
+Current Verification common envelope remains the canonical durable family:
 
 ~~~text
 projects/<project-id>/VERIFICATION/<verification-id>.json
 ~~~
 
-Do not move canonical Verification JSON into UI subfolders.
-
 ### 13.1 Explicit Tester Verification MCP contract
 
-Add a dedicated MCP tool, provisionally named tester_verification_record, analogous to goal_recheck_record and plan_review_record.
+Add tester_verification_record analogous to goal_recheck_record and plan_review_record.
 
 Minimum input:
 
@@ -685,19 +856,23 @@ tester_verification_record {
   project_id
   job_id
   run_id?
-  task_id?
   checkpoint_id
+  attempt_id?
+  planning_revision
+  topology_revision
   kind = TEST | RETEST | EVIDENCE
   modes[] = VERIFY | MEASURE | PROBE
   target_ref
   target_revision
   result = PASS | FAIL | BLOCKED | NOT_APPLICABLE
+  classifications[]
   planned_cases[]
   executed_cases[]
   failures[]
   measurements[]
   probe_outputs[]
   capability_observations[]
+  evidence_applicability
   limitations[]
   unverified[]
   evidence_bundle_ref?
@@ -705,53 +880,101 @@ tester_verification_record {
 }
 ~~~
 
+No TEST/RETEST PASS exists only in chat.
+
+### 13.2 EvidenceApplicability
+
+Evidence validity must not be reduced to exact commit equality, and it must not be reused merely because it is "recent".
+
+Persist explicit applicability:
+
+~~~text
+EvidenceApplicability {
+  reuse_policy = EXACT_REVISION | DIMENSION_MATCH | NEVER_REUSE
+
+  source_dimensions[] {
+    ref
+    path_or_contract?
+    fingerprint
+  }
+
+  config_dimensions[] {
+    key_or_contract
+    nonsecret_fingerprint
+  }
+
+  runtime_dimensions[] {
+    name
+    observed_value_or_fingerprint
+  }
+
+  environment_dimensions[] {
+    name
+    value_or_fingerprint
+  }
+
+  observed_at
+  valid_until?
+  invalidation_conditions[]
+}
+~~~
+
 Rules:
 
-- VERIFY normally requires PASS/FAIL/BLOCKED.
-- MEASURE-only or PROBE-only checkpoints may use NOT_APPLICABLE for product verdict when required outputs were successfully produced.
-- checkpoint satisfaction is mode-specific: VERIFY requires its verdict condition; MEASURE/PROBE require their declared outputs to exist and not be blocked.
-- result and outputs are bound to target_revision.
-- tool prepares one append-preserving Verification record and returns external_steps for guarded Memory Repo persistence/read-back.
-- no TEST/RETEST PASS exists only in chat.
+- VERIFY defaults to EXACT_REVISION unless the checkpoint explicitly defines a narrower safe applicability model.
+- MEASURE/PROBE may use DIMENSION_MATCH when the planning EvidenceNeed declares which dimensions govern reuse.
+- NEVER_REUSE is allowed for highly time-sensitive observations.
+- source revision mismatch alone does not automatically invalidate DIMENSION_MATCH evidence if all declared dimensions can be proven unchanged.
+- same source revision does not prove evidence remains valid when runtime/config/environment dimensions changed.
+- if a required dimension cannot be checked, evidence is STALE/INCOMPATIBLE for that consumer and must be re-probed.
+- secrets are never stored as raw applicability values; only identifiers/non-secret fingerprints.
 
-### 13.2 Test extension
+### 13.3 Evidence applicability resolution
 
-Representative durable record:
+Before Run start, Milestone completion or Job completion consumes prior Tester evidence:
+
+~~~text
+load EvidenceRequirement
+→ load candidate Verification
+→ compare required applicability dimensions to current dimensions
+→ VALID / STALE / INCOMPATIBLE / UNKNOWN
+~~~
+
+Only VALID satisfies a required dependency.
+
+UNKNOWN fails closed and routes to re-probe or Human decision.
+
+### 13.4 Representative record
 
 ~~~json
 {
   "verification_id": "...",
-  "kind": "TEST",
-  "checkpoint_id": "CP-...",
-  "modes": ["VERIFY"],
-  "project_id": "...",
-  "job_id": "...",
-  "target_ref": "...",
-  "target_revision": "...",
-  "producer": "tester",
-  "result": "FAIL",
-  "planned_cases": 8,
-  "executed_cases": 8,
-  "failures": [
+  "kind": "EVIDENCE",
+  "checkpoint_id": "CP-session-lifetime",
+  "planning_revision": 4,
+  "topology_revision": 4,
+  "modes": ["PROBE"],
+  "target_revision": "abc123",
+  "result": "NOT_APPLICABLE",
+  "probe_outputs": [
     {
-      "case_id": "...",
-      "expected": "...",
-      "actual": "...",
-      "classification": "PRODUCT_FAILURE",
-      "evidence_refs": []
+      "name": "session_identifier_lifetime",
+      "value": "stable_within_chat_changes_across_new_chat"
     }
   ],
-  "measurements": [],
-  "probe_outputs": [],
-  "limitations": [],
-  "unverified": [],
-  "evidence_bundle_ref": "bundle:...",
-  "next_phase_inputs": []
+  "evidence_applicability": {
+    "reuse_policy": "DIMENSION_MATCH",
+    "runtime_dimensions": [
+      {"name":"runtime_build","observed_value_or_fingerprint":"..."}
+    ],
+    "invalidation_conditions": [
+      "runtime bridge version changes",
+      "session identity contract changes"
+    ]
+  },
+  "next_phase_inputs": ["session_identifier_lifetime"]
 }
 ~~~
-
-For MEASURE/PROBE, next_phase_inputs and required outputs are first-class and may be consumed by later topology/Handoff requirements.
-
 
 ## 14. Persistence and Project Memory
 
@@ -787,8 +1010,9 @@ Example:
 {
   "next_role": "coder",
   "required_inputs": [
+    "evidence_requirement:ER-session-lifetime",
     "verification:<CP-session-probe>",
-    "measurement:session_identifier_lifetime"
+    "output:session_identifier_lifetime"
   ]
 }
 ~~~
@@ -798,29 +1022,30 @@ A downstream Run must not silently replace a missing required measurement with a
 Add a guard in Run start/orchestration:
 
 ~~~text
-if required Tester evidence declared by topology is missing/stale:
+if required Tester evidence is missing OR EvidenceApplicability != VALID:
   do not dispatch dependent work as ready
 ~~~
 
-## 16. Completion and state-machine impact
 
-### Checkpoint state
+## 16. Completion, checkpoint state and supersession
 
-Do not immediately create a large mutable checkpoint lifecycle table.
+### 16.1 Semantic checkpoint state
 
-Derive checkpoint state from:
-- Job checkpoint definition;
-- prerequisite Runs/Reviews;
-- Tester Verification records;
-- target revision validity.
+Checkpoint state is reconstructed from:
+- normalized CheckpointSpec/topology;
+- CheckpointControl claim/lease;
+- Tester Run/attempt;
+- Verification/evidence;
+- current planning/topology revision;
+- EvidenceApplicability.
 
-Suggested derived states:
+Primary states:
 
 ~~~text
 PLANNED
-READY
+DUE
 RUNNING
-PASS
+SATISFIED
 FAIL
 BLOCKED
 NEEDS_HUMAN
@@ -828,18 +1053,31 @@ STALE
 SUPERSEDED
 ~~~
 
-### Job completion
+DUE means every prerequisite is satisfied but no valid current attempt/evidence has satisfied the checkpoint.
 
-A Job cannot complete PASS when a required blocking Test Checkpoint is:
+### 16.2 Revision supersession
+
+When job_revise_plan creates a material planning/topology revision:
+
+- old pending topology is superseded;
+- stale RUNNING checkpoint attempts cannot terminalize the new topology;
+- CAS terminal update requires matching planning_revision/topology_revision/lease_token;
+- prior completed evidence remains append-preserving;
+- reusable prior evidence must pass EvidenceApplicability against the new consumer context.
+
+### 16.3 Job/Milestone completion
+
+A Milestone/Job cannot complete when a required checkpoint/evidence requirement is:
 - missing;
 - FAIL;
 - BLOCKED;
-- stale for the accepted target revision.
+- NEEDS_HUMAN;
+- STALE/INCOMPATIBLE/UNKNOWN;
+- bound to a superseded topology unless independently revalidated.
 
-PASS_RETEST_REQUIRED remains valid only where the approved topology explicitly permits a deferred Retest/Human verification path.
+PASS_RETEST_REQUIRED remains valid only where approved topology explicitly permits deferred Retest/Human verification.
 
-Do not use PASS_RETEST_REQUIRED as a generic escape hatch for missing mandatory Tester evidence.
-
+Do not use PASS_RETEST_REQUIRED as a generic escape hatch for missing required Tester evidence.
 
 ## 17. UI Test Evidence Bundle and screenshot persistence
 
@@ -1165,14 +1403,16 @@ M1/M2:
 - store capability observations in Tester Verification records;
 - use current Run/checkpoint evidence.
 
-Later, if repeated lookup cost becomes significant, introduce a rebuildable capability materialized view keyed by:
+Later, if repeated lookup cost becomes significant, introduce a rebuildable capability/evidence materialized view. It is never authoritative and must carry EvidenceApplicability. Suggested key dimensions:
 - provider;
 - environment/runtime version;
 - capability;
 - tested target class;
 - evidence ref;
 - observed_at;
-- expiration/reread condition.
+- expiration/reread condition;
+- planning/topology revision provenance;
+- applicability fingerprints.
 
 A stale historical browser success must not prove current capability forever.
 
@@ -1182,19 +1422,20 @@ A stale historical browser success must not prove current capability forever.
 |---|---|
 | Tester harness | Major: full independent Tester loop, modes, classification |
 | testing-evidence skill | Major |
-| Planner harness | Major: checkpoint placement + downstream evidence dependencies |
+| Planner harness | Major: first-class EvidenceNeed/UnknownRuntimeFact + checkpoint placement + replanning on PLAN_GAP/SPEC_GAP |
 | job-planning skill | Major |
-| job_prepare | Major schema/topology extension |
-| job_revise_plan | Add checkpoint revision support |
+| job_prepare | Major: evidence_needs normalization + checkpoint/evidence requirements + typed topology |
+| job_revise_plan | Add EvidenceNeed/checkpoint/topology revision + supersession semantics |
 | planning Reviewer | Add checkpoint quality/coverage review |
 | Job record | Add checkpoint definitions/topology references |
 | Embedded Task | No new checkpoint authority fields; checkpoint status is derived from typed topology |
 | Milestone planning | Add embedded milestones[] groups referencing topology/checkpoint nodes |
-| Orchestrator | Dispatch Tester from topology; route FAIL/RETEST |
+| Orchestrator | Dispatch/resume checkpoint attempts; lease guard; route FAIL/RETEST/PLAN_GAP |
 | Run begin | Validate required checkpoint evidence inputs |
 | Run complete/Handoff | Carry Tester Verification/output refs as required inputs |
-| Verification records | Add explicit tester_verification_record MCP contract for TEST/RETEST/EVIDENCE |
-| State machine | Add derived checkpoint state semantics |
+| Verification records | Add tester_verification_record + EvidenceApplicability + planning/topology provenance |
+| Checkpoint execution control | CAS claim/lease record + append-preserving attempt/Run binding |
+| State machine | DUE/RUNNING/SATISFIED/BLOCKED/STALE/SUPERSEDED + revision supersession |
 | Job completion | Enforce required checkpoint evidence |
 | Browser QA | Convert runtime assumptions into capability-probed behavior |
 | UI evidence bundle | Persist private binary evidence in Supabase Storage and expose authenticated folder-like viewer |
@@ -1228,18 +1469,22 @@ Acceptance:
 Goal: make Tester placement and outputs explicit without creating duplicate task/checkpoint authority.
 
 Change:
-- job_prepare.test_checkpoints[];
+- first-class job planning evidence_needs[] / UnknownRuntimeFact;
+- job_prepare normalization into TestCheckpointSpec + EvidenceRequirement;
+- multi-prerequisite checkpoint boundary kinds;
 - job_prepare.milestones[];
 - job_revise_plan support;
 - typed topology nodes/edges;
 - checkpoint/milestone planning-review checks;
-- backward compatibility for historical Task-only topology.
+- backward compatibility for historical Jobs.
 
 Acceptance:
-- Planner can produce T2 → CP1 → T3 through typed topology;
+- a REQUIRED EvidenceNeed cannot disappear between planning and execution;
+- normalization returns checkpoint/evidence dependency or PLAN_GAP;
+- Planner can express {T2,T3,T4} → CP1 → T5 and Milestone gates;
 - Task records do not duplicate checkpoint edges;
 - planning review detects orphaned checkpoint output/milestone references;
-- old Jobs without checkpoints/milestones remain readable.
+- old Jobs without new fields remain readable.
 
 ### M3 — Tester Verification persistence + routing
 
@@ -1248,18 +1493,24 @@ Goal: make checkpoint evidence durable and actionable.
 Change:
 - add tester_verification_record;
 - TEST/RETEST/EVIDENCE mode-specific records;
+- EvidenceApplicability and consumer-side validation;
+- checkpoint control + CAS execution lease + attempt identity;
+- resume/stale-lease recovery with replay-safety class;
 - next-phase inputs/required outputs;
-- derived checkpoint state;
-- Orchestrator dispatch;
+- Orchestrator dispatch/resume;
 - FAIL → Coder repair → Goal Recheck → planned/mandatory review if required → RETEST;
+- PLAN_GAP/SPEC_GAP → pause → Planner revision → Reviewer → optional Human-invoked CR → superseding topology;
 - Handoff required evidence inputs;
-- Job completion guard against missing/stale required checkpoint evidence.
+- Milestone/Job completion guards.
 
 Acceptance:
 - a failed checkpoint routes to repair;
 - Reviewer is not universally inserted when topology/mandatory floor does not require it;
-- stale evidence from old revision is rejected;
-- downstream Task is blocked when declared Tester input is missing;
+- crash/restart cannot create a second live attempt for the same checkpoint claim;
+- dimension-valid evidence may survive unrelated source revisions;
+- dimension-stale evidence cannot satisfy a consumer;
+- Tester cannot mutate topology after PLAN_GAP/SPEC_GAP;
+- downstream Task is blocked when declared Tester input is missing/invalid;
 - no TEST/RETEST PASS exists only in chat.
 
 ### M4 — Native browser capability probes
@@ -1426,16 +1677,76 @@ Expected:
 - Tester records an explicit evidence limitation;
 - existing valid artifacts remain intact.
 
+### E-Tester-13 — evidence need preservation
+
+Planner declares a REQUIRED UnknownRuntimeFact consumed by a later Task.
+
+Expected:
+- evidence_need_id survives planning revision;
+- normalized checkpoint references source_evidence_need_ids;
+- EvidenceRequirement references the same need;
+- dropping the need during normalization yields PLAN_GAP, not guessed work.
+
+### E-Tester-14 — multi-prerequisite integration checkpoint
+
+CP-INTEGRATION depends on T2, T3 and T4 within one Milestone.
+
+Expected:
+- CP stays PLANNED until all three prerequisites are satisfied;
+- only one CP attempt becomes DUE/RUNNING;
+- downstream T5 cannot activate first.
+
+### E-Tester-15 — crash/resume and duplicate attempt
+
+Tester checkpoint is RUNNING when execution context disappears.
+
+Expected:
+- live lease prevents duplicate attempt;
+- stale lease invokes replay-safety recovery;
+- NON_IDEMPOTENT uncertainty does not auto-replay;
+- terminal write from an old lease/token is rejected.
+
+### E-Tester-16 — evidence applicability across revisions
+
+A PROBE measured value depends only on runtime bridge version and one contract file. An unrelated README changes.
+
+Expected:
+- source commit changes but declared dimensions remain equal;
+- evidence remains VALID and can be reused.
+
+Then change the runtime bridge version.
+
+Expected:
+- evidence becomes STALE/INCOMPATIBLE;
+- consumer blocks until re-probe.
+
+### E-Tester-17 — Tester-discovered plan gap
+
+Tester discovers an architectural unknown not represented in approved topology.
+
+Expected:
+- Tester persists PLAN_GAP evidence;
+- checkpoint/graph pauses;
+- Tester cannot add a new checkpoint;
+- Planner creates planning_revision N+1;
+- planning Reviewer must review N+1;
+- Human-invoked CR may review N+1 without being auto-dispatched;
+- revised topology supersedes old pending graph;
+- only applicable prior evidence may carry forward.
+
 ## 29. Migration order
 
 Recommended implementation order:
 
 ~~~text
 docs/contracts
+→ first-class EvidenceNeed planning schema
 → harness/skills
-→ Job/checkpoint schema
+→ checkpoint/evidence normalization + typed topology
 → planning-review
-→ Verification persistence
+→ Verification + EvidenceApplicability
+→ checkpoint CAS lease/resume
+→ PLAN_GAP/SPEC_GAP replanning/supersession
 → orchestration/routing
 → state/completion guards
 → browser probes
@@ -1462,6 +1773,7 @@ Likely primary files:
 - docs/architecture/EXECUTION-AND-REVIEW.md
 - docs/architecture/JOB-LIFECYCLE.md
 - docs/architecture/STATE-MACHINE.md
+- docs/architecture/PROJECT-MEMORY.md
 - docs/architecture/DISPATCH-AND-HANDOFF.md
 - docs/architecture/BROWSER-QA.md
 - skills/gsa-job-runtime/SKILL.md
@@ -1486,6 +1798,12 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 10. Do not create excessive checkpoint ceremony; checkpoints must be sparse and meaningful.
 11. Do not make PROBE/MEASURE outputs informal chat context when later work depends on them.
 12. Do not force a new persistent record family until existing Verification/Handoff topology proves insufficient.
+13. Do not let required empirical needs live only in prose; REQUIRED EvidenceNeed must have a structural mapping or PLAN_GAP.
+14. Do not bind integration checkpoints to one Task when the real boundary needs a prerequisite set/Milestone gate.
+15. Do not dispatch a second Tester attempt while a valid checkpoint lease is RUNNING.
+16. Do not invalidate reusable evidence solely because an unrelated commit changed; validate declared applicability dimensions.
+17. Do not reuse evidence when a required applicability dimension is unknown or changed.
+18. Tester may report PLAN_GAP/SPEC_GAP but must never mutate checkpoint/topology; replanning belongs to Planner/Human.
 
 ## 32. CR finding resolution matrix
 
@@ -1499,16 +1817,23 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 | Verification storage path conflict | Keep canonical JSON flat at VERIFICATION/<verification-id>.json |
 | Screenshot retention/security unspecified | Add private bucket, RLS, no-secret capture rules, 12 screenshot / 5 MiB each / 50 MiB bundle limits |
 | M5/M6 responsibilities drifted | M5 owns durable browser evidence + viewer; M6 owns regression/final checkpoint only |
+| Local CR: empirical need can disappear between Planner and execution | Add first-class evidence_needs[]/UnknownRuntimeFact and require normalization to TestCheckpointSpec + EvidenceRequirement or PLAN_GAP |
+| Local CR: checkpoint bound too narrowly | Add AFTER_NODE_SET / BEFORE_NODE / MILESTONE_GATE / JOB_FINAL boundaries with prerequisite node sets |
+| Local CR: resume can skip/duplicate Tester | Add per-checkpoint CAS control, execution lease, attempt identity, replay safety and resume recovery |
+| Local CR: exact revision evidence validity too rigid/too loose | Add EvidenceApplicability with source/config/runtime/environment dimensions and explicit reuse policy |
+| Local CR: no replanning path for new uncertainty | PLAN_GAP/SPEC_GAP pauses dependent graph → Planner revision → Reviewer → optional Human-invoked CR → superseding topology; Tester never mutates graph |
 
 ## 33. Target end-state example
 
 ~~~text
 Planner
+  EN1 REQUIRED UnknownRuntimeFact: real readiness/session behavior
   T1 foundation
-  T2 integration
-  CP1 PROBE: measure real readiness/session behavior
-  T3 implementation consumes CP1 evidence
-  T4 UI shell
+  T2 integration-a
+  T3 integration-b
+  CP1 PROBE boundary AFTER_NODE_SET{T2,T3}: satisfies EN1
+  T4 implementation consumes EvidenceRequirement(EN1)
+  T5 UI shell
   Reviewer
   CP2 VERIFY: deployed UI observation
   T5 remaining feature work
@@ -1517,13 +1842,13 @@ Planner
 
 Execution:
 
-Coder T1/T2
+Coder T1/T2/T3
 → self-check
 → Reviewer where planned/required
 → Tester CP1 PROBE
 → empirical evidence persisted
-→ T3 consumes evidence
-→ Coder T4
+→ T4 consumes applicability-valid evidence
+→ Coder T5
 → Reviewer
 → Tester CP2
    FAIL
