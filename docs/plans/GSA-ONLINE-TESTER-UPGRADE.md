@@ -793,6 +793,7 @@ The exact number of files is test-dependent; do not create empty files just to s
 - Screenshot files are evidence artifacts tied to verification_id + target_revision.
 - The TEST/RETEST Verification record remains the machine-readable authority.
 - report.md is the human-readable index for the evidence bundle.
+- report.md should embed persisted screenshots with relative Markdown image links so opening one file in GitHub shows the visual evidence directly.
 - result.json contains structured cases, classifications, measurements and artifact references.
 - screenshots/ contains only relevant captures, not every intermediate frame by default.
 - snapshot/console/error files are persisted when they materially support the verdict.
