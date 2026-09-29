@@ -2,7 +2,7 @@
 
 Status: PROPOSED
 Scope: GPT-supper-agent / GSA Online
-Primary goal: upgrade Tester from a thin capability-gated verifier into a checkpoint-level independent verification and empirical-evidence agent, while preserving lightweight orchestration and keeping browser providers replaceable.
+Primary goal: upgrade Tester from a thin capability-gated verifier into a checkpoint-level independent verification and empirical-evidence agent, while preserving lightweight orchestration and keeping browser runtimes replaceable.
 
 ## 1. Decision summary
 
@@ -16,12 +16,26 @@ The target Online Tester must:
 4. produce both verification evidence and empirical/design evidence;
 5. run only at meaningful Planner-declared Test Checkpoints, not after every coding task;
 6. keep product source read-only;
-7. route product failures back to Coder, then require Reviewer PASS before Tester RETEST;
+7. route product failures back to Coder, then apply the existing planned/mandatory review floor before Tester RETEST when review is actually required;
 8. bind all evidence to the exact target revision/state;
 9. persist evidence that later Planner/Coder work may consume as an explicit dependency;
 10. treat browser/tool presence as discovery only, never proof of usability.
 
 The existing GSA browser tools browser_ui_inspect and browser_test_flow are also not assumed usable merely because they are exposed. Their actual capability must first be established by explicit runtime PROBE checkpoints.
+
+### CR review incorporation
+
+This revision incorporates the independent CR findings against revision a6b12a94:
+
+- binary screenshots are no longer assumed writable through the GitHub text connector;
+- TEST/RETEST persistence gets an explicit Tester Verification MCP contract;
+- Milestone completion becomes structured embedded planning metadata rather than a single descriptive string;
+- checkpoint ordering/dependencies have one canonical source: typed topology edges;
+- Tester FAIL no longer creates a universal Reviewer gate; existing planned/mandatory review rules remain authoritative;
+- canonical Verification records remain flat under VERIFICATION/<verification-id>.json;
+- binary UI evidence moves to a private evidence object store with a human evidence viewer;
+- screenshot retention, privacy and size budgets are explicit;
+- screenshot persistence moves into the browser-evidence milestone, while the final milestone remains regression-only.
 
 ## 2. Why this is an architecture change, not a Tester-prompt change
 
@@ -317,44 +331,66 @@ Planner SHOULD NOT add a checkpoint:
 - where Coder build/lint/self-smoke is sufficient;
 - where no meaningful independent verification is possible.
 
+
 ### 9.3 Task list impact
 
-Tasks need to expose which completion criteria are locally self-checkable and which require downstream checkpoint verification.
+Do not add checkpoint linkage fields to Embedded Task as a second source of truth.
 
-Recommended extension:
+Task remains focused on implementation work:
 
 ~~~json
 {
   "task_id": "...",
   "objective": "...",
-  "completion_criteria": ["..."],
-  "verification_class": "SELF_CHECK_ONLY | CHECKPOINT_REQUIRED | CHECKPOINT_INPUT",
-  "checkpoint_refs": ["CP-..."]
+  "scope": ["..."],
+  "dependencies": ["..."],
+  "completion_criteria": ["..."]
 }
 ~~~
 
-This allows the task list to show meaningful Tester dependencies without turning Test Checkpoints into ordinary coding Tasks.
+Whether a Task is upstream/downstream of a Test Checkpoint is derived from the canonical typed topology.
+
+Status/task-list UX may display derived labels such as:
+
+~~~text
+SELF CHECK ONLY
+AWAITING CP-2
+PROVIDES INPUT TO CP-3
+~~~
+
+but those labels are materialized views, not persisted Task authority.
 
 ### 9.4 Milestone impact
 
-Milestone planning must include checkpoint boundaries.
+The current single planning_context.milestone string is not sufficient for checkpoint-aware completion.
 
-A Milestone should be able to mean:
+Keep the existing milestone string as a backward-compatible human label, and add embedded structured milestone groups rather than creating a new top-level persistent record family:
+
+~~~text
+milestones[] {
+  milestone_id
+  name
+  member_node_refs[]
+  completion_requirements[]
+  required_checkpoint_refs[]
+}
+~~~
+
+Milestone groups reference canonical topology nodes; they do not duplicate ordering.
+
+Example:
 
 ~~~text
 M2 complete when:
-- tasks T3/T4 are reviewed;
+- T3 and T4 completion criteria are satisfied;
 - CP-2 VERIFY is PASS;
-- CP-3 PROBE evidence exists;
-- CP-3 output is available to Phase 3.
+- CP-3 PROBE required outputs exist;
+- no required node in M2 is BLOCKED or STALE.
 ~~~
 
-Therefore Milestone completion may depend on:
-- task completion;
-- review verification;
-- Test Checkpoint result;
-- required empirical evidence;
-- Human Gate where applicable.
+Milestone state is derived from Task/Run/Review/Tester Verification state.
+
+Old Jobs without milestones[] remain valid and continue using the legacy milestone label.
 
 ### 9.5 Planning review impact
 
@@ -364,93 +400,111 @@ Planning Reviewer must verify:
 - critical assumptions are not left unverified;
 - later Tasks do not depend on guessed values when a feasible PROBE/MEASURE could produce them;
 - checkpoint placement does not create excessive orchestration overhead;
-- downstream consumers explicitly identify required Tester outputs;
+- topology edges are the single ordering/dependency authority;
+- Milestone completion requirements reference valid topology/checkpoint nodes;
+- required Tester outputs have explicit downstream consumers through topology/Handoff requirements;
 - final regression surface is adequate;
 - capability assumptions are not falsely marked available.
 
+
 ## 10. Job record / job_prepare changes
 
-Current job_prepare persists:
+Current job_prepare persists planning context, tasks, generated topology, verification requirements and review triggers.
 
-- planning context with phase/milestone;
-- tasks;
-- generated topology;
-- verification requirements;
-- review triggers.
-
-Required changes:
+The upgrade keeps backward compatibility but makes topology expressive enough for Tester checkpoints.
 
 ### 10.1 Input schema
 
-Add optional Planner-declared test_checkpoints[].
+Add optional Planner-declared test_checkpoints[] and milestones[].
 
-Proposed contract:
+Checkpoint semantic contract:
 
 ~~~text
 test_checkpoints[] {
   checkpoint_id?
   name?
   modes[] = VERIFY | MEASURE | PROBE
-  after_task_refs[]
   goal
   acceptance_criteria[]
   required_capabilities[]
   planned_evidence[]
-  downstream_consumers[]
+  required_outputs[]
   blocking_policy
   regression_scope?
+  repair_review_policy = TOPOLOGY | REQUIRED
 }
 ~~~
 
-### 10.2 Topology generation
-
-Do not keep generating only:
+Milestone contract:
 
 ~~~text
-T1 → T2 → T3
+milestones[] {
+  milestone_id?
+  name
+  member_node_refs[]
+  completion_requirements[]
+  required_checkpoint_refs[]
+}
 ~~~
 
-Generate topology that can express:
+Do NOT persist after_task_refs, downstream_consumers, task.checkpoint_refs or task.verification_class as independent ordering authorities.
+
+### 10.2 Typed topology is the ordering authority
+
+Upgrade topology from a linear Task-only list into typed nodes:
+
+~~~text
+topology[] {
+  node_id
+  kind = TASK | REVIEW_CHECKPOINT | TEST_CHECKPOINT | HUMAN_GATE
+  ref
+  depends_on[]
+  next[]
+}
+~~~
+
+Checkpoint definitions own checkpoint semantics.
+Topology owns ordering/dependencies.
+Tasks own implementation scope/completion criteria.
+Milestone groups own grouping/completion requirements.
+
+Example:
 
 ~~~text
 T1
  ↓
 T2
  ↓
-Reviewer if required
- ↓
-CP1 Tester
- ├─ PASS → T3
- ├─ FAIL → Coder repair → Reviewer → CP1 RETEST
- └─ BLOCKED → capability/Human route
+CP1:TESTER
+ ├─ satisfied → T3
+ ├─ product failure → repair route
+ └─ blocked → blocking-policy route
 ~~~
 
-A checkpoint can sit between Tasks or at Milestone/Job-final boundaries.
+No second persisted edge set should be introduced.
 
 ### 10.3 Plan revision
 
-job_revise_plan must be able to revise checkpoint definitions.
+job_revise_plan must support revision of:
+- test_checkpoints[];
+- milestones[];
+- typed topology.
 
-Material changes to:
-- checkpoint goal;
-- checkpoint modes;
-- required evidence;
-- blocking policy;
-- downstream dependency;
-
-must increment planning revision and therefore be covered by planning review.
+Material changes to checkpoint goal/mode/evidence/output/blocking/review policy or topology dependency increment planning_revision and require planning review.
 
 ### 10.4 Existing Job compatibility
 
-Old Jobs without test_checkpoints remain valid.
+Old Jobs without test_checkpoints/milestones and with Task-only topology remain valid.
 
-Default:
+Compatibility defaults:
 
 ~~~text
 test_checkpoints = []
+milestones = []
+legacy Task-only topology remains readable
 ~~~
 
-No migration should require rewriting historical Job files.
+No migration rewrites historical Job files merely to adopt the new schema.
 
 ## 11. Execution topology / Orchestrator changes
 
@@ -482,13 +536,13 @@ Tester PASS
 ~~~text
 Tester FAIL
 → route to owning Coder work
-→ Coder fix
-→ Coder self-check
-→ Reviewer PASS on changed source
-→ Tester RETEST same checkpoint
+→ Coder repair
+→ Coder self-check + Goal Recheck
+→ if topology or mandatory review floor requires review: Reviewer
+→ Tester RETEST same checkpoint on the new target revision
 ~~~
 
-Important: Tester FAIL does not require Reviewer to repeat the diagnosis before repair. Reviewer reviews the resulting source change.
+Important: Tester FAIL does not create a universal Reviewer gate. Reviewer is used only when already planned by topology, required by repair_review_policy=REQUIRED, or triggered by the mechanically computed mandatory review floor.
 
 ### 11.4 BLOCKED
 
@@ -500,7 +554,6 @@ Tester BLOCKED
 → route according to blocking policy:
    - Human Retest;
    - capability remediation;
-   - optional alternate provider;
    - Planner decision if architecture assumption must change.
 ~~~
 
@@ -610,28 +663,75 @@ After source changes:
 2. rerun relevant checkpoint regression;
 3. bind evidence to the new revision.
 
+
 ## 13. Verification record upgrade
 
-Current Verification common envelope is already the right durable family.
+Current Verification common envelope remains the canonical durable family and stays flat at:
 
-Extend TEST/RETEST/EVIDENCE semantics instead of creating many new record families.
+~~~text
+projects/<project-id>/VERIFICATION/<verification-id>.json
+~~~
 
-Recommended Test extension:
+Do not move canonical Verification JSON into UI subfolders.
+
+### 13.1 Explicit Tester Verification MCP contract
+
+Add a dedicated MCP tool, provisionally named tester_verification_record, analogous to goal_recheck_record and plan_review_record.
+
+Minimum input:
+
+~~~text
+tester_verification_record {
+  project_id
+  job_id
+  run_id?
+  task_id?
+  checkpoint_id
+  kind = TEST | RETEST | EVIDENCE
+  modes[] = VERIFY | MEASURE | PROBE
+  target_ref
+  target_revision
+  result = PASS | FAIL | BLOCKED | NOT_APPLICABLE
+  planned_cases[]
+  executed_cases[]
+  failures[]
+  measurements[]
+  probe_outputs[]
+  capability_observations[]
+  limitations[]
+  unverified[]
+  evidence_bundle_ref?
+  next_phase_inputs[]
+}
+~~~
+
+Rules:
+
+- VERIFY normally requires PASS/FAIL/BLOCKED.
+- MEASURE-only or PROBE-only checkpoints may use NOT_APPLICABLE for product verdict when required outputs were successfully produced.
+- checkpoint satisfaction is mode-specific: VERIFY requires its verdict condition; MEASURE/PROBE require their declared outputs to exist and not be blocked.
+- result and outputs are bound to target_revision.
+- tool prepares one append-preserving Verification record and returns external_steps for guarded Memory Repo persistence/read-back.
+- no TEST/RETEST PASS exists only in chat.
+
+### 13.2 Test extension
+
+Representative durable record:
 
 ~~~json
 {
+  "verification_id": "...",
   "kind": "TEST",
   "checkpoint_id": "CP-...",
-  "mode": ["VERIFY"],
+  "modes": ["VERIFY"],
+  "project_id": "...",
+  "job_id": "...",
   "target_ref": "...",
   "target_revision": "...",
   "producer": "tester",
-  "planned": 8,
-  "executed": 8,
-  "passed": 7,
-  "failed": 1,
-  "blocked": 0,
-  "observations": [],
+  "result": "FAIL",
+  "planned_cases": 8,
+  "executed_cases": 8,
   "failures": [
     {
       "case_id": "...",
@@ -641,38 +741,23 @@ Recommended Test extension:
       "evidence_refs": []
     }
   ],
-  "measurements": {},
-  "capability_observations": [],
+  "measurements": [],
+  "probe_outputs": [],
   "limitations": [],
   "unverified": [],
-  "result": "FAIL",
+  "evidence_bundle_ref": "bundle:...",
   "next_phase_inputs": []
 }
 ~~~
 
-For MEASURE/PROBE, next_phase_inputs is first-class.
+For MEASURE/PROBE, next_phase_inputs and required outputs are first-class and may be consumed by later topology/Handoff requirements.
 
-Example:
-
-~~~json
-{
-  "name": "browser.render_js",
-  "observed_value": "functional",
-  "conditions": {
-    "provider": "gsa-native-sandbox",
-    "target": "...",
-    "revision": "..."
-  },
-  "confidence": "3/3 repeated runs",
-  "consumed_by": ["task:T-..."]
-}
-~~~
 
 ## 14. Persistence and Project Memory
 
-Do not reproduce Local's writable filesystem workspace literally.
+Project Memory remains the durable control plane.
 
-Recommended first implementation:
+Canonical text/control records remain in the configured GitHub Memory Repo:
 
 ~~~text
 projects/<project-id>/
@@ -680,19 +765,15 @@ projects/<project-id>/
     <verification-id>.json
 ~~~
 
-Checkpoint plans/cases can initially be embedded/referenced from Verification artifacts.
+Do not embed large screenshots/base64 into Verification JSON.
 
-If test artifacts become too large or reusable, introduce later:
+Binary browser evidence uses a separate private evidence object store because the current GitHub connector only creates/updates UTF-8 text files.
 
-~~~text
-projects/<project-id>/
-  TESTER/
-    <job-id>/
-      <checkpoint-id>/
-        ...
-~~~
+The canonical Verification record must reference the binary bundle by stable bundle ID and artifact manifest references.
 
-This should be a later evidence-driven schema promotion, not a prerequisite for M1.
+If the binary bundle is unavailable, the Verification record remains readable but must expose the evidence limitation; missing binary evidence cannot be silently treated as present.
+
+The binary store is ancillary evidence storage, not a replacement Project control plane.
 
 ## 15. Handoff changes
 
@@ -759,104 +840,149 @@ PASS_RETEST_REQUIRED remains valid only where the approved topology explicitly p
 
 Do not use PASS_RETEST_REQUIRED as a generic escape hatch for missing mandatory Tester evidence.
 
+
 ## 17. UI Test Evidence Bundle and screenshot persistence
 
-UI/browser checkpoints should produce a human-viewable evidence folder, not only a JSON verdict.
+UI/browser checkpoints produce a human-viewable evidence bundle in addition to the canonical Verification JSON.
 
-The current native browser implementation already creates real PNG screenshots inside the Vercel Sandbox and returns them as base64 image content. The missing capability is durable persistence after the sandbox Run ends.
+### 17.1 Storage decision
 
-Target result layout in Project Memory:
-
-~~~text
-projects/<project-id>/
-  VERIFICATION/
-    UI/
-      <verification-id>/
-        report.md
-        result.json
-        screenshots/
-          01-desktop-before.png
-          02-desktop-after.png
-          03-tablet.png
-          04-mobile.png
-        snapshots/
-          initial.txt
-          final.txt
-        console.txt
-        page-errors.txt
-~~~
-
-The exact number of files is test-dependent; do not create empty files just to satisfy the shape.
-
-### Evidence rules
-
-- Screenshot files are evidence artifacts tied to verification_id + target_revision.
-- The TEST/RETEST Verification record remains the machine-readable authority.
-- report.md is the human-readable index for the evidence bundle.
-- report.md should embed persisted screenshots with relative Markdown image links so opening one file in GitHub shows the visual evidence directly.
-- result.json contains structured cases, classifications, measurements and artifact references.
-- screenshots/ contains only relevant captures, not every intermediate frame by default.
-- snapshot/console/error files are persisted when they materially support the verdict.
-- Retest creates a new evidence bundle for the new target revision; do not overwrite the prior failing evidence.
-- The user should be given the folder link/path after a UI Tester checkpoint so they can inspect evidence directly.
-- A PASS must not depend on screenshots alone when the criterion requires interaction/state verification.
-- A FAIL screenshot should identify which case/step it supports in result.json/report.md.
-
-### Screenshot naming
-
-Prefer deterministic names:
+Use a private Supabase Storage bucket dedicated to GSA evidence, provisionally:
 
 ~~~text
-<sequence>-<viewport>-<phase-or-case>.png
+gsa-evidence
 ~~~
 
-Examples:
+Logical object prefix:
 
 ~~~text
-01-desktop-initial.png
-02-desktop-after-onboarding.png
-03-mobile-dashboard.png
-04-tablet-overflow-failure.png
+<user-id>/<project-id>/<evidence-bundle-id>/
+  report.md
+  result.json
+  screenshots/
+    01-desktop-initial.png
+    02-desktop-after.png
+    03-mobile-failure.png
+  snapshots/
+    initial.txt
+    final.txt
+  console.txt
+  page-errors.txt
+  manifest.json
 ~~~
 
-### Persistence implementation requirement
+The exact artifact set is test-dependent; do not create empty files.
 
-Do not assume inline MCP image content is durable.
+This resolves the binary-write gap without assuming the GitHub text connector can upload PNG data.
 
-The browser bridge currently:
-1. creates the screenshot in the sandbox;
-2. reads it as base64;
-3. returns image content through the GSA MCP tool;
-4. destroys the sandbox after execution.
+### 17.2 Auth and write boundary
 
-Upgrade the browser evidence path so screenshot bytes can be persisted into the configured Project Memory evidence folder before the Tester Run is finalized.
+The browser bridge already receives an authenticated GSA bearer token.
 
-The implementation may use a bounded binary handoff/export mechanism, but it must preserve these invariants:
+Add a narrow evidence persistence path in the GSA/Vercel browser bridge that:
 
-- writes only inside the configured Memory Repo Project prefix;
-- every artifact path is authorized by the existing memory mutation guard;
-- binary artifacts are not embedded as huge base64 strings inside Verification JSON;
-- the persisted file is read-back/verified before its ref is accepted as evidence;
-- a failed artifact write is reported as an evidence limitation and never silently treated as persisted;
-- source repositories are not used as the default screenshot store;
-- historical evidence is append-preserving.
+1. validates the authenticated user;
+2. validates project_id/evidence context against the active GSA Project boundary;
+3. writes only under that user's private gsa-evidence prefix;
+4. uses Supabase Storage RLS/private-bucket policy so users cannot read/write another user's prefix;
+5. returns artifact IDs/paths + hashes/sizes, not raw base64, after persistence;
+6. verifies upload success before returning an artifact as durable evidence.
 
-If direct binary persistence through the current GitHub connector proves awkward, introduce one narrow evidence-artifact export mechanism rather than broadening Tester/source write authority.
+Do not grant Tester arbitrary Supabase Storage paths or source-repository write authority.
 
-### User-facing result
+### 17.3 Evidence bundle identity
 
-A successful UI Test report should end with a compact result plus the durable evidence folder, for example:
+Browser capture may allocate an evidence_bundle_id before the final Verification record exists.
+
+tester_verification_record then persists:
+
+~~~text
+evidence_bundle_ref
+artifact_manifest_refs[]
+~~~
+
+The bundle and Verification record are joined by those refs; they do not require the same ID.
+
+### 17.4 Human evidence viewer
+
+Add an authenticated GSA evidence viewer in auth-ui.
+
+User-facing behavior:
+
+~~~text
+Tester result
+→ compact PASS/FAIL/measurement summary
+→ "Open evidence"
+→ authenticated folder-like viewer
+   - report
+   - screenshots
+   - snapshots
+   - console/page errors
+   - artifact metadata
+~~~
+
+The viewer generates short-lived signed reads internally. Do not make evidence objects public by default.
+
+Because screenshots are private, GitHub report.md is no longer required to embed public image URLs. The authoritative user-facing visual surface is the authenticated evidence viewer.
+
+### 17.5 Evidence rules
+
+- Screenshot artifacts are tied to project_id + evidence_bundle_id + target_revision in the manifest.
+- Canonical TEST/RETEST Verification remains VERIFICATION/<verification-id>.json.
+- result.json/report.md are human/debug artifacts, not lifecycle authority.
+- Retest creates a new bundle for the new revision; never overwrite prior failing evidence.
+- a PASS cannot depend on screenshots alone when interaction/state verification is required;
+- a FAIL screenshot maps to a case/step in result.json/manifest.
+- source repositories are not the default screenshot store.
+- historical bundles are append-preserving until retention policy expires them; if expired, Verification retains metadata and notes the missing binary artifact.
+
+### 17.6 Capture budget and privacy
+
+Initial hard limits:
+
+~~~text
+max screenshots per verification: 12
+max single screenshot: 5 MiB
+max evidence bundle: 50 MiB
+video/recording: disabled by default
+~~~
+
+Security/privacy rules:
+
+- never persist passwords, auth tokens, cookies, Authorization headers or raw secret values;
+- avoid screenshot capture while a secret/password field is populated;
+- do not persist localStorage/sessionStorage contents unless a specific non-secret value is the subject of an approved PROBE;
+- login/protected pages default to metadata/text-only evidence unless screenshot is necessary and safe;
+- artifact manifest records size, MIME type and SHA-256;
+- exceeding limits yields an explicit evidence limitation, not silent truncation.
+
+Retention policy must be configurable; initial implementation may keep bundles until explicit Project cleanup, but the architecture must support later age/size cleanup without deleting Verification records.
+
+### 17.7 Current browser implementation implication
+
+The current browser bridge already:
+1. creates PNG files inside the Vercel Sandbox;
+2. reads them as base64;
+3. returns inline MCP image content;
+4. destroys the sandbox.
+
+Upgrade it so persisted mode uploads screenshot bytes to the private evidence bucket before sandbox teardown and returns artifact refs.
+
+Inline image return may remain useful for immediate chat inspection, but it is not considered durable evidence.
+
+### 17.8 User-facing result
+
+Example:
 
 ~~~text
 CP-UI-02: FAIL
 Revision: <sha>
 Cases: 5/6 passed
 Failure: mobile lesson canvas clipped at 390x844
-Evidence folder:
-projects/<project-id>/VERIFICATION/UI/<verification-id>/
-~~~
 
-This makes Tester output inspectable by Human without requiring the conversation to retain every screenshot.
+Evidence bundle: <bundle-id>
+Open evidence: <authenticated GSA evidence viewer link>
+~~~
 
 ## 18. Native browser capability architecture
 
@@ -980,7 +1106,7 @@ known limitations
 last probe evidence
 ~~~
 
-Do not introduce an external browser provider into this document unless a later architecture decision explicitly requires one.
+Do not introduce an external browser runtime into this document unless a later architecture decision explicitly requires one.
 
 ## 22. Reviewer changes
 
@@ -996,9 +1122,9 @@ Check:
 - unjustified capability assumptions;
 - incomplete final regression requirement.
 
-### Source review after Tester FAIL
+### Source review after Tester FAIL when review is required
 
-Reviewer reviews the Coder repair against:
+When topology, repair_review_policy or the mandatory review floor requires a Reviewer, Reviewer reviews the Coder repair against:
 - original requirement;
 - Tester failure evidence;
 - actual diff;
@@ -1062,16 +1188,16 @@ A stale historical browser success must not prove current capability forever.
 | job_revise_plan | Add checkpoint revision support |
 | planning Reviewer | Add checkpoint quality/coverage review |
 | Job record | Add checkpoint definitions/topology references |
-| Embedded Task | Add verification classification/checkpoint refs or equivalent topology linkage |
-| Milestone planning | Completion may require checkpoint/evidence |
+| Embedded Task | No new checkpoint authority fields; checkpoint status is derived from typed topology |
+| Milestone planning | Add embedded milestones[] groups referencing topology/checkpoint nodes |
 | Orchestrator | Dispatch Tester from topology; route FAIL/RETEST |
 | Run begin | Validate required checkpoint evidence inputs |
-| Run complete/Handoff | Carry Tester evidence refs as required inputs |
-| Verification records | Major TEST/RETEST/MEASURE/PROBE extensions |
+| Run complete/Handoff | Carry Tester Verification/output refs as required inputs |
+| Verification records | Add explicit tester_verification_record MCP contract for TEST/RETEST/EVIDENCE |
 | State machine | Add derived checkpoint state semantics |
 | Job completion | Enforce required checkpoint evidence |
 | Browser QA | Convert runtime assumptions into capability-probed behavior |
-| UI evidence bundle | Persist screenshots/snapshots/logs under per-verification folder and return folder to user |
+| UI evidence bundle | Persist private binary evidence in Supabase Storage and expose authenticated folder-like viewer |
 | Review Coverage Summary | Derive checkpoint/Test/Retest coverage by exact revision |
 | Evals | Add planning/checkpoint/tester/browser-probe scenarios |
 
@@ -1096,51 +1222,52 @@ Acceptance:
 - Tester does not modify source;
 - MEASURE without threshold produces measurement, not invented verdict.
 
+
 ### M2 — Test Checkpoint planning model
 
-Goal: make Tester placement and outputs explicit in Job planning.
+Goal: make Tester placement and outputs explicit without creating duplicate task/checkpoint authority.
 
 Change:
 - job_prepare.test_checkpoints[];
-- job_revise_plan;
-- Job record;
-- topology generation;
-- task/checkpoint linkage;
-- milestone completion semantics;
-- planning-review checks.
+- job_prepare.milestones[];
+- job_revise_plan support;
+- typed topology nodes/edges;
+- checkpoint/milestone planning-review checks;
+- backward compatibility for historical Task-only topology.
 
 Acceptance:
-- Planner can produce a Job where T2 → CP1 → T3;
-- planning review detects an orphaned downstream dependency;
-- old Jobs without checkpoints remain readable.
+- Planner can produce T2 → CP1 → T3 through typed topology;
+- Task records do not duplicate checkpoint edges;
+- planning review detects orphaned checkpoint output/milestone references;
+- old Jobs without checkpoints/milestones remain readable.
 
 ### M3 — Tester Verification persistence + routing
 
 Goal: make checkpoint evidence durable and actionable.
 
 Change:
-- TEST/RETEST Verification extensions;
-- next-phase inputs;
+- add tester_verification_record;
+- TEST/RETEST/EVIDENCE mode-specific records;
+- next-phase inputs/required outputs;
 - derived checkpoint state;
 - Orchestrator dispatch;
-- FAIL → Coder → Reviewer → RETEST;
+- FAIL → Coder repair → Goal Recheck → planned/mandatory review if required → RETEST;
 - Handoff required evidence inputs;
-- UI evidence bundle manifest/ref support (persistence may land in M5 with browser binary export).
+- Job completion guard against missing/stale required checkpoint evidence.
 
 Acceptance:
 - a failed checkpoint routes to repair;
-- repaired source cannot go directly to checkpoint PASS without Reviewer;
+- Reviewer is not universally inserted when topology/mandatory floor does not require it;
 - stale evidence from old revision is rejected;
-- downstream Task is blocked when declared Tester input is missing.
+- downstream Task is blocked when declared Tester input is missing;
+- no TEST/RETEST PASS exists only in chat.
 
 ### M4 — Native browser capability probes
 
 Goal: discover what the existing hosted sandbox really does.
 
 Run:
-- PROBE-BROWSER-01..04.
-
-Do not modify product/browser architecture to fit expected results before measurements exist.
+- PROBE-BROWSER-01..04 plus remaining fill/keyboard/persistence/repeatability checks.
 
 Output:
 - observed capability matrix;
@@ -1150,35 +1277,44 @@ Output:
 
 Acceptance:
 - no capability marked functional without successful real execution;
-- failures are classified without blaming application code prematurely.
+- failures are classified without blaming application code prematurely;
+- observed capability is conditioned on environment/target/run evidence.
 
-### M5 — Native browser evidence integration
+### M5 — Native browser durable evidence
 
-Goal: let Tester use only the native GSA browser primitives that have been proven by capability probes.
+Goal: persist browser evidence safely and make it inspectable by the user.
 
-First:
-- native GSA browser if proven usable for the required primitive.
-
+Change:
+- private Supabase gsa-evidence bucket + RLS/prefix policies;
+- persisted evidence mode in browser bridge;
+- evidence_bundle_id + artifact manifest;
+- upload/read-back verification with hashes/sizes;
+- capture budget/privacy rules;
+- authenticated auth-ui evidence viewer;
+- tester_verification_record evidence_bundle_ref integration.
 
 Acceptance:
-- Tester semantics remain capability-based;
-- unavailable native capability yields BLOCKED/NEEDS_HUMAN, never fabricated PASS.
+- screenshot survives sandbox teardown;
+- Tester receives stable artifact refs rather than only base64;
+- another user cannot read/write the bundle;
+- bundle oversize/secret-risk cases fail safely with explicit limitation;
+- user can open one evidence viewer link and inspect report + screenshots + logs.
 
 ### M6 — Regression accumulation and final checkpoint
 
-Goal: make final Tester verification include relevant prior checkpoint regression.
+Goal: make final Tester verification include only relevant prior checkpoint regression.
 
 Change:
-- persist native browser screenshots/snapshots/logs into the UI Test evidence folder;
-- return the human-viewable evidence-folder reference from Tester report;
-- verify binary artifact persistence/read-back;
 - checkpoint regression references;
 - final Job Tester surface;
-- Review Coverage Summary integration.
+- Review Coverage Summary integration;
+- regression selection by affected behavior/dependency rather than "all tests forever".
 
 Acceptance:
 - final evidence identifies which prior checkpoint surfaces were rerun;
-- unrelated tests are not automatically accumulated forever.
+- unrelated tests are not accumulated indefinitely;
+- regression evidence is bound to the accepted target revision.
+
 
 ## 28. Required evals
 
@@ -1200,34 +1336,46 @@ Expected:
 - downstream Task consumes measured evidence;
 - missing evidence blocks the dependent Task.
 
-### E-Tester-03 — product failure repair
+### E-Tester-03 — product failure repair without universal review
 
-Tester FAIL on exact revision A.
+Tester FAIL on revision A; repair does not hit mandatory review floor and topology does not require Reviewer.
 
 Expected:
 - route to Coder;
 - source revision B;
-- Reviewer PASS B;
-- RETEST B;
+- Coder Goal Recheck;
+- RETEST B without inserting an unplanned Reviewer;
 - revision A evidence not reused as PASS for B.
+
+A paired case with mandatory/planned review must insert Reviewer before RETEST.
 
 ### E-Tester-04 — environment failure
 
-Browser provider is surface-present but fails to start.
+Native browser is surface-present but fails to start.
 
 Expected:
 - ENVIRONMENT_FAILURE/BLOCKED;
 - no product FAIL;
 - no PASS.
 
-### E-Tester-05 — native browser probe
+### E-Tester-05 — native browser partial capability
 
-Successful static load but interaction fails.
+Static load/screenshot succeeds but interaction fails.
 
 Expected capability matrix:
 - open/render/screenshot = observed;
-- click/fill = unverified/failed;
+- failed interaction primitive remains unverified/failed;
 - observation-only UI checkpoints remain usable.
+
+### E-Tester-06 — durable binary evidence
+
+Browser creates a screenshot and sandbox terminates.
+
+Expected:
+- screenshot remains readable from private evidence storage;
+- manifest hash/size/MIME match persisted object;
+- Verification references the bundle;
+- no base64 blob is embedded in Verification JSON.
 
 ### E-Tester-07 — checkpoint overuse
 
@@ -1242,7 +1390,41 @@ MEASURE returns render time 2.4s with no approved performance threshold.
 
 Expected:
 - measurement persisted;
-- no automatic PASS/FAIL performance conclusion.
+- no automatic product-performance PASS/FAIL conclusion.
+
+### E-Tester-09 — canonical topology authority
+
+A malformed plan tries to persist conflicting Task checkpoint refs and topology edges.
+
+Expected:
+- task checkpoint refs are not accepted as authority;
+- topology/checkpoint definitions determine ordering.
+
+### E-Tester-10 — milestone gate
+
+Milestone M2 requires CP-2 PASS and CP-3 probe output.
+
+Expected:
+- M2 remains incomplete while either requirement is missing/stale;
+- no duplicate mutable Milestone status record is required.
+
+### E-Tester-11 — evidence privacy boundary
+
+A test reaches a password/auth-sensitive screen.
+
+Expected:
+- secret-bearing frame is not persisted by default;
+- Viewer requires authenticated user;
+- cross-user bundle access is denied.
+
+### E-Tester-12 — evidence budget
+
+Capture attempts exceed screenshot or bundle limit.
+
+Expected:
+- excess persistence stops safely;
+- Tester records an explicit evidence limitation;
+- existing valid artifacts remain intact.
 
 ## 29. Migration order
 
@@ -1257,7 +1439,8 @@ docs/contracts
 → orchestration/routing
 → state/completion guards
 → browser probes
-→ browser adapters
+→ private evidence storage + browser persistence
+→ authenticated evidence viewer
 → evals/regression
 ~~~
 
@@ -1293,7 +1476,7 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 3. Do not let Reviewer become a second Tester.
 4. Do not let Coder edit/degrade test expectations to get green.
 5. Do not make every failure a product failure.
-6. Do not turn browser provider names into architecture contracts.
+6. Do not turn browser runtime names into architecture contracts.
 7. Do not make one historical capability probe permanent truth.
 8. Do not let downstream phases invent missing empirical values.
 9. Do not allow stale revision evidence to satisfy a new target.
@@ -1301,7 +1484,20 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 11. Do not make PROBE/MEASURE outputs informal chat context when later work depends on them.
 12. Do not force a new persistent record family until existing Verification/Handoff topology proves insufficient.
 
-## 32. Target end-state example
+## 32. CR finding resolution matrix
+
+| CR finding | Resolution in this plan |
+|---|---|
+| Binary screenshot path undefined | Private Supabase Storage evidence bucket + authenticated browser-bridge upload path |
+| No Tester TEST/RETEST persistence tool | Add explicit tester_verification_record MCP contract |
+| Milestone too weak as one string | Add embedded milestones[] groups referencing topology/checkpoints; keep legacy label for compatibility |
+| Multiple checkpoint sources of truth | Checkpoint definitions own semantics; typed topology owns ordering; Task checkpoint labels are derived only |
+| Universal Reviewer-before-Retest conflicts with topology-driven review | Use existing planned/mandatory review floor; repair_review_policy can explicitly require review |
+| Verification storage path conflict | Keep canonical JSON flat at VERIFICATION/<verification-id>.json |
+| Screenshot retention/security unspecified | Add private bucket, RLS, no-secret capture rules, 12 screenshot / 5 MiB each / 50 MiB bundle limits |
+| M5/M6 responsibilities drifted | M5 owns durable browser evidence + viewer; M6 owns regression/final checkpoint only |
+
+## 33. Target end-state example
 
 ~~~text
 Planner
@@ -1329,8 +1525,8 @@ Coder T1/T2
 → Tester CP2
    FAIL
 → Coder repair
-→ self-check
-→ Reviewer PASS
+→ self-check + Goal Recheck
+→ Reviewer only if planned/required
 → Tester CP2 RETEST PASS
 → continue
 → final CP3
