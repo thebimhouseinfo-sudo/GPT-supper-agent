@@ -1454,6 +1454,9 @@ The first executable browser work should itself be a Tester PROBE that produces 
 Likely primary files:
 
 - supabase/functions/gsa-mcp/index.ts
+- auth-ui/api/browser.ts
+- authenticated auth-ui evidence viewer route/page (new)
+- Supabase migration/policies for private gsa-evidence Storage bucket (new)
 - docs/architecture/AGENT-HARNESSES.md
 - docs/architecture/CORE-RECORD-CONTRACTS.md
 - docs/architecture/EXECUTION-AND-REVIEW.md
@@ -1467,7 +1470,7 @@ Likely primary files:
 Potentially add a dedicated architecture document after M1, e.g.:
 - docs/architecture/TESTER-AGENT.md
 
-Do not duplicate Local's spec verbatim. Online canonical documentation should describe the shared semantics plus Online persistence/provider differences.
+Do not duplicate Local's spec verbatim. Online canonical documentation should describe the shared semantics plus Online persistence and native-browser runtime differences.
 
 ## 31. Important implementation cautions
 
