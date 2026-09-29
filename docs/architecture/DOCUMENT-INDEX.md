@@ -35,6 +35,7 @@ File names are stable semantic names. Git history is the version authority; no v
 
 ## Supporting, not core runtime architecture
 
+- `docs/plans/GSA-ONLINE-TESTER-UPGRADE.md` — proposed Online Tester upgrade: checkpoint planning, VERIFY/MEASURE/PROBE evidence, orchestration impacts, and optional browser-provider strategy.
 - `docs/process/THEORY-PROCESS.md` — theory-development governance.
 - `docs/specialist/CONCEPT-MEASUREMENT-NORMALIZATION.md` — optional UI Coder specialist methodology.
 
