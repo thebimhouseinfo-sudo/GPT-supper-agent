@@ -106,6 +106,27 @@ During the upgrade:
 
 No force-push or destructive history rewrite is part of the normal promotion path.
 
+### 3.4 Drift control against production main
+
+`upgrade/gsa-next` must not drift for many checkpoints from production `main`.
+
+Before starting each new checkpoint:
+
+~~~text
+read current main SHA
+→ compare with integration baseline SHA
+→ if main advanced:
+   merge/rebase latest main into upgrade/gsa-next
+   resolve only on integration branch
+   rerun the V2_STABLE compatibility smoke gate
+→ then branch/start the next checkpoint
+~~~
+
+Any production hotfix therefore enters the integration branch incrementally rather than being discovered only at final release.
+
+The final promotion still requires one full latest-main synchronization followed by CP7 compatibility + E2E rerun.
+
+
 ---
 
 ## 4. Existing-Job compatibility fence
@@ -127,6 +148,19 @@ Exact naming may change during implementation review, but behavior must satisfy:
 - Tester checkpoints, EvidenceNeed routing, new topology semantics and UI Coder specialization do not auto-activate for legacy Jobs;
 - old completion/order semantics are preserved unless a Human-reviewed plan explicitly migrates that Job;
 - no bulk migration of existing Job JSON is required.
+
+### Cutover default
+
+Before final production promotion:
+
+- production-created Jobs remain V2_STABLE/missing-discriminator;
+- staging/NEXT Jobs must opt in explicitly inside the isolated upgrade test namespace.
+
+After successful final promotion:
+
+- **newly created Jobs are stamped `execution_contract=NEXT` by default**;
+- existing records with missing discriminator or `V2_STABLE` remain V2_STABLE permanently unless explicitly migrated through a reviewed plan;
+- final cutover therefore changes the default for future Jobs, not the semantics of historical/current Jobs.
 
 This fence is required before later checkpoints may change orchestration behavior.
 
@@ -227,14 +261,18 @@ Create the safe upgrade lane before adding behavior.
 - implement or finalize the V2_STABLE/NEXT compatibility discriminator;
 - make missing discriminator mean V2_STABLE;
 - add compatibility fixtures/evals for historical Job parsing, planning revision, run begin/complete and handoff paths;
-- create an isolated upgrade test namespace/project so staging tests cannot mutate active Job records.
+- create an isolated upgrade test namespace/project so staging tests cannot mutate active Job records;
+- establish an explicit **non-production runtime target** for pre-cutover deploy/read-back, using either a separate function/endpoint or a separate non-production project;
+- bind that runtime to the dedicated Test Lab Project/Memory namespace;
+- keep the production connector/runtime endpoint unchanged throughout CP0-CP7.
 
 ### Gate
 
 - old Job records are readable without rewrite;
 - no NEXT feature auto-activates for legacy Jobs;
 - existing Job completion/topology behavior remains unchanged;
-- staging/test data cannot collide with active production Jobs.
+- staging/test data cannot collide with active production Jobs;
+- all pre-cutover runtime deployment/read-back and Tester execution can run against the isolated NEXT runtime without repointing production.
 
 ### Merge
 
@@ -606,6 +644,8 @@ Preferred Git operation:
 Do not force-reset or rewrite production history by default.
 
 ## Step F4 — production deploy + read-back
+
+At promotion, switch the production Job-creation default so newly created Jobs receive `execution_contract=NEXT`. Existing missing/`V2_STABLE` records retain legacy semantics.
 
 Deploy the exact promoted `main` revision.
 
