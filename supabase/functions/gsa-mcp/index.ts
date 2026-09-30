@@ -15,6 +15,27 @@ const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`
 const AUTH_SCOPES = ['email', 'profile']
 const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gpt-supper-agent.vercel.app/api/browser'
 
+const EXECUTION_CONTRACT_VALUES = ['V2_STABLE', 'NEXT'] as const
+type ExecutionContract = typeof EXECUTION_CONTRACT_VALUES[number]
+const DEFAULT_EXECUTION_CONTRACT: ExecutionContract = 'V2_STABLE'
+const GSA_SOURCE_BUILD_ID = 'CP0-J-F177-R2'
+
+function resolveExecutionContract(value: unknown): ExecutionContract | null {
+  if (value == null || value === '') return DEFAULT_EXECUTION_CONTRACT
+  return value === 'V2_STABLE' || value === 'NEXT' ? value : null
+}
+
+function jobExecutionContract(job: any): ExecutionContract | null {
+  return resolveExecutionContract(job?.execution_contract)
+}
+
+function invalidExecutionContract() {
+  return {
+    content: [{ type: 'text' as const, text: 'Invalid execution_contract. Expected V2_STABLE or NEXT; missing defaults to V2_STABLE.' }],
+    isError: true,
+  }
+}
+
 function challenge(error = 'invalid_token', description = 'Sign in to GPT Super Agent to continue') {
   return `Bearer resource_metadata="${RESOURCE_METADATA}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
 }
@@ -801,7 +822,7 @@ function createServer(req: Request) {
       title: 'Get GSA runtime status',
       description: 'Verify authenticated GSA runtime and Memory Repo configuration state.',
       inputSchema: {},
-      outputSchema: { phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string() },
+      outputSchema: { phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string(), source_build_id: z.string(), execution_contract_default: z.string() },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -815,6 +836,8 @@ function createServer(req: Request) {
         mcp: 'SERVER_DEPLOYED',
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
+        source_build_id: GSA_SOURCE_BUILD_ID,
+        execution_contract_default: DEFAULT_EXECUTION_CONTRACT,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
     },
@@ -1627,6 +1650,7 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
+        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -1691,7 +1715,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1737,6 +1761,7 @@ function createServer(req: Request) {
         objective,
         scope,
         non_goals,
+        execution_contract: resolveExecutionContract(execution_contract) ?? DEFAULT_EXECUTION_CONTRACT,
         planning_context: {
           work_context,
           phase,
@@ -1839,6 +1864,7 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(current)) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -1965,6 +1991,7 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(current)) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT') {
         return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
       }
@@ -2056,6 +2083,7 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(current)) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT' || current.planning_revision !== planning_revision) {
         return { content: [{ type: 'text', text: 'Planning review target does not match the current DRAFT planning revision.' }], isError: true }
       }
@@ -2170,6 +2198,7 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(current)) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -2244,6 +2273,7 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(current)) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -2326,6 +2356,7 @@ function createServer(req: Request) {
       try { owningJob = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid owning Job JSON.' }], isError: true }
       }
+      if (!jobExecutionContract(owningJob)) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
       }
