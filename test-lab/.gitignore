@@ -1,0 +1,33 @@
+# Disposable experiment workspace
+scratch/
+private/
+
+# Credentials / local configuration
+.env
+.env.*
+*.pem
+*.key
+
+# Binary / screenshot / media evidence stays external
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.svgz
+*.mp4
+*.webm
+*.mov
+*.zip
+*.tar
+*.gz
+*.bin
+*.pdf
+*.har
+*.trace
+
+# Local logs and transient output
+*.log
+tmp/
