@@ -256,54 +256,39 @@ Tester evidence storage follows the separately reviewed GSA Online Tester plan.
 
 ## 11. Verified cleanup inventory
 
-A live source audit of current `main` established that the abandoned design-workspace direction never became a production flow.
+A live source audit of current `main` established that the abandoned external design-workspace experiment never became a production flow.
 
-Observed implementation footprint:
+The implemented footprint is only **one lab-only runtime skill declaration** in `supabase/functions/gsa-mcp/index.ts`. The related Test Lab scenario wording has already been rewritten into generic frontend capability guidance.
 
-~~~text
-supabase/functions/gsa-mcp/index.ts
-└─ RUNTIME_SKILLS
-   └─ ui-coder-penpot-lab
-~~~
+The audit found no implemented downstream integration/product artifacts requiring migration or compatibility handling:
 
-The originating source commit added only:
-
-- one lab-only runtime skill block in `supabase/functions/gsa-mcp/index.ts`;
-- one Test Lab UI Coder scenario addition, which has already been rewritten to generic frontend capability guidance.
-
-The audit found **no implemented downstream integration/product artifacts** requiring migration or compatibility handling:
-
-- no provider MCP adapter/client;
+- no external design-provider adapter/client;
 - no provider credential/config/session flow;
 - no provider-specific API route;
-- no design-file/page/object persistence model;
+- no external design-file/page/object persistence model;
 - no provider-generated asset pipeline;
 - no generated-code import/reuse pipeline;
 - no provider-specific database/storage migration;
-- no provider-owned design workspace in target repositories;
-- no committed generated assets, screenshots, draft code or stable design refs.
+- no provider-owned target-repository workspace;
+- no committed generated assets, screenshots, draft code or stable external-design refs.
 
-The current deployed/runtime catalog may still expose the obsolete lab skill, while the connected `load_skill` schema does not accept that skill name. This is a stale capability declaration, not evidence of an integrated execution flow.
+The current runtime may still advertise the obsolete lab capability while the connected skill loader cannot invoke it. Treat this as a stale capability declaration, not as evidence of an integrated execution flow.
 
 ### Cleanup acceptance
 
-After the source cleanup/rebaseline, active source and current planning/Test Lab guidance must contain no abandoned-provider dependency or product assumption.
+Implementation removes exactly the audited obsolete lab declaration and any directly tied stale runtime/catalog/loader reference. Do not invent migrations or cleanup for integrations/products that never existed.
 
-At minimum, repository search over active files must return zero relevant hits for:
+After cleanup:
 
-~~~text
-penpot
-ui-coder-penpot
-design-to-code
-design/ui/penpot
-~~~
+- active runtime/source contains no abandoned external-design-provider dependency;
+- current Test Lab UI Coder guidance remains provider-independent;
+- generic UI Coder behavior remains intact;
+- historical Git commits and superseded durable audit records remain preserved.
 
-Historical Git commits and durable superseded audit records are preserved and are **not** cleanup targets.
-
-The cleanup must preserve generic UI Coder behavior already present:
+The cleanup must preserve:
 
 - capability-backed verification;
-- full-screen + representative-content coverage;
+- full screen + representative content coverage;
 - Designer asset-contract precedence;
 - Human subjective acceptance;
 - browser-backed development inspection;
