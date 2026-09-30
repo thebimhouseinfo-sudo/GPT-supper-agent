@@ -55,7 +55,12 @@ Expected `get_runtime_status` on CP0 staging source:
 - `source_build_id = "CP0-J-F177-R2"`;
 - `execution_contract_default = "V2_STABLE"`.
 
-Deployment evidence must additionally bind the staged source body to the exact Reviewer-approved GitHub revision.
+Deployment evidence must additionally:
+- read back the deployed `gsa-mcp-next` source body;
+- prove that the deployed `index.ts` content is byte-equivalent to the Reviewer-approved GitHub blob;
+- record the exact Reviewer-approved Git commit and Git blob SHA beside the Supabase function version/hash.
+
+The runtime `source_build_id` is a checkpoint marker, not a self-referential Git commit SHA. Exact revision binding comes from deployed-source read-back equality plus the recorded Git commit/blob identity.
 
 ## Regression floor
 
@@ -64,3 +69,12 @@ Re-run the behavioral expectations from:
 - E19 planning review loop.
 
 No historical Job rewrite is allowed.
+
+## Staging route compatibility
+
+The same reviewed source is deployable under both function slugs:
+
+- production-compatible route prefix: `/gsa-mcp/*`;
+- isolated staging route prefix: `/gsa-mcp-next/*`.
+
+Protected-resource metadata is derived from the incoming request URL so staging never advertises the production MCP resource URL.
