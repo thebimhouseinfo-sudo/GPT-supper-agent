@@ -22,7 +22,7 @@ Verification evidence:
 - Coder exposed inspect-result and Goal Recheck closure;
 - Reviewer exposed revision-bound context-isolated planning review;
 - V2 runtime terms including `job_sizing`, `brownfield_logic_review` and `relationship_knowledge_prepare` are present;
-- future P1/P2 terms such as `evidence_needs`, `test_checkpoints`, Penpot and Test Lab integration are not present.
+- future P1/P2 terms such as `evidence_needs`, `test_checkpoints` and Test Lab workflow integration are not present.
 
 Rollback target captured before parity deployment:
 
@@ -30,7 +30,7 @@ Rollback target captured before parity deployment:
 - previous deployed hash: `35dbfc42b226efb69f2beb06bdde89152d7838a3098ef04181929ab6f02e3962`
 - if the V2_STABLE smoke fails later, restore the previous deployment target before continuing any P1/P2 rollout.
 
-This marker freezes **runtime V2 only**. It does not activate the planned UI Coder, Tester, Penpot, Test Lab, EvidenceNeed, checkpoint, or new workflow integration.
+This marker freezes **runtime V2 only**. It does not activate the planned UI Coder, Tester, Test Lab, EvidenceNeed, checkpoint, or new workflow integration.
 
 ## Baseline
 
