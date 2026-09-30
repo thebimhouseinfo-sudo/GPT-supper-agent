@@ -435,6 +435,45 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Re-test after relevant source revision changes; evidence for an older revision does not silently transfer.',
     ].join('\n'),
   },
+  'tester-lab': {
+    description: 'Stand-alone Test Lab capability for Tester to design empirical capability experiments and independently verify UI/runtime evidence without production lifecycle authority.',
+    body: [
+      '# Tester Lab',
+      'This skill is explicit Test Lab capacity only. It is not auto-loaded by the production Tester role and cannot mutate production Job/Run lifecycle.',
+      '',
+      'INSPECT',
+      '- Read the high-level capability questions, exact target revision, available tool/capability surface, and Test Lab boundary.',
+      '- Do not inherit or invent detailed test cases from Planner. Translate the questions into observable unknowns.',
+      '',
+      'PLAN',
+      '- Author the concrete Capability Test Plan yourself before execution.',
+      '- For every test state what capability it probes, what the UI Coder/target must do, and what observable evidence must be returned.',
+      '- Freeze the plan before handing work to the target; do not rewrite acceptance expectations after seeing results.',
+      '',
+      'MODE',
+      '- VERIFY: compare observed behavior against an explicit requirement.',
+      '- MEASURE: record an observed value/state without inventing a threshold.',
+      '- PROBE: establish an unknown runtime/tool/capability fact needed by later planning.',
+      '',
+      'EXECUTE / VERIFY',
+      '- Use only capabilities that are actually OBSERVED. Tool presence alone is not proof.',
+      '- For UI evidence, use bounded browser flows, screen/state switching, snapshots and persisted evidence only when the exact operations succeed.',
+      '- Keep verification read-only to the frozen target result unless a separate authorized Job says otherwise.',
+      '',
+      'CLASSIFY',
+      '- Distinguish UI_CODER_PRODUCT_FAILURE, TESTER_HARNESS_LIMIT, ENVIRONMENT_LIMIT, INTEGRATION_NOT_READY and SPEC_OR_PLAN_GAP.',
+      '- UNKNOWN/PARTIAL stays unknown/partial; never promote it to PASS.',
+      '',
+      'HUMAN REVIEW EVIDENCE',
+      '- Capture representative screens/states needed for Human review and return direct user-openable evidence links/paths when available.',
+      '- A result that forces the Human to search Git or storage manually is not review-ready.',
+      '- Signed links are delivery evidence, not durable secrets; do not persist bearer tokens or screenshot bytes into Project Memory.',
+      '',
+      'REPORT',
+      '- Return the Tester-authored plan, execution observations, evidence refs, capability conclusions, untested areas and limitations separately.',
+      '- Test Lab results are empirical supporting evidence only until a later reviewed workflow explicitly promotes a contract.',
+    ].join('\n'),
+  },
 }
 
 function renderHarness(role: string) {
@@ -759,6 +798,11 @@ function createServer(req: Request) {
           height: z.number().int().min(480).max(1440),
           label: z.string().max(40).optional(),
         })).max(3).optional(),
+        evidence: z.object({
+          persist: z.boolean(),
+          label: z.string().min(1).max(80).optional(),
+          expires_in: z.number().int().min(60).max(604800).optional(),
+        }).optional(),
       },
       outputSchema: {
         observed: z.boolean(),
@@ -768,16 +812,23 @@ function createServer(req: Request) {
         console: z.string(),
         page_errors: z.string(),
         screenshot_count: z.number().int(),
+        evidence: z.array(z.object({
+          label: z.string(),
+          storage_path: z.string(),
+          signed_url: z.string().url(),
+          expires_at: z.string(),
+          mime_type: z.string(),
+        })).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     } as any,
-    async ({ url, viewports }: any) => {
+    async ({ url, viewports, evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to inspect UI.')
       try {
-        const data = await callBrowserBridge(req, { mode: 'ui_inspect', url, viewports })
+        const data = await callBrowserBridge(req, { mode: 'ui_inspect', url, viewports, ...(evidence ? { evidence } : {}) })
         const screenshots = Array.isArray(data.screenshots) ? data.screenshots : []
         const summary = {
           observed: true,
@@ -787,6 +838,7 @@ function createServer(req: Request) {
           console: String(data.console ?? ''),
           page_errors: String(data.page_errors ?? ''),
           screenshot_count: screenshots.length,
+          evidence: Array.isArray(data.evidence) ? data.evidence : [],
         }
         const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
         for (const shot of screenshots) {
@@ -810,6 +862,7 @@ function createServer(req: Request) {
             console: '',
             page_errors: message,
             screenshot_count: 0,
+            evidence: [],
           },
           content: [{ type: 'text', text: 'Browser UI inspection unavailable: ' + message }],
           isError: true,
@@ -831,6 +884,11 @@ function createServer(req: Request) {
           label: z.string().max(40).optional(),
         }).optional(),
         stop_on_failure: z.boolean().optional(),
+        evidence: z.object({
+          persist: z.boolean(),
+          label: z.string().min(1).max(80).optional(),
+          expires_in: z.number().int().min(60).max(604800).optional(),
+        }).optional(),
         steps: z.array(z.object({
           action: z.enum(['click', 'fill', 'check', 'hover', 'select', 'press', 'wait_text', 'assert_text']),
           by: z.enum(['css', 'text', 'label', 'placeholder', 'testid', 'role']).optional(),
@@ -849,12 +907,19 @@ function createServer(req: Request) {
         page_errors: z.string(),
         steps: z.array(z.any()),
         screenshot_count: z.number().int(),
+        evidence: z.array(z.object({
+          label: z.string(),
+          storage_path: z.string(),
+          signed_url: z.string().url(),
+          expires_at: z.string(),
+          mime_type: z.string(),
+        })).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     } as any,
-    async ({ url, viewport, stop_on_failure, steps }: any) => {
+    async ({ url, viewport, stop_on_failure, evidence, steps }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError('Authentication required to run browser testing.')
       try {
@@ -864,6 +929,7 @@ function createServer(req: Request) {
           viewport,
           stop_on_failure,
           steps,
+          ...(evidence ? { evidence } : {}),
         })
         const summary = {
           observed: true,
@@ -875,6 +941,7 @@ function createServer(req: Request) {
           page_errors: String(data.page_errors ?? ''),
           steps: Array.isArray(data.steps) ? data.steps : [],
           screenshot_count: data.screenshot?.data ? 1 : 0,
+          evidence: Array.isArray(data.evidence) ? data.evidence : [],
         }
         const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
         if (data.screenshot?.data) {
@@ -898,6 +965,7 @@ function createServer(req: Request) {
             page_errors: message,
             steps: [],
             screenshot_count: 0,
+            evidence: [],
           },
           content: [{ type: 'text', text: 'Browser functional testing unavailable: ' + message }],
           isError: true,

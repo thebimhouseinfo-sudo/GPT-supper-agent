@@ -35,6 +35,45 @@ type StoredEvidence = {
   mime_type: "image/png";
 };
 
+type PageErrorSummary = { text: string; hasErrors: boolean };
+
+function normalizePageErrors(raw: unknown): PageErrorSummary {
+  const text = String(raw ?? "").trim();
+  if (!text || text === "✗" || /^no errors?\b/i.test(text)) {
+    return { text: "", hasErrors: false };
+  }
+
+  try {
+    const parsed: any = JSON.parse(text);
+    const data = parsed?.data;
+    const candidates =
+      Array.isArray(data) ? data :
+      Array.isArray(data?.errors) ? data.errors :
+      Array.isArray(data?.messages) ? data.messages :
+      Array.isArray(parsed?.errors) ? parsed.errors :
+      Array.isArray(parsed?.messages) ? parsed.messages :
+      null;
+
+    if (candidates) {
+      return {
+        text: candidates.length ? JSON.stringify(candidates) : "",
+        hasErrors: candidates.length > 0,
+      };
+    }
+
+    if (
+      parsed?.success === true &&
+      (parsed?.error == null || parsed?.error === "") &&
+      (data == null || (typeof data === "object" && !Array.isArray(data) && Object.keys(data).length === 0))
+    ) {
+      return { text: "", hasErrors: false };
+    }
+  } catch {}
+
+  // Conservative fallback: unknown non-empty output remains an error.
+  return { text, hasErrors: true };
+}
+
 async function requireGsaUser(req: any): Promise<GsaUser> {
   const header = String(req.headers.authorization || "");
   if (!header.startsWith("Bearer ")) throw new Error("AUTH_REQUIRED");
@@ -193,7 +232,8 @@ async function runUiInspect(url: URL, body: any, auth: GsaUser) {
     }
 
     const consoleResult = await run(["console", "--json"]);
-    const errorsResult = await run(["errors"]);
+    const errorsResult = await run(["errors", "--json"]);
+    const pageErrors = normalizePageErrors(errorsResult.stdout);
     const persist = evidenceRequest(body);
     let evidence: StoredEvidence[] | undefined;
     if (persist) {
@@ -216,7 +256,7 @@ async function runUiInspect(url: URL, body: any, auth: GsaUser) {
       url: url.toString(),
       snapshot: String(snapshotResult.stdout || "").trim(),
       console: String(consoleResult.stdout || "").trim(),
-      page_errors: String(errorsResult.stdout || "").trim(),
+      page_errors: pageErrors.text,
       screenshots,
     };
     if (evidence) result.evidence = evidence;
@@ -329,7 +369,8 @@ async function runTestFlow(url: URL, body: any, auth: GsaUser) {
     const finalSnapshot = await run(["snapshot", "-i", "-c"]);
     const currentUrl = await run(["get", "url"]);
     const consoleResult = await run(["console", "--json"]);
-    const errorsResult = await run(["errors"]);
+    const errorsResult = await run(["errors", "--json"]);
+    const pageErrors = normalizePageErrors(errorsResult.stdout);
     const screenshot = await screenshotBase64(sandbox, host, true);
     const persist = evidenceRequest(body);
     const evidence = persist
@@ -337,8 +378,7 @@ async function runTestFlow(url: URL, body: any, auth: GsaUser) {
       : undefined;
     await run(["close"]);
 
-    const pageErrors = String(errorsResult.stdout || "").trim();
-    if (pageErrors && !/^no errors/i.test(pageErrors)) passed = false;
+    if (pageErrors.hasErrors) passed = false;
 
     const result: any = {
       ok: true,
@@ -348,7 +388,7 @@ async function runTestFlow(url: URL, body: any, auth: GsaUser) {
       initial_snapshot: String(initialSnapshot.stdout || "").trim(),
       final_snapshot: String(finalSnapshot.stdout || "").trim(),
       console: String(consoleResult.stdout || "").trim(),
-      page_errors: pageErrors,
+      page_errors: pageErrors.text,
       steps: results,
       screenshot: { ...viewport, mimeType: "image/png", data: screenshot },
     };
