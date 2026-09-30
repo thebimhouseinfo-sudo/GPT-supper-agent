@@ -96,6 +96,51 @@ These are design references for Human/UI Coder and are distinct from Tester runt
 
 When direct Penpot MCP use requires the browser design surface to be open/connected, GSA should ask Human only for the unavoidable connection action, such as opening the Penpot file and connecting MCP. After connection, GSA/UI Coder resumes against the same target and must not create a replacement design merely because the connection was temporarily lost.
 
+
+### G. Early stand-alone Direct Penpot MCP bootstrap and Test Lab gate
+
+Do **not** wait until the full UI Design workflow is implemented before proving the Penpot transport/output surface.
+
+Before production UI Design integration, create one bounded **lab-only Direct Penpot MCP bootstrap** for GSA Online and run a stand-alone empirical capability experiment in Test Lab.
+
+The early sequence is:
+
+~~~text
+build minimal direct Penpot MCP integration
+→ Human performs only unavoidable Penpot open/connect action
+→ Tester authors/freezes a stand-alone Capability Test Plan
+→ UI Coder executes the frozen plan against a disposable/synthetic Penpot target
+→ Tester independently read-backs/verifies the result
+→ record a small result manifest under test-lab/results/
+→ use observed evidence to refine the later production integration plan
+~~~
+
+This bootstrap is intentionally earlier than the full P2 UI workflow. It exists to settle transport/export unknowns before the larger workflow depends on them.
+
+Minimum empirical questions include:
+
+- can GSA Online reach and invoke the direct Penpot MCP path reliably after the Human connection boundary;
+- can UI Coder bind to the intended file/page and later read back enough structure to prove edits landed;
+- can UI Coder create/edit representative screen/component content through Penpot;
+- can Penpot create a representative shell-level asset and can GSA retrieve/export a usable asset file or stable asset reference;
+- what exact binary/export semantics are available for handing an asset to a target repository;
+- can Penpot return useful code/design-to-code reference material (for example structure, styles/tokens or generated code) that UI Coder can later review, reuse or adapt;
+- what stable file/page/object references survive the operation and are sufficient for independent Tester re-open/read-back;
+- what happens on temporary disconnect/reconnect, and whether the same target can be safely rebound rather than recreated.
+
+Penpot-generated code/reference material in this experiment is **draft evidence only**. It must not be copied into production source as canonical code.
+
+The experiment may use disposable/scratch outputs. Its durable result belongs in Test Lab as a small manifest, for example:
+
+~~~text
+test-lab/results/penpot-direct-bootstrap-<date-or-run>.json
+~~~
+
+The result manifest records the frozen test plan reference, observed capability level, asset-export/code-reference observations, stable target references, limitations and direct review links/paths where available. Large binaries, secrets and temporary design exports need not be committed to Test Lab.
+
+A failed/partial bootstrap is useful evidence. UNKNOWN/PARTIAL/INTEGRATION_NOT_READY must remain explicit and must refine the later architecture rather than being promoted to PASS.
+
+
 ---
 
 ## 1. Objective
