@@ -2879,6 +2879,10 @@ app.get('/selftest', (c) => {
     ux_first_temp_ui_defaults_to_gate: true,
     run_begin_requires_job_snapshot: true,
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
+    execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
+    execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
+    execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
+    execution_contract_invalid_rejected: resolveExecutionContract('UNKNOWN') === null,
   }
   const pass = Object.values(checks).every(Boolean)
   return c.json({ pass, checks })
