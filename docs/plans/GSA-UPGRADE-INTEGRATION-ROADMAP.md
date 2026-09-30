@@ -83,6 +83,16 @@ upgrade/cp7-final-integration
 
 Each child branch starts from the latest `upgrade/gsa-next`, not from production `main`.
 
+Before creating that checkpoint branch, apply the **drift-control gate**:
+
+~~~text
+has production main advanced since the last integration baseline?
+  no  → start checkpoint
+  yes → sync latest main into upgrade/gsa-next
+        → rerun V2_STABLE compatibility smoke
+        → only then start checkpoint
+~~~
+
 After the checkpoint passes:
 
 ~~~text
@@ -102,9 +112,39 @@ During the upgrade:
 - upgrade code does not replace production `gsa-mcp`;
 - upgrade tests must not mutate active production Job records;
 - production hotfixes, if any, may still land on `main`;
-- before final promotion, latest `main` must be synchronized into `upgrade/gsa-next` and the final gates rerun.
+- before **every new checkpoint starts**, compare the recorded integration baseline with current `main`;
+- if `main` advanced, synchronize those production changes into `upgrade/gsa-next` first and rerun the compatibility smoke gate before branching the next checkpoint;
+- before final promotion, perform one final full synchronization and rerun CP7 compatibility + E2E gates.
+
+This prevents a long upgrade from diverging silently from production.
 
 No force-push or destructive history rewrite is part of the normal promotion path.
+
+### 3.4 Isolated non-production runtime
+
+CP0 must establish a **separate non-production runtime target** for NEXT work before any runtime-changing checkpoint begins.
+
+The exact implementation may be a separate function/endpoint or separate project, but the contract is mandatory:
+
+~~~text
+production main
+→ production runtime
+→ current Jobs
+
+upgrade/gsa-next
+→ isolated NEXT staging runtime
+→ isolated Test Lab Project/Memory namespace
+→ synthetic/test Jobs only
+~~~
+
+Rules:
+
+- pre-cutover NEXT deploys never overwrite or repoint the production runtime;
+- the normal production connector remains attached to the production runtime;
+- Tester/Reviewer runtime checks for CP2-CP7 use the isolated NEXT runtime;
+- staging NEXT Jobs use only the isolated Test Lab Project/Memory namespace;
+- staging must not read/write active production Job lifecycle records except read-only compatibility fixtures where explicitly safe;
+- exact staging runtime version/hash and source revision must be readable back after deployment.
 
 ### 3.4 Drift control against production main
 
@@ -163,6 +203,22 @@ After successful final promotion:
 - final cutover therefore changes the default for future Jobs, not the semantics of historical/current Jobs.
 
 This fence is required before later checkpoints may change orchestration behavior.
+
+### 4.1 Cutover semantics
+
+During development/staging:
+
+- `NEXT` is opt-in and only used in the isolated staging/Test Lab namespace;
+- production Job creation continues to produce V2_STABLE-compatible Jobs.
+
+After successful final promotion:
+
+- **existing records** with no discriminator or explicit `V2_STABLE` remain V2_STABLE forever unless a later explicit reviewed migration changes them;
+- **new Job creation** stamps `execution_contract=NEXT` by default;
+- explicit creation of a V2_STABLE compatibility Job may remain available only for bounded migration/regression needs;
+- promoting the code does not bulk-edit old Job records.
+
+Therefore cutover changes the default for **new Jobs**, not the meaning of historical Jobs.
 
 ---
 
@@ -257,6 +313,8 @@ Create the safe upgrade lane before adding behavior.
 
 - create `upgrade/gsa-next` from current reviewed `main`;
 - capture exact production source/runtime baseline;
+- create/configure the isolated NEXT staging runtime target;
+- create/configure an isolated Test Lab Project/Memory namespace for synthetic NEXT Jobs;
 - inventory active/READY historical Job shapes;
 - implement or finalize the V2_STABLE/NEXT compatibility discriminator;
 - make missing discriminator mean V2_STABLE;
@@ -635,6 +693,8 @@ No new feature work enters after freeze.
 ## Step F3 — Human release decision
 
 Human owns the promotion.
+
+The release record must explicitly state that after successful production deploy, **new Job creation defaults to NEXT**, while pre-existing Jobs remain on their recorded/implicit V2_STABLE contract.
 
 Preferred Git operation:
 
