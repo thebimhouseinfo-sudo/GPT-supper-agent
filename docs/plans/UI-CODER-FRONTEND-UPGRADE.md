@@ -254,16 +254,56 @@ Tester evidence storage follows the separately reviewed GSA Online Tester plan.
 
 ---
 
-## 11. Source cleanup required after this plan is approved
+## 11. Verified cleanup inventory
 
-Implementation must later remove obsolete external-design-tool-specific runtime/source artifacts, including any obsolete design-workspace lab skill, design-tool-specific Test Lab scenarios, design-tool-specific capability wording and dead integration assumptions.
+A live source audit of current `main` established that the abandoned design-workspace direction never became a production flow.
 
-That cleanup is **not part of this planning-only change**.
+Observed implementation footprint:
 
-The cleanup must preserve useful generic UI Coder rules already present, including:
+~~~text
+supabase/functions/gsa-mcp/index.ts
+└─ RUNTIME_SKILLS
+   └─ ui-coder-penpot-lab
+~~~
+
+The originating source commit added only:
+
+- one lab-only runtime skill block in `supabase/functions/gsa-mcp/index.ts`;
+- one Test Lab UI Coder scenario addition, which has already been rewritten to generic frontend capability guidance.
+
+The audit found **no implemented downstream integration/product artifacts** requiring migration or compatibility handling:
+
+- no provider MCP adapter/client;
+- no provider credential/config/session flow;
+- no provider-specific API route;
+- no design-file/page/object persistence model;
+- no provider-generated asset pipeline;
+- no generated-code import/reuse pipeline;
+- no provider-specific database/storage migration;
+- no provider-owned design workspace in target repositories;
+- no committed generated assets, screenshots, draft code or stable design refs.
+
+The current deployed/runtime catalog may still expose the obsolete lab skill, while the connected `load_skill` schema does not accept that skill name. This is a stale capability declaration, not evidence of an integrated execution flow.
+
+### Cleanup acceptance
+
+After the source cleanup/rebaseline, active source and current planning/Test Lab guidance must contain no abandoned-provider dependency or product assumption.
+
+At minimum, repository search over active files must return zero relevant hits for:
+
+~~~text
+penpot
+ui-coder-penpot
+design-to-code
+design/ui/penpot
+~~~
+
+Historical Git commits and durable superseded audit records are preserved and are **not** cleanup targets.
+
+The cleanup must preserve generic UI Coder behavior already present:
 
 - capability-backed verification;
-- full screen + representative content coverage;
+- full-screen + representative-content coverage;
 - Designer asset-contract precedence;
 - Human subjective acceptance;
 - browser-backed development inspection;
