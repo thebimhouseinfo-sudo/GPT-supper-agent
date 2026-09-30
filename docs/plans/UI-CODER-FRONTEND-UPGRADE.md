@@ -3,7 +3,7 @@
 Status: **UNDER REVIEW / CR REQUIRED**
 Scope: **GSA Online / GPT-supper-agent**
 
-This plan replaces the abandoned external design-workspace direction. It does not depend on an external design-authoring workspace, generated design-tool assets, generated design-tool code, or a design-to-code handoff.
+This plan defines the frontend workflow around capabilities GSA Online actually owns and can verify.
 
 Only a Human-invoked CR may clear the UNDER REVIEW mark. Normal Reviewer PASS may validate execution planning but does not convert this architecture note into a Human-approved final UI workflow.
 
@@ -104,7 +104,7 @@ design/
     references/
 ~~~
 
-There is no external-tool-owned UI subfolder, no external-tool draft-code folder, and no generated-code handoff layer.
+The design-owned folder contains Designer artifacts only; UI Coder implementation lives in the normal production source tree.
 
 Designer remains read-only to product source. Durable Designer outputs may be persisted into the bounded `design/designer/**` artifact area by GSA/Orchestrator on the Designer's behalf, or by a future explicitly bounded design-artifact write capability. This must not grant Designer generic product-source mutation authority.
 
