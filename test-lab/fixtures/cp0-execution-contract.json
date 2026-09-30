@@ -1,0 +1,48 @@
+{
+  "schema": "gsa.cp0.execution-contract-fixtures.v1",
+  "cases": [
+    {
+      "id": "missing",
+      "job": {
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "project_id": "00000000-0000-0000-0000-000000000000",
+        "lifecycle": "READY"
+      },
+      "expected_contract": "V2_STABLE",
+      "accepted": true
+    },
+    {
+      "id": "stable",
+      "job": {
+        "job_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000000",
+        "lifecycle": "READY",
+        "execution_contract": "V2_STABLE"
+      },
+      "expected_contract": "V2_STABLE",
+      "accepted": true
+    },
+    {
+      "id": "next",
+      "job": {
+        "job_id": "00000000-0000-0000-0000-000000000003",
+        "project_id": "00000000-0000-0000-0000-000000000000",
+        "lifecycle": "READY",
+        "execution_contract": "NEXT"
+      },
+      "expected_contract": "NEXT",
+      "accepted": true
+    },
+    {
+      "id": "invalid",
+      "job": {
+        "job_id": "00000000-0000-0000-0000-000000000004",
+        "project_id": "00000000-0000-0000-0000-000000000000",
+        "lifecycle": "READY",
+        "execution_contract": "UNKNOWN"
+      },
+      "expected_contract": null,
+      "accepted": false
+    }
+  ]
+}
