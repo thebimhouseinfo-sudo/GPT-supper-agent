@@ -5,6 +5,8 @@ import {
 } from "@agent-browser/sandbox/vercel";
 
 const SUPABASE_URL = "https://fbyqktduoqlpbbtkghkf.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_7oa0dc4bp6gtG7p5bv3wtg_vlL0w5l5";
+const EVIDENCE_BUCKET = "gsa-test-evidence";
 const ISSUER = SUPABASE_URL + "/auth/v1";
 const JWKS = createRemoteJWKSet(new URL(ISSUER + "/.well-known/jwks.json"));
 
@@ -23,13 +25,103 @@ function json(res: any, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function requireGsaUser(req: any) {
+type GsaUser = { userId: string; token: string };
+type EvidenceRequest = { label: string; expiresIn: number };
+type StoredEvidence = {
+  label: string;
+  storage_path: string;
+  signed_url: string;
+  expires_at: string;
+  mime_type: "image/png";
+};
+
+async function requireGsaUser(req: any): Promise<GsaUser> {
   const header = String(req.headers.authorization || "");
   if (!header.startsWith("Bearer ")) throw new Error("AUTH_REQUIRED");
   const token = header.slice(7);
   const verified = await jwtVerify(token, JWKS, { issuer: ISSUER });
   if (!verified.payload.sub) throw new Error("AUTH_REQUIRED");
-  return verified.payload.sub;
+  return { userId: String(verified.payload.sub), token };
+}
+
+function evidenceRequest(body: any): EvidenceRequest | null {
+  if (body?.evidence?.persist !== true) return null;
+  const label = String(body.evidence.label || "screenshot")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "screenshot";
+  const expiresIn = Math.max(60, Math.min(604800, Number(body.evidence.expires_in || 86400)));
+  return { label, expiresIn };
+}
+
+function encodeStoragePath(path: string) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+async function persistPngEvidence(
+  auth: GsaUser,
+  base64Data: string,
+  request: EvidenceRequest,
+  suffix?: string,
+): Promise<StoredEvidence> {
+  const safeSuffix = suffix
+    ? "-" + suffix.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60)
+    : "";
+  const day = new Date().toISOString().slice(0, 10);
+  const fileName = crypto.randomUUID() + "-" + request.label + safeSuffix + ".png";
+  const objectPath = auth.userId + "/" + day + "/" + fileName;
+  const encodedPath = encodeStoragePath(objectPath);
+  const bytes = Uint8Array.from(atob(base64Data), (char) => char.charCodeAt(0));
+
+  const commonHeaders = {
+    Authorization: "Bearer " + auth.token,
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+  };
+
+  const upload = await fetch(
+    SUPABASE_URL + "/storage/v1/object/" + EVIDENCE_BUCKET + "/" + encodedPath,
+    {
+      method: "POST",
+      headers: {
+        ...commonHeaders,
+        "Content-Type": "image/png",
+        "x-upsert": "false",
+      },
+      body: bytes.buffer,
+    },
+  );
+  if (!upload.ok) {
+    throw new Error("EVIDENCE_UPLOAD_FAILED:" + upload.status + ":" + (await upload.text()).slice(0, 500));
+  }
+
+  const signed = await fetch(
+    SUPABASE_URL + "/storage/v1/object/sign/" + EVIDENCE_BUCKET + "/" + encodedPath,
+    {
+      method: "POST",
+      headers: {
+        ...commonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expiresIn: request.expiresIn }),
+    },
+  );
+  const signedText = await signed.text();
+  let signedData: any = null;
+  try { signedData = JSON.parse(signedText); } catch {}
+  if (!signed.ok) {
+    throw new Error("EVIDENCE_SIGN_FAILED:" + signed.status + ":" + signedText.slice(0, 500));
+  }
+  const signedPath = String(signedData?.signedURL || signedData?.signedUrl || "");
+  if (!signedPath) throw new Error("EVIDENCE_SIGNED_URL_MISSING");
+
+  return {
+    label: request.label + safeSuffix,
+    storage_path: objectPath,
+    signed_url: new URL(signedPath, SUPABASE_URL).toString(),
+    expires_at: new Date(Date.now() + request.expiresIn * 1000).toISOString(),
+    mime_type: "image/png",
+  };
 }
 
 function validatePublicUrl(raw: unknown) {
@@ -70,7 +162,7 @@ async function screenshotBase64(sandbox: any, host: string, annotate = true) {
   return (await encoded.stdout()).trim();
 }
 
-async function runUiInspect(url: URL, body: any) {
+async function runUiInspect(url: URL, body: any, auth: GsaUser) {
   const viewports = (Array.isArray(body.viewports) && body.viewports.length
     ? body.viewports.slice(0, 3)
     : [
@@ -102,9 +194,22 @@ async function runUiInspect(url: URL, body: any) {
 
     const consoleResult = await run(["console", "--json"]);
     const errorsResult = await run(["errors"]);
+    const persist = evidenceRequest(body);
+    let evidence: StoredEvidence[] | undefined;
+    if (persist) {
+      evidence = [];
+      for (const shot of screenshots) {
+        evidence.push(await persistPngEvidence(
+          auth,
+          String(shot.data || ""),
+          persist,
+          String(shot.label || (shot.width + "x" + shot.height)),
+        ));
+      }
+    }
     await run(["close"]);
 
-    return {
+    const result: any = {
       ok: true,
       mode: "ui_inspect",
       title: String(titleResult.stdout || "").trim(),
@@ -114,6 +219,8 @@ async function runUiInspect(url: URL, body: any) {
       page_errors: String(errorsResult.stdout || "").trim(),
       screenshots,
     };
+    if (evidence) result.evidence = evidence;
+    return result;
   });
 }
 
@@ -158,7 +265,7 @@ function stepCommand(step: Step): string[] {
   return cmd;
 }
 
-async function runTestFlow(url: URL, body: any) {
+async function runTestFlow(url: URL, body: any, auth: GsaUser) {
   const steps: Step[] = Array.isArray(body.steps) ? body.steps.slice(0, 20) : [];
   const viewport = clampViewport(body.viewport || { width: 1440, height: 900 });
   const stopOnFailure = body.stop_on_failure !== false;
@@ -224,12 +331,16 @@ async function runTestFlow(url: URL, body: any) {
     const consoleResult = await run(["console", "--json"]);
     const errorsResult = await run(["errors"]);
     const screenshot = await screenshotBase64(sandbox, host, true);
+    const persist = evidenceRequest(body);
+    const evidence = persist
+      ? [await persistPngEvidence(auth, screenshot, persist, viewport.label || "final")]
+      : undefined;
     await run(["close"]);
 
     const pageErrors = String(errorsResult.stdout || "").trim();
     if (pageErrors && !/^no errors/i.test(pageErrors)) passed = false;
 
-    return {
+    const result: any = {
       ok: true,
       mode: "test_flow",
       passed,
@@ -241,6 +352,8 @@ async function runTestFlow(url: URL, body: any) {
       steps: results,
       screenshot: { ...viewport, mimeType: "image/png", data: screenshot },
     };
+    if (evidence) result.evidence = evidence;
+    return result;
   });
 }
 
@@ -248,15 +361,15 @@ export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return json(res, 405, { ok: false, error: "METHOD_NOT_ALLOWED" });
 
   try {
-    await requireGsaUser(req);
+    const auth = await requireGsaUser(req);
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const url = validatePublicUrl(body.url);
 
     if (body.mode === "ui_inspect") {
-      return json(res, 200, await runUiInspect(url, body));
+      return json(res, 200, await runUiInspect(url, body, auth));
     }
     if (body.mode === "test_flow") {
-      return json(res, 200, await runTestFlow(url, body));
+      return json(res, 200, await runTestFlow(url, body, auth));
     }
 
     return json(res, 400, { ok: false, error: "UNKNOWN_MODE" });
