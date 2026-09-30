@@ -4,6 +4,56 @@ Status: PROPOSED
 Scope: GPT-supper-agent / GSA Online
 Primary goal: upgrade Tester from a thin capability-gated verifier into a checkpoint-level independent verification and empirical-evidence agent, while preserving lightweight orchestration and keeping browser runtimes replaceable.
 
+## UNDER REVIEW — Target-repository screenshot/evidence handoff
+
+**Status: UNDER REVIEW / CR REQUIRED**
+
+This section records a proposed replacement for the current default binary-evidence storage direction. It is not canonical until a **Human-invoked CR** reviews this exact revision and clears the mark. Normal Reviewer PASS does not clear it.
+
+The preferred Human handoff is now:
+
+~~~text
+Tester
+→ browser/runtime capture
+→ target repository test/evidence folder
+→ commit/update screenshot set + small manifest
+→ return direct GitHub folder/file link to Human
+~~~
+
+Default repository-owned location should follow the target repository's existing test convention. When no stronger convention exists, use a bounded GSA-owned subtree such as:
+
+~~~text
+tests/gsa/<checkpoint-or-surface>/
+  manifest.json
+  home-desktop.png
+  home-mobile.png
+  lesson-desktop.png
+  lesson-error.png
+  ...
+~~~
+
+A UI checkpoint may legitimately contain roughly 10–15 representative screenshots when the application has multiple pages, states or viewports. Prefer stable semantic filenames by page/state/viewport; Retest may update the same logical file while Git history preserves prior revisions.
+
+The manifest should bind the screenshot set to the exact test context, including as applicable:
+
+- project/repository and checkpoint;
+- target revision/build;
+- page/screen/state;
+- viewport/device class;
+- Tester Run/attempt;
+- capture time;
+- objective result/limitations.
+
+Tester remains read-only for product source and production assets. The implementation must grant only a narrow write boundary to the repository-owned Tester evidence subtree. Because the current GitHub text connector does not upload PNG binaries, implementation of this proposal requires an explicit bounded binary GitHub write/commit path; do not pretend the current connector already provides it.
+
+Private Supabase screenshot storage may remain as a fallback for cases where repository binary persistence is unavailable or inappropriate, but it should not be the default/canonical Human handoff if this proposal is approved.
+
+Canonical lifecycle/control evidence may still remain in Project Memory Verification records. The repository screenshot folder is the durable visual artifact surface for Human review, and Verification should reference the target-repo artifact path/commit rather than expiring signed URLs when repository persistence succeeds.
+
+This proposal intentionally supersedes the storage preference currently described later in Section 17 only **after CR approval**. Until then, the existing Supabase implementation remains the deployed behavior.
+
+---
+
 ## 1. Decision summary
 
 The GSA Local TESTER_AGENT_SPEC.md is the semantic reference for this upgrade, but the Online implementation must not copy Local filesystem assumptions.
