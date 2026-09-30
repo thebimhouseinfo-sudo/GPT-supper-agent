@@ -49,7 +49,18 @@ The rendered application, not a separate design canvas, becomes the practical vi
 
 UI Coder remains a Coder specialization and may write approved Project-owned frontend source inside the active Job/Task scope.
 
-At runtime, frontend methodology should be exposed as a **task-specific UI Coder skill/overlay** that can be discovered and explicitly loaded for UI-focused Coder work. It must not be auto-loaded for every Coder Run. The runtime skill catalog and the actual skill loader must agree on the same loadable skill name; catalog-only visibility is insufficient.
+At runtime, frontend methodology is exposed as a **task-specific UI Coder skill/overlay** named `ui-coder-frontend`. It must not be auto-loaded for every Coder Run.
+
+Activation is explicit and deterministic:
+
+~~~text
+Planner/Orchestrator classifies the Task as frontend / UI Coder work
+→ the Coder handoff names ui-coder-frontend
+→ Coder loads ui-coder-frontend before frontend implementation
+→ normal non-UI Coder work keeps only the base Coder skills
+~~~
+
+The runtime skill catalog and the actual skill loader must agree on the same loadable skill name; catalog-only visibility is insufficient. This activation contract does not create a new Agent or lifecycle and does not require adding the specialization to default `ROLE_SKILLS.coder`.
 
 Primary focus remains:
 
@@ -221,11 +232,12 @@ Expected Human-facing handoff:
 
 ~~~text
 Tester verifies runnable UI
-→ representative page/state/viewport screenshots
-→ target-repo test/evidence folder
-→ direct GitHub folder/file links
+→ representative page/state/viewport evidence
+→ direct Human-openable links/paths according to the active Tester evidence contract
 → Human review
 ~~~
+
+The frontend workflow does not choose the persistence backend for Tester evidence. If the separately reviewed Tester architecture later makes a target-repository evidence folder canonical, this workflow consumes that result; until then it remains storage-agnostic.
 
 Routine visual refinements that remain inside the approved contract may route directly back to UI Coder.
 
@@ -300,13 +312,13 @@ The cleanup must preserve:
 
 1. Remove obsolete external-design-tool-specific runtime/lab source.
 2. Rebaseline the UI Coder specialization against `CODER-UIUX-HARNESS.md`.
-3. Add/adjust a generic frontend/UI Coder skill only where the current runtime needs more explicit operating instructions.
+3. Add/adjust the `ui-coder-frontend` specialization and wire deterministic activation: frontend/UI Coder Tasks must name it in the Coder handoff and Coder must load it before frontend implementation.
 4. Preserve Planner UI_FIRST/UX_FIRST classification and Designer-before-UI rule when a required shell/design contract is missing.
 5. Make UI Coder implement directly in target source.
 6. Use browser inspection for development feedback on the real runnable UI.
 7. Run context-isolated Reviewer source/contract review after the implementation changes.
 8. Invoke Tester separately only when topology or an unresolved empirical capability question requires independent verification; Reviewer does not execute Test Lab experiments.
-9. Keep Tester/Human evidence handoff in the target repository according to the separately reviewed Tester plan.
+9. Keep Tester/Human evidence handoff storage-agnostic and follow whichever persistence contract the separately reviewed Tester plan currently authorizes.
 10. Deploy/read back the changed GSA runtime before Tester capability verification. Distinguish server-ready from connected-client-schema-stale; a stale client surface is RETEST_REQUIRED / CLIENT_REFRESH_NEEDED, not implementation PASS or product failure.
 11. Run a small Test Lab experiment only for genuinely uncertain UI Coder/browser capabilities.
 
