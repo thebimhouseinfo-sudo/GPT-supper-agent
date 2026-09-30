@@ -103,6 +103,15 @@ Do **not** wait until the full UI Design workflow is implemented before proving 
 
 Before production UI Design integration, create one bounded **lab-only Direct Penpot MCP bootstrap** for GSA Online and run a stand-alone empirical capability experiment in Test Lab.
 
+
+Tester access boundary for this bootstrap:
+
+- UI Coder may receive only the bounded mutation operations needed by the frozen experiment;
+- Tester must receive bounded **read-only** reopen/inspect/read-back operations sufficient to verify the frozen Penpot target independently;
+- if independent Tester read-back cannot be provided, classify the bootstrap as `INTEGRATION_NOT_READY`/BLOCKED rather than accepting UI Coder self-report.
+
+A transport/integration blocker is useful evidence but is **not** a successful bootstrap. PASS completion requires a functional direct lab path plus the completed stand-alone experiment and Test Lab result. A blocker must stop the chain and remain BLOCKED/INTEGRATION_NOT_READY until remediated or explicitly replanned.
+
 The early sequence is:
 
 ~~~text
