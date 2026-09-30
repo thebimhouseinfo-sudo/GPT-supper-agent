@@ -153,11 +153,19 @@ async function persistPngEvidence(
   }
   const signedPath = String(signedData?.signedURL || signedData?.signedUrl || "");
   if (!signedPath) throw new Error("EVIDENCE_SIGNED_URL_MISSING");
+  const signedUrl = /^https?:\/\//i.test(signedPath)
+    ? signedPath
+    : new URL(
+        signedPath.startsWith("/storage/v1/")
+          ? signedPath
+          : "/storage/v1/" + signedPath.replace(/^\/+/, ""),
+        SUPABASE_URL,
+      ).toString();
 
   return {
     label: request.label + safeSuffix,
     storage_path: objectPath,
-    signed_url: new URL(signedPath, SUPABASE_URL).toString(),
+    signed_url: signedUrl,
     expires_at: new Date(Date.now() + request.expiresIn * 1000).toISOString(),
     mime_type: "image/png",
   };
