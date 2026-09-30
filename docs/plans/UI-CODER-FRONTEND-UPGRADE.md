@@ -7,6 +7,8 @@ This plan defines the frontend workflow around capabilities GSA Online actually 
 
 Only a Human-invoked CR may clear the UNDER REVIEW mark. Normal Reviewer PASS may validate execution planning but does not convert this architecture note into a Human-approved final UI workflow.
 
+**Execution gate:** implementation planning may reach READY, but source execution must not start until Human invokes CR for this current architecture revision and the resulting Human decision allows implementation.
+
 ---
 
 ## 1. Objective
@@ -280,7 +282,8 @@ The cleanup must preserve useful generic UI Coder rules already present, includi
 7. Run context-isolated Reviewer source/contract review after the implementation changes.
 8. Invoke Tester separately only when topology or an unresolved empirical capability question requires independent verification; Reviewer does not execute Test Lab experiments.
 9. Keep Tester/Human evidence handoff in the target repository according to the separately reviewed Tester plan.
-10. Run a small Test Lab experiment only for genuinely uncertain UI Coder/browser capabilities; do not invent an external design-tool dependency.
+10. Deploy/read back the changed GSA runtime before Tester capability verification. Distinguish server-ready from connected-client-schema-stale; a stale client surface is RETEST_REQUIRED / CLIENT_REFRESH_NEEDED, not implementation PASS or product failure.
+11. Run a small Test Lab experiment only for genuinely uncertain UI Coder/browser capabilities.
 
 ---
 
