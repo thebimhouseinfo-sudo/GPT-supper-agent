@@ -56,7 +56,7 @@ This proposal intentionally supersedes the storage preference currently describe
 
 ## 1. Decision summary
 
-The GSA Local TESTER_AGENT_SPEC.md is the semantic reference for this upgrade, but the Online implementation must not copy Local filesystem assumptions.
+This plan defines GSA Online Tester semantics directly. The Online implementation must be grounded in GSA Online's own persistence, runtime, and repository boundaries.
 
 The target Online Tester must:
 
@@ -92,9 +92,9 @@ This revision incorporates the independent CR findings against revision a6b12a94
 - screenshot retention, privacy and size budgets are explicit;
 - screenshot persistence moves into the browser-evidence milestone, while the final milestone remains regression-only.
 
-### Local GSA CR cross-port findings
+### Additional architecture invariants
 
-The GSA Local architecture review exposed five additional invariants that also apply to Online GSA, adapted to Online's different control plane:
+The architecture review established five additional invariants for GSA Online:
 
 - unknown runtime facts must survive planning as first-class evidence needs rather than prose;
 - checkpoints may guard a boundary created by multiple upstream work nodes, not only one Task;
@@ -102,7 +102,7 @@ The GSA Local architecture review exposed five additional invariants that also a
 - evidence validity must be dimension-aware rather than "exact revision only" or unconstrained reuse;
 - Tester-discovered planning/specification gaps must force a Planner-owned plan revision and superseding topology; Tester never rewrites the graph.
 
-Online GSA does not copy Local's PlanArtifact/Job Builder/SQLite implementation literally. The equivalent Online contracts are Job planning_revision + evidence_needs[], normalized TestCheckpoint/EvidenceRequirement records, typed topology, GitHub-CAS checkpoint control, Run/Verification records and Planner revision flow.
+GSA Online expresses these invariants through its own contracts: Job planning_revision + evidence_needs[], normalized TestCheckpoint/EvidenceRequirement records, typed topology, GitHub-CAS checkpoint control, Run/Verification records and Planner revision flow.
 
 ## 2. Why this is an architecture change, not a Tester-prompt change
 
@@ -765,7 +765,7 @@ Claim protocol:
 5. terminal update must CAS the same lease token;
 6. another dispatcher seeing a live RUNNING lease must not start a duplicate attempt.
 
-This is the Online equivalent of Local latest_checkpoint + execution lease. The per-checkpoint CAS record is authority; CONTROL.json may cache current/pending checkpoint handles but remains rebuildable.
+The per-checkpoint CAS record is the Online execution authority for checkpoint claim/lease state; CONTROL.json may cache current/pending checkpoint handles but remains rebuildable.
 
 ### 11.7 Crash/restart/resume
 
@@ -843,7 +843,7 @@ A surface-listed tool is not enough.
 
 ### AUTHOR
 
-Online Tester does not need Local filesystem semantics.
+Online Tester uses GSA Online persistence semantics rather than a local-workspace filesystem contract.
 
 Persist a declarative test definition when useful:
 
@@ -1832,7 +1832,7 @@ Likely primary files:
 Potentially add a dedicated architecture document after M1, e.g.:
 - docs/architecture/TESTER-AGENT.md
 
-Do not duplicate Local's spec verbatim. Online canonical documentation should describe the shared semantics plus Online persistence and native-browser runtime differences.
+Online canonical documentation should describe these semantics directly using Online persistence and native-browser runtime contracts.
 
 ## 31. Important implementation cautions
 
@@ -1867,11 +1867,11 @@ Do not duplicate Local's spec verbatim. Online canonical documentation should de
 | Verification storage path conflict | Keep canonical JSON flat at VERIFICATION/<verification-id>.json |
 | Screenshot retention/security unspecified | Add private bucket, RLS, no-secret capture rules, 12 screenshot / 5 MiB each / 50 MiB bundle limits |
 | M5/M6 responsibilities drifted | M5 owns durable browser evidence + viewer; M6 owns regression/final checkpoint only |
-| Local CR: empirical need can disappear between Planner and execution | Add first-class evidence_needs[]/UnknownRuntimeFact and require normalization to TestCheckpointSpec + EvidenceRequirement or PLAN_GAP |
-| Local CR: checkpoint bound too narrowly | Add AFTER_NODE_SET / BEFORE_NODE / MILESTONE_GATE / JOB_FINAL boundaries with prerequisite node sets |
-| Local CR: resume can skip/duplicate Tester | Add per-checkpoint CAS control, execution lease, attempt identity, replay safety and resume recovery |
-| Local CR: exact revision evidence validity too rigid/too loose | Add EvidenceApplicability with source/config/runtime/environment dimensions and explicit reuse policy |
-| Local CR: no replanning path for new uncertainty | PLAN_GAP/SPEC_GAP pauses dependent graph → Planner revision → Reviewer → optional Human-invoked CR → superseding topology; Tester never mutates graph |
+| Architecture review: empirical need can disappear between Planner and execution | Add first-class evidence_needs[]/UnknownRuntimeFact and require normalization to TestCheckpointSpec + EvidenceRequirement or PLAN_GAP |
+| Architecture review: checkpoint bound too narrowly | Add AFTER_NODE_SET / BEFORE_NODE / MILESTONE_GATE / JOB_FINAL boundaries with prerequisite node sets |
+| Architecture review: resume can skip/duplicate Tester | Add per-checkpoint CAS control, execution lease, attempt identity, replay safety and resume recovery |
+| Architecture review: exact revision evidence validity too rigid/too loose | Add EvidenceApplicability with source/config/runtime/environment dimensions and explicit reuse policy |
+| Architecture review: no replanning path for new uncertainty | PLAN_GAP/SPEC_GAP pauses dependent graph → Planner revision → Reviewer → optional Human-invoked CR → superseding topology; Tester never mutates graph |
 
 ## 33. Target end-state example
 
