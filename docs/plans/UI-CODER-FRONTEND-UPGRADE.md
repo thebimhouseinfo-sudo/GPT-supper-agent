@@ -104,7 +104,7 @@ design/
     references/
 ~~~
 
-There is no `design/ui/penpot/`, no external-tool draft-code folder, and no generated-code handoff layer.
+There is no external-tool-owned UI subfolder, no external-tool draft-code folder, and no generated-code handoff layer.
 
 Designer remains read-only to product source. Durable Designer outputs may be persisted into the bounded `design/designer/**` artifact area by GSA/Orchestrator on the Designer's behalf, or by a future explicitly bounded design-artifact write capability. This must not grant Designer generic product-source mutation authority.
 
