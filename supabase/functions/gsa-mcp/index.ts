@@ -9,8 +9,6 @@ import { z } from 'npm:zod@^4.1.13'
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-const MCP_RESOURCE = `${SUPABASE_URL}/functions/v1/gsa-mcp/mcp`
-const RESOURCE_METADATA = `${SUPABASE_URL}/functions/v1/gsa-mcp/.well-known/oauth-protected-resource`
 const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`
 const AUTH_SCOPES = ['email', 'profile']
 const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gpt-supper-agent.vercel.app/api/browser'
@@ -36,15 +34,30 @@ function invalidExecutionContract() {
   }
 }
 
-function challenge(error = 'invalid_token', description = 'Sign in to GPT Super Agent to continue') {
-  return `Bearer resource_metadata="${RESOURCE_METADATA}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
+function edgeFunctionBase(req: Request) {
+  const url = new URL(req.url)
+  const match = url.pathname.match(/^\/functions\/v1\/([^/]+)/)
+  const slug = match?.[1] || 'gsa-mcp'
+  return `${url.origin}/functions/v1/${slug}`
 }
 
-function authError(description: string) {
+function mcpResource(req: Request) {
+  return edgeFunctionBase(req) + '/mcp'
+}
+
+function resourceMetadata(req: Request) {
+  return edgeFunctionBase(req) + '/.well-known/oauth-protected-resource'
+}
+
+function challenge(req: Request, error = 'invalid_token', description = 'Sign in to GPT Super Agent to continue') {
+  return `Bearer resource_metadata="${resourceMetadata(req)}", scope="${AUTH_SCOPES.join(' ')}", error="${error}", error_description="${description}"`
+}
+
+function authError(req: Request, description: string) {
   return {
     content: [{ type: 'text' as const, text: description }],
     isError: true,
-    _meta: { 'mcp/www_authenticate': [challenge('invalid_token', description)] },
+    _meta: { 'mcp/www_authenticate': [challenge(req, 'invalid_token', description)] },
   }
 }
 
@@ -780,7 +793,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to use GPT Super Agent.')
+      if (!auth) return authError(req, 'Authentication required to use GPT Super Agent.')
       const { data: memoryConfig } = await readMemoryConfig(auth)
       const memoryRepoName = memoryConfig?.memory_repo_full_name
         ? memoryConfig.memory_repo_full_name.split('/').pop() || memoryConfig.memory_repo_full_name
@@ -829,7 +842,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to use GPT Super Agent.')
+      if (!auth) return authError(req, 'Authentication required to use GPT Super Agent.')
       const { data } = await readMemoryConfig(auth)
       const status = {
         phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION',
@@ -883,7 +896,7 @@ function createServer(req: Request) {
     } as any,
     async ({ url, viewports, evidence }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to inspect UI.')
+      if (!auth) return authError(req, 'Authentication required to inspect UI.')
       try {
         const data = await callBrowserBridge(req, { mode: 'ui_inspect', url, viewports, ...(evidence ? { evidence } : {}) })
         const screenshots = Array.isArray(data.screenshots) ? data.screenshots : []
@@ -978,7 +991,7 @@ function createServer(req: Request) {
     } as any,
     async ({ url, viewport, stop_on_failure, evidence, steps }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to run browser testing.')
+      if (!auth) return authError(req, 'Authentication required to run browser testing.')
       try {
         const data = await callBrowserBridge(req, {
           mode: 'test_flow',
@@ -1044,7 +1057,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read GSA account.')
+      if (!auth) return authError(req, 'Authentication required to read GSA account.')
       const result = { user_id: auth.user.id, email: auth.user.email ?? null }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -1071,7 +1084,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read Memory Repo configuration.')
+      if (!auth) return authError(req, 'Authentication required to read Memory Repo configuration.')
       const { data, error } = await readMemoryConfig(auth)
       if (error) return { content: [{ type: 'text', text: 'Failed to read Memory Repo configuration: ' + error.message }], isError: true }
       const result = {
@@ -1116,7 +1129,7 @@ function createServer(req: Request) {
     } as any,
     async ({ repository_url, repository_id, repository_full_name, default_branch }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to configure Memory Repo.')
+      if (!auth) return authError(req, 'Authentication required to configure Memory Repo.')
       const normalized = normalizeGithubRepo(repository_url)
       if (!normalized || normalized.full_name.toLowerCase() !== String(repository_full_name).toLowerCase()) {
         return { content: [{ type: 'text', text: 'Repository URL/full-name mismatch.' }], isError: true }
@@ -1170,7 +1183,7 @@ function createServer(req: Request) {
     } as any,
     async ({ repository_full_name, path, operation, human_gate_approved }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to authorize memory mutation.')
+      if (!auth) return authError(req, 'Authentication required to authorize memory mutation.')
       const { data, error } = await readMemoryConfig(auth)
       if (error || !data?.memory_repo_full_name) {
         const result = { allowed: false, reason: 'Memory Repo is not configured.', configured_repo: null }
@@ -1206,7 +1219,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to list Projects.')
+      if (!auth) return authError(req, 'Authentication required to list Projects.')
       const { data } = await readMemoryConfig(auth)
       const result = {
         memory_repo_full_name: data?.memory_repo_full_name ?? null,
@@ -1249,7 +1262,7 @@ function createServer(req: Request) {
     } as any,
     async ({ name, repository_url, purpose }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to create a Project.')
+      if (!auth) return authError(req, 'Authentication required to create a Project.')
       const source = normalizeGithubRepo(repository_url)
       if (!source) return { content: [{ type: 'text', text: 'A canonical GitHub source repository URL is required.' }], isError: true }
       const { data, error } = await readMemoryConfig(auth)
@@ -1321,7 +1334,7 @@ function createServer(req: Request) {
     } as any,
     async ({ memory_path, project_manifest_text, project_manifest_sha, human_confirmed, repositories }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to register Project repositories.')
+      if (!auth) return authError(req, 'Authentication required to register Project repositories.')
       if (!human_confirmed) return { content: [{ type: 'text', text: 'Explicit Human confirmation is required.' }], isError: true }
       if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
       let updated: string
@@ -1379,7 +1392,7 @@ function createServer(req: Request) {
     } as any,
     async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to open a Project.')
+      if (!auth) return authError(req, 'Authentication required to open a Project.')
       if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
       const parsed = parseProjectManifest(project_manifest_text)
       if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
@@ -1423,7 +1436,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to show Project status.')
+      if (!auth) return authError(req, 'Authentication required to show Project status.')
       const parsed = parseProjectManifest(project_manifest_text)
       if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
       const result = {
@@ -1471,7 +1484,7 @@ function createServer(req: Request) {
       } as any,
       async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
         const auth = await authContext(req)
-        if (!auth) return authError('Authentication required to change Project lifecycle.')
+        if (!auth) return authError(req, 'Authentication required to change Project lifecycle.')
         if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
         const parsed = parseProjectManifest(project_manifest_text)
         if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
@@ -1521,7 +1534,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, confirmed }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to delete Project Memory.')
+      if (!auth) return authError(req, 'Authentication required to delete Project Memory.')
       const prefix = 'projects/' + project_id + '/'
       if (!confirmed) {
         const result = {
@@ -1572,7 +1585,7 @@ function createServer(req: Request) {
     } as any,
     async ({ role, mode }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to load a role harness.')
+      if (!auth) return authError(req, 'Authentication required to load a role harness.')
       const harness = renderHarness(role)
       if (!harness) return { content: [{ type: 'text', text: 'Unknown role harness.' }], isError: true }
       const result = {
@@ -1606,7 +1619,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to list runtime skills.')
+      if (!auth) return authError(req, 'Authentication required to list runtime skills.')
       const skills = Object.entries(RUNTIME_SKILLS).map(([name, skill]) => ({ name, description: skill.description }))
       return { structuredContent: { skills }, content: [{ type: 'text', text: JSON.stringify({ skills }) }] }
     },
@@ -1631,7 +1644,7 @@ function createServer(req: Request) {
     } as any,
     async ({ name }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to load a runtime skill.')
+      if (!auth) return authError(req, 'Authentication required to load a runtime skill.')
       const skill = RUNTIME_SKILLS[name]
       if (!skill) return { content: [{ type: 'text', text: 'Unknown runtime skill.' }], isError: true }
       const result = { name, description: skill.description, skill_text: skill.body }
@@ -1717,7 +1730,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to prepare a Job.')
+      if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
       if (!data?.memory_repo_full_name) return { content: [{ type: 'text', text: 'Memory Repo is not configured.' }], isError: true }
       const normalizedRegistered = (registered_repositories ?? []).map((u: string) => normalizeGithubRepo(u)?.url).filter(Boolean)
@@ -1859,7 +1872,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to transition a Job.')
+      if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -1986,7 +1999,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to revise a Job plan.')
+      if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -2078,7 +2091,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, job_record_sha, planning_revision, result, findings, limitations }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to record planning review.')
+      if (!auth) return authError(req, 'Authentication required to record planning review.')
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -2193,7 +2206,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, human_invoked, target_ref, target_revision, prior_review_verification_ref }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to start Critic Reviewer.')
+      if (!auth) return authError(req, 'Authentication required to start Critic Reviewer.')
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -2265,7 +2278,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to record Critic Review.')
+      if (!auth) return authError(req, 'Authentication required to record Critic Review.')
       if (human_invoked !== true) {
         return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: explicit Human invocation is mandatory.' }], isError: true }
       }
@@ -2351,7 +2364,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to begin a Run.')
+      if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
       try { owningJob = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid owning Job JSON.' }], isError: true }
@@ -2456,7 +2469,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, title, source, target, relationship, precedence, reason, evidence, reread_condition, depends_on, approved_by_or_source }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to prepare relationship knowledge.')
+      if (!auth) return authError(req, 'Authentication required to prepare relationship knowledge.')
       const knowledgeId = uuidv7()
       const now = new Date().toISOString()
       const body = [
@@ -2541,7 +2554,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, run_id, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to persist Goal Recheck.')
+      if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
       const verificationId = uuidv7()
       const blocking = criteria
         .filter((c: any) => c.result === 'NOT_MET')
@@ -2626,7 +2639,7 @@ function createServer(req: Request) {
     } as any,
     async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, handoff }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to complete a Run.')
+      if (!auth) return authError(req, 'Authentication required to complete a Run.')
       let current: any
       try { current = JSON.parse(run_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Run JSON.' }], isError: true }
@@ -2743,7 +2756,7 @@ function createServer(req: Request) {
     } as any,
     async ({ role, objective, target_url }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to start a Direct Agent.')
+      if (!auth) return authError(req, 'Authentication required to start a Direct Agent.')
       const contracts: Record<string, { purpose: string; source_write: boolean; output: string }> = {
         planner: { purpose: 'Plan scope, tasks, dependencies and gates.', source_write: false, output: 'Plan / Project or Job proposal' },
         designer: { purpose: 'Define UI/UX and asset requirements.', source_write: false, output: 'Design / Asset Requirement' },
@@ -2785,7 +2798,7 @@ function createServer(req: Request) {
     } as any,
     async () => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read GSA instructions.')
+      if (!auth) return authError(req, 'Authentication required to read GSA instructions.')
       const instructionText = [
         'GSA usage',
         '1. Configure SETTING -> Memory Repo once using a private GitHub repository.',
@@ -2812,7 +2825,7 @@ function createServer(req: Request) {
     } as any,
     async ({ command }: any) => {
       const auth = await authContext(req)
-      if (!auth) return authError('Authentication required to read command help.')
+      if (!auth) return authError(req, 'Authentication required to read command help.')
       const helpText = command
         ? 'Command help requested for: ' + command + '. Use canonical aliases exactly.'
         : [
@@ -2872,11 +2885,11 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION', oauth: true }),
+  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION', oauth: true, source_build_id: GSA_SOURCE_BUILD_ID, execution_contract_default: DEFAULT_EXECUTION_CONTRACT }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
-  c.json({ resource: MCP_RESOURCE, authorization_servers: [AUTH_ISSUER], scopes_supported: AUTH_SCOPES }),
+  c.json({ resource: mcpResource(c.req.raw), authorization_servers: [AUTH_ISSUER], scopes_supported: AUTH_SCOPES }),
 )
 
 app.all('/mcp', async (c) => {
@@ -2888,7 +2901,7 @@ app.all('/mcp', async (c) => {
         status: 401,
         headers: {
           'Content-Type': 'application/json',
-          'WWW-Authenticate': challenge('invalid_token', 'Connect your GPT Super Agent account to continue'),
+          'WWW-Authenticate': challenge(c.req.raw, 'invalid_token', 'Connect your GPT Super Agent account to continue'),
           'Cache-Control': 'no-store',
         },
       },
@@ -2901,4 +2914,5 @@ app.all('/mcp', async (c) => {
 })
 
 root.route('/gsa-mcp', app)
+root.route('/gsa-mcp-next', app)
 Deno.serve(root.fetch)
