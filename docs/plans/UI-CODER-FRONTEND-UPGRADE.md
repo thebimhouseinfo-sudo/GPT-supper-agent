@@ -47,6 +47,8 @@ The rendered application, not a separate design canvas, becomes the practical vi
 
 UI Coder remains a Coder specialization and may write approved Project-owned frontend source inside the active Job/Task scope.
 
+At runtime, frontend methodology should be exposed as a **task-specific UI Coder skill/overlay** that can be discovered and explicitly loaded for UI-focused Coder work. It must not be auto-loaded for every Coder Run. The runtime skill catalog and the actual skill loader must agree on the same loadable skill name; catalog-only visibility is insufficient.
+
 Primary focus remains:
 
 - composition;
@@ -161,6 +163,8 @@ Coverage is verified against the real implementation, not against an external de
 
 UI Coder may use GSA's available browser/UI inspection capability as a **development feedback surface** after a runnable preview/deployment exists.
 
+The generic UI Coder specialization must explicitly authorize this bounded development/self-QA use. Browser inspection remains read-only observation against the runnable target and never becomes merge, acceptance or Tester authority.
+
 Typical loop:
 
 ~~~text
@@ -273,9 +277,10 @@ The cleanup must preserve useful generic UI Coder rules already present, includi
 4. Preserve Planner UI_FIRST/UX_FIRST classification and Designer-before-UI rule when a required shell/design contract is missing.
 5. Make UI Coder implement directly in target source.
 6. Use browser inspection for development feedback on the real runnable UI.
-7. Keep Reviewer and Tester independent.
-8. Keep Tester/Human evidence handoff in the target repository according to the separately reviewed Tester plan.
-9. Run a small Test Lab experiment only for genuinely uncertain UI Coder/browser capabilities; do not invent an external design-tool dependency.
+7. Run context-isolated Reviewer source/contract review after the implementation changes.
+8. Invoke Tester separately only when topology or an unresolved empirical capability question requires independent verification; Reviewer does not execute Test Lab experiments.
+9. Keep Tester/Human evidence handoff in the target repository according to the separately reviewed Tester plan.
+10. Run a small Test Lab experiment only for genuinely uncertain UI Coder/browser capabilities; do not invent an external design-tool dependency.
 
 ---
 
