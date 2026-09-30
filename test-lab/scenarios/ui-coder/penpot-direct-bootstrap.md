@@ -20,6 +20,15 @@ This is a stand-alone capability experiment. It does not approve a production UI
 
 Planner does not pre-author the detailed test cases.
 
+
+## Role access boundary
+
+- UI Coder may use the bounded mutation operations required by the frozen experiment.
+- Tester must independently re-open/inspect/read back the frozen Penpot target through read-only operations; UI Coder self-report is not sufficient verification.
+- If that independent read-back surface is unavailable, record `INTEGRATION_NOT_READY`/BLOCKED and stop rather than converting the limitation into PASS.
+
+A direct-MCP transport blocker is evidence, not successful completion. PASS for this bootstrap requires the functional lab path, UI Coder execution, independent Tester verification, and the Test Lab result manifest.
+
 ## Capability questions
 
 Tester must design sufficient exercises to establish, as applicable:
