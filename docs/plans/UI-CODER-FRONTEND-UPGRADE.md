@@ -3,7 +3,7 @@
 Status: **UNDER REVIEW / CR REQUIRED**
 Scope: **GSA Online / GPT-supper-agent**
 
-This plan replaces the abandoned Penpot direction. It contains no Penpot integration, Penpot-generated assets, Penpot code export, design-to-code dependency, or external design-workspace lifecycle.
+This plan replaces the abandoned external design-workspace direction. It does not depend on an external design-authoring workspace, generated design-tool assets, generated design-tool code, or a design-to-code handoff.
 
 Only a Human-invoked CR may clear the UNDER REVIEW mark. Normal Reviewer PASS may validate execution planning but does not convert this architecture note into a Human-approved final UI workflow.
 
@@ -250,7 +250,7 @@ Tester evidence storage follows the separately reviewed GSA Online Tester plan.
 
 ## 11. Source cleanup required after this plan is approved
 
-Implementation must later remove obsolete Penpot-specific runtime/source artifacts, including any Penpot lab skill, Penpot-specific Test Lab scenario, Penpot-specific capability wording and dead integration assumptions.
+Implementation must later remove obsolete external-design-tool-specific runtime/source artifacts, including any obsolete design-workspace lab skill, design-tool-specific Test Lab scenarios, design-tool-specific capability wording and dead integration assumptions.
 
 That cleanup is **not part of this planning-only change**.
 
@@ -267,7 +267,7 @@ The cleanup must preserve useful generic UI Coder rules already present, includi
 
 ## 12. Initial implementation sequence after plan approval
 
-1. Remove obsolete Penpot-specific runtime/lab source.
+1. Remove obsolete external-design-tool-specific runtime/lab source.
 2. Rebaseline the UI Coder specialization against `CODER-UIUX-HARNESS.md`.
 3. Add/adjust a generic frontend/UI Coder skill only where the current runtime needs more explicit operating instructions.
 4. Preserve Planner UI_FIRST/UX_FIRST classification and Designer-before-UI rule when a required shell/design contract is missing.
