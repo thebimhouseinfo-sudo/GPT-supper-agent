@@ -36,8 +36,9 @@ function invalidExecutionContract() {
 
 function edgeFunctionBase(req: Request) {
   const url = new URL(req.url)
-  const match = url.pathname.match(/^\/functions\/v1\/([^/]+)/)
-  const slug = match?.[1] || 'gsa-mcp'
+  const parts = url.pathname.split('/').filter(Boolean)
+  const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
+  const slug = candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
   return `${url.origin}/functions/v1/${slug}`
 }
 
@@ -129,12 +130,18 @@ function runHandle(runId: string) {
   return 'R-' + runId.replace(/-/g, '').slice(-4).toUpperCase()
 }
 
-function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS', recordId: string) {
-  return 'projects/' + projectId + '/WORK/' + family + '/' + recordId + '.json'
+function executionMemoryRoot(projectId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
+  return executionContract === 'NEXT'
+    ? 'projects/' + projectId + '/TEST-LAB/NEXT'
+    : 'projects/' + projectId
 }
 
-function verificationPath(projectId: string, verificationId: string) {
-  return 'projects/' + projectId + '/VERIFICATION/' + verificationId + '.json'
+function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
+  return executionMemoryRoot(projectId, executionContract) + '/WORK/' + family + '/' + recordId + '.json'
+}
+
+function verificationPath(projectId: string, verificationId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
+  return executionMemoryRoot(projectId, executionContract) + '/VERIFICATION/' + verificationId + '.json'
 }
 
 function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
@@ -1749,6 +1756,8 @@ function createServer(req: Request) {
       if (work_context === 'BROWNFIELD' && !(brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'BROWNFIELD_PLANNING_INCOMPLETE: relevant existing logic review evidence is required before preparing the Job.' }], isError: true }
       }
+      const executionContract = resolveExecutionContract(execution_contract)
+      if (!executionContract) return invalidExecutionContract()
       const jobId = uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -1774,7 +1783,7 @@ function createServer(req: Request) {
         objective,
         scope,
         non_goals,
-        execution_contract: resolveExecutionContract(execution_contract) ?? DEFAULT_EXECUTION_CONTRACT,
+        execution_contract: executionContract,
         planning_context: {
           work_context,
           phase,
@@ -1820,7 +1829,7 @@ function createServer(req: Request) {
         created_at: now,
         updated_at: now,
       }
-      const path = recordPath(project_id, 'JOBS', jobId)
+      const path = recordPath(project_id, 'JOBS', jobId, executionContract)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
         'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
@@ -1877,7 +1886,8 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      if (!jobExecutionContract(current)) return invalidExecutionContract()
+      const executionContract = jobExecutionContract(current)
+      if (!executionContract) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -1914,7 +1924,7 @@ function createServer(req: Request) {
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
         'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
@@ -2004,7 +2014,8 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      if (!jobExecutionContract(current)) return invalidExecutionContract()
+      const executionContract = jobExecutionContract(current)
+      if (!executionContract) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT') {
         return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
       }
@@ -2037,7 +2048,7 @@ function createServer(req: Request) {
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
       const out = {
         memory_path: memoryPath,
         expected_job_sha: job_record_sha,
@@ -2096,7 +2107,8 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      if (!jobExecutionContract(current)) return invalidExecutionContract()
+      const executionContract = jobExecutionContract(current)
+      if (!executionContract) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT' || current.planning_revision !== planning_revision) {
         return { content: [{ type: 'text', text: 'Planning review target does not match the current DRAFT planning revision.' }], isError: true }
       }
@@ -2116,7 +2128,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const verificationMemoryPath = verificationPath(project_id, verificationId)
+      const verificationMemoryPath = verificationPath(project_id, verificationId, executionContract)
       const verification = {
         verification_id: verificationId,
         kind: 'PLANNING_REVIEW',
@@ -2124,6 +2136,7 @@ function createServer(req: Request) {
         job_id,
         planning_revision,
         producer: 'reviewer',
+        execution_contract: executionContract,
         result,
         findings: findings ?? [],
         limitations: limitations ?? [],
@@ -2141,7 +2154,7 @@ function createServer(req: Request) {
         },
         updated_at: new Date().toISOString(),
       }
-      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id)
+      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
       const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
       const steps = [
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
@@ -2286,7 +2299,8 @@ function createServer(req: Request) {
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      if (!jobExecutionContract(current)) return invalidExecutionContract()
+      const executionContract = jobExecutionContract(current)
+      if (!executionContract) return invalidExecutionContract()
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -2297,7 +2311,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const memoryPath = verificationPath(project_id, verificationId)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract)
       const verification = {
         verification_id: verificationId,
         kind: 'CRITIC_REVIEW',
@@ -2305,6 +2319,7 @@ function createServer(req: Request) {
         job_id,
         planning_revision: planning_revision ?? current.planning_revision ?? null,
         producer: 'critic_reviewer',
+        execution_contract: executionContract,
         human_invoked: true,
         target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
         target_revision: target_revision ?? null,
@@ -2369,7 +2384,8 @@ function createServer(req: Request) {
       try { owningJob = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid owning Job JSON.' }], isError: true }
       }
-      if (!jobExecutionContract(owningJob)) return invalidExecutionContract()
+      const executionContract = jobExecutionContract(owningJob)
+      if (!executionContract) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2403,6 +2419,7 @@ function createServer(req: Request) {
         handle: runHandle(runId),
         project_id,
         job_id,
+        execution_contract: executionContract,
         primary_task_id: primary_task_id ?? null,
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
@@ -2420,7 +2437,7 @@ function createServer(req: Request) {
         started_at: now,
         ended_at: null,
       }
-      const path = recordPath(project_id, 'RUNS', runId)
+      const path = recordPath(project_id, 'RUNS', runId, executionContract)
       const result = {
         run_id: runId,
         handle: runHandle(runId),
@@ -2528,6 +2545,7 @@ function createServer(req: Request) {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         run_id: z.string().uuid(),
+        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
         task_id: z.string().uuid().optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
@@ -2552,9 +2570,11 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, job_id, run_id, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
+    async ({ project_id, job_id, run_id, execution_contract, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
+      const executionContract = resolveExecutionContract(execution_contract)
+      if (!executionContract) return invalidExecutionContract()
       const verificationId = uuidv7()
       const blocking = criteria
         .filter((c: any) => c.result === 'NOT_MET')
@@ -2570,6 +2590,7 @@ function createServer(req: Request) {
         target_ref,
         target_revision,
         producer: 'coder',
+        execution_contract: executionContract,
         result: blocking.length ? 'CHANGES_REQUIRED' : (criteria.some((c: any) => c.result === 'PARTIAL' || c.result === 'UNVERIFIED') ? 'PASS_RETEST_REQUIRED' : 'PASS'),
         limitations: limitations ?? [],
         evidence_refs: criteria.flatMap((c: any) => c.evidence ?? []),
@@ -2577,7 +2598,7 @@ function createServer(req: Request) {
         scope_drift: scope_drift ?? [],
         created_at: new Date().toISOString(),
       }
-      const path = verificationPath(project_id, verificationId)
+      const path = verificationPath(project_id, verificationId, executionContract)
       const result = {
         verification_id: verificationId,
         memory_path: path,
@@ -2647,6 +2668,8 @@ function createServer(req: Request) {
       if (current.run_id !== run_id || current.project_id !== project_id || current.job_id !== job_id || current.role !== role || current.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'Run identity/lifecycle mismatch.' }], isError: true }
       }
+      const executionContract = resolveExecutionContract(current.execution_contract)
+      if (!executionContract) return invalidExecutionContract()
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
@@ -2659,9 +2682,10 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
-        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id) : ''
+        const goalExecutionContract = resolveExecutionContract(goal.execution_contract)
+        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract) : ''
         const persistedRefMatches = expectedGoalPath === goal_recheck_verification_ref
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && revisionMatches && persistedRefMatches
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
@@ -2669,17 +2693,18 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
-      const runPath = recordPath(project_id, 'RUNS', run_id)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       let handoffId: string | null = null
       let handoffPath: string | null = null
       let handoffText: string | null = null
       if (handoff) {
         handoffId = uuidv7()
-        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId)
+        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId, executionContract)
         handoffText = prettyJson({
           handoff_id: handoffId,
           project_id,
           job_id,
+          execution_contract: executionContract,
           source_run_id: run_id,
           next_role: handoff.next_role,
           primary_task_id: handoff.primary_task_id ?? null,
@@ -2879,6 +2904,10 @@ app.get('/selftest', (c) => {
     ux_first_temp_ui_defaults_to_gate: true,
     run_begin_requires_job_snapshot: true,
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
+    next_job_path_isolated: recordPath(projectId, 'JOBS', uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/WORK/JOBS/'),
+    next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
+    edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
+    edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
     execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
