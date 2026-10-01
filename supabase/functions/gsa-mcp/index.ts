@@ -410,7 +410,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'GOAL RECHECK',
       '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
-      '- Pass the exact current owning Run record into goal_recheck_record. The tool derives execution_contract from that Run; never select the contract independently.',
+      '- Pass the exact current owning Run record and its current Git blob SHA into goal_recheck_record. The tool derives execution_contract from that Run; before Verification persistence, re-fetch the contract-derived Run path and require the exact SHA to still match.',
       '- NOT_MET cannot be reported as success.',
       '- PARTIAL/UNVERIFIED must carry the limitation and routing decision.',
       '',
@@ -2549,12 +2549,13 @@ function createServer(req: Request) {
     'goal_recheck_record',
     {
       title: 'Prepare Coder Goal Recheck evidence',
-      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. Pass the exact current owning Run record; execution_contract and the Verification namespace are derived from that Run. Does not independently prove success.',
+      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. Pass the exact current owning Run record plus its current Git blob SHA; execution_contract and the Verification namespace are derived from that Run, and persistence is gated on exact Run read-back. Does not independently prove success.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         run_id: z.string().uuid(),
         run_record_text: z.string().min(2),
+        run_record_sha: z.string().min(7),
         task_id: z.string().uuid().optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
@@ -2570,6 +2571,8 @@ function createServer(req: Request) {
       outputSchema: {
         verification_id: z.string(),
         memory_path: z.string(),
+        owning_run_memory_path: z.string(),
+        expected_run_sha: z.string(),
         verification_record_text: z.string(),
         ready_for_success_handoff: z.boolean(),
         blocking_reasons: z.array(z.string()),
@@ -2579,7 +2582,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, job_id, run_id, run_record_text, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
+    async ({ project_id, job_id, run_id, run_record_text, run_record_sha, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
       let owningRun: any
@@ -2615,15 +2618,21 @@ function createServer(req: Request) {
         created_at: new Date().toISOString(),
       }
       const path = verificationPath(project_id, verificationId, executionContract)
+      const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       const result = {
         verification_id: verificationId,
         memory_path: path,
+        owning_run_memory_path: owningRunPath,
+        expected_run_sha: run_record_sha,
         verification_record_text: prettyJson(record),
         ready_for_success_handoff: blocking.length === 0,
         blocking_reasons: blocking,
         external_steps: [
+          'Fetch the current owning Run at owning_run_memory_path immediately before Verification persistence.',
+          'Require the fetched Run blob SHA to equal expected_run_sha exactly. Missing path or stale SHA blocks Goal Recheck persistence.',
+          'Re-parse the fetched Run and require project_id/job_id/run_id, role=coder, lifecycle=IN_PROGRESS and resolved execution_contract to still match the supplied owning Run snapshot.',
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
-          'Persist this Verification record before terminal Run update.',
+          'Persist this Verification record only after the owning Run read-back guard passes.',
           blocking.length ? 'Continue the Coder loop; do not claim success while blocking_reasons remain.' : 'If topology permits, proceed to required review/test/handoff or terminal Run completion.',
         ],
       }
@@ -2941,6 +2950,8 @@ app.get('/selftest', (c) => {
     goal_recheck_legacy_run_contract_stable: resolveExecutionContract(legacyCoderRun.execution_contract) === 'V2_STABLE',
     goal_recheck_next_run_contract_next: resolveExecutionContract(nextCoderRun.execution_contract) === 'NEXT',
     goal_recheck_invalid_run_contract_rejected: resolveExecutionContract('UNKNOWN') === null,
+    goal_recheck_legacy_run_path_unchanged: recordPath(projectId, 'RUNS', legacyRunId, resolveExecutionContract(legacyCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/WORK/RUNS/'),
+    goal_recheck_next_run_path_isolated: recordPath(projectId, 'RUNS', nextRunId, resolveExecutionContract(nextCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/WORK/RUNS/'),
     goal_recheck_stable_verification_path_unchanged: verificationPath(projectId, uuidv7(), resolveExecutionContract(legacyCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/VERIFICATION/'),
     goal_recheck_next_verification_path_isolated: verificationPath(projectId, uuidv7(), resolveExecutionContract(nextCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
   }
