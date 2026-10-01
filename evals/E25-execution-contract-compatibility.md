@@ -43,6 +43,17 @@ Expected:
 - ordinary V2 lifecycle tools remain usable;
 - CP0 does not add checkpoint/UI-Coder/EvidenceNeed routing.
 
+### E25-03B — NEXT Coder Goal Recheck continuity
+
+Input: a Coder Run created from a synthetic NEXT Job.
+
+Expected:
+- `run_begin` persists `execution_contract: "NEXT"` on the Run;
+- `goal_recheck_record` requires an explicit `execution_contract` copied from that Run; omission is rejected instead of silently defaulting to V2_STABLE;
+- a NEXT Goal Recheck persists under `projects/<project-id>/TEST-LAB/NEXT/VERIFICATION/`;
+- a V2_STABLE Goal Recheck persists under the historical `projects/<project-id>/VERIFICATION/` path;
+- `run_complete` accepts only a Goal Recheck whose contract and verification path match the owning Run.
+
 ### E25-04 — Invalid contract
 
 Input: `execution_contract: "UNKNOWN"`.
