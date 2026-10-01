@@ -49,10 +49,12 @@ Input: a Coder Run created from a synthetic NEXT Job.
 
 Expected:
 - `run_begin` persists `execution_contract: "NEXT"` on the Run;
-- `goal_recheck_record` requires an explicit `execution_contract` copied from that Run; omission is rejected instead of silently defaulting to V2_STABLE;
-- a NEXT Goal Recheck persists under `projects/<project-id>/TEST-LAB/NEXT/VERIFICATION/`;
-- a V2_STABLE Goal Recheck persists under the historical `projects/<project-id>/VERIFICATION/` path;
-- `run_complete` accepts only a Goal Recheck whose contract and verification path match the owning Run.
+- `goal_recheck_record` requires the exact current owning Run record, validates project/job/run identity plus `role=coder` and `lifecycle=IN_PROGRESS`, and derives `execution_contract` from that Run rather than accepting a caller-selected contract;
+- a historical owning Run with no `execution_contract` derives V2_STABLE and keeps the historical `projects/<project-id>/VERIFICATION/` path;
+- a NEXT owning Run derives NEXT and persists under `projects/<project-id>/TEST-LAB/NEXT/VERIFICATION/`;
+- a mismatched Run identity/role/lifecycle is rejected before a Verification path is returned;
+- callers cannot force a NEXT Run Goal Recheck into the V2_STABLE namespace by supplying a separate contract value because no independent Goal Recheck contract selector exists;
+- `run_complete` accepts only a Goal Recheck whose derived contract and verification path match the owning Run.
 
 ### E25-04 — Invalid contract
 
