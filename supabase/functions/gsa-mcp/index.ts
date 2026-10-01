@@ -27,8 +27,12 @@ function jobExecutionContract(job: any): ExecutionContract | null {
   return resolveExecutionContract(job?.execution_contract)
 }
 
-function requiredExecutionContract(value: unknown): ExecutionContract | null {
-  return value === 'V2_STABLE' || value === 'NEXT' ? value : null
+function goalRecheckRunMatches(run: any, projectId: string, jobId: string, runId: string) {
+  return run?.project_id === projectId &&
+    run?.job_id === jobId &&
+    run?.run_id === runId &&
+    run?.role === 'coder' &&
+    run?.lifecycle === 'IN_PROGRESS'
 }
 
 function invalidExecutionContract() {
@@ -406,7 +410,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'GOAL RECHECK',
       '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
-      '- Copy execution_contract exactly from the owning Run into goal_recheck_record. Never rely on a default or infer the contract independently.',
+      '- Pass the exact current owning Run record into goal_recheck_record. The tool derives execution_contract from that Run; never select the contract independently.',
       '- NOT_MET cannot be reported as success.',
       '- PARTIAL/UNVERIFIED must carry the limitation and routing decision.',
       '',
@@ -2545,12 +2549,12 @@ function createServer(req: Request) {
     'goal_recheck_record',
     {
       title: 'Prepare Coder Goal Recheck evidence',
-      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. execution_contract is required and must be copied exactly from the owning Run; it never defaults independently. Does not independently prove success.',
+      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. Pass the exact current owning Run record; execution_contract and the Verification namespace are derived from that Run. Does not independently prove success.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         run_id: z.string().uuid(),
-        execution_contract: z.enum(['V2_STABLE','NEXT']),
+        run_record_text: z.string().min(2),
         task_id: z.string().uuid().optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
@@ -2575,10 +2579,17 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, job_id, run_id, execution_contract, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
+    async ({ project_id, job_id, run_id, run_record_text, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
-      const executionContract = requiredExecutionContract(execution_contract)
+      let owningRun: any
+      try { owningRun = JSON.parse(run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid owning Run JSON.' }], isError: true }
+      }
+      if (!goalRecheckRunMatches(owningRun, project_id, job_id, run_id)) {
+        return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: owning Run identity/role/lifecycle mismatch.' }], isError: true }
+      }
+      const executionContract = resolveExecutionContract(owningRun.execution_contract)
       if (!executionContract) return invalidExecutionContract()
       const verificationId = uuidv7()
       const blocking = criteria
@@ -2889,6 +2900,12 @@ app.get('/selftest', (c) => {
   const parsed = parseProjectManifest(manifest)
   const paused = transitionProjectManifest(manifest, 'PAUSED')
   const resumed = paused ? transitionProjectManifest(paused.next, 'ACTIVE') : null
+  const legacyJobId = uuidv7()
+  const legacyRunId = uuidv7()
+  const nextJobId = uuidv7()
+  const nextRunId = uuidv7()
+  const legacyCoderRun = { project_id: projectId, job_id: legacyJobId, run_id: legacyRunId, role: 'coder', lifecycle: 'IN_PROGRESS' }
+  const nextCoderRun = { project_id: projectId, job_id: nextJobId, run_id: nextRunId, role: 'coder', lifecycle: 'IN_PROGRESS', execution_contract: 'NEXT' }
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -2917,12 +2934,15 @@ app.get('/selftest', (c) => {
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
     execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
     execution_contract_invalid_rejected: resolveExecutionContract('UNKNOWN') === null,
-    goal_recheck_contract_missing_rejected: requiredExecutionContract(undefined) === null,
-    goal_recheck_contract_stable_explicit: requiredExecutionContract('V2_STABLE') === 'V2_STABLE',
-    goal_recheck_contract_next_explicit: requiredExecutionContract('NEXT') === 'NEXT',
-    goal_recheck_contract_invalid_rejected: requiredExecutionContract('UNKNOWN') === null,
-    goal_recheck_stable_verification_path_unchanged: verificationPath(projectId, uuidv7(), 'V2_STABLE').startsWith('projects/' + projectId + '/VERIFICATION/'),
-    goal_recheck_next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
+    goal_recheck_legacy_run_identity_valid: goalRecheckRunMatches(legacyCoderRun, projectId, legacyJobId, legacyRunId),
+    goal_recheck_next_run_identity_valid: goalRecheckRunMatches(nextCoderRun, projectId, nextJobId, nextRunId),
+    goal_recheck_wrong_run_identity_rejected: !goalRecheckRunMatches(nextCoderRun, projectId, nextJobId, legacyRunId),
+    goal_recheck_wrong_role_rejected: !goalRecheckRunMatches({ ...nextCoderRun, role: 'reviewer' }, projectId, nextJobId, nextRunId),
+    goal_recheck_legacy_run_contract_stable: resolveExecutionContract(legacyCoderRun.execution_contract) === 'V2_STABLE',
+    goal_recheck_next_run_contract_next: resolveExecutionContract(nextCoderRun.execution_contract) === 'NEXT',
+    goal_recheck_invalid_run_contract_rejected: resolveExecutionContract('UNKNOWN') === null,
+    goal_recheck_stable_verification_path_unchanged: verificationPath(projectId, uuidv7(), resolveExecutionContract(legacyCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/VERIFICATION/'),
+    goal_recheck_next_verification_path_isolated: verificationPath(projectId, uuidv7(), resolveExecutionContract(nextCoderRun.execution_contract) ?? 'V2_STABLE').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
   }
   const pass = Object.values(checks).every(Boolean)
   return c.json({ pass, checks })
