@@ -27,6 +27,10 @@ function jobExecutionContract(job: any): ExecutionContract | null {
   return resolveExecutionContract(job?.execution_contract)
 }
 
+function requiredExecutionContract(value: unknown): ExecutionContract | null {
+  return value === 'V2_STABLE' || value === 'NEXT' ? value : null
+}
+
 function invalidExecutionContract() {
   return {
     content: [{ type: 'text' as const, text: 'Invalid execution_contract. Expected V2_STABLE or NEXT; missing defaults to V2_STABLE.' }],
@@ -402,6 +406,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'GOAL RECHECK',
       '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
+      '- Copy execution_contract exactly from the owning Run into goal_recheck_record. Never rely on a default or infer the contract independently.',
       '- NOT_MET cannot be reported as success.',
       '- PARTIAL/UNVERIFIED must carry the limitation and routing decision.',
       '',
@@ -2540,12 +2545,12 @@ function createServer(req: Request) {
     'goal_recheck_record',
     {
       title: 'Prepare Coder Goal Recheck evidence',
-      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. Does not independently prove success.',
+      description: 'Build append-preserving GOAL_RECHECK Verification from the Coder loop. execution_contract is required and must be copied exactly from the owning Run; it never defaults independently. Does not independently prove success.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         run_id: z.string().uuid(),
-        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
+        execution_contract: z.enum(['V2_STABLE','NEXT']),
         task_id: z.string().uuid().optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
@@ -2573,7 +2578,7 @@ function createServer(req: Request) {
     async ({ project_id, job_id, run_id, execution_contract, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
-      const executionContract = resolveExecutionContract(execution_contract)
+      const executionContract = requiredExecutionContract(execution_contract)
       if (!executionContract) return invalidExecutionContract()
       const verificationId = uuidv7()
       const blocking = criteria
@@ -2912,6 +2917,12 @@ app.get('/selftest', (c) => {
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
     execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
     execution_contract_invalid_rejected: resolveExecutionContract('UNKNOWN') === null,
+    goal_recheck_contract_missing_rejected: requiredExecutionContract(undefined) === null,
+    goal_recheck_contract_stable_explicit: requiredExecutionContract('V2_STABLE') === 'V2_STABLE',
+    goal_recheck_contract_next_explicit: requiredExecutionContract('NEXT') === 'NEXT',
+    goal_recheck_contract_invalid_rejected: requiredExecutionContract('UNKNOWN') === null,
+    goal_recheck_stable_verification_path_unchanged: verificationPath(projectId, uuidv7(), 'V2_STABLE').startsWith('projects/' + projectId + '/VERIFICATION/'),
+    goal_recheck_next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
   }
   const pass = Object.values(checks).every(Boolean)
   return c.json({ pass, checks })
