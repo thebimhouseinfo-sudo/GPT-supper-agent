@@ -2192,10 +2192,9 @@ function createServer(req: Request) {
       }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
-      const planningShapeChanged = tasks !== undefined || topology !== undefined
       const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
-      if (executionContract === 'NEXT' && hasCurrentNextPlanning && planningShapeChanged && !allNextPlanningSupplied) {
-        return { content: [{ type: 'text', text: 'NEXT_PLANNING_REBIND_REQUIRED: task/topology revision must resupply all CP4 planning collections for the new planning_revision.' }], isError: true }
+      if (executionContract === 'NEXT' && hasCurrentNextPlanning && !allNextPlanningSupplied) {
+        return { content: [{ type: 'text', text: 'NEXT_PLANNING_REBIND_REQUIRED: every revision of a NEXT Job with active CP4 planning must explicitly resupply all CP4 planning collections for the new planning_revision.' }], isError: true }
       }
       const nextTasks = tasks ?? current.tasks
       const nextPlanning = normalizeNextPlanningModel({
