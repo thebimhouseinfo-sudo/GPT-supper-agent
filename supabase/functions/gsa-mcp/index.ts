@@ -560,7 +560,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Record only checks actually observed, plus limitations and any unresolved material design/product decision.',
       '- Route ordinary within-contract implementation refinements back through the normal Coder loop; route material contract changes to Planner/Designer/Human.',
     ].join('\n'),
-
+  },
 }
 
 function renderHarness(role: string) {
