@@ -235,12 +235,26 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
   const evidenceNeedSet = new Set(evidenceNeedIds)
   const checkpointSet = new Set(checkpointIds)
   const milestoneSet = new Set(milestoneIds)
-  const knownNodeIds = new Set([...taskIds, ...checkpointIds, ...milestoneIds])
+  const knownNodeIds = new Set([...taskIds, ...checkpointIds])
+  const checkpointById = new Map(checkpoints.map((item: any) => [item.checkpoint_id, item]))
+  const evidenceNeedById = new Map(evidenceNeeds.map((item: any) => [item.evidence_need_id, item]))
 
   for (const item of evidenceNeeds) {
     if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: EvidenceNeed is not bound to the current planning revision.'
     if (!taskIds.has(item.owner_task_id) || !(item.required_by_task_ids ?? []).every((id: string) => taskIds.has(id)) || !checkpointSet.has(item.checkpoint_id)) {
       return 'NEXT_PLANNING_INVALID: EvidenceNeed owner/consumer/checkpoint references must resolve inside the current plan.'
+    }
+    const producer: any = checkpointById.get(item.checkpoint_id)
+    if (!(producer?.evidence_need_ids ?? []).includes(item.evidence_need_id)) {
+      return 'NEXT_PLANNING_INVALID: every EvidenceNeed must be declared as produced by its referenced checkpoint.'
+    }
+    for (const consumerTaskId of item.required_by_task_ids ?? []) {
+      const hasRequirement = requirements.some((req: any) =>
+        req.consumer_task_id === consumerTaskId &&
+        req.evidence_need_id === item.evidence_need_id &&
+        req.checkpoint_id === item.checkpoint_id
+      )
+      if (!hasRequirement) return 'NEXT_PLANNING_INVALID: every EvidenceNeed consumer must have a matching EvidenceRequirement.'
     }
   }
   for (const item of checkpoints) {
@@ -256,6 +270,10 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
     if (!taskIds.has(item.consumer_task_id) || !evidenceNeedSet.has(item.evidence_need_id) || !checkpointSet.has(item.checkpoint_id)) {
       return 'NEXT_PLANNING_INVALID: EvidenceRequirement references must resolve to current tasks/evidence/checkpoints.'
     }
+    const need: any = evidenceNeedById.get(item.evidence_need_id)
+    if (need?.checkpoint_id !== item.checkpoint_id || !(need?.required_by_task_ids ?? []).includes(item.consumer_task_id)) {
+      return 'NEXT_PLANNING_INVALID: EvidenceRequirement must match the EvidenceNeed producer checkpoint and declared consumer set.'
+    }
   }
   for (const item of milestones) {
     if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: milestone is not bound to the current planning revision.'
@@ -267,9 +285,33 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
   for (const item of planningTopology) {
     if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: topology node is not bound to the current planning revision.'
     if (!knownNodeIds.has(item.node_id) || !(item.depends_on ?? []).every((id: string) => knownNodeIds.has(id))) return 'NEXT_PLANNING_INVALID: planning_topology contains an unknown node/reference.'
+    if ((item.depends_on ?? []).includes(item.node_id) || !unique(item.depends_on ?? [])) return 'NEXT_PLANNING_INVALID: planning_topology dependencies must be unique and cannot self-reference.'
+    if (item.node_type === 'TASK' && !taskIds.has(item.node_id)) return 'NEXT_PLANNING_INVALID: TASK topology node must reference a Task.'
+    if (item.node_type === 'TEST_CHECKPOINT') {
+      const checkpoint: any = checkpointById.get(item.node_id)
+      if (!checkpoint || checkpoint.boundary === 'MILESTONE_GATE') return 'NEXT_PLANNING_INVALID: TEST_CHECKPOINT node must reference a non-milestone checkpoint.'
+    }
+    if (item.node_type === 'MILESTONE_GATE') {
+      const checkpoint: any = checkpointById.get(item.node_id)
+      if (!checkpoint || checkpoint.boundary !== 'MILESTONE_GATE') return 'NEXT_PLANNING_INVALID: MILESTONE_GATE node must reference a MILESTONE_GATE checkpoint.'
+    }
   }
   for (const id of taskIds) if (!topologyIds.includes(id)) return 'NEXT_PLANNING_INVALID: every Task must appear in typed planning_topology.'
   for (const id of checkpointIds) if (!topologyIds.includes(id)) return 'NEXT_PLANNING_INVALID: every TestCheckpointSpec must appear in typed planning_topology.'
+
+  const deps = new Map(planningTopology.map((item: any) => [item.node_id, item.depends_on ?? []]))
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const hasCycle = (id: string): boolean => {
+    if (visiting.has(id)) return true
+    if (visited.has(id)) return false
+    visiting.add(id)
+    for (const dep of (deps.get(id) as string[] ?? [])) if (hasCycle(dep)) return true
+    visiting.delete(id)
+    visited.add(id)
+    return false
+  }
+  for (const id of topologyIds) if (hasCycle(id)) return 'NEXT_PLANNING_INVALID: planning_topology must be acyclic.'
   return null
 }
 
