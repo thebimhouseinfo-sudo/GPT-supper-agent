@@ -89,14 +89,78 @@ Unavailable/unproven checks remain UNVERIFIED unless another evidence path exist
 
 ## 9. Tester
 
-Tester practical execution is capability-gated.
+Tester practical execution is capability-gated and source-read-only.
 
-If not OBSERVED:
+### Evidence modes
+
 ```text
-GSA prepares Retest
+VERIFY  = explicit requirement → observed behavior → verdict
+MEASURE = observed value/state → measurement
+PROBE   = uncertain runtime/tool/capability assumption → empirical fact
+```
+
+Rules:
+- VERIFY needs an explicit expected behavior; unclear expectation is a `SPEC_GAP`, not an invented acceptance rule.
+- MEASURE with no approved threshold returns the measurement and evidence only; it does not invent PASS/FAIL.
+- PROBE primarily supplies empirical planning/design evidence and does not by itself change architecture or topology.
+- Tester runs at meaningful Planner-declared checkpoints; do not insert Tester after every Task by default.
+
+### Tester readiness
+
+For a concrete capability/check, Tester may record:
+
+```text
+DISCOVERED
+→ REACHABLE
+→ INVOCABLE
+→ FUNCTIONAL
+→ GOAL_MET
+```
+
+This is a finer evidence model layered over the existing global capability states. `SURFACE_PRESENT` remains discovery-only; `OBSERVED` means evidence-backed at the tested level.
+
+### Failure classification
+
+Before routing, Tester distinguishes:
+
+```text
+PRODUCT_FAILURE
+TEST_FAILURE
+ENVIRONMENT_FAILURE
+NOT_READY
+INTEGRATION_NOT_READY
+SPEC_GAP
+PLAN_GAP
+```
+
+A failing test is not automatically a product bug. Broken test logic is `TEST_FAILURE`; unavailable execution infrastructure is `ENVIRONMENT_FAILURE`; a visible-but-not-callable integration is `INTEGRATION_NOT_READY`; unclear expected behavior is `SPEC_GAP`; missing planning/dependency logic is `PLAN_GAP`.
+
+Tester may state evidence-supported implications, but does not repair product source or mutate topology. Product failures route to the owning implementation work; specification/planning gaps route to Planner/Human as applicable.
+
+### Structured report and Retest
+
+Tester records:
+- exact target/ref/revision or state identity;
+- mode(s) and planned checks;
+- readiness/capability state;
+- observations and measurements;
+- verdicts only where criteria/thresholds exist;
+- failure classification;
+- evidence refs;
+- limitations and untested areas;
+- Retest status / next step.
+
+Retest evidence is revision/state-bound. If relevant source/config/runtime state changes, prior Retest evidence does not silently transfer to the changed scope.
+
+If practical capability is not OBSERVED:
+
+```text
+GSA prepares precise Retest
 → human executes
 → GSA records result/evidence
 ```
+
+Unavailable/unproven execution remains UNVERIFIED or RETEST_REQUIRED, never a fabricated PASS.
 
 ## 10. Completion
 
