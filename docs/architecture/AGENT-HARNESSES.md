@@ -329,6 +329,6 @@ For `execution_contract=NEXT`, Planner may persist first-class empirical plannin
 - `milestones[]` group Tasks/checkpoints and optional gate checkpoints.
 - `planning_topology[]` is the typed NEXT planning graph; every Task and TestCheckpointSpec must appear as a typed node.
 
-All CP4 collections are bound to the exact `planning_revision`. A plan revision that changes Task/topology shape must rebind the complete CP4 planning model; stale empirical topology must not carry forward silently.
+All CP4 collections are bound to the exact `planning_revision`. Once a NEXT Job has an active CP4 planning model, **every** plan revision must explicitly resupply/rebind the complete model; stale empirical topology must not carry forward silently.
 
 For `V2_STABLE`, these collections remain empty/non-activating. CP4 defines planning truth only; Tester dispatch, checkpoint claims/leases/replay and crash recovery remain CP5.
