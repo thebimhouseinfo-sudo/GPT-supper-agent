@@ -105,6 +105,46 @@ Unavailable/unobserved practical verification remains UNVERIFIED or becomes Rete
 
 Scale artifact count, not reasoning obligations.
 
+## 12A. Bounded planning decomposition
+
+Planner decomposes large objectives top-down:
+
+```text
+Objective
+→ Phase
+→ Task
+→ Job Pack
+→ Milestone
+```
+
+`Phase`, `Job Pack` and `Milestone` are planning/topology concepts. They do not replace the persistent `Project → Job → Task → Run` record hierarchy.
+
+A Job Pack is an executable context boundary. Keep it:
+- large enough to finish meaningfully;
+- small enough to preserve context quality;
+- limited to one meaningful objective / bounded causal chain;
+- independently verifiable.
+
+Core invariant:
+
+```text
+Job boundary = context boundary
+```
+
+## 12B. Brownfield authority and precedence
+
+Existing source is evidence, not automatic authority.
+
+Before extending important brownfield behavior, Planner establishes whether the relevant behavior is:
+
+```text
+CANONICAL | LEGACY | ACCIDENTAL | INCORRECT | UNKNOWN
+```
+
+For related repositories/subsystems, record the relevant relationship and evidence-backed precedence direction. Reading a related repository for impact does not grant write scope.
+
+When later downstream work depends on an upstream contract, re-read the current upstream source instead of relying only on remembered relationship state.
+
 ## 13. Core boundary
 
 > Planner makes product/system/workflow intent implementation-ready. Designer owns visual methodology. Coder owns exact source-level HOW.
