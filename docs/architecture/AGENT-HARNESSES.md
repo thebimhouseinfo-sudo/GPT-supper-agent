@@ -153,6 +153,21 @@ Phase 2 must define and prove:
 
 Until proven, harness loading is an implementation capability, not an architecture assumption.
 
+### Progressive context contract
+
+Use progressively deeper context only when the active role/evidence requires it:
+
+```text
+L0 = repository orientation / structure
+L1 = decision context / canonical contracts / selected entry points
+L2 = exact execution context / callers / consumers / tests
+L3 = deeper investigation triggered by findings, failures or unresolved dependencies
+```
+
+Planner normally owns L0/L1 discovery. Coder, Reviewer and Tester consume L2 for their exact target and expand to L3 only when evidence requires it.
+
+Do not keep broad stale context loaded merely because it was once relevant.
+
 ## 12. Handoff
 
 Cross-Run transition uses durable Handoff with owning work, source Run, next role, exact target/revision, completed/remaining work, blocker/gate and expected next outcome.

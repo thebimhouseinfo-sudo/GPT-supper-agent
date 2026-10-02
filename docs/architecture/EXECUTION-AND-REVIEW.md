@@ -108,6 +108,42 @@ PASS_RETEST_REQUIRED may complete Job while Retest remains pending.
 
 Post-completion Retest FAIL creates linked remediation Job.
 
+## 10A. Trigger-to-invariant translation
+
+When a useful mechanism from another runtime depends on local hooks, watchers, background workers or other unavailable infrastructure, do not copy the trigger literally.
+
+Translate the protected invariant into:
+
+```text
+Trigger
+→ Required action
+→ Evidence
+→ Exit condition
+```
+
+This translation must preserve the behavioral obligation without inventing unsupported infrastructure.
+
+## 10B. Lessons Learned collection
+
+Lessons Learned collection is continuous.
+
+The shorthand collector is `LLC`. In the current contract LLC is a collector responsibility, not an autonomous workflow mutator.
+
+When real work reveals a workaround, missing contract, repeated ambiguity, unusually hard-to-detect defect or reusable Reviewer/CR/Tester finding:
+
+```text
+observe
+→ record candidate + evidence + candidate owner
+→ dedupe/classify
+→ reviewed checkpoint decides implementation
+→ eval/pilot/review
+→ MERGE into canonical owner
+```
+
+LLC never fixes the workflow merely because it recorded the problem. A temporary Human-approved workaround may be evidence of a gap, but does not become canonical by use.
+
+The ownership/disposition ledger is `docs/process/GSA-WORKFLOW-LESSONS-LEDGER.md`.
+
 ## 11. Merge authorization coverage
 
 Before requesting merge authorization, generate Review Coverage Summary:

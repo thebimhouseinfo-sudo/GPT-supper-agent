@@ -11,6 +11,8 @@ DESTINATION = feeds reviewed updates into PHASE2-IMPLEMENTATION.md and role/skil
 
 This note captures lessons learned from real GSA pilots and from external coding-agent research. It does not replace the current Phase-2 implementation source of truth.
 
+Accepted lesson ownership and checkpoint disposition are tracked in `docs/process/GSA-WORKFLOW-LESSONS-LEDGER.md`. Once a lesson is classified there, this note remains supporting intake/research evidence only; it is not the canonical owner of the resulting workflow rule.
+
 ## Current MVP direction
 
 The practical MVP target is a strong sequential coding-agent system running through ChatGPT Web/plugin infrastructure.
