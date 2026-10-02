@@ -42,7 +42,7 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 - `ALREADY_OWNED` — accepted lesson already has a canonical owner and sufficient evidence; do not duplicate it.
 - `CP1_DELTA` — CP1 adds the missing canonical wording/process ownership without activating later runtime features.
 - `DEFER_CP3` — Tester semantic behavior belongs to CP3.
-- `DEFER_CP4` — first-class evidence/checkpoint planning structures belong to CP4.
+- `CP4_DELTA` — CP4 adds first-class evidence/checkpoint planning structures without runtime execution.
 
 ## 3. Accepted lesson ledger
 
@@ -60,8 +60,8 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 | WL-010 | Translate local triggers into Trigger → Required action → Evidence → Exit condition | CP1_DELTA | `docs/architecture/EXECUTION-AND-REVIEW.md` | E26 | CP1 |
 | WL-011 | Tester supports VERIFY / MEASURE / PROBE | ALREADY_OWNED | `docs/architecture/AGENT-HARNESSES.md`, `EXECUTION-AND-REVIEW.md`, runtime `testing-evidence` | E27 | CP3 |
 | WL-012 | Tester runs at meaningful sparse checkpoints, not after every Task | ALREADY_OWNED | `docs/architecture/EXECUTION-AND-REVIEW.md` semantic rule; first-class checkpoint structure still lands in CP4 | E27 + Tester upgrade plan | CP3/CP4 |
-| WL-013 | Unknown runtime facts must not be guessed; preserve them as first-class EvidenceNeed / UnknownRuntimeFact | DEFER_CP4 | CP4 Planner EvidenceNeed/checkpoint planning model | Tester upgrade plan + CP4 roadmap | CP4 |
-| WL-014 | Checkpoints may depend on multiple prerequisite nodes / Milestone boundaries | DEFER_CP4 | CP4 typed checkpoint planning model | Tester upgrade plan + CP4 roadmap | CP4 |
+| WL-013 | Unknown runtime facts must not be guessed; preserve them as first-class EvidenceNeed / UnknownRuntimeFact | CP4_DELTA | `AGENT-HARNESSES.md`, `EXECUTION-AND-REVIEW.md`, runtime Planner schema | E28 + CP4 roadmap | CP4 |
+| WL-014 | Checkpoints may depend on multiple prerequisite nodes / Milestone boundaries | CP4_DELTA | `EXECUTION-AND-REVIEW.md`, runtime typed planning model | E28 + CP4 roadmap | CP4 |
 | WL-015 | Staging runtime evidence is valid only when deployed source is bound to the exact reviewed source | ALREADY_OWNED | CP0 contract in E25 + upgrade roadmap | CP0 source/deploy read-back evidence | CP0 |
 | WL-016 | Environment/tooling limitation is not a product PASS or product failure; keep unavailable checks explicit | ALREADY_OWNED | `CAPABILITY-CATALOG.md`, `EXECUTION-AND-REVIEW.md` | CP0 Tester PASS_RETEST_REQUIRED | Existing/CP0 |
 | WL-017 | Merge checkpoints early into integration; promote to production main only at final release | ALREADY_OWNED | `docs/plans/GSA-UPGRADE-INTEGRATION-ROADMAP.md` | CP0 merge evidence | Upgrade roadmap |
@@ -73,7 +73,7 @@ CP1 is complete only when:
 - every minimum lesson in the master roadmap appears in this ledger;
 - every `ALREADY_OWNED` row points to a real canonical owner;
 - every `CP1_DELTA` row has matching canonical source and evidence;
-- deferred CP3/CP4 rows remain non-activating;
+- CP3 semantic rows and CP4 planning rows remain non-executing until their owning checkpoint/runtime activation is complete;
 - the improvement note points here instead of acting as authority;
 - E26 passes review.
 
