@@ -317,3 +317,18 @@ BLOCKED
 ```
 
 CR is a peer-review backstop, not part of the normal automatic planning-review loop.
+
+
+## CP4 — NEXT empirical planning contract
+
+For `execution_contract=NEXT`, Planner may persist first-class empirical planning structures instead of leaving unknown runtime facts in prose:
+
+- `evidence_needs[]` / `UNKNOWN_RUNTIME_FACT` identify a concrete unknown, its owning Task, downstream consumers and the checkpoint that must resolve it.
+- `test_checkpoints[]` declare `VERIFY | MEASURE | PROBE`, a boundary (`BEFORE_NODE | AFTER_NODE_SET | MILESTONE_GATE | JOB_FINAL`) and prerequisite node set.
+- `evidence_requirements[]` bind downstream consumer Tasks to the EvidenceNeed and checkpoint they require.
+- `milestones[]` group Tasks/checkpoints and optional gate checkpoints.
+- `planning_topology[]` is the typed NEXT planning graph; every Task and TestCheckpointSpec must appear as a typed node.
+
+All CP4 collections are bound to the exact `planning_revision`. A plan revision that changes Task/topology shape must rebind the complete CP4 planning model; stale empirical topology must not carry forward silently.
+
+For `V2_STABLE`, these collections remain empty/non-activating. CP4 defines planning truth only; Tester dispatch, checkpoint claims/leases/replay and crash recovery remain CP5.
