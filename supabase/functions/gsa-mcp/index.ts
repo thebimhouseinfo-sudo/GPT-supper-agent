@@ -333,7 +333,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'FRAME: define objective, scope, non-goals and material assumptions.',
       'DECOMPOSE TOP-DOWN: Objective → Phase → Task → Job Pack → Milestone. Phase and Job Pack are planning concepts expressed with existing Job/Task topology; do not create new persistent entity types by default.',
       'SIZE JOB: choose SMALL/MEDIUM/LARGE and prove the Job is one meaningful objective with one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
-      'GATE: place required review/test/human checkpoints and capability requirements.',
+      'GATE: place required review/test/human checkpoints and capability requirements. For NEXT planning, unknown runtime facts must become first-class EvidenceNeed/UnknownRuntimeFact records linked to sparse TestCheckpointSpec and downstream EvidenceRequirement; never guess the value in prose.',
       'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, and cross-repo impact/precedence has been assessed.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
       'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
@@ -1816,7 +1816,7 @@ function createServer(req: Request) {
     'job_prepare',
     {
       title: 'Prepare a durable GSA Job',
-      description: 'Planner finalization tool. Builds one finite Job record after the Planner harness has produced an approved plan.',
+      description: 'Planner finalization tool. Builds one finite Job record after the Planner harness has produced an approved plan. NEXT plans may include revision-bound EvidenceNeed, TestCheckpointSpec, EvidenceRequirement, milestones and typed planning_topology; V2_STABLE keeps these collections empty.',
       inputSchema: {
         project_id: z.string().uuid(),
         type: z.enum(['plan','code','design','review']),
