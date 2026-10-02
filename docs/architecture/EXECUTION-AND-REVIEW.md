@@ -311,12 +311,13 @@ A checkpoint may wait for multiple prerequisite nodes and may be placed at `BEFO
 Planning-review validates, before READY:
 - unique IDs;
 - owner/consumer/checkpoint references resolve in the current plan;
-- prerequisite node sets resolve;
+- each EvidenceNeed is actually produced by its declared checkpoint and every declared consumer has a matching EvidenceRequirement;
+- prerequisite node sets resolve and typed topology has no self-reference or cycle;
 - milestone and gate references resolve;
 - every Task and checkpoint appears in typed `planning_topology`;
 - every CP4 structure is bound to the current `planning_revision`;
 - V2_STABLE Jobs carry no active CP4 planning structures.
 
-A changed NEXT Task/topology shape cannot silently reuse an older evidence graph. Planner must resupply/rebind all CP4 collections for the new planning revision.
+Once a NEXT Job has an active CP4 evidence graph, no later planning revision may silently inherit it. Planner must explicitly resupply/rebind all CP4 collections for every new planning revision.
 
 CP4 does **not** execute checkpoints. Runtime attempts, claims/leases, replay, crash/restart recovery, RETEST orchestration and EvidenceApplicability enforcement remain CP5.
