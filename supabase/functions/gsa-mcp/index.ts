@@ -2933,7 +2933,6 @@ app.get('/selftest', (c) => {
     coder_skill_suggested: (ROLE_SKILLS.coder ?? []).includes('coding-loop'),
     ui_coder_frontend_catalog_present: Boolean(RUNTIME_SKILLS['ui-coder-frontend']),
     ui_coder_frontend_not_default: !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
-    obsolete_penpot_lab_removed: !RUNTIME_SKILLS['ui-coder-penpot-lab'],
     critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('FRESH CONTEXT GATE')),
     critic_skill_suggested: (ROLE_SKILLS.critic_reviewer ?? []).includes('critic-review'),
     critic_is_human_only: Boolean(renderHarness('critic_reviewer')?.includes('Human-invoked independent peer review only')),
