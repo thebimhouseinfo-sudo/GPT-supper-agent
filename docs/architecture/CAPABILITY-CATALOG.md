@@ -151,6 +151,29 @@ Tool presence is only SURFACE_PRESENT. A successful browser call against the exa
 
 Tester practical execution remains capability-gated; Human Retest is fallback.
 
+### Tester evidence readiness refinement
+
+Tester may use a finer per-check readiness ladder:
+
+```text
+DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET
+```
+
+- `DISCOVERED`: capability/tool is visible.
+- `REACHABLE`: required service/bridge/endpoint can be reached.
+- `INVOCABLE`: required operation can be called from the active execution surface.
+- `FUNCTIONAL`: operation behaves correctly against the intended target.
+- `GOAL_MET`: the full declared test/checkpoint promise is verified.
+
+Compatibility remains:
+
+```text
+SURFACE_PRESENT ≈ DISCOVERED
+OBSERVED = evidence-backed at the tested level
+```
+
+This refinement does not replace the global `OBSERVED / SURFACE_PRESENT / UNAVAILABLE / UNKNOWN` states in CP3.
+
 ## 10. Media/design
 
 ```text
