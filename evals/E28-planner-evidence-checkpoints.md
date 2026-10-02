@@ -36,7 +36,7 @@ Expected: reject; every Task and checkpoint must have a typed planning node.
 
 ## E28-05 planning revision rebind
 
-Start from a NEXT plan with non-empty CP4 collections. Revise Tasks/topology without resupplying all CP4 collections.
+Start from a NEXT plan with non-empty CP4 collections. Create any later planning revision without resupplying all CP4 collections.
 
 Expected: NEXT_PLANNING_REBIND_REQUIRED.
 
@@ -62,3 +62,23 @@ Expected:
 - no EvidenceRequirement runtime blocking.
 
 CP4 is planning-only.
+
+
+## E28-08 producer/consumer consistency
+
+Cases:
+- EvidenceNeed EN1 points to CP1 but CP1 does not list EN1 in evidence_need_ids.
+- EN1 declares T5 as required_by_task_ids but no matching EvidenceRequirement exists.
+- EvidenceRequirement points to a different checkpoint than EN1.
+
+Expected: reject as NEXT_PLANNING_INVALID.
+
+## E28-09 typed topology integrity
+
+Cases:
+- TASK node points at a checkpoint ID.
+- MILESTONE_GATE node points at a non-MILESTONE_GATE checkpoint.
+- duplicate/self dependency.
+- cyclic dependencies.
+
+Expected: reject as NEXT_PLANNING_INVALID.
