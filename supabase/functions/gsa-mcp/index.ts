@@ -161,6 +161,118 @@ function prettyJson(value: unknown) {
   return JSON.stringify(value, null, 2) + '\n'
 }
 
+const EVIDENCE_NEED_SCHEMA = z.object({
+  evidence_need_id: z.string().min(1),
+  kind: z.enum(['EVIDENCE_NEED','UNKNOWN_RUNTIME_FACT']).default('EVIDENCE_NEED'),
+  description: z.string().min(1),
+  owner_task_id: z.string().min(1),
+  required_by_task_ids: z.array(z.string().min(1)).min(1),
+  checkpoint_id: z.string().min(1),
+})
+
+const TEST_CHECKPOINT_SPEC_SCHEMA = z.object({
+  checkpoint_id: z.string().min(1),
+  mode: z.enum(['VERIFY','MEASURE','PROBE']),
+  boundary: z.enum(['BEFORE_NODE','AFTER_NODE_SET','MILESTONE_GATE','JOB_FINAL']),
+  prerequisite_node_ids: z.array(z.string().min(1)).default([]),
+  boundary_node_id: z.string().min(1).optional(),
+  milestone_id: z.string().min(1).optional(),
+  evidence_need_ids: z.array(z.string().min(1)).default([]),
+})
+
+const EVIDENCE_REQUIREMENT_SCHEMA = z.object({
+  evidence_requirement_id: z.string().min(1),
+  consumer_task_id: z.string().min(1),
+  evidence_need_id: z.string().min(1),
+  checkpoint_id: z.string().min(1),
+})
+
+const MILESTONE_SCHEMA = z.object({
+  milestone_id: z.string().min(1),
+  name: z.string().min(1),
+  node_ids: z.array(z.string().min(1)).min(1),
+  gate_checkpoint_ids: z.array(z.string().min(1)).default([]),
+})
+
+const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
+  node_id: z.string().min(1),
+  node_type: z.enum(['TASK','TEST_CHECKPOINT','MILESTONE_GATE']),
+  depends_on: z.array(z.string().min(1)).default([]),
+})
+
+function normalizeNextPlanningModel(model: any, planningRevision: number) {
+  return {
+    evidence_needs: (model.evidence_needs ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    test_checkpoints: (model.test_checkpoints ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    evidence_requirements: (model.evidence_requirements ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    milestones: (model.milestones ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    planning_topology: (model.planning_topology ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+  }
+}
+
+function validateNextPlanningModel(executionContract: ExecutionContract, tasks: any[], model: any, planningRevision: number): string | null {
+  const evidenceNeeds = model.evidence_needs ?? []
+  const checkpoints = model.test_checkpoints ?? []
+  const requirements = model.evidence_requirements ?? []
+  const milestones = model.milestones ?? []
+  const planningTopology = model.planning_topology ?? []
+  const hasNextFields = evidenceNeeds.length || checkpoints.length || requirements.length || milestones.length || planningTopology.length
+
+  if (executionContract === 'V2_STABLE') {
+    return hasNextFields ? 'NEXT_PLANNING_FIELDS_REQUIRE_NEXT: V2_STABLE Jobs must keep CP4 planning collections empty.' : null
+  }
+  if (!hasNextFields) return null
+
+  const taskIds = new Set(tasks.map((task: any) => task.task_id))
+  const unique = (values: string[]) => new Set(values).size === values.length
+  const evidenceNeedIds = evidenceNeeds.map((item: any) => item.evidence_need_id)
+  const checkpointIds = checkpoints.map((item: any) => item.checkpoint_id)
+  const milestoneIds = milestones.map((item: any) => item.milestone_id)
+  const topologyIds = planningTopology.map((item: any) => item.node_id)
+  if (!unique(evidenceNeedIds) || !unique(checkpointIds) || !unique(milestoneIds) || !unique(topologyIds)) {
+    return 'NEXT_PLANNING_INVALID: EvidenceNeed, checkpoint, milestone and topology node IDs must be unique.'
+  }
+  const evidenceNeedSet = new Set(evidenceNeedIds)
+  const checkpointSet = new Set(checkpointIds)
+  const milestoneSet = new Set(milestoneIds)
+  const knownNodeIds = new Set([...taskIds, ...checkpointIds, ...milestoneIds])
+
+  for (const item of evidenceNeeds) {
+    if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: EvidenceNeed is not bound to the current planning revision.'
+    if (!taskIds.has(item.owner_task_id) || !(item.required_by_task_ids ?? []).every((id: string) => taskIds.has(id)) || !checkpointSet.has(item.checkpoint_id)) {
+      return 'NEXT_PLANNING_INVALID: EvidenceNeed owner/consumer/checkpoint references must resolve inside the current plan.'
+    }
+  }
+  for (const item of checkpoints) {
+    if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: TestCheckpointSpec is not bound to the current planning revision.'
+    if (!(item.evidence_need_ids ?? []).every((id: string) => evidenceNeedSet.has(id))) return 'NEXT_PLANNING_INVALID: checkpoint evidence_need_ids contain an unknown reference.'
+    if (!(item.prerequisite_node_ids ?? []).every((id: string) => taskIds.has(id) || checkpointSet.has(id))) return 'NEXT_PLANNING_INVALID: checkpoint prerequisite_node_ids contain an unknown node.'
+    if (item.boundary === 'BEFORE_NODE' && (!item.boundary_node_id || !taskIds.has(item.boundary_node_id))) return 'NEXT_PLANNING_INVALID: BEFORE_NODE requires a valid boundary_node_id.'
+    if (item.boundary === 'AFTER_NODE_SET' && !(item.prerequisite_node_ids ?? []).length) return 'NEXT_PLANNING_INVALID: AFTER_NODE_SET requires prerequisite_node_ids.'
+    if (item.boundary === 'MILESTONE_GATE' && (!item.milestone_id || !milestoneSet.has(item.milestone_id))) return 'NEXT_PLANNING_INVALID: MILESTONE_GATE requires a valid milestone_id.'
+  }
+  for (const item of requirements) {
+    if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: EvidenceRequirement is not bound to the current planning revision.'
+    if (!taskIds.has(item.consumer_task_id) || !evidenceNeedSet.has(item.evidence_need_id) || !checkpointSet.has(item.checkpoint_id)) {
+      return 'NEXT_PLANNING_INVALID: EvidenceRequirement references must resolve to current tasks/evidence/checkpoints.'
+    }
+  }
+  for (const item of milestones) {
+    if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: milestone is not bound to the current planning revision.'
+    if (!(item.node_ids ?? []).every((id: string) => taskIds.has(id) || checkpointSet.has(id)) || !(item.gate_checkpoint_ids ?? []).every((id: string) => checkpointSet.has(id))) {
+      return 'NEXT_PLANNING_INVALID: milestone node/gate references must resolve inside the current plan.'
+    }
+  }
+  if ((checkpoints.length || milestones.length) && !planningTopology.length) return 'NEXT_PLANNING_INVALID: typed planning_topology is required when checkpoints or milestones exist.'
+  for (const item of planningTopology) {
+    if (item.planning_revision !== planningRevision) return 'NEXT_PLANNING_REVISION_MISMATCH: topology node is not bound to the current planning revision.'
+    if (!knownNodeIds.has(item.node_id) || !(item.depends_on ?? []).every((id: string) => knownNodeIds.has(id))) return 'NEXT_PLANNING_INVALID: planning_topology contains an unknown node/reference.'
+  }
+  for (const id of taskIds) if (!topologyIds.includes(id)) return 'NEXT_PLANNING_INVALID: every Task must appear in typed planning_topology.'
+  for (const id of checkpointIds) if (!topologyIds.includes(id)) return 'NEXT_PLANNING_INVALID: every TestCheckpointSpec must appear in typed planning_topology.'
+  return null
+}
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
@@ -1761,6 +1873,11 @@ function createServer(req: Request) {
           dependencies: z.array(z.string()).default([]),
           completion_criteria: z.array(z.string()).min(1),
         })).min(1),
+        evidence_needs: z.array(EVIDENCE_NEED_SCHEMA).default([]),
+        test_checkpoints: z.array(TEST_CHECKPOINT_SPEC_SCHEMA).default([]),
+        evidence_requirements: z.array(EVIDENCE_REQUIREMENT_SCHEMA).default([]),
+        milestones: z.array(MILESTONE_SCHEMA).default([]),
+        planning_topology: z.array(PLANNING_TOPOLOGY_NODE_SCHEMA).default([]),
         completion_requirements: z.array(z.string()).min(1),
         verification_requirements: z.array(z.string()).default([]),
         review_triggers: z.array(z.string()).default([]),
@@ -1776,7 +1893,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -1816,6 +1933,9 @@ function createServer(req: Request) {
         depends_on: task.dependencies,
         next: index + 1 < normalizedTasks.length ? normalizedTasks[index + 1].task_id : null,
       }))
+      const nextPlanning = normalizeNextPlanningModel({ evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology }, 1)
+      const nextPlanningError = validateNextPlanningModel(executionContract, normalizedTasks, nextPlanning, 1)
+      if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const record = {
         job_id: jobId,
         handle: jobHandle(jobId),
@@ -1854,6 +1974,11 @@ function createServer(req: Request) {
         } : null,
         tasks: normalizedTasks,
         topology,
+        evidence_needs: nextPlanning.evidence_needs,
+        test_checkpoints: nextPlanning.test_checkpoints,
+        evidence_requirements: nextPlanning.evidence_requirements,
+        milestones: nextPlanning.milestones,
+        planning_topology: nextPlanning.planning_topology,
         dependencies: [],
         completion_requirements,
         verification_requirements,
@@ -2032,6 +2157,11 @@ function createServer(req: Request) {
         selected_source_evidence: z.array(z.string()).optional(),
         tasks: z.array(z.any()).optional(),
         topology: z.array(z.any()).optional(),
+        evidence_needs: z.array(EVIDENCE_NEED_SCHEMA).optional(),
+        test_checkpoints: z.array(TEST_CHECKPOINT_SPEC_SCHEMA).optional(),
+        evidence_requirements: z.array(EVIDENCE_REQUIREMENT_SCHEMA).optional(),
+        milestones: z.array(MILESTONE_SCHEMA).optional(),
+        planning_topology: z.array(PLANNING_TOPOLOGY_NODE_SCHEMA).optional(),
         completion_requirements: z.array(z.string()).optional(),
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
@@ -2048,7 +2178,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -2061,6 +2191,22 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
       }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
+      const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
+      const planningShapeChanged = tasks !== undefined || topology !== undefined
+      const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
+      if (executionContract === 'NEXT' && hasCurrentNextPlanning && planningShapeChanged && !allNextPlanningSupplied) {
+        return { content: [{ type: 'text', text: 'NEXT_PLANNING_REBIND_REQUIRED: task/topology revision must resupply all CP4 planning collections for the new planning_revision.' }], isError: true }
+      }
+      const nextTasks = tasks ?? current.tasks
+      const nextPlanning = normalizeNextPlanningModel({
+        evidence_needs: evidence_needs ?? current.evidence_needs ?? [],
+        test_checkpoints: test_checkpoints ?? current.test_checkpoints ?? [],
+        evidence_requirements: evidence_requirements ?? current.evidence_requirements ?? [],
+        milestones: milestones ?? current.milestones ?? [],
+        planning_topology: planning_topology ?? current.planning_topology ?? [],
+      }, nextRevision)
+      const nextPlanningError = validateNextPlanningModel(executionContract, nextTasks, nextPlanning, nextRevision)
+      if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const next = {
         ...current,
         objective: objective ?? current.objective,
@@ -2079,8 +2225,13 @@ function createServer(req: Request) {
           structure_evidence: repository_structure_evidence ?? current.repository_discovery?.structure_evidence ?? [],
           selected_source_evidence: selected_source_evidence ?? current.repository_discovery?.selected_source_evidence ?? [],
         },
-        tasks: tasks ?? current.tasks,
+        tasks: nextTasks,
         topology: topology ?? current.topology,
+        evidence_needs: nextPlanning.evidence_needs,
+        test_checkpoints: nextPlanning.test_checkpoints,
+        evidence_requirements: nextPlanning.evidence_requirements,
+        milestones: nextPlanning.milestones,
+        planning_topology: nextPlanning.planning_topology,
         completion_requirements: completion_requirements ?? current.completion_requirements,
         verification_requirements: verification_requirements ?? current.verification_requirements,
         review_triggers: review_triggers ?? current.review_triggers,
@@ -2165,6 +2316,14 @@ function createServer(req: Request) {
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
       }
+      const cp4PlanningError = validateNextPlanningModel(executionContract, current.tasks ?? [], {
+        evidence_needs: current.evidence_needs ?? [],
+        test_checkpoints: current.test_checkpoints ?? [],
+        evidence_requirements: current.evidence_requirements ?? [],
+        milestones: current.milestones ?? [],
+        planning_topology: current.planning_topology ?? [],
+      }, planning_revision)
+      if (cp4PlanningError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + cp4PlanningError }], isError: true }
       if (result === 'PASS' && (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity))) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
