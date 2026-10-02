@@ -58,8 +58,8 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 | WL-008 | Critic Reviewer is Human-invoked only and stateless-by-contract | ALREADY_OWNED | `docs/architecture/AGENT-HARNESSES.md`, `EXECUTION-AND-REVIEW.md` | canonical contract | Existing |
 | WL-009 | Tool presence != proven capability; UNVERIFIED != PASS | ALREADY_OWNED | `docs/architecture/CAPABILITY-CATALOG.md`, `EXECUTION-AND-REVIEW.md` | capability catalog | Existing |
 | WL-010 | Translate local triggers into Trigger → Required action → Evidence → Exit condition | CP1_DELTA | `docs/architecture/EXECUTION-AND-REVIEW.md` | E26 | CP1 |
-| WL-011 | Tester supports VERIFY / MEASURE / PROBE | DEFER_CP3 | CP3 Tester semantic foundation | `docs/plans/GSA-ONLINE-TESTER-UPGRADE.md` | CP3 |
-| WL-012 | Tester runs at meaningful sparse checkpoints, not after every Task | DEFER_CP3 | CP3 semantic rule; first-class checkpoint structure lands in CP4 | Tester upgrade plan | CP3/CP4 |
+| WL-011 | Tester supports VERIFY / MEASURE / PROBE | ALREADY_OWNED | `docs/architecture/AGENT-HARNESSES.md`, `EXECUTION-AND-REVIEW.md`, runtime `testing-evidence` | E27 | CP3 |
+| WL-012 | Tester runs at meaningful sparse checkpoints, not after every Task | ALREADY_OWNED | `docs/architecture/EXECUTION-AND-REVIEW.md` semantic rule; first-class checkpoint structure still lands in CP4 | E27 + Tester upgrade plan | CP3/CP4 |
 | WL-013 | Unknown runtime facts must not be guessed; preserve them as first-class EvidenceNeed / UnknownRuntimeFact | DEFER_CP4 | CP4 Planner EvidenceNeed/checkpoint planning model | Tester upgrade plan + CP4 roadmap | CP4 |
 | WL-014 | Checkpoints may depend on multiple prerequisite nodes / Milestone boundaries | DEFER_CP4 | CP4 typed checkpoint planning model | Tester upgrade plan + CP4 roadmap | CP4 |
 | WL-015 | Staging runtime evidence is valid only when deployed source is bound to the exact reviewed source | ALREADY_OWNED | CP0 contract in E25 + upgrade roadmap | CP0 source/deploy read-back evidence | CP0 |

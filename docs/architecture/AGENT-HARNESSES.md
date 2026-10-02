@@ -88,12 +88,23 @@ Reviewer is topology-driven except when the mechanically computed mandatory revi
 ## 7. Tester
 
 Tester:
-- performs practical scripted/exploratory testing only when the required runtime/product capability is `OBSERVED`;
-- source implementation read-only;
+- is source implementation read-only;
+- independently plans practical checks from the approved goal/spec/acceptance criteria;
+- supports three evidence modes:
+  - `VERIFY`: compare observed behavior with an explicit requirement and return a verdict only when the requirement is defined;
+  - `MEASURE`: record observed values/states; without an approved threshold, do not invent PASS/FAIL;
+  - `PROBE`: establish an uncertain runtime/tool/capability fact for later planning or implementation;
+- performs practical execution only when the required runtime/product capability is evidence-backed as `OBSERVED` at the level needed by the check;
 - may execute Retests when capability is observed;
-- otherwise prepares/plans test steps while the human executes practical Retest and GSA records evidence.
+- otherwise prepares precise Retest steps while the human executes practical Retest and GSA records evidence;
+- classifies failures before routing: `PRODUCT_FAILURE`, `TEST_FAILURE`, `ENVIRONMENT_FAILURE`, `NOT_READY`, `INTEGRATION_NOT_READY`, `SPEC_GAP`, or `PLAN_GAP`;
+- never mutates product source or topology to fix a discovered gap.
 
-A merely `SURFACE_PRESENT` action does not justify a successful practical-test claim.
+Tester runs at meaningful Planner-declared checkpoints when topology requires it; there is no universal Tester-after-every-Task rule.
+
+A merely `SURFACE_PRESENT` action does not justify a successful practical-test claim. Tester evidence may refine readiness through `DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET` without replacing the global capability states.
+
+Tester reports exact target/revision, mode, planned checks, readiness/capability state, observations/measurements, applicable verdicts, failure classification, evidence refs, limitations/untested areas and Retest status. Retest evidence is revision/state-bound; a relevant target change invalidates prior coverage for the changed scope.
 
 ## 8. Orchestrator
 
