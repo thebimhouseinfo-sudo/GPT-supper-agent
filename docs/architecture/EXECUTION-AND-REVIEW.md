@@ -291,3 +291,33 @@ CR must not be auto-dispatched.
 CR is stateless-by-contract. Conversation history is non-authoritative and must not be used as review evidence. **Same-chat invocation is valid**, including after Planner/Reviewer/Coder work in that conversation; CR never blocks merely because the invoking chat previously discussed the target.
 
 CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
+
+
+## 17. CP4 NEXT empirical planning model
+
+Unknown runtime facts are planning dependencies, not values for Planner/Coder to guess.
+
+For a NEXT Job:
+
+```text
+EvidenceNeed / UnknownRuntimeFact
+→ TestCheckpointSpec (VERIFY | MEASURE | PROBE)
+→ EvidenceRequirement
+→ downstream Task
+```
+
+A checkpoint may wait for multiple prerequisite nodes and may be placed at `BEFORE_NODE`, `AFTER_NODE_SET`, `MILESTONE_GATE` or `JOB_FINAL`.
+
+Planning-review validates, before READY:
+- unique IDs;
+- owner/consumer/checkpoint references resolve in the current plan;
+- each EvidenceNeed is actually produced by its declared checkpoint and every declared consumer has a matching EvidenceRequirement;
+- prerequisite node sets resolve and typed topology has no self-reference or cycle;
+- milestone and gate references resolve;
+- every Task and checkpoint appears in typed `planning_topology`;
+- every CP4 structure is bound to the current `planning_revision`;
+- V2_STABLE Jobs carry no active CP4 planning structures.
+
+Once a NEXT Job has an active CP4 evidence graph, no later planning revision may silently inherit it. Planner must explicitly resupply/rebind all CP4 collections for every new planning revision.
+
+CP4 does **not** execute checkpoints. Runtime attempts, claims/leases, replay, crash/restart recovery, RETEST orchestration and EvidenceApplicability enforcement remain CP5.
