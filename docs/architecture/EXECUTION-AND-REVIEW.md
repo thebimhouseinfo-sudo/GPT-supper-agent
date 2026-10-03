@@ -399,3 +399,25 @@ Checkpoint claim readiness is derived from the current reviewed plan, not only f
 - `BEFORE_NODE`: the checkpoint is rejected once its boundary Task is already durably completed.
 
 Task completion IDs supplied to claim preparation must be reconstructed from durable current-revision Run/Verification progress; prerequisite checkpoint state comes from current NEXT claim + applicable Verification records. Chat history or an unverified caller assertion is not completion evidence.
+
+
+### Durable snapshot consumption
+
+Evidence gate inputs are revision-bound durable snapshots, not free-form JSON:
+
+```text
+{ path, sha, record_text }
+```
+
+Preparation validates the record contents and deterministic path. The returned external persistence contract requires exact path/SHA/byte read-back immediately before the consequential write.
+
+This applies to:
+- consumer Task dispatch;
+- prerequisite checkpoint claims;
+- Milestone / Job-final readiness;
+- NEXT Job completion.
+
+Task prerequisite readiness uses completed current-planning-revision NEXT Run snapshots, not `completed_task_ids`. Old-revision Runs cannot satisfy a new superseding plan.
+
+A nested Verification applicability claim is also revision/checkpoint-bound:
+`applicability.planning_revision` and `applicability.checkpoint_id` must equal the current Job/checkpoint before candidate evidence can become applicable.
