@@ -179,3 +179,38 @@ Expected: blocked rather than selecting one by caller-controlled array order. Ru
 Mismatches in claim/Verification mode, attempt_kind, producer, terminal state/result, attempt ID, lease token or last_result make evidence non-applicable.
 
 Expected: no field-order or partially matching record can open a mandatory evidence gate.
+
+
+## E29-19 fabricated raw evidence cannot open a gate
+
+Attempt to satisfy a consumer or Job gate using only JSON with matching IDs/tokens but without a durable snapshot path/blob SHA.
+
+Expected: rejected by tool schema / snapshot parser. Gate inputs require `{path, sha, record_text}`.
+
+Use a valid-looking claim record under the wrong path.
+
+Expected: rejected because the path is not the deterministic current-revision claim path.
+
+## E29-20 prerequisite Task completion is revision-bound
+
+Provide a COMPLETED PASS NEXT Run for the prerequisite Task from planning revision N while the Job is at revision N+1.
+
+Expected: checkpoint claim is blocked.
+
+Provide a current-revision COMPLETED Run whose role does not match the current topology handler.
+
+Expected: blocked.
+
+Only an exact current-revision successful Run snapshot at the deterministic NEXT Run path may satisfy the Task prerequisite.
+
+## E29-21 exact snapshot read-back before consequential write
+
+For Run dispatch, checkpoint claim preparation and NEXT Job completion, supply valid snapshots but mutate one durable record before the prepared write.
+
+Expected: external persistence contract detects blob-SHA mismatch on immediate read-back and must refetch/re-evaluate rather than persisting the stale prepared transition.
+
+## E29-22 nested applicability binding
+
+Change only `verification.applicability.planning_revision` or `verification.applicability.checkpoint_id` while all outer Verification fields still match.
+
+Expected: evidence is non-applicable and the mandatory gate stays blocked.
