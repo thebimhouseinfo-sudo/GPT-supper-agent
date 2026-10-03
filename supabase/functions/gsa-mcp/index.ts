@@ -2923,9 +2923,9 @@ function createServer(req: Request) {
         retest_of_verification_id: z.string().min(1).optional(),
         repair_goal_recheck_record_text: z.string().min(2).optional(),
         repair_goal_recheck_verification_ref: z.string().min(1).optional(),
-        completed_task_ids: z.array(z.string()).default([]),
-        prerequisite_claim_record_texts: z.array(z.string()).default([]),
-        prerequisite_verification_record_texts: z.array(z.string()).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        prerequisite_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        prerequisite_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         lease_seconds: z.number().int().min(60).max(3600).default(900),
         current_claim_record_text: z.string().min(2).optional(),
         current_claim_record_sha: z.string().min(7).optional(),
@@ -2946,7 +2946,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, claimant_run_record_text, claimant_run_record_sha, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_ids, prerequisite_claim_record_texts, prerequisite_verification_record_texts, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, claimant_run_record_text, claimant_run_record_sha, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_run_snapshots, prerequisite_claim_snapshots, prerequisite_verification_snapshots, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
       let job: any
@@ -2968,6 +2968,7 @@ function createServer(req: Request) {
         claimantRun.run_id !== claimant_run_id ||
         claimantRun.role !== 'tester' ||
         claimantRun.lifecycle !== 'IN_PROGRESS' ||
+        claimantRun.planning_revision !== job.planning_revision ||
         (claimantRun.target_ref && claimantRun.target_ref !== target_ref) ||
         (claimantRun.target_revision && claimantRun.target_revision !== target_revision)
       ) {
@@ -2983,33 +2984,47 @@ function createServer(req: Request) {
       if (!checkpoint) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: checkpoint is not part of the current planning revision.' }], isError: true }
       }
-      const prerequisiteClaims = parseRecordTexts(prerequisite_claim_record_texts ?? [], 'prerequisite_claim_record_texts')
+      const prerequisiteClaims = parseDurableSnapshots(prerequisite_claim_snapshots ?? [], 'prerequisite_claim_snapshots')
       if (prerequisiteClaims.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaims.error }], isError: true }
-      const prerequisiteVerifications = parseRecordTexts(prerequisite_verification_record_texts ?? [], 'prerequisite_verification_record_texts')
+      const prerequisiteClaimError = validateClaimSnapshots(prerequisiteClaims.entries, 'prerequisite_claim_snapshots')
+      if (prerequisiteClaimError) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaimError }], isError: true }
+      const prerequisiteVerifications = parseDurableSnapshots(prerequisite_verification_snapshots ?? [], 'prerequisite_verification_snapshots')
       if (prerequisiteVerifications.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerifications.error }], isError: true }
-      if (checkpoint.boundary === 'BEFORE_NODE' && checkpoint.boundary_node_id && (completed_task_ids ?? []).includes(checkpoint.boundary_node_id)) {
+      const prerequisiteVerificationError = validateVerificationSnapshots(prerequisiteVerifications.entries, 'prerequisite_verification_snapshots')
+      if (prerequisiteVerificationError) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerificationError }], isError: true }
+      const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+      if (completedRuns.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + completedRuns.error }], isError: true }
+      const completedTaskState = validateCompletedTaskRunSnapshots(job, completedRuns.entries)
+      if (completedTaskState.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + completedTaskState.error }], isError: true }
+      const completedTaskIds = completedTaskState.completed
+      if (checkpoint.boundary === 'BEFORE_NODE' && checkpoint.boundary_node_id && completedTaskIds.has(checkpoint.boundary_node_id)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_BOUNDARY_MISSED: BEFORE_NODE target is already durably completed: ' + checkpoint.boundary_node_id }], isError: true }
       }
       const runtimePrerequisiteIds = checkpointBoundaryPrerequisiteIds(job, checkpoint)
       for (const prerequisiteId of runtimePrerequisiteIds) {
         const prerequisiteCheckpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === prerequisiteId)
         if (prerequisiteCheckpoint) {
-          const prerequisiteClaimMatches = prerequisiteClaims.records.filter((item: any) =>
-            item?.kind === 'CHECKPOINT_CLAIM' &&
-            item.project_id === project_id &&
-            item.job_id === job_id &&
-            item.planning_revision === job.planning_revision &&
-            item.checkpoint_id === prerequisiteId
-          )
-          const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0] : null
+          const prerequisiteClaimMatches = prerequisiteClaims.entries.filter((entry: any) => {
+            const item = entry.record
+            return item?.kind === 'CHECKPOINT_CLAIM' &&
+              item.project_id === project_id &&
+              item.job_id === job_id &&
+              item.planning_revision === job.planning_revision &&
+              item.checkpoint_id === prerequisiteId &&
+              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId)
+          })
+          const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0].record : null
           const prerequisiteVerificationMatches = prerequisiteClaim
-            ? prerequisiteVerifications.records.filter((item: any) => item?.verification_id === prerequisiteClaim.last_verification_id)
+            ? prerequisiteVerifications.entries.filter((entry: any) =>
+                entry.record?.verification_id === prerequisiteClaim.last_verification_id &&
+                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT')
+              )
             : []
-          const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0] : null
+          const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0].record : null
           if (!checkpointVerificationApplicable(job, prerequisiteCheckpoint, prerequisiteClaim, prerequisiteVerification)) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite checkpoint is not satisfied/applicable: ' + prerequisiteId }], isError: true }
           }
-        } else if (!(completed_task_ids ?? []).includes(prerequisiteId)) {
+        } else if (!completedTaskIds.has(prerequisiteId)) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite Task is not durably completed: ' + prerequisiteId }], isError: true }
         }
       }
@@ -3164,7 +3179,10 @@ function createServer(req: Request) {
           : 'Immediately refetch claim_memory_path and require its blob SHA equals expected_claim_sha; authorize/update with exact SHA. Stale SHA means another claimant/reclaimer won.',
         'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
         'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
-        'Derive completed_task_ids from current durable Run/Verification progress for this Job revision; never trust conversation memory or caller assertion alone. Read prerequisite claim/Verification records from NEXT memory before using them.',
+        ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'completed Task Run snapshot'),
+        ...durableSnapshotReadbackSteps(prerequisite_claim_snapshots ?? [], 'prerequisite checkpoint claim snapshot'),
+        ...durableSnapshotReadbackSteps(prerequisite_verification_snapshots ?? [], 'prerequisite checkpoint Verification snapshot'),
+        'Task prerequisite completion is derived only from successful COMPLETED NEXT Run snapshots bound to the current planning_revision and expected topology handler.',
         'For MILESTONE_GATE and JOB_FINAL, runtime prerequisites are expanded from the current milestone/planning_topology; BEFORE_NODE is rejected once its boundary Task is already completed.',
         'Only the current durable lease token may produce terminal Tester Verification.',
         current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST' && current.state !== 'ACTIVE'
@@ -3245,7 +3263,8 @@ function createServer(req: Request) {
         testerRun.job_id !== job_id ||
         testerRun.run_id !== claim.claimant_run_id ||
         testerRun.role !== 'tester' ||
-        testerRun.lifecycle !== 'IN_PROGRESS'
+        testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.planning_revision !== job.planning_revision
       ) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: Verification must be produced by the current IN_PROGRESS NEXT Tester Run that owns the lease.' }], isError: true }
       }
