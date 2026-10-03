@@ -1564,6 +1564,222 @@ function createServer(req: Request) {
     },
   )
 
+
+  server.registerTool(
+    'evidence_repository_publish_prepare',
+    {
+      title: 'Prepare bounded repository evidence publication',
+      description: 'Authorize one REPO_SAFE evidence attempt against the active Project OWNED working repo. Returns a fail-closed Git publication contract; it does not mutate Git itself.',
+      inputSchema: {
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+        job_record_text: z.string().min(2),
+        repository_full_name: z.string().min(3),
+        job_id: z.string().uuid(),
+        checkpoint_id: z.string().min(1).max(240),
+        attempt_id: z.string().min(1).max(240),
+        run_id: z.string().uuid(),
+        target_ref: z.string().min(1).max(500),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        privacy_class: z.literal('REPO_SAFE'),
+        evidence_ref: z.string().min(1).max(240),
+        expected_evidence_ref_head: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+        automation_isolation_verified: z.literal(true),
+        automation_evidence_refs: z.array(z.string().min(1)).min(1),
+        binary_capability_observed: z.literal(true),
+        binary_probe_verification_ref: z.string().min(1),
+        artifacts: z.array(z.object({
+          label: z.string().min(1).max(100),
+          mime_type: z.literal('image/png'),
+          size_bytes: z.number().int().positive().max(5 * 1024 * 1024),
+          sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        })).min(1).max(12),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        reason: z.string(),
+        evidence_ref: z.string(),
+        evidence_prefix: z.string(),
+        expected_parent_sha: z.string(),
+        force_allowed: z.literal(false),
+        max_bundle_bytes: z.number().int(),
+        manifest: z.any(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({
+      project_manifest_text, project_manifest_sha, job_record_text, repository_full_name,
+      job_id, checkpoint_id, attempt_id, run_id, target_ref, target_revision,
+      evidence_ref, expected_evidence_ref_head, automation_evidence_refs,
+      binary_probe_verification_ref, artifacts,
+    }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to authorize repository evidence publication.')
+      const project = parseProjectManifest(project_manifest_text)
+      if (!project || project.lifecycle !== 'ACTIVE') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Project must be ACTIVE.' }], isError: true }
+      }
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid Job JSON.' }], isError: true }
+      }
+      if (job.project_id !== project.project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const requested = normalizeGithubRepo('https://github.com/' + repository_full_name.replace(/^https?:\/\/github\.com\//i, ''))
+      if (!requested) return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid repository.' }], isError: true }
+      const owned = project.repositories.find((item: any) => item.relation === 'OWNED' && normalizeGithubRepo(item.url)?.full_name.toLowerCase() === requested.full_name.toLowerCase())
+      const working = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')
+      if (!owned || !working || working.full_name.toLowerCase() !== requested.full_name.toLowerCase()) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: repository is not the active Project OWNED working repository.' }], isError: true }
+      }
+      if (!project_manifest_sha || target_ref === evidence_ref) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must be separate from the tested source ref.' }], isError: true }
+      }
+      const requiredRef = 'gsa-evidence/' + project.project_id
+      if (evidence_ref !== requiredRef) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must equal ' + requiredRef }], isError: true }
+      }
+      const totalBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item.size_bytes || 0), 0)
+      const maxBundleBytes = 25 * 1024 * 1024
+      if (totalBytes > maxBundleBytes) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: repository evidence bundle exceeds 25 MiB.' }], isError: true }
+      }
+      const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
+      const prefix = ['tests/gsa', project.project_id, clean(job_id), clean(checkpoint_id), clean(attempt_id)].join('/')
+      if (!prefix || prefix.includes('..')) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid evidence prefix.' }], isError: true }
+      }
+      const expectedParent = expected_evidence_ref_head || target_revision
+      const manifest = {
+        schema_version: 1,
+        backend: 'REPOSITORY_GIT',
+        privacy_class: 'REPO_SAFE',
+        project_id: project.project_id,
+        repository: requested.full_name,
+        job_id,
+        checkpoint_id,
+        attempt_id,
+        run_id,
+        target_ref,
+        target_revision,
+        evidence_ref,
+        expected_parent_sha: expectedParent,
+        force_allowed: false,
+        automation_isolation: {
+          verified: true,
+          evidence_refs: automation_evidence_refs,
+        },
+        binary_capability: {
+          observed: true,
+          verification_ref: binary_probe_verification_ref,
+        },
+        artifacts,
+      }
+      const result = {
+        allowed: true,
+        reason: 'Bounded REPO_SAFE evidence publication authorized.',
+        evidence_ref,
+        evidence_prefix: prefix,
+        expected_parent_sha: expectedParent,
+        force_allowed: false as const,
+        max_bundle_bytes: maxBundleBytes,
+        manifest,
+        external_steps: [
+          'Re-fetch Project, Job, tested source ref and evidence ref immediately before mutation; deny on lifecycle/scope/revision drift.',
+          'Require tested source ref still resolves to target_revision exactly.',
+          'If evidence ref exists, require its live head equals expected_evidence_ref_head and create the new evidence commit with that exact head as parent.',
+          'If evidence ref does not exist, require expected_evidence_ref_head=null and bootstrap the first evidence commit with target_revision as parent.',
+          'Create only artifact blobs plus manifest.json below evidence_prefix. Do not modify any path outside that prefix.',
+          'Create the evidence commit with parent == expected_parent_sha exactly.',
+          'Move only evidence_ref using a non-force/fast-forward ref update. force=true and non-fast-forward updates are forbidden.',
+          'Read back evidence_ref and immutable commit/blob contents; verify hashes and source ref immutability.',
+          'Verify no CI, preview deploy, release or source workflow was triggered by the evidence ref update. If isolation is not proven, treat repository routing as unavailable and use PRIVATE_REQUIRED/private backend.',
+          'Call evidence_repository_publish_finalize with observed read-back values before referencing repository evidence from Verification/Handoff.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'evidence_repository_publish_finalize',
+    {
+      title: 'Finalize repository evidence publication',
+      description: 'Validate immutable read-back for one prepared repository evidence attempt. Fails closed on source drift, ref mismatch, non-append ancestry or automation side effects.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        repository_full_name: z.string().min(3),
+        target_ref: z.string().min(1),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        source_ref_readback_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_ref: z.string().min(1),
+        expected_parent_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_commit_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_commit_parent_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_ref_readback_head: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_prefix: z.string().min(1),
+        manifest_path: z.string().min(1),
+        manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        human_openable_url: z.string().url(),
+        artifact_count: z.number().int().min(1).max(12),
+        size_bytes: z.number().int().positive().max(25 * 1024 * 1024),
+        automation_side_effects_observed: z.literal(false),
+      },
+      outputSchema: {
+        valid: z.boolean(),
+        backend: z.literal('REPOSITORY_GIT'),
+        evidence_bundle_ref: z.any(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (args: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to finalize repository evidence publication.')
+      if (args.source_ref_readback_revision !== args.target_revision) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: tested source revision moved.' }], isError: true }
+      }
+      if (args.evidence_commit_parent_sha !== args.expected_parent_sha) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence commit is not append-only from expected parent.' }], isError: true }
+      }
+      if (args.evidence_ref_readback_head !== args.evidence_commit_sha) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence ref read-back does not match evidence commit.' }], isError: true }
+      }
+      const requiredRef = 'gsa-evidence/' + args.project_id
+      if (args.evidence_ref !== requiredRef) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: unexpected evidence ref.' }], isError: true }
+      }
+      const expectedPrefixRoot = 'tests/gsa/' + args.project_id + '/'
+      if (!String(args.evidence_prefix).startsWith(expectedPrefixRoot) || !String(args.manifest_path).startsWith(args.evidence_prefix + '/')) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence prefix/manifest path mismatch.' }], isError: true }
+      }
+      const bundleRef = {
+        backend: 'REPOSITORY_GIT',
+        privacy_class: 'REPO_SAFE',
+        repository: args.repository_full_name,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        evidence_ref: args.evidence_ref,
+        evidence_commit_sha: args.evidence_commit_sha,
+        manifest_path: args.manifest_path,
+        manifest_sha256: args.manifest_sha256,
+        human_openable_url: args.human_openable_url,
+        artifact_count: args.artifact_count,
+        size_bytes: args.size_bytes,
+        immutable: true,
+        append_only_parent_sha: args.expected_parent_sha,
+        automation_side_effects_observed: false,
+      }
+      const result = { valid: true, backend: 'REPOSITORY_GIT' as const, evidence_bundle_ref: bundleRef }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
   server.registerTool(
     'get_profile',
     {
