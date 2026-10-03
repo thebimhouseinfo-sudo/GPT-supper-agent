@@ -146,3 +146,16 @@ Expected: a checkpoint cannot be claimed before its semantic boundary is ready, 
 Supply a prerequisite Task ID without durable completion evidence, or a prerequisite checkpoint without a current applicable terminal claim/Verification.
 
 Expected: claim is blocked. completed_task_ids must be derived from durable current-revision progress rather than conversation memory.
+
+
+## E29-15 Tester Run ownership
+
+Try to claim or finalize a checkpoint using:
+- a nonexistent/fabricated claimant_run_id;
+- a Coder/Reviewer Run;
+- a terminal Tester Run;
+- a Tester Run for another Job/target.
+
+Expected: reject.
+
+With an IN_PROGRESS NEXT Tester Run for the exact target, deterministic claim acquisition may proceed. Before persistence, the caller must read back the Run and require the exact blob SHA supplied to claim/verification preparation.
