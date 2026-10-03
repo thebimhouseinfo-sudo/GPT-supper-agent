@@ -339,3 +339,97 @@ generated_at?
 ```
 
 No authoritative fact may exist only here.
+
+
+## NEXT Checkpoint Claim
+
+CP5 uses one mutable serialization record per Job planning revision + checkpoint. It exists only in NEXT memory.
+
+```text
+kind = CHECKPOINT_CLAIM
+project_id
+job_id
+execution_contract = NEXT
+planning_revision
+checkpoint_id
+mode
+state
+generation
+attempt_id
+attempt_kind = TEST | RETEST
+lease_token
+claimant_run_id
+lease_expires_at?
+target_ref
+target_revision
+prior_verification_id?
+last_verification_id?
+last_result?
+last_failure_class?
+last_target_revision?
+retest_required
+updated_at
+```
+
+The deterministic claim path is the sole authority for the current live lease token. Exact-SHA create/update is the concurrency gate. Random attempt records are never used as a lock.
+
+## NEXT Checkpoint Attempt
+
+Attempt start records are append-preserving children:
+
+```text
+kind = CHECKPOINT_ATTEMPT
+attempt_id
+project_id
+job_id
+execution_contract = NEXT
+planning_revision
+checkpoint_id
+mode
+attempt_kind
+lease_token
+claimant_run_id
+target_ref
+target_revision
+state = STARTED
+retest_of_verification_id?
+started_at
+```
+
+The attempt child does not store mutable live/terminal authority; the deterministic claim does.
+
+## Tester Verification applicability extension
+
+NEXT TEST/RETEST Verification adds:
+
+```text
+planning_revision
+checkpoint_id
+attempt_id
+attempt_kind
+lease_token
+mode
+failure_class?
+measurements[]
+retest_of_verification_id?
+applicability {
+  status = APPLICABLE | NON_APPLICABLE
+  planning_revision
+  checkpoint_id
+  evidence_need_ids[]
+  target_revision
+}
+route =
+  CONTINUE |
+  CODER_REPAIR_GOAL_RECHECK_RETEST |
+  PLANNER_REVISION_SUPERSEDE |
+  RETEST_WHEN_READY
+```
+
+Verification alone is insufficient for applicability. The current terminal claim must point to the same Verification/attempt/token and current planning revision.
+
+## NEXT in-progress planning supersession
+
+A NEXT `IN_PROGRESS` Job may create a new planning revision only from a persisted current-revision PLAN_GAP/SPEC_GAP Tester Verification whose terminal claim points to that Verification, or as a direct repair of a `CHANGES_REQUIRED` review on that already-superseding revision.
+
+The Job remains `IN_PROGRESS`; the new revision resets `planning_review=PENDING` and blocks further NEXT dispatch until Reviewer PASS.
