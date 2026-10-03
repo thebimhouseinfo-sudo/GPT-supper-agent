@@ -144,12 +144,215 @@ function executionMemoryRoot(projectId: string, executionContract: ExecutionCont
     : 'projects/' + projectId
 }
 
-function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
+function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
   return executionMemoryRoot(projectId, executionContract) + '/WORK/' + family + '/' + recordId + '.json'
 }
 
 function verificationPath(projectId: string, verificationId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
   return executionMemoryRoot(projectId, executionContract) + '/VERIFICATION/' + verificationId + '.json'
+}
+
+
+function checkpointClaimPath(projectId: string, jobId: string, planningRevision: number, checkpointId: string) {
+  return executionMemoryRoot(projectId, 'NEXT') + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+}
+
+function checkpointAttemptPath(projectId: string, attemptId: string) {
+  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT')
+}
+
+function checkpointLeaseExpired(claim: any, nowMs = Date.now()) {
+  const expires = Date.parse(String(claim?.lease_expires_at ?? ''))
+  return !Number.isFinite(expires) || expires <= nowMs
+}
+
+function parseRecordTexts(texts: string[], label: string) {
+  const records: any[] = []
+  for (const text of texts ?? []) {
+    try { records.push(JSON.parse(text)) } catch {
+      return { records: [], error: label + ' contains invalid JSON.' }
+    }
+  }
+  return { records, error: null as string | null }
+}
+
+function parseDurableSnapshots(snapshots: any[], label: string) {
+  const entries: any[] = []
+  for (const snapshot of snapshots ?? []) {
+    if (!snapshot || typeof snapshot.path !== 'string' || !snapshot.path || typeof snapshot.sha !== 'string' || !/^[0-9a-f]{40}$/.test(snapshot.sha) || typeof snapshot.record_text !== 'string') {
+      return { entries: [], error: label + ' contains an invalid durable snapshot envelope.' }
+    }
+    let record: any
+    try { record = JSON.parse(snapshot.record_text) } catch {
+      return { entries: [], error: label + ' contains invalid record JSON.' }
+    }
+    entries.push({ path: snapshot.path, sha: snapshot.sha, record_text: snapshot.record_text, record })
+  }
+  return { entries, error: null as string | null }
+}
+
+function validateClaimSnapshots(entries: any[], label: string) {
+  for (const entry of entries) {
+    const record = entry.record
+    if (record?.kind !== 'CHECKPOINT_CLAIM' || record.execution_contract !== 'NEXT') return label + ' contains a non-NEXT checkpoint claim.'
+    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id)) {
+      return label + ' path does not match the deterministic checkpoint claim path.'
+    }
+  }
+  return null
+}
+
+function validateVerificationSnapshots(entries: any[], label: string) {
+  for (const entry of entries) {
+    const record = entry.record
+    if (!['TEST','RETEST'].includes(record?.kind) || record.execution_contract !== 'NEXT' || typeof record.verification_id !== 'string') {
+      return label + ' contains a non-NEXT TEST/RETEST Verification.'
+    }
+    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT')) {
+      return label + ' path does not match the deterministic Verification path.'
+    }
+  }
+  return null
+}
+
+function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
+  const completed = new Set<string>()
+  for (const entry of entries) {
+    const run = entry.record
+    if (
+      resolveExecutionContract(run?.execution_contract) !== 'NEXT' ||
+      run.project_id !== job.project_id ||
+      run.job_id !== job.job_id ||
+      run.planning_revision !== job.planning_revision ||
+      run.lifecycle !== 'COMPLETED' ||
+      !['PASS','PASS_RETEST_REQUIRED'].includes(run.result) ||
+      typeof run.run_id !== 'string' ||
+      typeof run.primary_task_id !== 'string'
+    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision NEXT Task Run.' }
+    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT')) {
+      return { completed, error: 'completed_task_run_snapshots path does not match the NEXT Run path.' }
+    }
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === run.primary_task_id)
+    const topology = (job.topology ?? []).find((item: any) => item.task_id === run.primary_task_id)
+    if (!task || !topology || topology.handler !== run.role) {
+      return { completed, error: 'completed_task_run_snapshots Run does not match the current Task/topology handler.' }
+    }
+    completed.add(run.primary_task_id)
+  }
+  return { completed, error: null as string | null }
+}
+
+function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
+  return (snapshots ?? []).map((snapshot: any) =>
+    'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
+  )
+}
+
+function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
+  if (!claim || !verification) return false
+  if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
+  if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (claim.mode !== checkpoint.mode || !['SATISFIED','OBSERVED'].includes(claim.state)) return false
+  if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
+  if (!['TEST','RETEST'].includes(verification.kind) || verification.execution_contract !== 'NEXT' || verification.producer !== 'tester') return false
+  if (verification.project_id !== job.project_id || verification.job_id !== job.job_id || verification.planning_revision !== job.planning_revision || verification.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (verification.mode !== checkpoint.mode || verification.attempt_kind !== claim.attempt_kind || claim.last_result !== verification.result) return false
+  if (verification.result === 'PASS' && claim.state !== 'SATISFIED') return false
+  if (verification.result === 'OBSERVED' && claim.state !== 'OBSERVED') return false
+  if (verification.applicability?.status !== 'CANDIDATE') return false
+  if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
+  const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
+  const applicableEvidenceNeeds = verification.applicability?.evidence_need_ids ?? []
+  if (!expectedEvidenceNeeds.every((id: string) => applicableEvidenceNeeds.includes(id))) return false
+  if (checkpoint.mode === 'VERIFY') return verification.result === 'PASS'
+  return ['PASS','OBSERVED'].includes(verification.result)
+}
+
+function checkpointBoundaryPrerequisiteIds(job: any, checkpoint: any) {
+  const ids = new Set<string>(checkpoint.prerequisite_node_ids ?? [])
+  if (checkpoint.boundary === 'MILESTONE_GATE') {
+    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === checkpoint.milestone_id)
+    for (const id of milestone?.node_ids ?? []) if (id !== checkpoint.checkpoint_id) ids.add(id)
+  }
+  if (checkpoint.boundary === 'JOB_FINAL') {
+    for (const node of job.planning_topology ?? []) {
+      if (node.node_id !== checkpoint.checkpoint_id) ids.add(node.node_id)
+    }
+  }
+  return [...ids]
+}
+
+function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
+  if (target.kind === 'TASK') {
+    const ids = new Set<string>((job.evidence_requirements ?? [])
+      .filter((item: any) => item.consumer_task_id === target.id)
+      .map((item: any) => item.checkpoint_id))
+    const checkpointIds = new Set<string>((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))
+    const topologyNode = (job.planning_topology ?? []).find((item: any) => item.node_id === target.id && item.node_type === 'TASK')
+    for (const dependencyId of topologyNode?.depends_on ?? []) {
+      if (checkpointIds.has(dependencyId)) ids.add(dependencyId)
+    }
+    return [...ids]
+  }
+  if (target.kind === 'MILESTONE') {
+    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === target.id)
+    return [...new Set(milestone?.gate_checkpoint_ids ?? [])]
+  }
+  return [...new Set((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
+}
+
+function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
+  const executionContract = jobExecutionContract(job)
+  if (executionContract !== 'NEXT') return { allowed: true, required_checkpoint_ids: [], blocking: [] as string[] }
+  if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
+    return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT planning revision is not Reviewer PASS.'] }
+  }
+  const claimParsed = parseDurableSnapshots(claimSnapshots ?? [], 'checkpoint_claim_snapshots')
+  if (claimParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [claimParsed.error] }
+  const claimSnapshotError = validateClaimSnapshots(claimParsed.entries, 'checkpoint_claim_snapshots')
+  if (claimSnapshotError) return { allowed: false, required_checkpoint_ids: [], blocking: [claimSnapshotError] }
+  const verificationParsed = parseDurableSnapshots(verificationSnapshots ?? [], 'checkpoint_verification_snapshots')
+  if (verificationParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationParsed.error] }
+  const verificationSnapshotError = validateVerificationSnapshots(verificationParsed.entries, 'checkpoint_verification_snapshots')
+  if (verificationSnapshotError) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationSnapshotError] }
+  if (target.kind === 'TASK' && !(job.tasks ?? []).some((item: any) => item.task_id === target.id)) {
+    return { allowed: false, required_checkpoint_ids: [], blocking: ['Unknown NEXT Task target: ' + String(target.id ?? '')] }
+  }
+  if (target.kind === 'MILESTONE' && !(job.milestones ?? []).some((item: any) => item.milestone_id === target.id)) {
+    return { allowed: false, required_checkpoint_ids: [], blocking: ['Unknown NEXT Milestone target: ' + String(target.id ?? '')] }
+  }
+  const ids = requiredCheckpointIds(job, target)
+  const blocking: string[] = []
+  for (const checkpointId of ids) {
+    const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpointId)
+    if (!checkpoint) {
+      blocking.push('Unknown required checkpoint: ' + checkpointId)
+      continue
+    }
+    const matchingClaims = claimParsed.entries.filter((entry: any) => {
+      const item = entry.record
+      return item?.kind === 'CHECKPOINT_CLAIM' &&
+        item.project_id === job.project_id &&
+        item.job_id === job.job_id &&
+        item.planning_revision === job.planning_revision &&
+        item.checkpoint_id === checkpointId &&
+        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId)
+    })
+    if (matchingClaims.length !== 1) {
+      blocking.push('Expected exactly one current deterministic checkpoint claim: ' + checkpointId)
+      continue
+    }
+    const claim = matchingClaims[0].record
+    const matchingVerifications = verificationParsed.entries.filter((entry: any) =>
+      entry.record?.verification_id === claim.last_verification_id &&
+      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT')
+    )
+    if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0].record)) {
+      blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
+    }
+  }
+  return { allowed: blocking.length === 0, required_checkpoint_ids: ids, blocking }
 }
 
 function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
@@ -199,6 +402,49 @@ const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
   node_type: z.enum(['TASK','TEST_CHECKPOINT','MILESTONE_GATE']),
   depends_on: z.array(z.string().min(1)).default([]),
 })
+
+const DURABLE_RECORD_SNAPSHOT_SCHEMA = z.object({
+  path: z.string().min(1),
+  sha: z.string().regex(/^[0-9a-f]{40}$/),
+  record_text: z.string().min(2),
+})
+
+function validateExecutionTopology(tasks: any[], topology: any[]): string | null {
+  if (!Array.isArray(tasks) || !Array.isArray(topology)) return 'EXECUTION_TOPOLOGY_INVALID: tasks/topology must be arrays.'
+  const taskIds = tasks.map((task: any) => task?.task_id)
+  if (taskIds.some((id: any) => typeof id !== 'string' || !id)) return 'EXECUTION_TOPOLOGY_INVALID: every Task requires task_id.'
+  if (new Set(taskIds).size !== taskIds.length) return 'EXECUTION_TOPOLOGY_INVALID: Task IDs must be unique.'
+  if (topology.length !== tasks.length) return 'EXECUTION_TOPOLOGY_INVALID: execution topology must contain exactly one stage per Task.'
+  const topologyTaskIds = topology.map((stage: any) => stage?.task_id)
+  if (topologyTaskIds.some((id: any) => typeof id !== 'string' || !id) || new Set(topologyTaskIds).size !== topologyTaskIds.length) {
+    return 'EXECUTION_TOPOLOGY_INVALID: topology task_id values must be present and unique.'
+  }
+  if (taskIds.some((id: string) => !topologyTaskIds.includes(id))) return 'EXECUTION_TOPOLOGY_INVALID: every current Task must appear exactly once in execution topology.'
+  const stages = topology.map((stage: any) => stage?.stage)
+  if (stages.some((stage: any) => !Number.isInteger(stage) || stage < 1) || new Set(stages).size !== stages.length) {
+    return 'EXECUTION_TOPOLOGY_INVALID: topology stage values must be unique positive integers.'
+  }
+  const validHandlers = new Set(['planner','designer','coder','reviewer','tester'])
+  const taskIdSet = new Set(taskIds)
+  const sameStringSet = (left: any[], right: any[]) => {
+    const a = [...new Set((left ?? []).map(String))].sort()
+    const b = [...new Set((right ?? []).map(String))].sort()
+    return a.length === b.length && a.every((value, index) => value === b[index])
+  }
+  for (const task of tasks) {
+    const deps = task?.dependencies ?? []
+    if (!Array.isArray(deps) || deps.some((id: any) => typeof id !== 'string' || !taskIdSet.has(id) || id === task.task_id) || new Set(deps).size !== deps.length) {
+      return 'EXECUTION_TOPOLOGY_INVALID: Task dependencies must be unique current Task IDs and cannot self-reference.'
+    }
+    const stage = topology.find((item: any) => item.task_id === task.task_id)
+    if (!stage || !validHandlers.has(stage.handler)) return 'EXECUTION_TOPOLOGY_INVALID: every Task requires one valid execution handler.'
+    if (!sameStringSet(stage.depends_on ?? [], deps)) return 'EXECUTION_TOPOLOGY_INVALID: topology depends_on must match the owning Task dependencies.'
+    if (stage.next != null && (!taskIdSet.has(stage.next) || stage.next === task.task_id)) {
+      return 'EXECUTION_TOPOLOGY_INVALID: topology next must be null or another current Task ID.'
+    }
+  }
+  return null
+}
 
 function normalizeNextPlanningModel(model: any, planningRevision: number) {
   return {
@@ -351,7 +597,10 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Load that role harness plus only relevant skills.',
       'Start the next attributed Run or planning-review action required by topology. Multiple sequential role/tool calls may occur inside one user turn.',
       'After each action/Run, persist required evidence/handoff/state, then continue from the returned durable state rather than ending the user turn by default.',
-      'For every newly prepared or materially revised Job plan, automatically dispatch a context-isolated Reviewer before reporting planning completion. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS permits DRAFT→READY; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
+      'For every newly prepared or materially revised Job plan, automatically dispatch a context-isolated Reviewer before reporting planning completion. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS permits DRAFT→READY or resumes a reviewed NEXT IN_PROGRESS superseding revision; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
+      'NEXT CHECKPOINT: when current NEXT topology makes a TestCheckpointSpec runnable, start the Tester Run, acquire/reuse checkpoint_claim_prepare, persist/read back the deterministic claim + attempt, execute Tester, then checkpoint_verification_prepare and finalize the claim with exact SHA before routing.',
+      'NEXT EVIDENCE GATE: before dispatching a consumer Task, crossing a Milestone gate or completing a NEXT Job, evaluate current claim + Verification evidence. Mandatory EvidenceRequirement/checkpoint evidence blocks even when a non-blocking PASS_RETEST_REQUIRED would otherwise be allowed.',
+      'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
     ],
@@ -380,7 +629,8 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
       'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
       'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, repair actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer.',
-      'READY GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
+      'RUNTIME SUPERSESSION: for NEXT IN_PROGRESS PLAN_GAP/SPEC_GAP, require the persisted Tester Verification plus its terminal checkpoint claim, resupply/rebind the complete CP4 planning graph into a new planning_revision, keep the Job IN_PROGRESS, and block dispatch until Reviewer PASS. If Reviewer returns CHANGES_REQUIRED, continue the planning-review repair loop without requiring a duplicate Tester gap finding.',
+      'READY/RESUME GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY or resume dispatch on a superseding NEXT IN_PROGRESS revision. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
     ],
     outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
@@ -470,17 +720,20 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Execute practical tests only with OBSERVED capability at the required level; otherwise prepare precise Retest steps.',
       'A merely SURFACE_PRESENT/DISCOVERED tool cannot justify PASS evidence.',
       'MEASURE without an approved threshold records measurement only and never invents PASS/FAIL.',
+      'For a planned NEXT TestCheckpointSpec, Tester may execute only under the current deterministic checkpoint lease token; source remains read-only.',
     ],
     loop: [
       'GROUND: resolve exact target revision/state plus the approved expectation or empirical question.',
+      'CLAIM (NEXT only): after the Tester Run exists, call checkpoint_claim_prepare for the current planning_revision/checkpoint. Persist/read back the deterministic claim first, then its append-preserving attempt child. Reuse the same live token on replay; never create a parallel Tester attempt.',
       'PLAN: author the concrete checks and label each VERIFY, MEASURE or PROBE before execution; do not rewrite acceptance after seeing results.',
       'CAPABILITY: assess required execution using global capability truth plus Tester readiness DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET.',
       'EXECUTE: run practical verification only for evidence-backed OBSERVED capability; otherwise create precise Retest steps.',
       'ANALYZE: VERIFY compares against explicit requirements; MEASURE records values without invented thresholds; PROBE records empirical facts/limitations.',
       'CLASSIFY: route evidence as PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP or PLAN_GAP before proposing next action.',
-      'REPORT: record target/revision, modes/checks, readiness, observations/measurements, applicable verdicts, failure class, evidence refs, limitations/untested areas and Retest status.',
-      'RETEST: bind evidence to the exact target revision/state; relevant changes invalidate prior coverage for the changed scope.',
-      'ROUTE: product defects go to owning implementation work; SPEC_GAP/PLAN_GAP route to Planner/Human without Tester rewriting product contracts/topology.',
+      'REPORT: for NEXT checkpoint execution, use checkpoint_verification_prepare to create append-preserving TEST/RETEST evidence and the terminal claim update. Evidence is applicable only after claim read-back points to the same verification/attempt/lease token.',
+      'RETEST: bind evidence to the exact target revision/state; relevant changes invalidate prior coverage. PRODUCT_FAILURE Retest requires a repaired target revision plus its exact Coder Goal Recheck; blocked environment/test conditions may Retest only when ready.',
+      'ROUTE: PRODUCT_FAILURE → owning implementation repair → Goal Recheck → RETEST. SPEC_GAP/PLAN_GAP → Planner superseding revision + Reviewer. Other blockers remain non-PASS and Retest when ready.',
+      'GATE: PASS_RETEST_REQUIRED is non-blocking coverage only; it never satisfies a mandatory EvidenceRequirement/checkpoint prerequisite.',
     ],
     outputs: ['structured TEST/RETEST Verification record', 'observations/measurements and applicable verdicts', 'failure classification', 'evidence refs', 'limitations/retest'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'CAPABILITY-CATALOG.md', 'STATE-MACHINE.md'],
@@ -654,19 +907,24 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Use global capability truth plus per-check readiness DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET.',
       '- SURFACE_PRESENT is discovery only. Claim practical success only from evidence-backed OBSERVED capability at the required level.',
       '',
-      'EXECUTE / CLASSIFY',
+      'EXECUTE / CLAIM / CLASSIFY',
       '- Keep product source read-only and run only authorized non-destructive tests/experiments.',
+      '- For a planned NEXT checkpoint: create the Tester Run first, then acquire the deterministic claim lease. The current claim token is the only live-attempt authority; replay reuses it and expired leases are reclaimed by exact-SHA CAS.',
       '- Classify before routing: PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP, PLAN_GAP.',
       '- Failing test does not automatically mean product bug; unavailable infrastructure is not PASS.',
       '- Tester never fixes product source or rewrites topology. SPEC_GAP/PLAN_GAP route to Planner/Human as applicable.',
       '',
-      'REPORT',
+      'REPORT / APPLICABILITY',
       '- Record target/ref/revision, modes/checks, readiness/capability state, observations/measurements, applicable verdicts, failure classification, evidence refs, limitations/untested areas and Retest status/next step.',
+      '- For NEXT checkpoints, prepare TEST/RETEST Verification under the current attempt/token and finalize the deterministic claim with exact SHA. An orphan Verification whose claim did not finalize is non-applicable.',
       '- Keep observations separate from conclusions and thresholds.',
       '',
-      'RETEST',
+      'RETEST / ROUTE',
       '- Bind Retest evidence to the exact target revision/state.',
-      '- Relevant source/config/runtime changes invalidate prior evidence for the changed scope.',
+      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected.',
+      '- PLAN_GAP/SPEC_GAP: route to Planner superseding planning_revision; old revision claim/evidence becomes non-applicable.',
+      '- TEST/ENVIRONMENT/INTEGRATION blockers: retain non-PASS evidence and Retest only when the condition is ready.',
+      '- PASS_RETEST_REQUIRED cannot satisfy a mandatory EvidenceRequirement/checkpoint gate.',
       '- If execution capability is unavailable, create precise Human Retest steps instead of fabricating PASS.',
     ].join('\n'),
   },
@@ -1975,6 +2233,8 @@ function createServer(req: Request) {
         depends_on: task.dependencies,
         next: index + 1 < normalizedTasks.length ? normalizedTasks[index + 1].task_id : null,
       }))
+      const executionTopologyError = executionContract === 'NEXT' ? validateExecutionTopology(normalizedTasks, topology) : null
+      if (executionTopologyError) return { content: [{ type: 'text', text: executionTopologyError }], isError: true }
       const nextPlanning = normalizeNextPlanningModel({ evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology }, 1)
       const nextPlanningError = validateNextPlanningModel(executionContract, normalizedTasks, nextPlanning, 1)
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
@@ -2076,6 +2336,8 @@ function createServer(req: Request) {
         result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
         planning_review_verification_ref: z.string().optional(),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -2087,7 +2349,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -2124,6 +2386,26 @@ function createServer(req: Request) {
         if (!(completion_evidence_refs ?? []).length) {
           return { content: [{ type: 'text', text: 'Completed Job requires at least one durable completion evidence reference.' }], isError: true }
         }
+        if (executionContract === 'NEXT') {
+          if (current.planning_review?.status !== 'PASS' || current.planning_review?.reviewed_revision !== current.planning_revision) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: current planning revision is not Reviewer PASS.' }], isError: true }
+          }
+          const gate = evaluateNextEvidenceGate(
+            current,
+            checkpoint_claim_snapshots ?? [],
+            checkpoint_verification_snapshots ?? [],
+            { kind: 'JOB', id: null },
+          )
+          if (!gate.allowed) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'NEXT_JOB_COMPLETION_BLOCKED: mandatory checkpoint/evidence gate is unsatisfied. PASS_RETEST_REQUIRED cannot bypass it. ' + gate.blocking.join('; '),
+              }],
+              isError: true,
+            }
+          }
+        }
       }
       const next = {
         ...current,
@@ -2139,6 +2421,12 @@ function createServer(req: Request) {
       ]
       if (target_lifecycle === 'COMPLETED') {
         externalSteps.push('Verify every completion_evidence_ref already exists and applies to the current accepted target revision before Job completion.')
+        if (executionContract === 'NEXT') {
+          externalSteps.push(
+            ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+            ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+          )
+        }
       }
       externalSteps.push(
         'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
@@ -2158,8 +2446,8 @@ function createServer(req: Request) {
   server.registerTool(
     'job_revise_plan',
     {
-      title: 'Revise a DRAFT GSA Job plan',
-      description: 'Planner-only exact-SHA planning revision update after planning-review findings or approved Human decisions.',
+      title: 'Revise a GSA Job plan',
+      description: 'Planner-only exact-SHA planning revision update. DRAFT revisions follow the normal planning loop; NEXT IN_PROGRESS revisions are allowed only from persisted PLAN_GAP/SPEC_GAP Tester evidence and supersede the old planning topology.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -2208,6 +2496,10 @@ function createServer(req: Request) {
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
         revision_reason: z.string().min(1),
+        superseding_verification_record_text: z.string().min(2).optional(),
+        superseding_verification_ref: z.string().min(1).optional(),
+        superseding_claim_record_text: z.string().min(2).optional(),
+        superseding_claim_record_sha: z.string().min(7).optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -2220,7 +2512,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -2229,8 +2521,61 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
-      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT') {
-        return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
+      if (current.job_id !== job_id || current.project_id !== project_id) {
+        return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
+      }
+      const inProgressNextRevision = executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS'
+      const inProgressReviewRepair =
+        inProgressNextRevision &&
+        ['CHANGES_REQUIRED','HUMAN_REVIEW_REQUIRED'].includes(current.planning_review?.status) &&
+        Boolean(current.superseding_verification_ref)
+      const inProgressGapSupersession = inProgressNextRevision && !inProgressReviewRepair
+      if (current.lifecycle !== 'DRAFT' && !inProgressNextRevision) {
+        return { content: [{ type: 'text', text: 'Planner revision is allowed only for DRAFT Jobs or NEXT IN_PROGRESS supersession/review repair.' }], isError: true }
+      }
+      let supersedingVerification: any = null
+      let supersedingClaim: any = null
+      if (inProgressGapSupersession) {
+        if (!superseding_verification_record_text || !superseding_verification_ref || !superseding_claim_record_text || !superseding_claim_record_sha) {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: first IN_PROGRESS supersession requires persisted PLAN_GAP/SPEC_GAP Verification plus its terminal checkpoint claim.' }], isError: true }
+        }
+        try {
+          supersedingVerification = JSON.parse(superseding_verification_record_text)
+          supersedingClaim = JSON.parse(superseding_claim_record_text)
+        } catch {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: invalid superseding Verification/claim JSON.' }], isError: true }
+        }
+        const expectedVerificationRef = verificationPath(project_id, supersedingVerification.verification_id, 'NEXT')
+        const supersessionMatches =
+          ['TEST','RETEST'].includes(supersedingVerification.kind) &&
+          supersedingVerification.execution_contract === 'NEXT' &&
+          supersedingVerification.project_id === project_id &&
+          supersedingVerification.job_id === job_id &&
+          supersedingVerification.planning_revision === current.planning_revision &&
+          ['PLAN_GAP','SPEC_GAP'].includes(supersedingVerification.failure_class) &&
+          supersedingVerification.route === 'PLANNER_REVISION_SUPERSEDE' &&
+          superseding_verification_ref === expectedVerificationRef &&
+          supersedingClaim.kind === 'CHECKPOINT_CLAIM' &&
+          supersedingClaim.execution_contract === 'NEXT' &&
+          supersedingClaim.project_id === project_id &&
+          supersedingClaim.job_id === job_id &&
+          supersedingClaim.planning_revision === current.planning_revision &&
+          supersedingClaim.state === 'NEEDS_PLANNER_REVISION' &&
+          supersedingClaim.checkpoint_id === supersedingVerification.checkpoint_id &&
+          supersedingClaim.last_failure_class === supersedingVerification.failure_class &&
+          supersedingClaim.last_result === supersedingVerification.result &&
+          supersedingClaim.last_verification_id === supersedingVerification.verification_id &&
+          supersedingClaim.lease_token === supersedingVerification.lease_token &&
+          supersedingClaim.attempt_id === supersedingVerification.attempt_id &&
+          supersedingClaim.last_target_revision === supersedingVerification.target_revision
+        if (!supersessionMatches) {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: Verification must be the current terminal PLAN_GAP/SPEC_GAP claim result for this planning revision.' }], isError: true }
+        }
+      } else if (inProgressReviewRepair && !current.superseding_verification_ref) {
+        return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: review-repair revision has no originating supersession evidence.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && tasks !== undefined && topology === undefined) {
+        return { content: [{ type: 'text', text: 'NEXT_EXECUTION_TOPOLOGY_REBIND_REQUIRED: revising Tasks must resupply execution topology for the same planning revision.' }], isError: true }
       }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
@@ -2239,6 +2584,9 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'NEXT_PLANNING_REBIND_REQUIRED: every revision of a NEXT Job with active CP4 planning must explicitly resupply all CP4 planning collections for the new planning_revision.' }], isError: true }
       }
       const nextTasks = tasks ?? current.tasks
+      const nextTopology = topology ?? current.topology
+      const executionTopologyError = executionContract === 'NEXT' ? validateExecutionTopology(nextTasks ?? [], nextTopology ?? []) : null
+      if (executionTopologyError) return { content: [{ type: 'text', text: executionTopologyError }], isError: true }
       const nextPlanning = normalizeNextPlanningModel({
         evidence_needs: evidence_needs ?? current.evidence_needs ?? [],
         test_checkpoints: test_checkpoints ?? current.test_checkpoints ?? [],
@@ -2267,7 +2615,7 @@ function createServer(req: Request) {
           selected_source_evidence: selected_source_evidence ?? current.repository_discovery?.selected_source_evidence ?? [],
         },
         tasks: nextTasks,
-        topology: topology ?? current.topology,
+        topology: nextTopology,
         evidence_needs: nextPlanning.evidence_needs,
         test_checkpoints: nextPlanning.test_checkpoints,
         evidence_requirements: nextPlanning.evidence_requirements,
@@ -2278,6 +2626,9 @@ function createServer(req: Request) {
         review_triggers: review_triggers ?? current.review_triggers,
         planning_revision: nextRevision,
         planning_review: { status: 'PENDING', reviewed_revision: null, verification_ref: null },
+        supersedes_planning_revision: inProgressNextRevision ? current.planning_revision : current.supersedes_planning_revision ?? null,
+        superseding_verification_ref: inProgressGapSupersession ? superseding_verification_ref : current.superseding_verification_ref ?? null,
+        superseding_claim_sha: inProgressGapSupersession ? superseding_claim_record_sha : current.superseding_claim_sha ?? null,
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
@@ -2291,7 +2642,10 @@ function createServer(req: Request) {
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
           'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
-          'Read back the DRAFT Job and verify the incremented planning_revision.',
+          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING.',
+          inProgressNextRevision
+            ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision. For first runtime supersession, read back the originating Verification and terminal claim (exact claim SHA) before updating the Job.'
+            : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
           'Immediately continue in this SAME USER TURN with a new Reviewer planning review for this exact revision before any user-facing planning-complete report.',
         ],
       }
@@ -2303,7 +2657,7 @@ function createServer(req: Request) {
     'plan_review_record',
     {
       title: 'Record planning review for one exact Job revision',
-      description: 'Reviewer-only planning Verification. PASS can unlock DRAFT→READY; CHANGES_REQUIRED routes automatically back to Planner.',
+      description: 'Reviewer-only planning Verification. PASS unlocks DRAFT→READY or resumes a superseding NEXT IN_PROGRESS planning revision; CHANGES_REQUIRED routes automatically back to Planner.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -2342,8 +2696,9 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
-      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT' || current.planning_revision !== planning_revision) {
-        return { content: [{ type: 'text', text: 'Planning review target does not match the current DRAFT planning revision.' }], isError: true }
+      const reviewableLifecycle = current.lifecycle === 'DRAFT' || (executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS')
+      if (current.job_id !== job_id || current.project_id !== project_id || !reviewableLifecycle || current.planning_revision !== planning_revision) {
+        return { content: [{ type: 'text', text: 'Planning review target does not match the current reviewable planning revision.' }], isError: true }
       }
       if (!(current.repository_discovery?.structure_evidence ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: repository structure evidence is required before planning review.' }], isError: true }
@@ -2356,6 +2711,10 @@ function createServer(req: Request) {
       }
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
+      }
+      if (executionContract === 'NEXT') {
+        const executionTopologyError = validateExecutionTopology(current.tasks ?? [], current.topology ?? [])
+        if (executionTopologyError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + executionTopologyError }], isError: true }
       }
       const cp4PlanningError = validateNextPlanningModel(executionContract, current.tasks ?? [], {
         evidence_needs: current.evidence_needs ?? [],
@@ -2403,11 +2762,23 @@ function createServer(req: Request) {
         'Update Job planning_review with reviewed_job_record_text using expected_job_sha exactly.',
       ]
       if (result === 'PASS') {
-        steps.push('Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.'
+            : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
+        )
       } else if (result === 'CHANGES_REQUIRED') {
-        steps.push('In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.'
+            : 'In this SAME USER TURN, switch to Planner with the findings. Revise the superseding NEXT IN_PROGRESS plan, preserving its originating supersession evidence, then immediately switch back to Reviewer.',
+        )
       } else if (result === 'HUMAN_REVIEW_REQUIRED') {
-        steps.push('Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.'
+            : 'Pause only for the specific material Human decision; after resolution, Planner continues the same NEXT superseding planning-review loop without requiring a duplicate Tester gap finding.',
+        )
       } else {
         steps.push('Report the concrete blocker because the planning-review loop cannot progress.')
       }
@@ -2589,6 +2960,526 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'checkpoint_claim_prepare',
+    {
+      title: 'Prepare NEXT Tester checkpoint claim',
+      description: 'NEXT-only deterministic checkpoint claim/lease preparation. The claim path is keyed by project/job/planning_revision/checkpoint_id and is the sole serialization point for the live lease token.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1),
+        claimant_run_id: z.string().uuid(),
+        claimant_run_record_text: z.string().min(2),
+        claimant_run_record_sha: z.string().min(7),
+        target_ref: z.string().min(1),
+        target_revision: z.string().min(1),
+        attempt_kind: z.enum(['TEST','RETEST']).default('TEST'),
+        retest_of_verification_id: z.string().min(1).optional(),
+        repair_goal_recheck_record_text: z.string().min(2).optional(),
+        repair_goal_recheck_verification_ref: z.string().min(1).optional(),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        prerequisite_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        prerequisite_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        lease_seconds: z.number().int().min(60).max(3600).default(900),
+        current_claim_record_text: z.string().min(2).optional(),
+        current_claim_record_sha: z.string().min(7).optional(),
+      },
+      outputSchema: {
+        disposition: z.enum(['CLAIM','REUSE','ALREADY_SATISFIED']),
+        claim_memory_path: z.string(),
+        claim_operation: z.enum(['CREATE','UPDATE','NONE']),
+        expected_claim_sha: z.string().nullable(),
+        claim_record_text: z.string().nullable(),
+        attempt_memory_path: z.string().nullable(),
+        attempt_record_text: z.string().nullable(),
+        attempt_id: z.string().nullable(),
+        lease_token: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, claimant_run_record_text, claimant_run_record_sha, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_run_snapshots, prerequisite_claim_snapshots, prerequisite_verification_snapshots, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      let claimantRun: any
+      try { claimantRun = JSON.parse(claimant_run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: invalid claimant Tester Run JSON.' }], isError: true }
+      }
+      const claimantContract = resolveExecutionContract(claimantRun.execution_contract)
+      if (
+        claimantContract !== 'NEXT' ||
+        claimantRun.project_id !== project_id ||
+        claimantRun.job_id !== job_id ||
+        claimantRun.run_id !== claimant_run_id ||
+        claimantRun.role !== 'tester' ||
+        claimantRun.lifecycle !== 'IN_PROGRESS' ||
+        claimantRun.planning_revision !== job.planning_revision ||
+        (claimantRun.target_ref && claimantRun.target_ref !== target_ref) ||
+        (claimantRun.target_revision && claimantRun.target_revision !== target_revision)
+      ) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: claimant must be the current IN_PROGRESS NEXT Tester Run for this exact target.' }], isError: true }
+      }
+      if (!['READY','IN_PROGRESS'].includes(job.lifecycle)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job is not executable.' }], isError: true }
+      }
+      if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current NEXT planning revision is not Reviewer PASS.' }], isError: true }
+      }
+      const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
+      if (!checkpoint) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: checkpoint is not part of the current planning revision.' }], isError: true }
+      }
+      const prerequisiteClaims = parseDurableSnapshots(prerequisite_claim_snapshots ?? [], 'prerequisite_claim_snapshots')
+      if (prerequisiteClaims.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaims.error }], isError: true }
+      const prerequisiteClaimError = validateClaimSnapshots(prerequisiteClaims.entries, 'prerequisite_claim_snapshots')
+      if (prerequisiteClaimError) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaimError }], isError: true }
+      const prerequisiteVerifications = parseDurableSnapshots(prerequisite_verification_snapshots ?? [], 'prerequisite_verification_snapshots')
+      if (prerequisiteVerifications.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerifications.error }], isError: true }
+      const prerequisiteVerificationError = validateVerificationSnapshots(prerequisiteVerifications.entries, 'prerequisite_verification_snapshots')
+      if (prerequisiteVerificationError) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerificationError }], isError: true }
+      const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+      if (completedRuns.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + completedRuns.error }], isError: true }
+      const completedTaskState = validateCompletedTaskRunSnapshots(job, completedRuns.entries)
+      if (completedTaskState.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + completedTaskState.error }], isError: true }
+      const completedTaskIds = completedTaskState.completed
+      if (checkpoint.boundary === 'BEFORE_NODE' && checkpoint.boundary_node_id && completedTaskIds.has(checkpoint.boundary_node_id)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_BOUNDARY_MISSED: BEFORE_NODE target is already durably completed: ' + checkpoint.boundary_node_id }], isError: true }
+      }
+      const runtimePrerequisiteIds = checkpointBoundaryPrerequisiteIds(job, checkpoint)
+      for (const prerequisiteId of runtimePrerequisiteIds) {
+        const prerequisiteCheckpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === prerequisiteId)
+        if (prerequisiteCheckpoint) {
+          const prerequisiteClaimMatches = prerequisiteClaims.entries.filter((entry: any) => {
+            const item = entry.record
+            return item?.kind === 'CHECKPOINT_CLAIM' &&
+              item.project_id === project_id &&
+              item.job_id === job_id &&
+              item.planning_revision === job.planning_revision &&
+              item.checkpoint_id === prerequisiteId &&
+              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId)
+          })
+          const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0].record : null
+          const prerequisiteVerificationMatches = prerequisiteClaim
+            ? prerequisiteVerifications.entries.filter((entry: any) =>
+                entry.record?.verification_id === prerequisiteClaim.last_verification_id &&
+                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT')
+              )
+            : []
+          const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0].record : null
+          if (!checkpointVerificationApplicable(job, prerequisiteCheckpoint, prerequisiteClaim, prerequisiteVerification)) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite checkpoint is not satisfied/applicable: ' + prerequisiteId }], isError: true }
+          }
+        } else if (!completedTaskIds.has(prerequisiteId)) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite Task is not durably completed: ' + prerequisiteId }], isError: true }
+        }
+      }
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      let current: any = null
+      if (current_claim_record_text) {
+        if (!current_claim_record_sha) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim SHA is required with current claim text.' }], isError: true }
+        try { current = JSON.parse(current_claim_record_text) } catch {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim JSON is invalid.' }], isError: true }
+        }
+        if (current.kind !== 'CHECKPOINT_CLAIM' || current.project_id !== project_id || current.job_id !== job_id || current.planning_revision !== job.planning_revision || current.checkpoint_id !== checkpoint_id) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim identity/revision mismatch.' }], isError: true }
+        }
+        if (current.state === 'ACTIVE' && !checkpointLeaseExpired(current)) {
+          if (current.claimant_run_id === claimant_run_id && current.target_revision === target_revision) {
+            const out = {
+              disposition: 'REUSE',
+              claim_memory_path: claimPath,
+              claim_operation: 'NONE',
+              expected_claim_sha: current_claim_record_sha,
+              claim_record_text: null,
+              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id),
+              attempt_record_text: null,
+              attempt_id: current.attempt_id,
+              lease_token: current.lease_token,
+              external_steps: [
+                'Reuse the existing active attempt/token; do not create another claim or attempt record.',
+                'Read the existing attempt record at attempt_memory_path before continuing Tester execution.',
+              ],
+            }
+            return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+          }
+          return { content: [{ type: 'text', text: 'CHECKPOINT_ALREADY_CLAIMED: another non-expired live lease owns this checkpoint revision.' }], isError: true }
+        }
+        if (['SATISFIED','OBSERVED'].includes(current.state) && attempt_kind === 'TEST') {
+          const out = {
+            disposition: 'ALREADY_SATISFIED',
+            claim_memory_path: claimPath,
+            claim_operation: 'NONE',
+            expected_claim_sha: current_claim_record_sha,
+            claim_record_text: null,
+            attempt_memory_path: null,
+            attempt_record_text: null,
+            attempt_id: null,
+            lease_token: null,
+            external_steps: ['Use the current terminal claim plus its last_verification_id for evidence gating; do not create a duplicate TEST attempt.'],
+          }
+          return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+        }
+        if (current.state === 'NEEDS_PLANNER_REVISION') {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_PLAN_REVISION_REQUIRED: PLAN_GAP/SPEC_GAP must be resolved by a new reviewed planning revision; do not RETEST this revision.' }], isError: true }
+        }
+        const reclaimingExpiredActive = current.state === 'ACTIVE' && checkpointLeaseExpired(current)
+        if (reclaimingExpiredActive && current.attempt_kind !== attempt_kind) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_RECLAIM_REJECTED: expired lease reclaim must preserve the original attempt_kind.' }], isError: true }
+        }
+        if (attempt_kind === 'RETEST' && reclaimingExpiredActive) {
+          if (current.target_revision !== target_revision || current.prior_verification_id !== retest_of_verification_id) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: expired RETEST reclaim must preserve the same Retest target and originating Verification.' }], isError: true }
+          }
+        } else if (attempt_kind === 'RETEST') {
+          if (!current.retest_required || !retest_of_verification_id || current.last_verification_id !== retest_of_verification_id) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST must reference the terminal verification that requested Retest.' }], isError: true }
+          }
+          if (current.last_failure_class === 'PRODUCT_FAILURE') {
+            if (current.last_target_revision === target_revision) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires a repaired target revision/state.' }], isError: true }
+            }
+            if (!repair_goal_recheck_record_text || !repair_goal_recheck_verification_ref) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires the repaired revision Goal Recheck.' }], isError: true }
+            }
+            let goal: any
+            try { goal = JSON.parse(repair_goal_recheck_record_text) } catch {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: invalid repair Goal Recheck JSON.' }], isError: true }
+            }
+            const expectedGoalRef = verificationPath(project_id, goal.verification_id, 'NEXT')
+            const validGoal =
+              goal.kind === 'GOAL_RECHECK' &&
+              goal.execution_contract === 'NEXT' &&
+              goal.project_id === project_id &&
+              goal.job_id === job_id &&
+              goal.target_revision === target_revision &&
+              ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result) &&
+              !(goal.criteria ?? []).some((item: any) => item.result === 'NOT_MET') &&
+              !(goal.scope_drift ?? []).length &&
+              repair_goal_recheck_verification_ref === expectedGoalRef
+            if (!validGoal) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: repair Goal Recheck must match the repaired target revision and have no NOT_MET/scope drift.' }], isError: true }
+            }
+          }
+        } else if (current.state !== 'ACTIVE') {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: terminal/blocked checkpoint requires an explicit RETEST claim.' }], isError: true }
+        }
+      } else if (attempt_kind === 'RETEST') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST requires the current terminal claim record.' }], isError: true }
+      }
+
+      const attemptId = uuidv7()
+      const leaseToken = uuidv7()
+      const now = new Date()
+      const expires = new Date(now.getTime() + Number(lease_seconds ?? 900) * 1000)
+      const generation = Number(current?.generation ?? 0) + 1
+      const claim = {
+        kind: 'CHECKPOINT_CLAIM',
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        mode: checkpoint.mode,
+        state: 'ACTIVE',
+        generation,
+        attempt_id: attemptId,
+        attempt_kind,
+        lease_token: leaseToken,
+        claimant_run_id,
+        lease_expires_at: expires.toISOString(),
+        target_ref,
+        target_revision,
+        prior_verification_id: retest_of_verification_id ?? current?.last_verification_id ?? null,
+        last_verification_id: current?.last_verification_id ?? null,
+        last_result: current?.last_result ?? null,
+        last_failure_class: current?.last_failure_class ?? null,
+        last_target_revision: current?.last_target_revision ?? null,
+        retest_required: false,
+        updated_at: now.toISOString(),
+      }
+      const attempt = {
+        kind: 'CHECKPOINT_ATTEMPT',
+        attempt_id: attemptId,
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        mode: checkpoint.mode,
+        attempt_kind,
+        lease_token: leaseToken,
+        claimant_run_id,
+        target_ref,
+        target_revision,
+        state: 'STARTED',
+        retest_of_verification_id: retest_of_verification_id ?? null,
+        started_at: now.toISOString(),
+      }
+      const attemptPath = checkpointAttemptPath(project_id, attemptId)
+      const claimOperation = current ? 'UPDATE' : 'CREATE'
+      const externalSteps = [
+        'Immediately read back the claimant Tester Run from NEXT memory and require blob SHA equals claimant_run_record_sha plus role=tester, lifecycle=IN_PROGRESS, same project/job/run/target before any claim mutation.',
+        claimOperation === 'CREATE'
+          ? 'Call authorize_memory_mutation(create) for claim_memory_path, then create the deterministic claim record. Concurrent create failure means another claimant won; refetch instead of retrying blind.'
+          : 'Immediately refetch claim_memory_path and require its blob SHA equals expected_claim_sha; authorize/update with exact SHA. Stale SHA means another claimant/reclaimer won.',
+        'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
+        'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
+        ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'completed Task Run snapshot'),
+        ...durableSnapshotReadbackSteps(prerequisite_claim_snapshots ?? [], 'prerequisite checkpoint claim snapshot'),
+        ...durableSnapshotReadbackSteps(prerequisite_verification_snapshots ?? [], 'prerequisite checkpoint Verification snapshot'),
+        'Task prerequisite completion is derived only from successful COMPLETED NEXT Run snapshots bound to the current planning_revision and expected topology handler.',
+        'For MILESTONE_GATE and JOB_FINAL, runtime prerequisites are expanded from the current milestone/planning_topology; BEFORE_NODE is rejected once its boundary Task is already completed.',
+        'Only the current durable lease token may produce terminal Tester Verification.',
+        current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST' && current.state !== 'ACTIVE'
+          ? 'Read back repair_goal_recheck_verification_ref and require it equals the supplied Goal Recheck for the repaired target revision before Tester execution.'
+          : 'No additional repair Goal Recheck read-back is required for this claim/reclaim kind.',
+      ]
+      const out = {
+        disposition: 'CLAIM',
+        claim_memory_path: claimPath,
+        claim_operation: claimOperation,
+        expected_claim_sha: current_claim_record_sha ?? null,
+        claim_record_text: prettyJson(claim),
+        attempt_memory_path: attemptPath,
+        attempt_record_text: prettyJson(attempt),
+        attempt_id: attemptId,
+        lease_token: leaseToken,
+        external_steps: externalSteps,
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'checkpoint_verification_prepare',
+    {
+      title: 'Prepare NEXT Tester checkpoint Verification',
+      description: 'Prepare append-preserving TEST/RETEST Verification and the terminal deterministic claim update. Applicability requires the claim to finalize with the same attempt/token/verification id.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1),
+        claim_record_text: z.string().min(2),
+        claim_record_sha: z.string().min(7),
+        tester_run_record_text: z.string().min(2),
+        tester_run_record_sha: z.string().min(7),
+        attempt_id: z.string().uuid(),
+        lease_token: z.string().uuid(),
+        target_ref: z.string().min(1),
+        target_revision: z.string().min(1),
+        result: z.enum(['PASS','FAIL','BLOCKED','OBSERVED','UNVERIFIED']),
+        failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
+        evidence_refs: z.array(z.string()).default([]),
+        measurements: z.array(z.object({ name: z.string().min(1), value: z.any() })).default([]),
+        limitations: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        claim_memory_path: z.string(),
+        expected_claim_sha: z.string(),
+        next_claim_record_text: z.string(),
+        route: z.enum(['CONTINUE','CODER_REPAIR_GOAL_RECHECK_RETEST','PLANNER_REVISION_SUPERSEDE','RETEST_WHEN_READY']),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
+      let job: any, claim: any
+      try { job = JSON.parse(job_record_text); claim = JSON.parse(claim_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job/claim JSON.' }], isError: true }
+      }
+      if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      let testerRun: any
+      try { testerRun = JSON.parse(tester_run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: invalid Tester Run JSON.' }], isError: true }
+      }
+      if (
+        resolveExecutionContract(testerRun.execution_contract) !== 'NEXT' ||
+        testerRun.project_id !== project_id ||
+        testerRun.job_id !== job_id ||
+        testerRun.run_id !== claim.claimant_run_id ||
+        testerRun.role !== 'tester' ||
+        testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.planning_revision !== job.planning_revision
+      ) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: Verification must be produced by the current IN_PROGRESS NEXT Tester Run that owns the lease.' }], isError: true }
+      }
+      const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
+      if (!checkpoint) return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: checkpoint not in current planning revision.' }], isError: true }
+      if (
+        claim.kind !== 'CHECKPOINT_CLAIM' ||
+        claim.project_id !== project_id ||
+        claim.job_id !== job_id ||
+        claim.planning_revision !== job.planning_revision ||
+        claim.checkpoint_id !== checkpoint_id ||
+        claim.state !== 'ACTIVE' ||
+        claim.attempt_id !== attempt_id ||
+        claim.lease_token !== lease_token
+      ) {
+        return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: claim/attempt/token is no longer the active lease.' }], isError: true }
+      }
+      if (checkpointLeaseExpired(claim)) {
+        return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: lease expired; reclaim before producing Verification.' }], isError: true }
+      }
+      if (claim.target_revision !== target_revision || claim.target_ref !== target_ref) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
+      }
+      if (!['PASS','OBSERVED'].includes(result) && !failure_class) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: non-success result requires failure_class.' }], isError: true }
+      }
+      if (['PASS','OBSERVED'].includes(result) && failure_class) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed evidence cannot carry a failure_class.' }], isError: true }
+      }
+      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !(measurements ?? []).length) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence or measurement.' }], isError: true }
+      }
+      if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: OBSERVED is only valid for MEASURE/PROBE.' }], isError: true }
+      }
+
+      const verificationId = uuidv7()
+      const successful = result === 'PASS' || result === 'OBSERVED'
+      const plannerGap = ['PLAN_GAP','SPEC_GAP'].includes(failure_class ?? '')
+      const productFailure = failure_class === 'PRODUCT_FAILURE'
+      const state = result === 'PASS' ? 'SATISFIED' : result === 'OBSERVED' ? 'OBSERVED' : plannerGap ? 'NEEDS_PLANNER_REVISION' : productFailure ? 'FAILED_PRODUCT' : 'BLOCKED'
+      const route = successful ? 'CONTINUE' : plannerGap ? 'PLANNER_REVISION_SUPERSEDE' : productFailure ? 'CODER_REPAIR_GOAL_RECHECK_RETEST' : 'RETEST_WHEN_READY'
+      const retestRequired = !successful && !plannerGap
+      const applicabilityStatus = successful ? 'CANDIDATE' : 'NON_APPLICABLE'
+      const now = new Date().toISOString()
+      const verification = {
+        verification_id: verificationId,
+        kind: claim.attempt_kind === 'RETEST' ? 'RETEST' : 'TEST',
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        attempt_id,
+        attempt_kind: claim.attempt_kind,
+        lease_token,
+        mode: checkpoint.mode,
+        target_ref,
+        target_revision,
+        producer: 'tester',
+        result,
+        failure_class: failure_class ?? null,
+        evidence_refs: evidence_refs ?? [],
+        measurements: measurements ?? [],
+        limitations: limitations ?? [],
+        retest_of_verification_id: claim.prior_verification_id ?? null,
+        applicability: {
+          status: applicabilityStatus,
+          planning_revision: job.planning_revision,
+          checkpoint_id,
+          evidence_need_ids: checkpoint.evidence_need_ids ?? [],
+          target_revision,
+        },
+        route,
+        created_at: now,
+      }
+      const nextClaim = {
+        ...claim,
+        state,
+        lease_expires_at: null,
+        last_verification_id: verificationId,
+        last_result: result,
+        last_failure_class: failure_class ?? null,
+        last_target_revision: target_revision,
+        retest_required: retestRequired,
+        updated_at: now,
+      }
+      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT')
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: verificationPathValue,
+        verification_record_text: prettyJson(verification),
+        claim_memory_path: claimPath,
+        expected_claim_sha: claim_record_sha,
+        next_claim_record_text: prettyJson(nextClaim),
+        route,
+        external_steps: [
+          'Immediately read back the Tester Run and require blob SHA equals tester_run_record_sha plus role=tester, lifecycle=IN_PROGRESS and run_id=claim.claimant_run_id.',
+        'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
+          'Authorize/create verification_memory_path and persist verification_record_text append-only.',
+          'Then authorize/update claim_memory_path with next_claim_record_text using expected_claim_sha exactly.',
+          'If the claim update loses CAS, the Verification is orphaned/non-applicable because evidence gates require current claim.last_verification_id + attempt/token match. Refetch and reconcile; never treat the orphan as PASS.',
+          successful
+            ? 'The terminal claim can satisfy gates only after read-back proves last_verification_id points to this Verification.'
+            : route === 'PLANNER_REVISION_SUPERSEDE'
+              ? 'Route to Planner. A later reviewed planning_revision uses a different deterministic claim namespace and makes this revision non-applicable.'
+              : route === 'CODER_REPAIR_GOAL_RECHECK_RETEST'
+                ? 'Route to owning Coder repair. After exact Goal Recheck, claim RETEST against the repaired target revision.'
+                : 'Retest only after the blocking test/environment/integration condition is ready.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'checkpoint_gate_evaluate',
+    {
+      title: 'Evaluate NEXT checkpoint evidence gate',
+      description: 'Read-only evidence applicability guard for NEXT Task, Milestone or Job targets. V2_STABLE always preserves the legacy path.',
+      inputSchema: {
+        job_record_text: z.string().min(2),
+        target_kind: z.enum(['TASK','MILESTONE','JOB']),
+        target_id: z.string().optional(),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        required_checkpoint_ids: z.array(z.string()),
+        blocking: z.array(z.string()),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ job_record_text, target_kind, target_id, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to evaluate checkpoint gate.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      const gate = evaluateNextEvidenceGate(job, checkpoint_claim_snapshots ?? [], checkpoint_verification_snapshots ?? [], { kind: target_kind, id: target_id ?? null })
+      const out = {
+        ...gate,
+        external_steps: jobExecutionContract(job) === 'NEXT'
+          ? [
+              ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+              ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+            ]
+          : [],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
     'run_begin',
     {
       title: 'Begin a GSA Job Run',
@@ -2605,6 +3496,8 @@ function createServer(req: Request) {
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
         input_refs: z.array(z.string()).default([]),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         run_id: z.string(),
@@ -2618,7 +3511,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
+    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -2629,6 +3522,45 @@ function createServer(req: Request) {
       if (!executionContract) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
+      if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: primary_task_id is not a Task in the current planning revision.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && (affected_task_refs ?? []).some((id: string) => !currentTaskIds.has(id))) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: every affected_task_ref must be a current Task in this planning revision.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && ['coder','designer'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT source/design execution must bind one current primary Task so EvidenceRequirement guards cannot be bypassed.' }], isError: true }
+      }
+      if (
+        executionContract === 'NEXT' &&
+        (owningJob.planning_review?.status !== 'PASS' || owningJob.planning_review?.reviewed_revision !== owningJob.planning_revision)
+      ) {
+        return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && primary_task_id) {
+        const gatedTaskIds = new Set<string>([primary_task_id])
+        if (['coder','designer'].includes(role)) {
+          for (const id of affected_task_refs ?? []) gatedTaskIds.add(id)
+        }
+        for (const taskId of gatedTaskIds) {
+          const gate = evaluateNextEvidenceGate(
+            owningJob,
+            checkpoint_claim_snapshots ?? [],
+            checkpoint_verification_snapshots ?? [],
+            { kind: 'TASK', id: taskId },
+          )
+          if (!gate.allowed) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'EVIDENCE_REQUIREMENT_BLOCKED: Task ' + taskId + ': ' + gate.blocking.join('; '),
+              }],
+              isError: true,
+            }
+          }
+        }
       }
       if (
         role === 'coder' &&
@@ -2661,6 +3593,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision } : {}),
         primary_task_id: primary_task_id ?? null,
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
@@ -2688,6 +3621,12 @@ function createServer(req: Request) {
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
+          ...(executionContract === 'NEXT'
+            ? [
+                ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+                ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+              ]
+            : []),
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
@@ -3147,6 +4086,108 @@ app.get('/selftest', (c) => {
   const nextRunId = uuidv7()
   const legacyCoderRun = { project_id: projectId, job_id: legacyJobId, run_id: legacyRunId, role: 'coder', lifecycle: 'IN_PROGRESS' }
   const nextCoderRun = { project_id: projectId, job_id: nextJobId, run_id: nextRunId, role: 'coder', lifecycle: 'IN_PROGRESS', execution_contract: 'NEXT' }
+  const checkpointId = 'CP-E29'
+  const consumerTaskId = uuidv7()
+  const evidenceNeedId = 'EN-E29'
+  const verificationId = uuidv7()
+  const attemptId = uuidv7()
+  const leaseToken = uuidv7()
+  const nextGateJob = {
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    planning_review: { status: 'PASS', reviewed_revision: 3 },
+    tasks: [{ task_id: consumerTaskId }],
+    evidence_needs: [{ evidence_need_id: evidenceNeedId, checkpoint_id: checkpointId, owner_task_id: consumerTaskId, required_by_task_ids: [consumerTaskId], planning_revision: 3 }],
+    evidence_requirements: [{ evidence_requirement_id: 'ER-E29', consumer_task_id: consumerTaskId, evidence_need_id: evidenceNeedId, checkpoint_id: checkpointId, planning_revision: 3 }],
+    test_checkpoints: [{ checkpoint_id: checkpointId, mode: 'VERIFY', boundary: 'BEFORE_NODE', boundary_node_id: consumerTaskId, prerequisite_node_ids: [], evidence_need_ids: [evidenceNeedId], planning_revision: 3 }],
+    milestones: [],
+  }
+  const nextGateClaim = {
+    kind: 'CHECKPOINT_CLAIM',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    mode: 'VERIFY',
+    state: 'SATISFIED',
+    attempt_id: attemptId,
+    attempt_kind: 'TEST',
+    lease_token: leaseToken,
+    target_revision: 'rev-b',
+    last_verification_id: verificationId,
+    last_result: 'PASS',
+    last_target_revision: 'rev-b',
+  }
+  const nextGateVerification = {
+    verification_id: verificationId,
+    kind: 'TEST',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    attempt_kind: 'TEST',
+    lease_token: leaseToken,
+    mode: 'VERIFY',
+    target_revision: 'rev-b',
+    producer: 'tester',
+    result: 'PASS',
+    applicability: {
+      status: 'CANDIDATE',
+      planning_revision: 3,
+      checkpoint_id: checkpointId,
+      target_revision: 'rev-b',
+      evidence_need_ids: [evidenceNeedId],
+    },
+  }
+  const nextGateClaimSnapshot = {
+    path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId),
+    sha: 'a'.repeat(40),
+    record_text: prettyJson(nextGateClaim),
+  }
+  const nextGateVerificationSnapshot = {
+    path: verificationPath(projectId, verificationId, 'NEXT'),
+    sha: 'b'.repeat(40),
+    record_text: prettyJson(nextGateVerification),
+  }
+  const nextTaskGatePass = evaluateNextEvidenceGate(nextGateJob, [nextGateClaimSnapshot], [nextGateVerificationSnapshot], { kind: 'TASK', id: consumerTaskId })
+  const nextTaskGateMissing = evaluateNextEvidenceGate(nextGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
+  const nextTaskGateStale = evaluateNextEvidenceGate({ ...nextGateJob, planning_revision: 4, planning_review: { status: 'PASS', reviewed_revision: 4 } }, [nextGateClaimSnapshot], [nextGateVerificationSnapshot], { kind: 'TASK', id: consumerTaskId })
+  const nextGateVerificationWrongNestedRevision = {
+    ...nextGateVerification,
+    applicability: { ...nextGateVerification.applicability, planning_revision: 2 },
+  }
+  const legacyGatePass = evaluateNextEvidenceGate({ project_id: projectId, job_id: legacyJobId, execution_contract: 'V2_STABLE' }, [], [], { kind: 'JOB', id: null })
+  const executionTopologyValid = validateExecutionTopology(
+    [{ task_id: consumerTaskId, dependencies: [] }],
+    [{ stage: 1, handler: 'coder', task_id: consumerTaskId, depends_on: [], next: null }],
+  ) === null
+  const executionTopologyStale = validateExecutionTopology(
+    [{ task_id: consumerTaskId, dependencies: [] }],
+    [{ stage: 1, handler: 'coder', task_id: uuidv7(), depends_on: [], next: null }],
+  ) !== null
+  const topologyDependencyGateJob = {
+    ...nextGateJob,
+    evidence_requirements: [],
+    planning_topology: [
+      { node_id: checkpointId, node_type: 'TEST_CHECKPOINT', depends_on: [], planning_revision: 3 },
+      { node_id: consumerTaskId, node_type: 'TASK', depends_on: [checkpointId], planning_revision: 3 },
+    ],
+  }
+  const topologyDependencyGateMissing = evaluateNextEvidenceGate(topologyDependencyGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
+  const topologyDependencyGatePass = evaluateNextEvidenceGate(topologyDependencyGateJob, [prettyJson(nextGateClaim)].map((record_text) => ({ path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId), sha: 'a'.repeat(40), record_text })), [prettyJson(nextGateVerification)].map((record_text) => ({ path: verificationPath(projectId, verificationId, 'NEXT'), sha: 'b'.repeat(40), record_text })), { kind: 'TASK', id: consumerTaskId })
+  const milestoneBoundaryPrereqs = checkpointBoundaryPrerequisiteIds(
+    { milestones: [{ milestone_id: 'M-E29', node_ids: [consumerTaskId, checkpointId] }] },
+    { checkpoint_id: checkpointId, boundary: 'MILESTONE_GATE', milestone_id: 'M-E29', prerequisite_node_ids: [] },
+  )
+  const jobFinalBoundaryPrereqs = checkpointBoundaryPrerequisiteIds(
+    { planning_topology: [{ node_id: consumerTaskId }, { node_id: checkpointId }, { node_id: 'CP-FINAL' }] },
+    { checkpoint_id: 'CP-FINAL', boundary: 'JOB_FINAL', prerequisite_node_ids: [] },
+  )
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -3176,6 +4217,21 @@ app.get('/selftest', (c) => {
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
     next_job_path_isolated: recordPath(projectId, 'JOBS', uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/WORK/JOBS/'),
     next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
+    next_checkpoint_claim_path_deterministic: checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') === checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') && checkpointClaimPath(projectId, nextJobId, 3, 'CP 1').includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_CLAIMS/'),
+    next_checkpoint_attempt_path_isolated: checkpointAttemptPath(projectId, uuidv7()).includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_ATTEMPTS/'),
+    checkpoint_lease_expiry_guard: checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() - 1000).toISOString() }) && !checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    cp5_task_gate_accepts_current_applicable_evidence: nextTaskGatePass.allowed,
+    cp5_task_gate_blocks_missing_evidence: !nextTaskGateMissing.allowed && nextTaskGateMissing.blocking.length === 1,
+    cp5_task_gate_rejects_stale_revision_evidence: !nextTaskGateStale.allowed,
+    cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
+    cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
+    cp5_execution_topology_validator_accepts_coherent_plan: executionTopologyValid,
+    cp5_execution_topology_validator_rejects_stale_task_mapping: executionTopologyStale,
+    cp5_typed_checkpoint_dependency_blocks_task_without_evidence: !topologyDependencyGateMissing.allowed,
+    cp5_typed_checkpoint_dependency_opens_with_applicable_evidence: topologyDependencyGatePass.allowed,
+    cp5_nested_applicability_revision_mismatch_rejected: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], nextGateClaim, nextGateVerificationWrongNestedRevision),
+    cp5_milestone_boundary_expands_runtime_prereqs: milestoneBoundaryPrereqs.includes(consumerTaskId) && !milestoneBoundaryPrereqs.includes(checkpointId),
+    cp5_job_final_boundary_expands_runtime_prereqs: jobFinalBoundaryPrereqs.includes(consumerTaskId) && jobFinalBoundaryPrereqs.includes(checkpointId) && !jobFinalBoundaryPrereqs.includes('CP-FINAL'),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',

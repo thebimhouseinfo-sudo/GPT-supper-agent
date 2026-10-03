@@ -43,6 +43,7 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 - `CP1_DELTA` — CP1 adds the missing canonical wording/process ownership without activating later runtime features.
 - `DEFER_CP3` — Tester semantic behavior belongs to CP3.
 - `CP4_DELTA` — CP4 adds first-class evidence/checkpoint planning structures without runtime execution.
+- `CP5_DELTA` — CP5 activates safe checkpoint execution, applicability, recovery and evidence gates.
 
 ## 3. Accepted lesson ledger
 
@@ -66,6 +67,9 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 | WL-016 | Environment/tooling limitation is not a product PASS or product failure; keep unavailable checks explicit | ALREADY_OWNED | `CAPABILITY-CATALOG.md`, `EXECUTION-AND-REVIEW.md` | CP0 Tester PASS_RETEST_REQUIRED | Existing/CP0 |
 | WL-017 | Merge checkpoints early into integration; promote to production main only at final release | ALREADY_OWNED | `docs/plans/GSA-UPGRADE-INTEGRATION-ROADMAP.md` | CP0 merge evidence | Upgrade roadmap |
 | WL-018 | LLC collects workflow candidates but never resolves them implicitly | CP1_DELTA | this ledger + `docs/architecture/EXECUTION-AND-REVIEW.md` | E26 | CP1 |
+| WL-019 | Random attempt IDs are not concurrency control; one deterministic checkpoint claim + exact-SHA lease must serialize a live Tester attempt | CP5_DELTA | `CORE-RECORD-CONTRACTS.md`, `EXECUTION-AND-REVIEW.md`, runtime checkpoint tools | E29 | CP5 |
+| WL-020 | `PASS_RETEST_REQUIRED` must never bypass a mandatory EvidenceRequirement/checkpoint gate | CP5_DELTA | `JOB-LIFECYCLE.md`, `EXECUTION-AND-REVIEW.md`, runtime evidence gate | E29 | CP5 |
+| WL-021 | PLAN_GAP/SPEC_GAP during NEXT execution requires a reviewed superseding planning revision; old revision evidence becomes non-applicable | CP5_DELTA | `STATE-MACHINE.md`, `EXECUTION-AND-REVIEW.md`, runtime plan supersession guard | E29 | CP5 |
 
 ## 4. CP1 closure rule
 
@@ -78,3 +82,6 @@ CP1 is complete only when:
 - E26 passes review.
 
 At CP7, this ledger is reread to prove no accepted lesson remains only in a working note.
+
+
+| WL-022 | Evidence JSON is not durable evidence: NEXT gates require deterministic path + exact blob-SHA snapshots and immediate read-back before consequential persistence | CP5_DELTA | `CORE-RECORD-CONTRACTS.md`, `EXECUTION-AND-REVIEW.md`, runtime gate/claim contracts | CP5 Reviewer finding + E29-19/20/21 | CP5 |

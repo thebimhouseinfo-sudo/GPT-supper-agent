@@ -332,3 +332,40 @@ For `execution_contract=NEXT`, Planner may persist first-class empirical plannin
 All CP4 collections are bound to the exact `planning_revision`. Once a NEXT Job has an active CP4 planning model, **every** plan revision must explicitly resupply/rebind the complete model; stale empirical topology must not carry forward silently.
 
 For `V2_STABLE`, these collections remain empty/non-activating. CP4 defines planning truth only; Tester dispatch, checkpoint claims/leases/replay and crash recovery remain CP5.
+
+
+## CP5 — NEXT checkpoint runtime contract
+
+For `execution_contract=NEXT`, a planned `TestCheckpointSpec` becomes executable only under one deterministic durable claim keyed by:
+
+```text
+project_id / job_id / planning_revision / checkpoint_id
+```
+
+The claim is the **single serialization point**. Exact-SHA create/update grants one current lease token and attempt identity. Append-preserving attempt/Verification records are children of that grant; they do not independently make evidence applicable.
+
+Runtime flow:
+
+```text
+checkpoint becomes runnable
+→ Tester Run
+→ checkpoint_claim_prepare
+→ persist/read back deterministic claim
+→ persist append-only attempt start
+→ Tester VERIFY / MEASURE / PROBE
+→ checkpoint_verification_prepare
+→ persist TEST/RETEST Verification
+→ exact-SHA terminal claim update
+→ gate/routing reads terminal claim + matching Verification
+```
+
+Replay by the same live claimant reuses the current token. A competing non-expired claim is rejected. Expired claims may be reclaimed with a new generation/token; stale tokens cannot finalize evidence.
+
+Routing:
+- `PRODUCT_FAILURE` → owning Coder repair → exact Goal Recheck on repaired target → `RETEST`;
+- `PLAN_GAP | SPEC_GAP` → evidence-backed Planner superseding revision → context-isolated planning Reviewer → resume only on PASS;
+- test/environment/integration blockers remain non-PASS and Retest only when ready.
+
+A superseding NEXT planning revision stays `IN_PROGRESS` but becomes non-dispatchable while `planning_review=PENDING/CHANGES_REQUIRED`. Old revision claims and Verifications are non-applicable automatically because runtime gates bind to the current `planning_revision`.
+
+`PASS_RETEST_REQUIRED` is only non-blocking coverage. It never satisfies a mandatory `EvidenceRequirement`, checkpoint, Milestone gate or Job completion prerequisite.

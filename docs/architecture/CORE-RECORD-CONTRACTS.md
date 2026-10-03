@@ -339,3 +339,161 @@ generated_at?
 ```
 
 No authoritative fact may exist only here.
+
+
+## NEXT Checkpoint Claim
+
+CP5 uses one mutable serialization record per Job planning revision + checkpoint. It exists only in NEXT memory.
+
+```text
+kind = CHECKPOINT_CLAIM
+project_id
+job_id
+execution_contract = NEXT
+planning_revision
+checkpoint_id
+mode
+state
+generation
+attempt_id
+attempt_kind = TEST | RETEST
+lease_token
+claimant_run_id
+lease_expires_at?
+target_ref
+target_revision
+prior_verification_id?
+last_verification_id?
+last_result?
+last_failure_class?
+last_target_revision?
+retest_required
+updated_at
+```
+
+The deterministic claim path is the sole authority for the current live lease token. Exact-SHA create/update is the concurrency gate. Random attempt records are never used as a lock.
+
+## NEXT Checkpoint Attempt
+
+Attempt start records are append-preserving children:
+
+```text
+kind = CHECKPOINT_ATTEMPT
+attempt_id
+project_id
+job_id
+execution_contract = NEXT
+planning_revision
+checkpoint_id
+mode
+attempt_kind
+lease_token
+claimant_run_id
+target_ref
+target_revision
+state = STARTED
+retest_of_verification_id?
+started_at
+```
+
+The attempt child does not store mutable live/terminal authority; the deterministic claim does.
+
+## Tester Verification applicability extension
+
+NEXT TEST/RETEST Verification adds:
+
+```text
+planning_revision
+checkpoint_id
+attempt_id
+attempt_kind
+lease_token
+mode
+failure_class?
+measurements[]
+retest_of_verification_id?
+applicability {
+  status = CANDIDATE | NON_APPLICABLE
+  planning_revision
+  checkpoint_id
+  evidence_need_ids[]
+  target_revision
+}
+route =
+  CONTINUE |
+  CODER_REPAIR_GOAL_RECHECK_RETEST |
+  PLANNER_REVISION_SUPERSEDE |
+  RETEST_WHEN_READY
+```
+
+A successful/observed Verification is persisted as `CANDIDATE`, never self-authoritative `APPLICABLE`. Applicability is derived only when the current terminal claim points to the same Verification/attempt/token, target identity and current planning revision. If terminal claim CAS loses, the candidate remains orphaned/non-applicable.
+
+## NEXT in-progress planning supersession
+
+A NEXT `IN_PROGRESS` Job may create a new planning revision only from a persisted current-revision PLAN_GAP/SPEC_GAP Tester Verification whose terminal claim points to that Verification, or as a direct repair of a `CHANGES_REQUIRED` review on that already-superseding revision.
+
+The Job remains `IN_PROGRESS`; the new revision resets `planning_review=PENDING` and blocks further NEXT dispatch until Reviewer PASS.
+
+
+### Tester Run ownership of checkpoint attempts
+
+A checkpoint lease is not valid from an arbitrary `claimant_run_id`. Claim preparation must receive the exact durable NEXT Tester Run snapshot and blob SHA, and external persistence must read it back before mutating the claim.
+
+Required claimant facts:
+
+```text
+role = tester
+lifecycle = IN_PROGRESS
+execution_contract = NEXT
+same project_id / job_id / run_id
+same exact target_ref / target_revision when bound
+```
+
+Terminal TEST/RETEST Verification repeats the same Run-ownership read-back before persistence. This keeps checkpoint execution attributed to a real Tester Run rather than an invented UUID.
+
+
+### Durable checkpoint evidence snapshots
+
+CP5 gate evaluation never treats caller-supplied record JSON or bare Task IDs as durable evidence.
+
+Every claim/Verification/Run consumed by a consequential NEXT gate is supplied as:
+
+```text
+DurableRecordSnapshot {
+  path
+  sha
+  record_text
+}
+```
+
+The snapshot must satisfy both semantic identity and deterministic path identity. Before the prepared consequential mutation (Run creation, checkpoint claim mutation, Job completion), the caller must read back the exact path and require the current Git blob SHA and record bytes to match the supplied snapshot.
+
+For checkpoint evidence:
+- claim path must equal `checkpointClaimPath(project, job, planning_revision, checkpoint)`;
+- TEST/RETEST Verification path must equal the deterministic NEXT Verification path;
+- a gate accepts exactly one current deterministic claim and exactly one referenced Verification.
+
+For prerequisite Tasks, completion is not a bare Task ID. It is derived from a durable NEXT Run snapshot that is:
+- for the same Project/Job;
+- bound to the current `planning_revision`;
+- `COMPLETED` with `PASS | PASS_RETEST_REQUIRED`;
+- bound to the prerequisite `primary_task_id`;
+- produced by the handler declared by the current topology.
+
+NEXT Run records therefore carry `planning_revision`. Historical V2_STABLE Run shape remains unchanged.
+
+
+## NEXT execution-topology coherence
+
+CP5 runtime still consumes the Job's execution `topology[]` for handler attribution while CP4 typed `planning_topology[]` expresses Task/checkpoint dependency semantics. Both must remain coherent.
+
+For NEXT:
+- every current Task appears exactly once in execution topology;
+- stage numbers and topology Task IDs are unique;
+- handler is one of Planner/Designer/Coder/Reviewer/Tester;
+- Task dependencies reference current Tasks, are unique, and do not self-reference;
+- topology `depends_on` matches the owning Task dependencies;
+- `next`, when present, points to another current Task;
+- revising `tasks` requires resupplying execution `topology`.
+
+Planning review validates this mechanically before a NEXT revision can dispatch.

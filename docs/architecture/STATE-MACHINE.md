@@ -254,3 +254,36 @@ PARTIAL
 NOT_MET
 UNVERIFIED
 ```
+
+
+## 20. NEXT checkpoint claim state (CP5)
+
+Checkpoint claim state is a separate runtime control domain, not Job/Run lifecycle:
+
+```text
+ACTIVE
+→ SATISFIED | OBSERVED | FAILED_PRODUCT | BLOCKED | NEEDS_PLANNER_REVISION
+
+ACTIVE --lease expires--> reclaim with new generation/token
+FAILED_PRODUCT / BLOCKED --valid RETEST claim--> ACTIVE
+NEEDS_PLANNER_REVISION --new reviewed planning revision--> old claim becomes non-applicable
+```
+
+Only the deterministic claim's current lease token is live. Attempt/Verification records are append-preserving evidence and cannot revive a stale token.
+
+A terminal TEST/RETEST Verification is evidence-applicable only while its planning revision is current and the terminal claim points to its exact verification/attempt/token.
+
+## 21. NEXT planning-review suspension during execution
+
+For NEXT only:
+
+```text
+IN_PROGRESS reviewed revision
+→ PLAN_GAP/SPEC_GAP
+→ new planning_revision + planning_review=PENDING
+→ dispatch/checkpoint claim blocked
+→ Reviewer PASS
+→ IN_PROGRESS dispatch resumes
+```
+
+This is a planning validity suspension inside `IN_PROGRESS`, not a new lifecycle state.

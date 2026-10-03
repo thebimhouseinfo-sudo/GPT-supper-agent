@@ -1,0 +1,51 @@
+{
+  "schema": "gsa.cp5.checkpoint-runtime-fixtures.v1",
+  "cases": [
+    {
+      "id": "single-live-claim",
+      "execution_contract": "NEXT",
+      "planning_revision": 3,
+      "checkpoint_id": "CP1",
+      "expected": "deterministic-claim-cas-single-winner"
+    },
+    {
+      "id": "stale-token",
+      "execution_contract": "NEXT",
+      "planning_revision": 3,
+      "checkpoint_id": "CP1",
+      "initial_generation": 1,
+      "reclaimed_generation": 2,
+      "expected": "generation-1-token-cannot-finalize"
+    },
+    {
+      "id": "consumer-blocked",
+      "execution_contract": "NEXT",
+      "planning_revision": 3,
+      "consumer_task_id": "T5",
+      "evidence_requirement": "ER1",
+      "verification_present": false,
+      "expected": "EVIDENCE_REQUIREMENT_BLOCKED"
+    },
+    {
+      "id": "product-failure-retest",
+      "execution_contract": "NEXT",
+      "failure_class": "PRODUCT_FAILURE",
+      "same_target_retest_allowed": false,
+      "repaired_goal_recheck_required": true
+    },
+    {
+      "id": "plan-gap-supersession",
+      "execution_contract": "NEXT",
+      "failure_class": "PLAN_GAP",
+      "same_revision_retest_allowed": false,
+      "planner_revision_required": true,
+      "reviewer_pass_required_before_resume": true
+    },
+    {
+      "id": "stable-compatibility",
+      "execution_contract": "V2_STABLE",
+      "checkpoint_runtime_required": false,
+      "expected": "legacy-path"
+    }
+  ]
+}
