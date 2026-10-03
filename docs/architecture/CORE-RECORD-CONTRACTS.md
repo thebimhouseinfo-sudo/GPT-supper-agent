@@ -450,3 +450,34 @@ same exact target_ref / target_revision when bound
 ```
 
 Terminal TEST/RETEST Verification repeats the same Run-ownership read-back before persistence. This keeps checkpoint execution attributed to a real Tester Run rather than an invented UUID.
+
+
+### Durable checkpoint evidence snapshots
+
+CP5 gate evaluation never treats caller-supplied record JSON or bare Task IDs as durable evidence.
+
+Every claim/Verification/Run consumed by a consequential NEXT gate is supplied as:
+
+```text
+DurableRecordSnapshot {
+  path
+  sha
+  record_text
+}
+```
+
+The snapshot must satisfy both semantic identity and deterministic path identity. Before the prepared consequential mutation (Run creation, checkpoint claim mutation, Job completion), the caller must read back the exact path and require the current Git blob SHA and record bytes to match the supplied snapshot.
+
+For checkpoint evidence:
+- claim path must equal `checkpointClaimPath(project, job, planning_revision, checkpoint)`;
+- TEST/RETEST Verification path must equal the deterministic NEXT Verification path;
+- a gate accepts exactly one current deterministic claim and exactly one referenced Verification.
+
+For prerequisite Tasks, completion is not a bare Task ID. It is derived from a durable NEXT Run snapshot that is:
+- for the same Project/Job;
+- bound to the current `planning_revision`;
+- `COMPLETED` with `PASS | PASS_RETEST_REQUIRED`;
+- bound to the prerequisite `primary_task_id`;
+- produced by the handler declared by the current topology.
+
+NEXT Run records therefore carry `planning_revision`. Historical V2_STABLE Run shape remains unchanged.
