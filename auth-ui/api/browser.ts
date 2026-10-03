@@ -252,6 +252,46 @@ async function signPrivateObject(auth: GsaUser, objectPath: string, expiresIn: n
   };
 }
 
+async function readPrivateObject(auth: GsaUser, objectPath: string) {
+  const response = await fetch(
+    SUPABASE_URL +
+      "/storage/v1/object/authenticated/" +
+      EVIDENCE_BUCKET +
+      "/" +
+      encodeStoragePath(objectPath),
+    {
+      method: "GET",
+      headers: commonStorageHeaders(auth),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      "EVIDENCE_READBACK_FAILED:" +
+        response.status +
+        ":" +
+        (await response.text()).slice(0, 300),
+    );
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function verifyPrivateObject(
+  auth: GsaUser,
+  objectPath: string,
+  expectedSize: number,
+  expectedSha256: string,
+) {
+  const bytes = await readPrivateObject(auth, objectPath);
+  if (bytes.byteLength !== expectedSize) {
+    throw new Error("EVIDENCE_READBACK_SIZE_MISMATCH");
+  }
+  const actualSha256 = await sha256Bytes(bytes);
+  if (actualSha256 !== expectedSha256) {
+    throw new Error("EVIDENCE_READBACK_HASH_MISMATCH");
+  }
+}
+
+
 async function insertEvidenceManifest(
   auth: GsaUser,
   bundleId: string,
@@ -279,6 +319,53 @@ async function insertEvidenceManifest(
         ":" +
         (await response.text()).slice(0, 500),
     );
+  }
+}
+
+
+async function verifyEvidenceManifest(
+  auth: GsaUser,
+  bundleId: string,
+  expectedManifestText: string,
+  expectedManifestSha256: string,
+) {
+  const url = new URL(SUPABASE_URL + "/rest/v1/gsa_evidence_bundles");
+  url.searchParams.set("select", "manifest_json,manifest_sha256");
+  url.searchParams.set("user_id", "eq." + auth.userId);
+  url.searchParams.set("evidence_bundle_id", "eq." + bundleId);
+  url.searchParams.set("limit", "1");
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...commonStorageHeaders(auth),
+      Accept: "application/json",
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      "EVIDENCE_MANIFEST_READBACK_FAILED:" +
+        response.status +
+        ":" +
+        text.slice(0, 300),
+    );
+  }
+
+  let rows: any[] = [];
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    throw new Error("EVIDENCE_MANIFEST_READBACK_INVALID_JSON");
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error("EVIDENCE_MANIFEST_READBACK_NOT_FOUND");
+  }
+  if (
+    String(rows[0]?.manifest_json || "") !== expectedManifestText ||
+    String(rows[0]?.manifest_sha256 || "").toLowerCase() !== expectedManifestSha256
+  ) {
+    throw new Error("EVIDENCE_MANIFEST_READBACK_MISMATCH");
   }
 }
 
@@ -359,6 +446,7 @@ async function persistEvidenceBundle(
       ".png";
     const hash = await sha256Bytes(bytes);
     await uploadPrivateObject(auth, objectPath, "image/png", bytes);
+    await verifyPrivateObject(auth, objectPath, bytes.byteLength, hash);
     const signed = await signPrivateObject(auth, objectPath, request.expiresIn);
     const artifactId = bundleId + ":screenshot:" + String(index + 1).padStart(2, "0");
 
@@ -420,6 +508,7 @@ async function persistEvidenceBundle(
   }
   const manifestSha256 = await sha256Bytes(manifestBytes);
   await insertEvidenceManifest(auth, bundleId, manifestText, manifestSha256);
+  await verifyEvidenceManifest(auth, bundleId, manifestText, manifestSha256);
 
   return {
     evidence,
