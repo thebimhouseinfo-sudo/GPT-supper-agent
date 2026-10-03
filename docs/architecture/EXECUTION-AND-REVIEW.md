@@ -355,7 +355,7 @@ A TEST/RETEST Verification is applicable only when all are true:
 - Verification applicability covers the checkpoint EvidenceNeed IDs;
 - VERIFY requires PASS; MEASURE/PROBE may use OBSERVED when no verdict threshold exists.
 
-If Verification persistence succeeds but terminal claim CAS loses, that Verification is orphaned/non-applicable.
+A successful/observed Verification carries `applicability.status=CANDIDATE`. Derived EvidenceApplicability becomes true only when the current terminal claim points to that exact Verification/attempt/token and all revision/target/EvidenceNeed checks match. If terminal claim CAS loses, the candidate is orphaned/non-applicable.
 
 ### Runtime gates
 
