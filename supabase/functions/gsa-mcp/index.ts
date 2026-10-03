@@ -176,6 +176,78 @@ function parseRecordTexts(texts: string[], label: string) {
   return { records, error: null as string | null }
 }
 
+function parseDurableSnapshots(snapshots: any[], label: string) {
+  const entries: any[] = []
+  for (const snapshot of snapshots ?? []) {
+    if (!snapshot || typeof snapshot.path !== 'string' || !snapshot.path || typeof snapshot.sha !== 'string' || !/^[0-9a-f]{40}$/.test(snapshot.sha) || typeof snapshot.record_text !== 'string') {
+      return { entries: [], error: label + ' contains an invalid durable snapshot envelope.' }
+    }
+    let record: any
+    try { record = JSON.parse(snapshot.record_text) } catch {
+      return { entries: [], error: label + ' contains invalid record JSON.' }
+    }
+    entries.push({ path: snapshot.path, sha: snapshot.sha, record_text: snapshot.record_text, record })
+  }
+  return { entries, error: null as string | null }
+}
+
+function validateClaimSnapshots(entries: any[], label: string) {
+  for (const entry of entries) {
+    const record = entry.record
+    if (record?.kind !== 'CHECKPOINT_CLAIM' || record.execution_contract !== 'NEXT') return label + ' contains a non-NEXT checkpoint claim.'
+    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id)) {
+      return label + ' path does not match the deterministic checkpoint claim path.'
+    }
+  }
+  return null
+}
+
+function validateVerificationSnapshots(entries: any[], label: string) {
+  for (const entry of entries) {
+    const record = entry.record
+    if (!['TEST','RETEST'].includes(record?.kind) || record.execution_contract !== 'NEXT' || typeof record.verification_id !== 'string') {
+      return label + ' contains a non-NEXT TEST/RETEST Verification.'
+    }
+    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT')) {
+      return label + ' path does not match the deterministic Verification path.'
+    }
+  }
+  return null
+}
+
+function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
+  const completed = new Set<string>()
+  for (const entry of entries) {
+    const run = entry.record
+    if (
+      resolveExecutionContract(run?.execution_contract) !== 'NEXT' ||
+      run.project_id !== job.project_id ||
+      run.job_id !== job.job_id ||
+      run.planning_revision !== job.planning_revision ||
+      run.lifecycle !== 'COMPLETED' ||
+      !['PASS','PASS_RETEST_REQUIRED'].includes(run.result) ||
+      typeof run.run_id !== 'string' ||
+      typeof run.primary_task_id !== 'string'
+    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision NEXT Task Run.' }
+    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT')) {
+      return { completed, error: 'completed_task_run_snapshots path does not match the NEXT Run path.' }
+    }
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === run.primary_task_id)
+    const topology = (job.topology ?? []).find((item: any) => item.task_id === run.primary_task_id)
+    if (!task || !topology || topology.handler !== run.role) {
+      return { completed, error: 'completed_task_run_snapshots Run does not match the current Task/topology handler.' }
+    }
+    completed.add(run.primary_task_id)
+  }
+  return { completed, error: null as string | null }
+}
+
+function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
+  return (snapshots ?? []).map((snapshot: any) =>
+    'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
+  )
+}
+
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
@@ -188,7 +260,8 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (verification.result === 'PASS' && claim.state !== 'SATISFIED') return false
   if (verification.result === 'OBSERVED' && claim.state !== 'OBSERVED') return false
   if (verification.applicability?.status !== 'CANDIDATE') return false
-  if (claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
+  if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
   const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
   const applicableEvidenceNeeds = verification.applicability?.evidence_need_ids ?? []
   if (!expectedEvidenceNeeds.every((id: string) => applicableEvidenceNeeds.includes(id))) return false
@@ -223,16 +296,20 @@ function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 
   return [...new Set((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
 }
 
-function evaluateNextEvidenceGate(job: any, claimTexts: string[], verificationTexts: string[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
+function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   const executionContract = jobExecutionContract(job)
   if (executionContract !== 'NEXT') return { allowed: true, required_checkpoint_ids: [], blocking: [] as string[] }
   if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
     return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT planning revision is not Reviewer PASS.'] }
   }
-  const claimParsed = parseRecordTexts(claimTexts ?? [], 'checkpoint_claim_record_texts')
+  const claimParsed = parseDurableSnapshots(claimSnapshots ?? [], 'checkpoint_claim_snapshots')
   if (claimParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [claimParsed.error] }
-  const verificationParsed = parseRecordTexts(verificationTexts ?? [], 'checkpoint_verification_record_texts')
+  const claimSnapshotError = validateClaimSnapshots(claimParsed.entries, 'checkpoint_claim_snapshots')
+  if (claimSnapshotError) return { allowed: false, required_checkpoint_ids: [], blocking: [claimSnapshotError] }
+  const verificationParsed = parseDurableSnapshots(verificationSnapshots ?? [], 'checkpoint_verification_snapshots')
   if (verificationParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationParsed.error] }
+  const verificationSnapshotError = validateVerificationSnapshots(verificationParsed.entries, 'checkpoint_verification_snapshots')
+  if (verificationSnapshotError) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationSnapshotError] }
   if (target.kind === 'TASK' && !(job.tasks ?? []).some((item: any) => item.task_id === target.id)) {
     return { allowed: false, required_checkpoint_ids: [], blocking: ['Unknown NEXT Task target: ' + String(target.id ?? '')] }
   }
@@ -247,20 +324,25 @@ function evaluateNextEvidenceGate(job: any, claimTexts: string[], verificationTe
       blocking.push('Unknown required checkpoint: ' + checkpointId)
       continue
     }
-    const matchingClaims = claimParsed.records.filter((item: any) =>
-      item?.kind === 'CHECKPOINT_CLAIM' &&
-      item.project_id === job.project_id &&
-      item.job_id === job.job_id &&
-      item.planning_revision === job.planning_revision &&
-      item.checkpoint_id === checkpointId
-    )
+    const matchingClaims = claimParsed.entries.filter((entry: any) => {
+      const item = entry.record
+      return item?.kind === 'CHECKPOINT_CLAIM' &&
+        item.project_id === job.project_id &&
+        item.job_id === job.job_id &&
+        item.planning_revision === job.planning_revision &&
+        item.checkpoint_id === checkpointId &&
+        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId)
+    })
     if (matchingClaims.length !== 1) {
       blocking.push('Expected exactly one current deterministic checkpoint claim: ' + checkpointId)
       continue
     }
-    const claim = matchingClaims[0]
-    const matchingVerifications = verificationParsed.records.filter((item: any) => item?.verification_id === claim.last_verification_id)
-    if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0])) {
+    const claim = matchingClaims[0].record
+    const matchingVerifications = verificationParsed.entries.filter((entry: any) =>
+      entry.record?.verification_id === claim.last_verification_id &&
+      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT')
+    )
+    if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0].record)) {
       blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
     }
   }
@@ -313,6 +395,12 @@ const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
   node_id: z.string().min(1),
   node_type: z.enum(['TASK','TEST_CHECKPOINT','MILESTONE_GATE']),
   depends_on: z.array(z.string().min(1)).default([]),
+})
+
+const DURABLE_RECORD_SNAPSHOT_SCHEMA = z.object({
+  path: z.string().min(1),
+  sha: z.string().regex(/^[0-9a-f]{40}$/),
+  record_text: z.string().min(2),
 })
 
 function normalizeNextPlanningModel(model: any, planningRevision: number) {
