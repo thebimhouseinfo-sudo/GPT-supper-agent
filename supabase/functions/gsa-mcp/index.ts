@@ -144,12 +144,94 @@ function executionMemoryRoot(projectId: string, executionContract: ExecutionCont
     : 'projects/' + projectId
 }
 
-function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
+function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
   return executionMemoryRoot(projectId, executionContract) + '/WORK/' + family + '/' + recordId + '.json'
 }
 
 function verificationPath(projectId: string, verificationId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
   return executionMemoryRoot(projectId, executionContract) + '/VERIFICATION/' + verificationId + '.json'
+}
+
+
+function checkpointClaimPath(projectId: string, jobId: string, planningRevision: number, checkpointId: string) {
+  return executionMemoryRoot(projectId, 'NEXT') + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+}
+
+function checkpointAttemptPath(projectId: string, attemptId: string) {
+  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT')
+}
+
+function checkpointLeaseExpired(claim: any, nowMs = Date.now()) {
+  const expires = Date.parse(String(claim?.lease_expires_at ?? ''))
+  return !Number.isFinite(expires) || expires <= nowMs
+}
+
+function parseRecordTexts(texts: string[], label: string) {
+  const records: any[] = []
+  for (const text of texts ?? []) {
+    try { records.push(JSON.parse(text)) } catch {
+      return { records: [], error: label + ' contains invalid JSON.' }
+    }
+  }
+  return { records, error: null as string | null }
+}
+
+function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
+  if (!claim || !verification) return false
+  if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
+  if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (!['SATISFIED','OBSERVED'].includes(claim.state)) return false
+  if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
+  if (!['TEST','RETEST'].includes(verification.kind) || verification.execution_contract !== 'NEXT') return false
+  if (verification.project_id !== job.project_id || verification.job_id !== job.job_id || verification.planning_revision !== job.planning_revision || verification.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (verification.applicability?.status !== 'APPLICABLE') return false
+  if (checkpoint.mode === 'VERIFY') return verification.result === 'PASS'
+  return ['PASS','OBSERVED'].includes(verification.result)
+}
+
+function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
+  if (target.kind === 'TASK') {
+    return [...new Set((job.evidence_requirements ?? [])
+      .filter((item: any) => item.consumer_task_id === target.id)
+      .map((item: any) => item.checkpoint_id))]
+  }
+  if (target.kind === 'MILESTONE') {
+    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === target.id)
+    return [...new Set(milestone?.gate_checkpoint_ids ?? [])]
+  }
+  return [...new Set((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
+}
+
+function evaluateNextEvidenceGate(job: any, claimTexts: string[], verificationTexts: string[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
+  const executionContract = jobExecutionContract(job)
+  if (executionContract !== 'NEXT') return { allowed: true, required_checkpoint_ids: [], blocking: [] as string[] }
+  const claimParsed = parseRecordTexts(claimTexts ?? [], 'checkpoint_claim_record_texts')
+  if (claimParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [claimParsed.error] }
+  const verificationParsed = parseRecordTexts(verificationTexts ?? [], 'checkpoint_verification_record_texts')
+  if (verificationParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationParsed.error] }
+  const ids = requiredCheckpointIds(job, target)
+  const blocking: string[] = []
+  for (const checkpointId of ids) {
+    const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpointId)
+    if (!checkpoint) {
+      blocking.push('Unknown required checkpoint: ' + checkpointId)
+      continue
+    }
+    const claim = claimParsed.records.find((item: any) =>
+      item?.kind === 'CHECKPOINT_CLAIM' &&
+      item.project_id === job.project_id &&
+      item.job_id === job.job_id &&
+      item.planning_revision === job.planning_revision &&
+      item.checkpoint_id === checkpointId
+    )
+    const verification = claim
+      ? verificationParsed.records.find((item: any) => item?.verification_id === claim.last_verification_id)
+      : null
+    if (!checkpointVerificationApplicable(job, checkpoint, claim, verification)) {
+      blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
+    }
+  }
+  return { allowed: blocking.length === 0, required_checkpoint_ids: ids, blocking }
 }
 
 function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
@@ -2076,6 +2158,8 @@ function createServer(req: Request) {
         result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
         planning_review_verification_ref: z.string().optional(),
+        checkpoint_claim_record_texts: z.array(z.string()).default([]),
+        checkpoint_verification_record_texts: z.array(z.string()).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -2087,7 +2171,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -2123,6 +2207,23 @@ function createServer(req: Request) {
         }
         if (!(completion_evidence_refs ?? []).length) {
           return { content: [{ type: 'text', text: 'Completed Job requires at least one durable completion evidence reference.' }], isError: true }
+        }
+        if (executionContract === 'NEXT') {
+          const gate = evaluateNextEvidenceGate(
+            current,
+            checkpoint_claim_record_texts ?? [],
+            checkpoint_verification_record_texts ?? [],
+            { kind: 'JOB', id: null },
+          )
+          if (!gate.allowed) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'NEXT_JOB_COMPLETION_BLOCKED: mandatory checkpoint/evidence gate is unsatisfied. PASS_RETEST_REQUIRED cannot bypass it. ' + gate.blocking.join('; '),
+              }],
+              isError: true,
+            }
+          }
         }
       }
       const next = {
@@ -2589,6 +2690,381 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'checkpoint_claim_prepare',
+    {
+      title: 'Prepare NEXT Tester checkpoint claim',
+      description: 'NEXT-only deterministic checkpoint claim/lease preparation. The claim path is keyed by project/job/planning_revision/checkpoint_id and is the sole serialization point for the live lease token.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1),
+        claimant_run_id: z.string().uuid(),
+        target_ref: z.string().min(1),
+        target_revision: z.string().min(1),
+        attempt_kind: z.enum(['TEST','RETEST']).default('TEST'),
+        retest_of_verification_id: z.string().min(1).optional(),
+        lease_seconds: z.number().int().min(60).max(3600).default(900),
+        current_claim_record_text: z.string().min(2).optional(),
+        current_claim_record_sha: z.string().min(7).optional(),
+      },
+      outputSchema: {
+        disposition: z.enum(['CLAIM','REUSE','ALREADY_SATISFIED']),
+        claim_memory_path: z.string(),
+        claim_operation: z.enum(['CREATE','UPDATE','NONE']),
+        expected_claim_sha: z.string().nullable(),
+        claim_record_text: z.string().nullable(),
+        attempt_memory_path: z.string().nullable(),
+        attempt_record_text: z.string().nullable(),
+        attempt_id: z.string().nullable(),
+        lease_token: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      if (!['READY','IN_PROGRESS'].includes(job.lifecycle)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job is not executable.' }], isError: true }
+      }
+      const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
+      if (!checkpoint) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: checkpoint is not part of the current planning revision.' }], isError: true }
+      }
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      let current: any = null
+      if (current_claim_record_text) {
+        if (!current_claim_record_sha) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim SHA is required with current claim text.' }], isError: true }
+        try { current = JSON.parse(current_claim_record_text) } catch {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim JSON is invalid.' }], isError: true }
+        }
+        if (current.kind !== 'CHECKPOINT_CLAIM' || current.project_id !== project_id || current.job_id !== job_id || current.planning_revision !== job.planning_revision || current.checkpoint_id !== checkpoint_id) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim identity/revision mismatch.' }], isError: true }
+        }
+        if (current.state === 'ACTIVE' && !checkpointLeaseExpired(current)) {
+          if (current.claimant_run_id === claimant_run_id && current.target_revision === target_revision) {
+            const out = {
+              disposition: 'REUSE',
+              claim_memory_path: claimPath,
+              claim_operation: 'NONE',
+              expected_claim_sha: current_claim_record_sha,
+              claim_record_text: null,
+              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id),
+              attempt_record_text: null,
+              attempt_id: current.attempt_id,
+              lease_token: current.lease_token,
+              external_steps: [
+                'Reuse the existing active attempt/token; do not create another claim or attempt record.',
+                'Read the existing attempt record at attempt_memory_path before continuing Tester execution.',
+              ],
+            }
+            return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+          }
+          return { content: [{ type: 'text', text: 'CHECKPOINT_ALREADY_CLAIMED: another non-expired live lease owns this checkpoint revision.' }], isError: true }
+        }
+        if (['SATISFIED','OBSERVED'].includes(current.state) && attempt_kind === 'TEST') {
+          const out = {
+            disposition: 'ALREADY_SATISFIED',
+            claim_memory_path: claimPath,
+            claim_operation: 'NONE',
+            expected_claim_sha: current_claim_record_sha,
+            claim_record_text: null,
+            attempt_memory_path: null,
+            attempt_record_text: null,
+            attempt_id: null,
+            lease_token: null,
+            external_steps: ['Use the current terminal claim plus its last_verification_id for evidence gating; do not create a duplicate TEST attempt.'],
+          }
+          return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+        }
+        if (current.state === 'NEEDS_PLANNER_REVISION') {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_PLAN_REVISION_REQUIRED: PLAN_GAP/SPEC_GAP must be resolved by a new reviewed planning revision; do not RETEST this revision.' }], isError: true }
+        }
+        if (attempt_kind === 'RETEST') {
+          if (!current.retest_required || !retest_of_verification_id || current.last_verification_id !== retest_of_verification_id) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST must reference the terminal verification that requested Retest.' }], isError: true }
+          }
+          if (current.last_failure_class === 'PRODUCT_FAILURE' && current.last_target_revision === target_revision) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires a repaired target revision/state.' }], isError: true }
+          }
+        } else if (current.state && !checkpointLeaseExpired(current)) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: terminal/blocked checkpoint requires an explicit RETEST claim.' }], isError: true }
+        }
+      } else if (attempt_kind === 'RETEST') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST requires the current terminal claim record.' }], isError: true }
+      }
+
+      const attemptId = uuidv7()
+      const leaseToken = uuidv7()
+      const now = new Date()
+      const expires = new Date(now.getTime() + Number(lease_seconds ?? 900) * 1000)
+      const generation = Number(current?.generation ?? 0) + 1
+      const claim = {
+        kind: 'CHECKPOINT_CLAIM',
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        mode: checkpoint.mode,
+        state: 'ACTIVE',
+        generation,
+        attempt_id: attemptId,
+        attempt_kind,
+        lease_token: leaseToken,
+        claimant_run_id,
+        lease_expires_at: expires.toISOString(),
+        target_ref,
+        target_revision,
+        prior_verification_id: retest_of_verification_id ?? current?.last_verification_id ?? null,
+        last_verification_id: current?.last_verification_id ?? null,
+        last_result: current?.last_result ?? null,
+        last_failure_class: current?.last_failure_class ?? null,
+        last_target_revision: current?.last_target_revision ?? null,
+        retest_required: false,
+        updated_at: now.toISOString(),
+      }
+      const attempt = {
+        kind: 'CHECKPOINT_ATTEMPT',
+        attempt_id: attemptId,
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        mode: checkpoint.mode,
+        attempt_kind,
+        lease_token: leaseToken,
+        claimant_run_id,
+        target_ref,
+        target_revision,
+        lifecycle: 'IN_PROGRESS',
+        retest_of_verification_id: retest_of_verification_id ?? null,
+        started_at: now.toISOString(),
+        ended_at: null,
+      }
+      const attemptPath = checkpointAttemptPath(project_id, attemptId)
+      const claimOperation = current ? 'UPDATE' : 'CREATE'
+      const externalSteps = [
+        claimOperation === 'CREATE'
+          ? 'Call authorize_memory_mutation(create) for claim_memory_path, then create the deterministic claim record. Concurrent create failure means another claimant won; refetch instead of retrying blind.'
+          : 'Immediately refetch claim_memory_path and require its blob SHA equals expected_claim_sha; authorize/update with exact SHA. Stale SHA means another claimant/reclaimer won.',
+        'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
+        'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
+        'Only the current durable lease token may produce terminal Tester Verification.',
+      ]
+      const out = {
+        disposition: 'CLAIM',
+        claim_memory_path: claimPath,
+        claim_operation: claimOperation,
+        expected_claim_sha: current_claim_record_sha ?? null,
+        claim_record_text: prettyJson(claim),
+        attempt_memory_path: attemptPath,
+        attempt_record_text: prettyJson(attempt),
+        attempt_id: attemptId,
+        lease_token: leaseToken,
+        external_steps: externalSteps,
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'checkpoint_verification_prepare',
+    {
+      title: 'Prepare NEXT Tester checkpoint Verification',
+      description: 'Prepare append-preserving TEST/RETEST Verification and the terminal deterministic claim update. Applicability requires the claim to finalize with the same attempt/token/verification id.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1),
+        claim_record_text: z.string().min(2),
+        claim_record_sha: z.string().min(7),
+        attempt_id: z.string().uuid(),
+        lease_token: z.string().uuid(),
+        target_ref: z.string().min(1),
+        target_revision: z.string().min(1),
+        result: z.enum(['PASS','FAIL','BLOCKED','OBSERVED','UNVERIFIED']),
+        failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
+        evidence_refs: z.array(z.string()).default([]),
+        measurements: z.array(z.object({ name: z.string().min(1), value: z.any() })).default([]),
+        limitations: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        claim_memory_path: z.string(),
+        expected_claim_sha: z.string(),
+        next_claim_record_text: z.string(),
+        route: z.enum(['CONTINUE','CODER_REPAIR_GOAL_RECHECK_RETEST','PLANNER_REVISION_SUPERSEDE','RETEST_WHEN_READY']),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
+      let job: any, claim: any
+      try { job = JSON.parse(job_record_text); claim = JSON.parse(claim_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job/claim JSON.' }], isError: true }
+      }
+      if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
+      if (!checkpoint) return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: checkpoint not in current planning revision.' }], isError: true }
+      if (
+        claim.kind !== 'CHECKPOINT_CLAIM' ||
+        claim.project_id !== project_id ||
+        claim.job_id !== job_id ||
+        claim.planning_revision !== job.planning_revision ||
+        claim.checkpoint_id !== checkpoint_id ||
+        claim.state !== 'ACTIVE' ||
+        claim.attempt_id !== attempt_id ||
+        claim.lease_token !== lease_token
+      ) {
+        return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: claim/attempt/token is no longer the active lease.' }], isError: true }
+      }
+      if (checkpointLeaseExpired(claim)) {
+        return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: lease expired; reclaim before producing Verification.' }], isError: true }
+      }
+      if (claim.target_revision !== target_revision || claim.target_ref !== target_ref) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
+      }
+      if (result === 'FAIL' && !failure_class) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: FAIL requires failure_class.' }], isError: true }
+      }
+      if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: OBSERVED is only valid for MEASURE/PROBE.' }], isError: true }
+      }
+
+      const verificationId = uuidv7()
+      const successful = result === 'PASS' || result === 'OBSERVED'
+      const plannerGap = ['PLAN_GAP','SPEC_GAP'].includes(failure_class ?? '')
+      const productFailure = failure_class === 'PRODUCT_FAILURE'
+      const state = result === 'PASS' ? 'SATISFIED' : result === 'OBSERVED' ? 'OBSERVED' : plannerGap ? 'NEEDS_PLANNER_REVISION' : productFailure ? 'FAILED_PRODUCT' : 'BLOCKED'
+      const route = successful ? 'CONTINUE' : plannerGap ? 'PLANNER_REVISION_SUPERSEDE' : productFailure ? 'CODER_REPAIR_GOAL_RECHECK_RETEST' : 'RETEST_WHEN_READY'
+      const retestRequired = !successful && !plannerGap
+      const applicabilityStatus = successful ? 'APPLICABLE' : 'NON_APPLICABLE'
+      const now = new Date().toISOString()
+      const verification = {
+        verification_id: verificationId,
+        kind: claim.attempt_kind === 'RETEST' ? 'RETEST' : 'TEST',
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        attempt_id,
+        attempt_kind: claim.attempt_kind,
+        lease_token,
+        mode: checkpoint.mode,
+        target_ref,
+        target_revision,
+        producer: 'tester',
+        result,
+        failure_class: failure_class ?? null,
+        evidence_refs: evidence_refs ?? [],
+        measurements: measurements ?? [],
+        limitations: limitations ?? [],
+        retest_of_verification_id: claim.prior_verification_id ?? null,
+        applicability: {
+          status: applicabilityStatus,
+          planning_revision: job.planning_revision,
+          checkpoint_id,
+          evidence_need_ids: checkpoint.evidence_need_ids ?? [],
+          target_revision,
+        },
+        route,
+        created_at: now,
+      }
+      const nextClaim = {
+        ...claim,
+        state,
+        lease_expires_at: null,
+        last_verification_id: verificationId,
+        last_result: result,
+        last_failure_class: failure_class ?? null,
+        last_target_revision: target_revision,
+        retest_required: retestRequired,
+        updated_at: now,
+      }
+      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT')
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: verificationPathValue,
+        verification_record_text: prettyJson(verification),
+        claim_memory_path: claimPath,
+        expected_claim_sha: claim_record_sha,
+        next_claim_record_text: prettyJson(nextClaim),
+        route,
+        external_steps: [
+          'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
+          'Authorize/create verification_memory_path and persist verification_record_text append-only.',
+          'Then authorize/update claim_memory_path with next_claim_record_text using expected_claim_sha exactly.',
+          'If the claim update loses CAS, the Verification is orphaned/non-applicable because evidence gates require current claim.last_verification_id + attempt/token match. Refetch and reconcile; never treat the orphan as PASS.',
+          successful
+            ? 'The terminal claim can satisfy gates only after read-back proves last_verification_id points to this Verification.'
+            : route === 'PLANNER_REVISION_SUPERSEDE'
+              ? 'Route to Planner. A later reviewed planning_revision uses a different deterministic claim namespace and makes this revision non-applicable.'
+              : route === 'CODER_REPAIR_GOAL_RECHECK_RETEST'
+                ? 'Route to owning Coder repair. After exact Goal Recheck, claim RETEST against the repaired target revision.'
+                : 'Retest only after the blocking test/environment/integration condition is ready.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'checkpoint_gate_evaluate',
+    {
+      title: 'Evaluate NEXT checkpoint evidence gate',
+      description: 'Read-only evidence applicability guard for NEXT Task, Milestone or Job targets. V2_STABLE always preserves the legacy path.',
+      inputSchema: {
+        job_record_text: z.string().min(2),
+        target_kind: z.enum(['TASK','MILESTONE','JOB']),
+        target_id: z.string().optional(),
+        checkpoint_claim_record_texts: z.array(z.string()).default([]),
+        checkpoint_verification_record_texts: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        required_checkpoint_ids: z.array(z.string()),
+        blocking: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ job_record_text, target_kind, target_id, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to evaluate checkpoint gate.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      const gate = evaluateNextEvidenceGate(job, checkpoint_claim_record_texts ?? [], checkpoint_verification_record_texts ?? [], { kind: target_kind, id: target_id ?? null })
+      return { structuredContent: gate, content: [{ type: 'text', text: JSON.stringify(gate) }] }
+    },
+  )
+
+  server.registerTool(
     'run_begin',
     {
       title: 'Begin a GSA Job Run',
@@ -2605,6 +3081,8 @@ function createServer(req: Request) {
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
         input_refs: z.array(z.string()).default([]),
+        checkpoint_claim_record_texts: z.array(z.string()).default([]),
+        checkpoint_verification_record_texts: z.array(z.string()).default([]),
       },
       outputSchema: {
         run_id: z.string(),
@@ -2618,7 +3096,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs }: any) => {
+    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -2629,6 +3107,23 @@ function createServer(req: Request) {
       if (!executionContract) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && primary_task_id) {
+        const gate = evaluateNextEvidenceGate(
+          owningJob,
+          checkpoint_claim_record_texts ?? [],
+          checkpoint_verification_record_texts ?? [],
+          { kind: 'TASK', id: primary_task_id },
+        )
+        if (!gate.allowed) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'EVIDENCE_REQUIREMENT_BLOCKED: ' + gate.blocking.join('; '),
+            }],
+            isError: true,
+          }
+        }
       }
       if (
         role === 'coder' &&
@@ -3176,6 +3671,9 @@ app.get('/selftest', (c) => {
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
     next_job_path_isolated: recordPath(projectId, 'JOBS', uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/WORK/JOBS/'),
     next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
+    next_checkpoint_claim_path_deterministic: checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') === checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') && checkpointClaimPath(projectId, nextJobId, 3, 'CP 1').includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_CLAIMS/'),
+    next_checkpoint_attempt_path_isolated: checkpointAttemptPath(projectId, uuidv7()).includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_ATTEMPTS/'),
+    checkpoint_lease_expiry_guard: checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() - 1000).toISOString() }) && !checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() + 60_000).toISOString() }),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
