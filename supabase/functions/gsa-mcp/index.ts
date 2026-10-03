@@ -193,6 +193,20 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   return ['PASS','OBSERVED'].includes(verification.result)
 }
 
+function checkpointBoundaryPrerequisiteIds(job: any, checkpoint: any) {
+  const ids = new Set<string>(checkpoint.prerequisite_node_ids ?? [])
+  if (checkpoint.boundary === 'MILESTONE_GATE') {
+    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === checkpoint.milestone_id)
+    for (const id of milestone?.node_ids ?? []) if (id !== checkpoint.checkpoint_id) ids.add(id)
+  }
+  if (checkpoint.boundary === 'JOB_FINAL') {
+    for (const node of job.planning_topology ?? []) {
+      if (node.node_id !== checkpoint.checkpoint_id) ids.add(node.node_id)
+    }
+  }
+  return [...ids]
+}
+
 function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   if (target.kind === 'TASK') {
     return [...new Set((job.evidence_requirements ?? [])
@@ -2852,7 +2866,11 @@ function createServer(req: Request) {
       if (prerequisiteClaims.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaims.error }], isError: true }
       const prerequisiteVerifications = parseRecordTexts(prerequisite_verification_record_texts ?? [], 'prerequisite_verification_record_texts')
       if (prerequisiteVerifications.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerifications.error }], isError: true }
-      for (const prerequisiteId of checkpoint.prerequisite_node_ids ?? []) {
+      if (checkpoint.boundary === 'BEFORE_NODE' && checkpoint.boundary_node_id && (completed_task_ids ?? []).includes(checkpoint.boundary_node_id)) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_BOUNDARY_MISSED: BEFORE_NODE target is already durably completed: ' + checkpoint.boundary_node_id }], isError: true }
+      }
+      const runtimePrerequisiteIds = checkpointBoundaryPrerequisiteIds(job, checkpoint)
+      for (const prerequisiteId of runtimePrerequisiteIds) {
         const prerequisiteCheckpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === prerequisiteId)
         if (prerequisiteCheckpoint) {
           const prerequisiteClaim = prerequisiteClaims.records.find((item: any) =>
@@ -3019,6 +3037,8 @@ function createServer(req: Request) {
           : 'Immediately refetch claim_memory_path and require its blob SHA equals expected_claim_sha; authorize/update with exact SHA. Stale SHA means another claimant/reclaimer won.',
         'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
         'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
+        'Derive completed_task_ids from current durable Run/Verification progress for this Job revision; never trust conversation memory or caller assertion alone. Read prerequisite claim/Verification records from NEXT memory before using them.',
+        'For MILESTONE_GATE and JOB_FINAL, runtime prerequisites are expanded from the current milestone/planning_topology; BEFORE_NODE is rejected once its boundary Task is already completed.',
         'Only the current durable lease token may produce terminal Tester Verification.',
         current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST' && current.state !== 'ACTIVE'
           ? 'Read back repair_goal_recheck_verification_ref and require it equals the supplied Goal Recheck for the repaired target revision before Tester execution.'
