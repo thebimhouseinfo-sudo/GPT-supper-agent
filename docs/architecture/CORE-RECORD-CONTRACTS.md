@@ -481,3 +481,19 @@ For prerequisite Tasks, completion is not a bare Task ID. It is derived from a d
 - produced by the handler declared by the current topology.
 
 NEXT Run records therefore carry `planning_revision`. Historical V2_STABLE Run shape remains unchanged.
+
+
+## NEXT execution-topology coherence
+
+CP5 runtime still consumes the Job's execution `topology[]` for handler attribution while CP4 typed `planning_topology[]` expresses Task/checkpoint dependency semantics. Both must remain coherent.
+
+For NEXT:
+- every current Task appears exactly once in execution topology;
+- stage numbers and topology Task IDs are unique;
+- handler is one of Planner/Designer/Coder/Reviewer/Tester;
+- Task dependencies reference current Tasks, are unique, and do not self-reference;
+- topology `depends_on` matches the owning Task dependencies;
+- `next`, when present, points to another current Task;
+- revising `tasks` requires resupplying execution `topology`.
+
+Planning review validates this mechanically before a NEXT revision can dispatch.
