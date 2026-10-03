@@ -321,3 +321,69 @@ Planning-review validates, before READY:
 Once a NEXT Job has an active CP4 evidence graph, no later planning revision may silently inherit it. Planner must explicitly resupply/rebind all CP4 collections for every new planning revision.
 
 CP4 does **not** execute checkpoints. Runtime attempts, claims/leases, replay, crash/restart recovery, RETEST orchestration and EvidenceApplicability enforcement remain CP5.
+
+
+## 18. CP5 NEXT checkpoint execution and EvidenceApplicability
+
+### Claim / attempt serialization
+
+Each NEXT checkpoint revision has one deterministic claim record. The claim path—not the random attempt ID—is the concurrency serialization point.
+
+```text
+deterministic claim
+  state = ACTIVE | SATISFIED | OBSERVED | FAILED_PRODUCT | BLOCKED | NEEDS_PLANNER_REVISION
+  generation
+  attempt_id
+  lease_token
+  lease_expires_at
+  target_revision
+  last_verification_id
+```
+
+Creating or reclaiming a lease uses exact-SHA optimistic concurrency. Only the current token may produce terminal Tester evidence. An expired lease can be reclaimed; after reclaim, the previous token is stale and its completion is rejected.
+
+The attempt child is append-preserving evidence that execution started. Live/terminal authority comes from the current deterministic claim plus its matching Verification.
+
+### EvidenceApplicability
+
+A TEST/RETEST Verification is applicable only when all are true:
+- execution contract is NEXT;
+- Job/planning revision and checkpoint match the current plan;
+- terminal claim state is satisfying for the checkpoint mode;
+- claim `last_verification_id`, `attempt_id` and `lease_token` match the Verification;
+- target revision/state identity matches;
+- Verification applicability covers the checkpoint EvidenceNeed IDs;
+- VERIFY requires PASS; MEASURE/PROBE may use OBSERVED when no verdict threshold exists.
+
+If Verification persistence succeeds but terminal claim CAS loses, that Verification is orphaned/non-applicable.
+
+### Runtime gates
+
+Before a NEXT consumer Task starts, every matching `EvidenceRequirement` must have applicable evidence. Milestone gates require their declared gate checkpoints. Job completion requires all planned checkpoint obligations to be applicable.
+
+`PASS_RETEST_REQUIRED` cannot bypass a mandatory evidence/checkpoint gate. It may close only coverage that is explicitly non-blocking.
+
+### Failure and Retest routing
+
+```text
+PRODUCT_FAILURE
+→ owning Coder repair
+→ exact Goal Recheck for repaired target revision
+→ RETEST claim
+→ Tester
+
+PLAN_GAP / SPEC_GAP
+→ terminal claim NEEDS_PLANNER_REVISION
+→ Planner revises NEXT IN_PROGRESS Job
+→ complete CP4 graph rebound to new planning_revision
+→ planning Reviewer
+→ PASS resumes dispatch
+
+TEST_FAILURE / ENVIRONMENT_FAILURE / NOT_READY / INTEGRATION_NOT_READY
+→ BLOCKED evidence
+→ Retest when condition is ready
+```
+
+A PRODUCT_FAILURE Retest on the same target revision is rejected. Review-repair revisions after the first PLAN_GAP/SPEC_GAP supersession do not require a duplicate Tester finding; they remain in the same planning-review loop.
+
+V2_STABLE does not read or enforce CP5 claims, checkpoint evidence gates or superseding-plan runtime behavior.
