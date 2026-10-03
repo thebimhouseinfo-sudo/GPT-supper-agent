@@ -433,3 +433,20 @@ Verification alone is insufficient for applicability. The current terminal claim
 A NEXT `IN_PROGRESS` Job may create a new planning revision only from a persisted current-revision PLAN_GAP/SPEC_GAP Tester Verification whose terminal claim points to that Verification, or as a direct repair of a `CHANGES_REQUIRED` review on that already-superseding revision.
 
 The Job remains `IN_PROGRESS`; the new revision resets `planning_review=PENDING` and blocks further NEXT dispatch until Reviewer PASS.
+
+
+### Tester Run ownership of checkpoint attempts
+
+A checkpoint lease is not valid from an arbitrary `claimant_run_id`. Claim preparation must receive the exact durable NEXT Tester Run snapshot and blob SHA, and external persistence must read it back before mutating the claim.
+
+Required claimant facts:
+
+```text
+role = tester
+lifecycle = IN_PROGRESS
+execution_contract = NEXT
+same project_id / job_id / run_id
+same exact target_ref / target_revision when bound
+```
+
+Terminal TEST/RETEST Verification repeats the same Run-ownership read-back before persistence. This keeps checkpoint execution attributed to a real Tester Run rather than an invented UUID.
