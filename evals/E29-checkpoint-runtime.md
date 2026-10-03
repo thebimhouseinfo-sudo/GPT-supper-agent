@@ -130,3 +130,19 @@ Expected:
 - no screenshot/evidence artifact storage backend;
 - no Human evidence manifest/presentation contract;
 - no production main/gsa-mcp activation.
+
+
+## E29-13 boundary readiness
+
+- AFTER_NODE_SET requires all explicit prerequisite nodes.
+- MILESTONE_GATE expands prerequisites to the current milestone node set.
+- JOB_FINAL expands prerequisites to all current typed planning nodes except itself.
+- BEFORE_NODE is rejected if the boundary Task is already durably completed.
+
+Expected: a checkpoint cannot be claimed before its semantic boundary is ready, even when its explicit prerequisite_node_ids are incomplete/empty.
+
+## E29-14 prerequisite evidence source
+
+Supply a prerequisite Task ID without durable completion evidence, or a prerequisite checkpoint without a current applicable terminal claim/Verification.
+
+Expected: claim is blocked. completed_task_ids must be derived from durable current-revision progress rather than conversation memory.
