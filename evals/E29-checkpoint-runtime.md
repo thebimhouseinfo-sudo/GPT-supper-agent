@@ -214,3 +214,32 @@ Expected: external persistence contract detects blob-SHA mismatch on immediate r
 Change only `verification.applicability.planning_revision` or `verification.applicability.checkpoint_id` while all outer Verification fields still match.
 
 Expected: evidence is non-applicable and the mandatory gate stays blocked.
+
+
+## E29-16 affected-task evidence-gate bypass
+
+Create a NEXT Coder/Designer Run with:
+- an unblocked primary Task;
+- an affected Task whose EvidenceRequirement/checkpoint is unsatisfied.
+
+Expected: run_begin rejects the Run and identifies the affected Task as evidence-blocked.
+
+Also supply an affected_task_ref that is not a current Task.
+
+Expected: NEXT_TASK_BINDING_REJECTED.
+
+## E29-17 typed checkpoint dependency gate
+
+Create a Task node whose typed planning_topology directly depends on a TEST_CHECKPOINT or MILESTONE_GATE, but omit a duplicate EvidenceRequirement.
+
+Expected: Task dispatch is blocked until that checkpoint has one current applicable terminal claim + Verification.
+
+## E29-18 execution-topology coherence during supersession
+
+For a NEXT planning revision:
+- change tasks while omitting topology;
+- provide duplicate/missing Task stages;
+- mismatch Task.dependencies versus topology.depends_on;
+- use an invalid handler or stale Task ID.
+
+Expected: job revision/planning review rejects the plan. A coherent tasks+topology pair is required before Reviewer PASS and runtime resume.
