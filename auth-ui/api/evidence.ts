@@ -43,27 +43,52 @@ function commonHeaders(auth: GsaUser) {
   };
 }
 
-async function downloadPrivateJson(auth: GsaUser, objectPath: string) {
-  const response = await fetch(
-    SUPABASE_URL +
-      "/storage/v1/object/authenticated/" +
-      EVIDENCE_BUCKET +
-      "/" +
-      encodeStoragePath(objectPath),
-    {
-      method: "GET",
-      headers: commonHeaders(auth),
+async function readManifestRecord(auth: GsaUser, bundleId: string) {
+  const url = new URL(SUPABASE_URL + "/rest/v1/gsa_evidence_bundles");
+  url.searchParams.set("select", "manifest_json,manifest_sha256");
+  url.searchParams.set("user_id", "eq." + auth.userId);
+  url.searchParams.set("evidence_bundle_id", "eq." + bundleId);
+  url.searchParams.set("limit", "1");
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...commonHeaders(auth),
+      Accept: "application/json",
     },
-  );
+  });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error("EVIDENCE_MANIFEST_READ_FAILED:" + response.status);
+    throw new Error("EVIDENCE_MANIFEST_READ_FAILED:" + response.status + ":" + text.slice(0, 300));
   }
+
+  let rows: any[] = [];
   try {
-    return { value: JSON.parse(text), raw: text };
+    rows = JSON.parse(text);
+  } catch {
+    throw new Error("EVIDENCE_MANIFEST_ROW_INVALID_JSON");
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error("EVIDENCE_MANIFEST_NOT_FOUND");
+  }
+
+  const manifestJson = String(rows[0]?.manifest_json || "");
+  const manifestSha256 = String(rows[0]?.manifest_sha256 || "").toLowerCase();
+  if (!manifestJson || !/^[0-9a-f]{64}$/.test(manifestSha256)) {
+    throw new Error("EVIDENCE_MANIFEST_ROW_INVALID");
+  }
+  const actualSha256 = await sha256Text(manifestJson);
+  if (actualSha256 !== manifestSha256) {
+    throw new Error("EVIDENCE_MANIFEST_HASH_MISMATCH");
+  }
+
+  let manifest: any = null;
+  try {
+    manifest = JSON.parse(manifestJson);
   } catch {
     throw new Error("EVIDENCE_MANIFEST_INVALID_JSON");
   }
+  return { manifest, manifestSha256 };
 }
 
 async function signPrivateObject(auth: GsaUser, objectPath: string) {
@@ -123,9 +148,9 @@ export default async function handler(req: any, res: any) {
     const auth = await requireGsaUser(req);
     const bundleId = validBundleId(req.query?.bundle || req.query?.bundle_id);
     const root = auth.userId + "/bundles/" + bundleId + "/";
-    const manifestPath = root + "manifest.json";
-    const downloaded = await downloadPrivateJson(auth, manifestPath);
-    const manifest: any = downloaded.value;
+    const manifestPath = "db:gsa_evidence_bundles/" + bundleId;
+    const stored = await readManifestRecord(auth, bundleId);
+    const manifest: any = stored.manifest;
 
     if (
       manifest?.schema_version !== 1 ||
@@ -144,7 +169,7 @@ export default async function handler(req: any, res: any) {
     const signedArtifacts = [];
     for (const artifact of artifacts) {
       const storagePath = String(artifact?.storage_path || "");
-      if (!storagePath.startsWith(root) || storagePath === manifestPath) {
+      if (!storagePath.startsWith(root)) {
         throw new Error("EVIDENCE_ARTIFACT_PATH_OUT_OF_BUNDLE");
       }
       const signed = await signPrivateObject(auth, storagePath);
@@ -157,7 +182,7 @@ export default async function handler(req: any, res: any) {
     return json(res, 200, {
       ok: true,
       evidence_bundle_id: bundleId,
-      manifest_sha256: await sha256Text(downloaded.raw),
+      manifest_sha256: stored.manifestSha256,
       manifest,
       artifacts: signedArtifacts,
     });
@@ -166,7 +191,7 @@ export default async function handler(req: any, res: any) {
     const status =
       message === "AUTH_REQUIRED"
         ? 401
-        : message.startsWith("EVIDENCE_MANIFEST_READ_FAILED:404")
+        : message === "EVIDENCE_MANIFEST_NOT_FOUND"
           ? 404
           : 400;
     return json(res, status, { ok: false, error: message });
