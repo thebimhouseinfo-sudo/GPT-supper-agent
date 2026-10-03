@@ -252,6 +252,37 @@ async function signPrivateObject(auth: GsaUser, objectPath: string, expiresIn: n
   };
 }
 
+async function insertEvidenceManifest(
+  auth: GsaUser,
+  bundleId: string,
+  manifestText: string,
+  manifestSha256: string,
+) {
+  const response = await fetch(SUPABASE_URL + "/rest/v1/gsa_evidence_bundles", {
+    method: "POST",
+    headers: {
+      ...commonStorageHeaders(auth),
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: auth.userId,
+      evidence_bundle_id: bundleId,
+      manifest_json: manifestText,
+      manifest_sha256: manifestSha256,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      "EVIDENCE_MANIFEST_PERSIST_FAILED:" +
+        response.status +
+        ":" +
+        (await response.text()).slice(0, 500),
+    );
+  }
+}
+
+
 async function persistPngEvidence(
   auth: GsaUser,
   base64Data: string,
@@ -351,7 +382,7 @@ async function persistEvidenceBundle(
   }
 
   const createdAt = new Date().toISOString();
-  const manifestPath = root + "manifest.json";
+  const manifestPath = "db:gsa_evidence_bundles/" + bundleId;
   const manifest = {
     schema_version: 1,
     evidence_bundle_id: bundleId,
@@ -387,7 +418,8 @@ async function persistEvidenceBundle(
   if (totalBytes + manifestBytes.byteLength > MAX_PRIVATE_BUNDLE_BYTES) {
     throw new Error("EVIDENCE_BUNDLE_SIZE_LIMIT_EXCEEDED");
   }
-  await uploadPrivateObject(auth, manifestPath, "application/json", manifestBytes);
+  const manifestSha256 = await sha256Bytes(manifestBytes);
+  await insertEvidenceManifest(auth, bundleId, manifestText, manifestSha256);
 
   return {
     evidence,
@@ -396,7 +428,7 @@ async function persistEvidenceBundle(
       backend: "PRIVATE_SUPABASE",
       privacy_class: binding.privacy_class,
       manifest_path: manifestPath,
-      manifest_sha256: await sha256Bytes(manifestBytes),
+      manifest_sha256: manifestSha256,
       viewer_url: viewerOrigin.replace(/\/$/, "") + "/evidence.html?bundle=" + encodeURIComponent(bundleId),
       target_revision: binding.target_revision,
       artifact_count: evidence.length,
