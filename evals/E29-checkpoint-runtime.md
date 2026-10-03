@@ -51,7 +51,8 @@ For VERIFY:
 - terminal claim SATISFIED;
 - matching TEST/RETEST Verification result PASS;
 - same current planning_revision, checkpoint, attempt/token and target revision;
-- applicability covers checkpoint EvidenceNeed IDs.
+- Verification applicability status is CANDIDATE and covers checkpoint EvidenceNeed IDs;
+- the current terminal claim finalizes that candidate by pointing to the same verification/attempt/token.
 
 Expected: dependent EvidenceRequirement gate opens.
 
