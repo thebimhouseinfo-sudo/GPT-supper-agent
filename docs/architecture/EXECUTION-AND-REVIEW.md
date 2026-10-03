@@ -421,3 +421,20 @@ Task prerequisite readiness uses completed current-planning-revision NEXT Run sn
 
 A nested Verification applicability claim is also revision/checkpoint-bound:
 `applicability.planning_revision` and `applicability.checkpoint_id` must equal the current Job/checkpoint before candidate evidence can become applicable.
+
+
+### CP5 repair — execution-scope and topology hard guards
+
+For NEXT source/design Runs, evidence gating applies to the full attributed execution scope:
+
+- `primary_task_id` must be a current Task;
+- every `affected_task_ref` must also be a current Task;
+- the Task evidence/checkpoint gate is evaluated for the primary Task and every affected Task before Run creation.
+
+For a Task target, required checkpoint IDs are the union of:
+- explicit `EvidenceRequirement.checkpoint_id` values for that consumer Task; and
+- direct checkpoint dependencies of the Task node in typed `planning_topology`.
+
+This prevents a Task after a TEST_CHECKPOINT/MILESTONE_GATE from bypassing that checkpoint merely because no duplicate EvidenceRequirement was declared.
+
+NEXT execution topology is mechanically validated alongside the CP4 typed planning graph. Every current Task must appear exactly once with a valid handler; Task dependencies and topology `depends_on` must agree; topology stage/task IDs must be unique. If a NEXT plan revision changes `tasks`, it must resupply coherent execution `topology`; planning review cannot PASS a stale mapping.
