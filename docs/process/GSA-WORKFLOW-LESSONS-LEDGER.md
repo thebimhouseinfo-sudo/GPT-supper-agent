@@ -82,3 +82,6 @@ CP1 is complete only when:
 - E26 passes review.
 
 At CP7, this ledger is reread to prove no accepted lesson remains only in a working note.
+
+
+| WL-022 | Evidence JSON is not durable evidence: NEXT gates require deterministic path + exact blob-SHA snapshots and immediate read-back before consequential persistence | CP5_DELTA | `CORE-RECORD-CONTRACTS.md`, `EXECUTION-AND-REVIEW.md`, runtime gate/claim contracts | CP5 Reviewer finding + E29-19/20/21 | CP5 |
