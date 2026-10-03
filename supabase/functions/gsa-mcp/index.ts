@@ -285,9 +285,15 @@ function checkpointBoundaryPrerequisiteIds(job: any, checkpoint: any) {
 
 function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   if (target.kind === 'TASK') {
-    return [...new Set((job.evidence_requirements ?? [])
+    const ids = new Set<string>((job.evidence_requirements ?? [])
       .filter((item: any) => item.consumer_task_id === target.id)
-      .map((item: any) => item.checkpoint_id))]
+      .map((item: any) => item.checkpoint_id))
+    const checkpointIds = new Set<string>((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))
+    const topologyNode = (job.planning_topology ?? []).find((item: any) => item.node_id === target.id && item.node_type === 'TASK')
+    for (const dependencyId of topologyNode?.depends_on ?? []) {
+      if (checkpointIds.has(dependencyId)) ids.add(dependencyId)
+    }
+    return [...ids]
   }
   if (target.kind === 'MILESTONE') {
     const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === target.id)
@@ -402,6 +408,43 @@ const DURABLE_RECORD_SNAPSHOT_SCHEMA = z.object({
   sha: z.string().regex(/^[0-9a-f]{40}$/),
   record_text: z.string().min(2),
 })
+
+function validateExecutionTopology(tasks: any[], topology: any[]): string | null {
+  if (!Array.isArray(tasks) || !Array.isArray(topology)) return 'EXECUTION_TOPOLOGY_INVALID: tasks/topology must be arrays.'
+  const taskIds = tasks.map((task: any) => task?.task_id)
+  if (taskIds.some((id: any) => typeof id !== 'string' || !id)) return 'EXECUTION_TOPOLOGY_INVALID: every Task requires task_id.'
+  if (new Set(taskIds).size !== taskIds.length) return 'EXECUTION_TOPOLOGY_INVALID: Task IDs must be unique.'
+  if (topology.length !== tasks.length) return 'EXECUTION_TOPOLOGY_INVALID: execution topology must contain exactly one stage per Task.'
+  const topologyTaskIds = topology.map((stage: any) => stage?.task_id)
+  if (topologyTaskIds.some((id: any) => typeof id !== 'string' || !id) || new Set(topologyTaskIds).size !== topologyTaskIds.length) {
+    return 'EXECUTION_TOPOLOGY_INVALID: topology task_id values must be present and unique.'
+  }
+  if (taskIds.some((id: string) => !topologyTaskIds.includes(id))) return 'EXECUTION_TOPOLOGY_INVALID: every current Task must appear exactly once in execution topology.'
+  const stages = topology.map((stage: any) => stage?.stage)
+  if (stages.some((stage: any) => !Number.isInteger(stage) || stage < 1) || new Set(stages).size !== stages.length) {
+    return 'EXECUTION_TOPOLOGY_INVALID: topology stage values must be unique positive integers.'
+  }
+  const validHandlers = new Set(['planner','designer','coder','reviewer','tester'])
+  const taskIdSet = new Set(taskIds)
+  const sameStringSet = (left: any[], right: any[]) => {
+    const a = [...new Set((left ?? []).map(String))].sort()
+    const b = [...new Set((right ?? []).map(String))].sort()
+    return a.length === b.length && a.every((value, index) => value === b[index])
+  }
+  for (const task of tasks) {
+    const deps = task?.dependencies ?? []
+    if (!Array.isArray(deps) || deps.some((id: any) => typeof id !== 'string' || !taskIdSet.has(id) || id === task.task_id) || new Set(deps).size !== deps.length) {
+      return 'EXECUTION_TOPOLOGY_INVALID: Task dependencies must be unique current Task IDs and cannot self-reference.'
+    }
+    const stage = topology.find((item: any) => item.task_id === task.task_id)
+    if (!stage || !validHandlers.has(stage.handler)) return 'EXECUTION_TOPOLOGY_INVALID: every Task requires one valid execution handler.'
+    if (!sameStringSet(stage.depends_on ?? [], deps)) return 'EXECUTION_TOPOLOGY_INVALID: topology depends_on must match the owning Task dependencies.'
+    if (stage.next != null && (!taskIdSet.has(stage.next) || stage.next === task.task_id)) {
+      return 'EXECUTION_TOPOLOGY_INVALID: topology next must be null or another current Task ID.'
+    }
+  }
+  return null
+}
 
 function normalizeNextPlanningModel(model: any, planningRevision: number) {
   return {
@@ -2190,6 +2233,8 @@ function createServer(req: Request) {
         depends_on: task.dependencies,
         next: index + 1 < normalizedTasks.length ? normalizedTasks[index + 1].task_id : null,
       }))
+      const executionTopologyError = executionContract === 'NEXT' ? validateExecutionTopology(normalizedTasks, topology) : null
+      if (executionTopologyError) return { content: [{ type: 'text', text: executionTopologyError }], isError: true }
       const nextPlanning = normalizeNextPlanningModel({ evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology }, 1)
       const nextPlanningError = validateNextPlanningModel(executionContract, normalizedTasks, nextPlanning, 1)
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
@@ -2529,6 +2574,9 @@ function createServer(req: Request) {
       } else if (inProgressReviewRepair && !current.superseding_verification_ref) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: review-repair revision has no originating supersession evidence.' }], isError: true }
       }
+      if (executionContract === 'NEXT' && tasks !== undefined && topology === undefined) {
+        return { content: [{ type: 'text', text: 'NEXT_EXECUTION_TOPOLOGY_REBIND_REQUIRED: revising Tasks must resupply execution topology for the same planning revision.' }], isError: true }
+      }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
       const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
@@ -2536,6 +2584,9 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'NEXT_PLANNING_REBIND_REQUIRED: every revision of a NEXT Job with active CP4 planning must explicitly resupply all CP4 planning collections for the new planning_revision.' }], isError: true }
       }
       const nextTasks = tasks ?? current.tasks
+      const nextTopology = topology ?? current.topology
+      const executionTopologyError = executionContract === 'NEXT' ? validateExecutionTopology(nextTasks ?? [], nextTopology ?? []) : null
+      if (executionTopologyError) return { content: [{ type: 'text', text: executionTopologyError }], isError: true }
       const nextPlanning = normalizeNextPlanningModel({
         evidence_needs: evidence_needs ?? current.evidence_needs ?? [],
         test_checkpoints: test_checkpoints ?? current.test_checkpoints ?? [],
@@ -2564,7 +2615,7 @@ function createServer(req: Request) {
           selected_source_evidence: selected_source_evidence ?? current.repository_discovery?.selected_source_evidence ?? [],
         },
         tasks: nextTasks,
-        topology: topology ?? current.topology,
+        topology: nextTopology,
         evidence_needs: nextPlanning.evidence_needs,
         test_checkpoints: nextPlanning.test_checkpoints,
         evidence_requirements: nextPlanning.evidence_requirements,
@@ -2660,6 +2711,10 @@ function createServer(req: Request) {
       }
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
+      }
+      if (executionContract === 'NEXT') {
+        const executionTopologyError = validateExecutionTopology(current.tasks ?? [], current.topology ?? [])
+        if (executionTopologyError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + executionTopologyError }], isError: true }
       }
       const cp4PlanningError = validateNextPlanningModel(executionContract, current.tasks ?? [], {
         evidence_needs: current.evidence_needs ?? [],
@@ -3468,8 +3523,12 @@ function createServer(req: Request) {
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
       }
-      if (executionContract === 'NEXT' && primary_task_id && !(owningJob.tasks ?? []).some((item: any) => item.task_id === primary_task_id)) {
+      const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
+      if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
         return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: primary_task_id is not a Task in the current planning revision.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && (affected_task_refs ?? []).some((id: string) => !currentTaskIds.has(id))) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: every affected_task_ref must be a current Task in this planning revision.' }], isError: true }
       }
       if (executionContract === 'NEXT' && ['coder','designer'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
         return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT source/design execution must bind one current primary Task so EvidenceRequirement guards cannot be bypassed.' }], isError: true }
@@ -3481,19 +3540,25 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
       }
       if (executionContract === 'NEXT' && primary_task_id) {
-        const gate = evaluateNextEvidenceGate(
-          owningJob,
-          checkpoint_claim_snapshots ?? [],
-          checkpoint_verification_snapshots ?? [],
-          { kind: 'TASK', id: primary_task_id },
-        )
-        if (!gate.allowed) {
-          return {
-            content: [{
-              type: 'text',
-              text: 'EVIDENCE_REQUIREMENT_BLOCKED: ' + gate.blocking.join('; '),
-            }],
-            isError: true,
+        const gatedTaskIds = new Set<string>([primary_task_id])
+        if (['coder','designer'].includes(role)) {
+          for (const id of affected_task_refs ?? []) gatedTaskIds.add(id)
+        }
+        for (const taskId of gatedTaskIds) {
+          const gate = evaluateNextEvidenceGate(
+            owningJob,
+            checkpoint_claim_snapshots ?? [],
+            checkpoint_verification_snapshots ?? [],
+            { kind: 'TASK', id: taskId },
+          )
+          if (!gate.allowed) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'EVIDENCE_REQUIREMENT_BLOCKED: Task ' + taskId + ': ' + gate.blocking.join('; '),
+              }],
+              isError: true,
+            }
           }
         }
       }
@@ -4097,6 +4162,24 @@ app.get('/selftest', (c) => {
     applicability: { ...nextGateVerification.applicability, planning_revision: 2 },
   }
   const legacyGatePass = evaluateNextEvidenceGate({ project_id: projectId, job_id: legacyJobId, execution_contract: 'V2_STABLE' }, [], [], { kind: 'JOB', id: null })
+  const executionTopologyValid = validateExecutionTopology(
+    [{ task_id: consumerTaskId, dependencies: [] }],
+    [{ stage: 1, handler: 'coder', task_id: consumerTaskId, depends_on: [], next: null }],
+  ) === null
+  const executionTopologyStale = validateExecutionTopology(
+    [{ task_id: consumerTaskId, dependencies: [] }],
+    [{ stage: 1, handler: 'coder', task_id: uuidv7(), depends_on: [], next: null }],
+  ) !== null
+  const topologyDependencyGateJob = {
+    ...nextGateJob,
+    evidence_requirements: [],
+    planning_topology: [
+      { node_id: checkpointId, node_type: 'TEST_CHECKPOINT', depends_on: [], planning_revision: 3 },
+      { node_id: consumerTaskId, node_type: 'TASK', depends_on: [checkpointId], planning_revision: 3 },
+    ],
+  }
+  const topologyDependencyGateMissing = evaluateNextEvidenceGate(topologyDependencyGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
+  const topologyDependencyGatePass = evaluateNextEvidenceGate(topologyDependencyGateJob, [prettyJson(nextGateClaim)].map((record_text) => ({ path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId), sha: 'a'.repeat(40), record_text })), [prettyJson(nextGateVerification)].map((record_text) => ({ path: verificationPath(projectId, verificationId, 'NEXT'), sha: 'b'.repeat(40), record_text })), { kind: 'TASK', id: consumerTaskId })
   const milestoneBoundaryPrereqs = checkpointBoundaryPrerequisiteIds(
     { milestones: [{ milestone_id: 'M-E29', node_ids: [consumerTaskId, checkpointId] }] },
     { checkpoint_id: checkpointId, boundary: 'MILESTONE_GATE', milestone_id: 'M-E29', prerequisite_node_ids: [] },
@@ -4142,6 +4225,10 @@ app.get('/selftest', (c) => {
     cp5_task_gate_rejects_stale_revision_evidence: !nextTaskGateStale.allowed,
     cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
     cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
+    cp5_execution_topology_validator_accepts_coherent_plan: executionTopologyValid,
+    cp5_execution_topology_validator_rejects_stale_task_mapping: executionTopologyStale,
+    cp5_typed_checkpoint_dependency_blocks_task_without_evidence: !topologyDependencyGateMissing.allowed,
+    cp5_typed_checkpoint_dependency_opens_with_applicable_evidence: topologyDependencyGatePass.allowed,
     cp5_nested_applicability_revision_mismatch_rejected: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], nextGateClaim, nextGateVerificationWrongNestedRevision),
     cp5_milestone_boundary_expands_runtime_prereqs: milestoneBoundaryPrereqs.includes(consumerTaskId) && !milestoneBoundaryPrereqs.includes(checkpointId),
     cp5_job_final_boundary_expands_runtime_prereqs: jobFinalBoundaryPrereqs.includes(consumerTaskId) && jobFinalBoundaryPrereqs.includes(checkpointId) && !jobFinalBoundaryPrereqs.includes('CP-FINAL'),
