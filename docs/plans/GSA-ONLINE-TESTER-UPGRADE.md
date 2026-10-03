@@ -1283,33 +1283,38 @@ UI/browser checkpoints produce a human-viewable evidence bundle in addition to t
 
 ### 17.1 Storage decision
 
-Use a private Supabase Storage bucket dedicated to GSA evidence, provisionally:
+Use the existing private Supabase Storage bucket for screenshot binaries:
 
 ~~~text
-gsa-evidence
+gsa-test-evidence
 ~~~
 
-Logical object prefix:
+The live bucket is private, restricted to `image/png`, and uses a user-id first-folder RLS boundary. CP6 therefore does **not** mutate the Storage schema or force JSON into an image-only bucket.
+
+Bundle binaries use an append-only logical prefix:
 
 ~~~text
-<user-id>/<project-id>/<evidence-bundle-id>/
-  report.md
-  result.json
+<user-id>/bundles/<evidence-bundle-id>/
   screenshots/
     01-desktop-initial.png
     02-desktop-after.png
     03-mobile-failure.png
-  snapshots/
-    initial.txt
-    final.txt
-  console.txt
-  page-errors.txt
-  manifest.json
 ~~~
 
-The exact artifact set is test-dependent; do not create empty files.
+Exact manifest bytes are stored separately in the RLS-protected append-only table:
 
-This resolves the binary-write gap without assuming the GitHub text connector can upload PNG data.
+~~~text
+public.gsa_evidence_bundles
+  user_id
+  evidence_bundle_id
+  manifest_json
+  manifest_sha256
+  created_at
+~~~
+
+There is intentionally no UPDATE permission/policy for bundle manifests. Retest creates a new bundle/attempt identity rather than rewriting prior manifest bytes.
+
+This preserves the existing private binary boundary while providing an immutable canonical manifest identity without depending on expiring signed URLs or unsupported Storage MIME types.
 
 ### 17.2 Auth and write boundary
 
@@ -1318,13 +1323,14 @@ The browser bridge already receives an authenticated GSA bearer token.
 Add a narrow evidence persistence path in the GSA/Vercel browser bridge that:
 
 1. validates the authenticated user;
-2. validates project_id/evidence context against the active GSA Project boundary;
-3. writes only under that user's private gsa-evidence prefix;
-4. uses Supabase Storage RLS/private-bucket policy so users cannot read/write another user's prefix;
-5. returns artifact IDs/paths + hashes/sizes, not raw base64, after persistence;
-6. verifies upload success before returning an artifact as durable evidence.
+2. requires explicit project/repository/job/checkpoint/attempt/Tester Run/target-revision binding for durable bundle mode;
+3. writes PNG binaries only under that user's private Storage prefix;
+4. persists exact `manifest_json` + `manifest_sha256` only as that authenticated `user_id` in `public.gsa_evidence_bundles`;
+5. relies on Storage RLS plus table RLS so users cannot read/write another user's evidence;
+6. returns artifact IDs/paths + SHA-256/sizes and one stable authenticated viewer URL after persistence;
+7. treats short-lived signed URLs as transport only, never canonical evidence identity.
 
-Do not grant Tester arbitrary Supabase Storage paths or source-repository write authority.
+Do not grant Tester arbitrary Supabase Storage paths, unrestricted table mutation or source-repository write authority.
 
 ### 17.3 Evidence bundle identity
 
