@@ -413,7 +413,7 @@ failure_class?
 measurements[]
 retest_of_verification_id?
 applicability {
-  status = APPLICABLE | NON_APPLICABLE
+  status = CANDIDATE | NON_APPLICABLE
   planning_revision
   checkpoint_id
   evidence_need_ids[]
@@ -426,7 +426,7 @@ route =
   RETEST_WHEN_READY
 ```
 
-Verification alone is insufficient for applicability. The current terminal claim must point to the same Verification/attempt/token and current planning revision.
+A successful/observed Verification is persisted as `CANDIDATE`, never self-authoritative `APPLICABLE`. Applicability is derived only when the current terminal claim points to the same Verification/attempt/token, target identity and current planning revision. If terminal claim CAS loses, the candidate remains orphaned/non-applicable.
 
 ## NEXT in-progress planning supersession
 
