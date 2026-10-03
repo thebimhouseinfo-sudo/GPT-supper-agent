@@ -160,3 +160,22 @@ Try to claim or finalize a checkpoint using:
 Expected: reject.
 
 With an IN_PROGRESS NEXT Tester Run for the exact target, deterministic claim acquisition may proceed. Before persistence, the caller must read back the Run and require the exact blob SHA supplied to claim/verification preparation.
+
+
+## E29-16 reclaim preserves attempt kind
+
+Start a RETEST, let its ACTIVE lease expire, then attempt to reclaim it as TEST.
+
+Expected: reject. Expired-lease recovery must preserve the original attempt_kind; an expired RETEST may only be reclaimed as the same RETEST target/originating Verification.
+
+## E29-17 deterministic claim snapshot uniqueness
+
+Supply two claim snapshots for the same project/job/planning_revision/checkpoint to a gate/prerequisite evaluation.
+
+Expected: blocked rather than selecting one by caller-controlled array order. Runtime evidence evaluation accepts exactly one current deterministic claim and exactly one referenced Verification.
+
+## E29-18 applicability identity consistency
+
+Mismatches in claim/Verification mode, attempt_kind, producer, terminal state/result, attempt ID, lease token or last_result make evidence non-applicable.
+
+Expected: no field-order or partially matching record can open a mandatory evidence gate.
