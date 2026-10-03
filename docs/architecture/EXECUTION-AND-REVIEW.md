@@ -387,3 +387,15 @@ TEST_FAILURE / ENVIRONMENT_FAILURE / NOT_READY / INTEGRATION_NOT_READY
 A PRODUCT_FAILURE Retest on the same target revision is rejected. Review-repair revisions after the first PLAN_GAP/SPEC_GAP supersession do not require a duplicate Tester finding; they remain in the same planning-review loop.
 
 V2_STABLE does not read or enforce CP5 claims, checkpoint evidence gates or superseding-plan runtime behavior.
+
+
+### Boundary readiness
+
+Checkpoint claim readiness is derived from the current reviewed plan, not only from caller timing:
+
+- `AFTER_NODE_SET`: every declared prerequisite node must be durably complete/applicable.
+- `MILESTONE_GATE`: runtime prerequisites expand to the milestone's current `node_ids` (excluding the gate checkpoint itself), in addition to explicit prerequisites.
+- `JOB_FINAL`: runtime prerequisites expand to all current typed planning nodes except the final checkpoint itself.
+- `BEFORE_NODE`: the checkpoint is rejected once its boundary Task is already durably completed.
+
+Task completion IDs supplied to claim preparation must be reconstructed from durable current-revision Run/Verification progress; prerequisite checkpoint state comes from current NEXT claim + applicable Verification records. Chat history or an unverified caller assertion is not completion evidence.
