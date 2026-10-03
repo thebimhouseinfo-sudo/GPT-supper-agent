@@ -3752,6 +3752,55 @@ app.get('/selftest', (c) => {
   const nextRunId = uuidv7()
   const legacyCoderRun = { project_id: projectId, job_id: legacyJobId, run_id: legacyRunId, role: 'coder', lifecycle: 'IN_PROGRESS' }
   const nextCoderRun = { project_id: projectId, job_id: nextJobId, run_id: nextRunId, role: 'coder', lifecycle: 'IN_PROGRESS', execution_contract: 'NEXT' }
+  const checkpointId = 'CP-E29'
+  const consumerTaskId = uuidv7()
+  const evidenceNeedId = 'EN-E29'
+  const verificationId = uuidv7()
+  const attemptId = uuidv7()
+  const leaseToken = uuidv7()
+  const nextGateJob = {
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    planning_review: { status: 'PASS', reviewed_revision: 3 },
+    tasks: [{ task_id: consumerTaskId }],
+    evidence_needs: [{ evidence_need_id: evidenceNeedId, checkpoint_id: checkpointId, owner_task_id: consumerTaskId, required_by_task_ids: [consumerTaskId], planning_revision: 3 }],
+    evidence_requirements: [{ evidence_requirement_id: 'ER-E29', consumer_task_id: consumerTaskId, evidence_need_id: evidenceNeedId, checkpoint_id: checkpointId, planning_revision: 3 }],
+    test_checkpoints: [{ checkpoint_id: checkpointId, mode: 'VERIFY', boundary: 'BEFORE_NODE', boundary_node_id: consumerTaskId, prerequisite_node_ids: [], evidence_need_ids: [evidenceNeedId], planning_revision: 3 }],
+    milestones: [],
+  }
+  const nextGateClaim = {
+    kind: 'CHECKPOINT_CLAIM',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    state: 'SATISFIED',
+    attempt_id: attemptId,
+    lease_token: leaseToken,
+    last_verification_id: verificationId,
+    last_target_revision: 'rev-b',
+  }
+  const nextGateVerification = {
+    verification_id: verificationId,
+    kind: 'TEST',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    lease_token: leaseToken,
+    target_revision: 'rev-b',
+    result: 'PASS',
+    applicability: { status: 'APPLICABLE', target_revision: 'rev-b', evidence_need_ids: [evidenceNeedId] },
+  }
+  const nextTaskGatePass = evaluateNextEvidenceGate(nextGateJob, [prettyJson(nextGateClaim)], [prettyJson(nextGateVerification)], { kind: 'TASK', id: consumerTaskId })
+  const nextTaskGateMissing = evaluateNextEvidenceGate(nextGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
+  const nextTaskGateStale = evaluateNextEvidenceGate({ ...nextGateJob, planning_revision: 4, planning_review: { status: 'PASS', reviewed_revision: 4 } }, [prettyJson(nextGateClaim)], [prettyJson(nextGateVerification)], { kind: 'TASK', id: consumerTaskId })
+  const legacyGatePass = evaluateNextEvidenceGate({ project_id: projectId, job_id: legacyJobId, execution_contract: 'V2_STABLE' }, [], [], { kind: 'JOB', id: null })
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -3784,6 +3833,11 @@ app.get('/selftest', (c) => {
     next_checkpoint_claim_path_deterministic: checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') === checkpointClaimPath(projectId, nextJobId, 3, 'CP 1') && checkpointClaimPath(projectId, nextJobId, 3, 'CP 1').includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_CLAIMS/'),
     next_checkpoint_attempt_path_isolated: checkpointAttemptPath(projectId, uuidv7()).includes('/TEST-LAB/NEXT/WORK/CHECKPOINT_ATTEMPTS/'),
     checkpoint_lease_expiry_guard: checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() - 1000).toISOString() }) && !checkpointLeaseExpired({ lease_expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    cp5_task_gate_accepts_current_applicable_evidence: nextTaskGatePass.allowed,
+    cp5_task_gate_blocks_missing_evidence: !nextTaskGateMissing.allowed && nextTaskGateMissing.blocking.length === 1,
+    cp5_task_gate_rejects_stale_revision_evidence: !nextTaskGateStale.allowed,
+    cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
+    cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
