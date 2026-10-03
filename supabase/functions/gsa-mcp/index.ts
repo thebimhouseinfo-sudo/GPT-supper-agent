@@ -184,7 +184,7 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
   if (!['TEST','RETEST'].includes(verification.kind) || verification.execution_contract !== 'NEXT') return false
   if (verification.project_id !== job.project_id || verification.job_id !== job.job_id || verification.planning_revision !== job.planning_revision || verification.checkpoint_id !== checkpoint.checkpoint_id) return false
-  if (verification.applicability?.status !== 'APPLICABLE') return false
+  if (verification.applicability?.status !== 'CANDIDATE') return false
   if (claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
   const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
   const applicableEvidenceNeeds = verification.applicability?.evidence_need_ids ?? []
@@ -2417,6 +2417,8 @@ function createServer(req: Request) {
           supersedingClaim.planning_revision === current.planning_revision &&
           supersedingClaim.state === 'NEEDS_PLANNER_REVISION' &&
           supersedingClaim.checkpoint_id === supersedingVerification.checkpoint_id &&
+          supersedingClaim.last_failure_class === supersedingVerification.failure_class &&
+          supersedingClaim.last_result === supersedingVerification.result &&
           supersedingClaim.last_verification_id === supersedingVerification.verification_id &&
           supersedingClaim.lease_token === supersedingVerification.lease_token &&
           supersedingClaim.attempt_id === supersedingVerification.attempt_id &&
@@ -3182,7 +3184,7 @@ function createServer(req: Request) {
       const state = result === 'PASS' ? 'SATISFIED' : result === 'OBSERVED' ? 'OBSERVED' : plannerGap ? 'NEEDS_PLANNER_REVISION' : productFailure ? 'FAILED_PRODUCT' : 'BLOCKED'
       const route = successful ? 'CONTINUE' : plannerGap ? 'PLANNER_REVISION_SUPERSEDE' : productFailure ? 'CODER_REPAIR_GOAL_RECHECK_RETEST' : 'RETEST_WHEN_READY'
       const retestRequired = !successful && !plannerGap
-      const applicabilityStatus = successful ? 'APPLICABLE' : 'NON_APPLICABLE'
+      const applicabilityStatus = successful ? 'CANDIDATE' : 'NON_APPLICABLE'
       const now = new Date().toISOString()
       const verification = {
         verification_id: verificationId,
@@ -3921,7 +3923,7 @@ app.get('/selftest', (c) => {
     lease_token: leaseToken,
     target_revision: 'rev-b',
     result: 'PASS',
-    applicability: { status: 'APPLICABLE', target_revision: 'rev-b', evidence_need_ids: [evidenceNeedId] },
+    applicability: { status: 'CANDIDATE', target_revision: 'rev-b', evidence_need_ids: [evidenceNeedId] },
   }
   const nextTaskGatePass = evaluateNextEvidenceGate(nextGateJob, [prettyJson(nextGateClaim)], [prettyJson(nextGateVerification)], { kind: 'TASK', id: consumerTaskId })
   const nextTaskGateMissing = evaluateNextEvidenceGate(nextGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
