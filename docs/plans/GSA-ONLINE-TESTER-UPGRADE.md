@@ -6,9 +6,9 @@ Primary goal: upgrade Tester from a thin capability-gated verifier into a checkp
 
 ## UNDER REVIEW — Hybrid repository/private evidence handoff
 
-**Status: UNDER REVIEW / CR REQUIRED**
+**Status: CR REVIEWED — PASS_WITH_FINDINGS / IMPLEMENTATION GUARDS REQUIRED**
 
-This section replaces the earlier target-repository-default proposal after CR review `01a1006e-b152-7bfa-b2e2-16c090e55dd4` returned **FAIL**. It is still non-canonical until a **Human-invoked CR** reviews this exact revised source revision and clears the mark. Normal Reviewer PASS does not clear it.
+This section replaces the earlier target-repository-default proposal after CR review `01a1006e-b152-7bfa-b2e2-16c090e55dd4` returned **FAIL**. Human-invoked CR `01a100c0-e41f-7c19-a7af-55713331d84c` then reviewed exact revision `b90860204bdb609dce3b3210ea7998568e641fb0` and returned **PASS_WITH_FINDINGS**. The hybrid architecture is cleared; implementation must additionally enforce append-only/non-force evidence ancestry and prove CI/deploy/release isolation before repository routing is enabled.
 
 The intended Human handoff is **hybrid and fail-closed**, not “repository by default”:
 
@@ -190,7 +190,7 @@ The Human should not need to search a repository/storage bucket manually.
 
 ### H. Relationship to current Section 17
 
-Until this revised proposal receives **Human-invoked CR approval**, the current deployed screenshot persistence remains the existing private Supabase path implemented in `auth-ui/api/browser.ts`.
+Human-invoked CR has cleared this hybrid architecture. Until the CP6 implementation is reviewed, staged and verified, the current deployed screenshot persistence remains the existing private Supabase path implemented in `auth-ui/api/browser.ts`.
 
 If this proposal is approved:
 
@@ -198,7 +198,7 @@ If this proposal is approved:
 - repository evidence becomes an additional route only for mechanically classified `REPO_SAFE` artifacts;
 - the implementation must preserve the source/evidence revision split, immutable attempt identity, privacy routing and bounded publisher authority defined above.
 
-No repository evidence backend implementation should begin before this exact revised proposal is reviewed and cleared by Human-invoked CR.
+Repository evidence routing remains disabled until `PROBE-GIT-EVIDENCE-01` proves the bounded binary path, append-only/non-force ancestry and no CI/deploy/release side effects for the exact target repository. If any of those checks is unavailable or fails, use the private evidence backend.
 
 ---
 
