@@ -2259,8 +2259,8 @@ function createServer(req: Request) {
   server.registerTool(
     'job_revise_plan',
     {
-      title: 'Revise a DRAFT GSA Job plan',
-      description: 'Planner-only exact-SHA planning revision update after planning-review findings or approved Human decisions.',
+      title: 'Revise a GSA Job plan',
+      description: 'Planner-only exact-SHA planning revision update. DRAFT revisions follow the normal planning loop; NEXT IN_PROGRESS revisions are allowed only from persisted PLAN_GAP/SPEC_GAP Tester evidence and supersede the old planning topology.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -2309,6 +2309,8 @@ function createServer(req: Request) {
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
         revision_reason: z.string().min(1),
+        superseding_verification_record_text: z.string().min(2).optional(),
+        superseding_verification_ref: z.string().min(1).optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -2321,7 +2323,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason, superseding_verification_record_text, superseding_verification_ref }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -2330,8 +2332,34 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
-      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT') {
-        return { content: [{ type: 'text', text: 'Only the matching DRAFT Job may be revised by Planner.' }], isError: true }
+      if (current.job_id !== job_id || current.project_id !== project_id) {
+        return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
+      }
+      const inProgressNextRevision = executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS'
+      if (current.lifecycle !== 'DRAFT' && !inProgressNextRevision) {
+        return { content: [{ type: 'text', text: 'Planner revision is allowed only for DRAFT Jobs or evidence-backed NEXT IN_PROGRESS PLAN_GAP/SPEC_GAP supersession.' }], isError: true }
+      }
+      let supersedingVerification: any = null
+      if (inProgressNextRevision) {
+        if (!superseding_verification_record_text || !superseding_verification_ref) {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: IN_PROGRESS revision requires persisted PLAN_GAP/SPEC_GAP Tester Verification.' }], isError: true }
+        }
+        try { supersedingVerification = JSON.parse(superseding_verification_record_text) } catch {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: invalid superseding Verification JSON.' }], isError: true }
+        }
+        const expectedVerificationRef = verificationPath(project_id, supersedingVerification.verification_id, 'NEXT')
+        const supersessionMatches =
+          ['TEST','RETEST'].includes(supersedingVerification.kind) &&
+          supersedingVerification.execution_contract === 'NEXT' &&
+          supersedingVerification.project_id === project_id &&
+          supersedingVerification.job_id === job_id &&
+          supersedingVerification.planning_revision === current.planning_revision &&
+          ['PLAN_GAP','SPEC_GAP'].includes(supersedingVerification.failure_class) &&
+          supersedingVerification.route === 'PLANNER_REVISION_SUPERSEDE' &&
+          superseding_verification_ref === expectedVerificationRef
+        if (!supersessionMatches) {
+          return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: Verification must be current-revision PLAN_GAP/SPEC_GAP routed to Planner and match its deterministic persisted ref.' }], isError: true }
+        }
       }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
@@ -2379,6 +2407,8 @@ function createServer(req: Request) {
         review_triggers: review_triggers ?? current.review_triggers,
         planning_revision: nextRevision,
         planning_review: { status: 'PENDING', reviewed_revision: null, verification_ref: null },
+        supersedes_planning_revision: inProgressNextRevision ? current.planning_revision : current.supersedes_planning_revision ?? null,
+        superseding_verification_ref: inProgressNextRevision ? superseding_verification_ref : current.superseding_verification_ref ?? null,
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
@@ -2392,7 +2422,10 @@ function createServer(req: Request) {
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
           'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
-          'Read back the DRAFT Job and verify the incremented planning_revision.',
+          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING.',
+          inProgressNextRevision
+            ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision.'
+            : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
           'Immediately continue in this SAME USER TURN with a new Reviewer planning review for this exact revision before any user-facing planning-complete report.',
         ],
       }
@@ -2404,7 +2437,7 @@ function createServer(req: Request) {
     'plan_review_record',
     {
       title: 'Record planning review for one exact Job revision',
-      description: 'Reviewer-only planning Verification. PASS can unlock DRAFT→READY; CHANGES_REQUIRED routes automatically back to Planner.',
+      description: 'Reviewer-only planning Verification. PASS unlocks DRAFT→READY or resumes a superseding NEXT IN_PROGRESS planning revision; CHANGES_REQUIRED routes automatically back to Planner.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -2443,8 +2476,9 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
-      if (current.job_id !== job_id || current.project_id !== project_id || current.lifecycle !== 'DRAFT' || current.planning_revision !== planning_revision) {
-        return { content: [{ type: 'text', text: 'Planning review target does not match the current DRAFT planning revision.' }], isError: true }
+      const reviewableLifecycle = current.lifecycle === 'DRAFT' || (executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS')
+      if (current.job_id !== job_id || current.project_id !== project_id || !reviewableLifecycle || current.planning_revision !== planning_revision) {
+        return { content: [{ type: 'text', text: 'Planning review target does not match the current reviewable planning revision.' }], isError: true }
       }
       if (!(current.repository_discovery?.structure_evidence ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: repository structure evidence is required before planning review.' }], isError: true }
@@ -2504,7 +2538,11 @@ function createServer(req: Request) {
         'Update Job planning_review with reviewed_job_record_text using expected_job_sha exactly.',
       ]
       if (result === 'PASS') {
-        steps.push('Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.'
+            : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
+        )
       } else if (result === 'CHANGES_REQUIRED') {
         steps.push('In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.')
       } else if (result === 'HUMAN_REVIEW_REQUIRED') {
