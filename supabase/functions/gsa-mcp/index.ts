@@ -1727,6 +1727,8 @@ function createServer(req: Request) {
         human_openable_url: z.string().url(),
         artifact_count: z.number().int().min(1).max(12),
         size_bytes: z.number().int().positive().max(25 * 1024 * 1024),
+        manifest_readback_verified: z.literal(true),
+        artifact_readback_verified: z.literal(true),
         automation_side_effects_observed: z.literal(false),
       },
       outputSchema: {
@@ -1773,6 +1775,8 @@ function createServer(req: Request) {
         size_bytes: args.size_bytes,
         immutable: true,
         append_only_parent_sha: args.expected_parent_sha,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
         automation_side_effects_observed: false,
       }
       const result = { valid: true, backend: 'REPOSITORY_GIT' as const, evidence_bundle_ref: bundleRef }
