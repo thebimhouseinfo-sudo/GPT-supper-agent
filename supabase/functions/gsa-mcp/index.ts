@@ -2291,8 +2291,8 @@ function createServer(req: Request) {
         result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
         planning_review_verification_ref: z.string().optional(),
-        checkpoint_claim_record_texts: z.array(z.string()).default([]),
-        checkpoint_verification_record_texts: z.array(z.string()).default([]),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -2304,7 +2304,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -2347,8 +2347,8 @@ function createServer(req: Request) {
           }
           const gate = evaluateNextEvidenceGate(
             current,
-            checkpoint_claim_record_texts ?? [],
-            checkpoint_verification_record_texts ?? [],
+            checkpoint_claim_snapshots ?? [],
+            checkpoint_verification_snapshots ?? [],
             { kind: 'JOB', id: null },
           )
           if (!gate.allowed) {
@@ -2376,6 +2376,12 @@ function createServer(req: Request) {
       ]
       if (target_lifecycle === 'COMPLETED') {
         externalSteps.push('Verify every completion_evidence_ref already exists and applies to the current accepted target revision before Job completion.')
+        if (executionContract === 'NEXT') {
+          externalSteps.push(
+            ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+            ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+          )
+        }
       }
       externalSteps.push(
         'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
@@ -3365,27 +3371,37 @@ function createServer(req: Request) {
         job_record_text: z.string().min(2),
         target_kind: z.enum(['TASK','MILESTONE','JOB']),
         target_id: z.string().optional(),
-        checkpoint_claim_record_texts: z.array(z.string()).default([]),
-        checkpoint_verification_record_texts: z.array(z.string()).default([]),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         allowed: z.boolean(),
         required_checkpoint_ids: z.array(z.string()),
         blocking: z.array(z.string()),
+        external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ job_record_text, target_kind, target_id, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
+    async ({ job_record_text, target_kind, target_id, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to evaluate checkpoint gate.')
       let job: any
       try { job = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      const gate = evaluateNextEvidenceGate(job, checkpoint_claim_record_texts ?? [], checkpoint_verification_record_texts ?? [], { kind: target_kind, id: target_id ?? null })
-      return { structuredContent: gate, content: [{ type: 'text', text: JSON.stringify(gate) }] }
+      const gate = evaluateNextEvidenceGate(job, checkpoint_claim_snapshots ?? [], checkpoint_verification_snapshots ?? [], { kind: target_kind, id: target_id ?? null })
+      const out = {
+        ...gate,
+        external_steps: jobExecutionContract(job) === 'NEXT'
+          ? [
+              ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+              ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+            ]
+          : [],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
@@ -3406,8 +3422,8 @@ function createServer(req: Request) {
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
         input_refs: z.array(z.string()).default([]),
-        checkpoint_claim_record_texts: z.array(z.string()).default([]),
-        checkpoint_verification_record_texts: z.array(z.string()).default([]),
+        checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         run_id: z.string(),
@@ -3421,7 +3437,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_record_texts, checkpoint_verification_record_texts }: any) => {
+    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -3448,8 +3464,8 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && primary_task_id) {
         const gate = evaluateNextEvidenceGate(
           owningJob,
-          checkpoint_claim_record_texts ?? [],
-          checkpoint_verification_record_texts ?? [],
+          checkpoint_claim_snapshots ?? [],
+          checkpoint_verification_snapshots ?? [],
           { kind: 'TASK', id: primary_task_id },
         )
         if (!gate.allowed) {
@@ -3493,6 +3509,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision } : {}),
         primary_task_id: primary_task_id ?? null,
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
@@ -3520,6 +3537,12 @@ function createServer(req: Request) {
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
+          ...(executionContract === 'NEXT'
+            ? [
+                ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
+                ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+              ]
+            : []),
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
