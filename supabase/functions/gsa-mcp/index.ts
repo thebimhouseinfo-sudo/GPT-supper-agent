@@ -2813,6 +2813,8 @@ function createServer(req: Request) {
         job_record_text: z.string().min(2),
         checkpoint_id: z.string().min(1),
         claimant_run_id: z.string().uuid(),
+        claimant_run_record_text: z.string().min(2),
+        claimant_run_record_sha: z.string().min(7),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
         attempt_kind: z.enum(['TEST','RETEST']).default('TEST'),
@@ -2842,7 +2844,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_ids, prerequisite_claim_record_texts, prerequisite_verification_record_texts, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, claimant_run_record_text, claimant_run_record_sha, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_ids, prerequisite_claim_record_texts, prerequisite_verification_record_texts, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
       let job: any
@@ -2851,6 +2853,23 @@ function createServer(req: Request) {
       }
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      let claimantRun: any
+      try { claimantRun = JSON.parse(claimant_run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: invalid claimant Tester Run JSON.' }], isError: true }
+      }
+      const claimantContract = resolveExecutionContract(claimantRun.execution_contract)
+      if (
+        claimantContract !== 'NEXT' ||
+        claimantRun.project_id !== project_id ||
+        claimantRun.job_id !== job_id ||
+        claimantRun.run_id !== claimant_run_id ||
+        claimantRun.role !== 'tester' ||
+        claimantRun.lifecycle !== 'IN_PROGRESS' ||
+        (claimantRun.target_ref && claimantRun.target_ref !== target_ref) ||
+        (claimantRun.target_revision && claimantRun.target_revision !== target_revision)
+      ) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: claimant must be the current IN_PROGRESS NEXT Tester Run for this exact target.' }], isError: true }
       }
       if (!['READY','IN_PROGRESS'].includes(job.lifecycle)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job is not executable.' }], isError: true }
@@ -3032,6 +3051,7 @@ function createServer(req: Request) {
       const attemptPath = checkpointAttemptPath(project_id, attemptId)
       const claimOperation = current ? 'UPDATE' : 'CREATE'
       const externalSteps = [
+        'Immediately read back the claimant Tester Run from NEXT memory and require blob SHA equals claimant_run_record_sha plus role=tester, lifecycle=IN_PROGRESS, same project/job/run/target before any claim mutation.',
         claimOperation === 'CREATE'
           ? 'Call authorize_memory_mutation(create) for claim_memory_path, then create the deterministic claim record. Concurrent create failure means another claimant won; refetch instead of retrying blind.'
           : 'Immediately refetch claim_memory_path and require its blob SHA equals expected_claim_sha; authorize/update with exact SHA. Stale SHA means another claimant/reclaimer won.',
@@ -3072,6 +3092,8 @@ function createServer(req: Request) {
         checkpoint_id: z.string().min(1),
         claim_record_text: z.string().min(2),
         claim_record_sha: z.string().min(7),
+        tester_run_record_text: z.string().min(2),
+        tester_run_record_sha: z.string().min(7),
         attempt_id: z.string().uuid(),
         lease_token: z.string().uuid(),
         target_ref: z.string().min(1),
@@ -3096,7 +3118,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
       let job: any, claim: any
@@ -3105,6 +3127,20 @@ function createServer(req: Request) {
       }
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
+      }
+      let testerRun: any
+      try { testerRun = JSON.parse(tester_run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: invalid Tester Run JSON.' }], isError: true }
+      }
+      if (
+        resolveExecutionContract(testerRun.execution_contract) !== 'NEXT' ||
+        testerRun.project_id !== project_id ||
+        testerRun.job_id !== job_id ||
+        testerRun.run_id !== claim.claimant_run_id ||
+        testerRun.role !== 'tester' ||
+        testerRun.lifecycle !== 'IN_PROGRESS'
+      ) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: Verification must be produced by the current IN_PROGRESS NEXT Tester Run that owns the lease.' }], isError: true }
       }
       const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
       if (!checkpoint) return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: checkpoint not in current planning revision.' }], isError: true }
@@ -3201,7 +3237,8 @@ function createServer(req: Request) {
         next_claim_record_text: prettyJson(nextClaim),
         route,
         external_steps: [
-          'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
+          'Immediately read back the Tester Run and require blob SHA equals tester_run_record_sha plus role=tester, lifecycle=IN_PROGRESS and run_id=claim.claimant_run_id.',
+        'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
           'Authorize/create verification_memory_path and persist verification_record_text append-only.',
           'Then authorize/update claim_memory_path with next_claim_record_text using expected_claim_sha exactly.',
           'If the claim update loses CAS, the Verification is orphaned/non-applicable because evidence gates require current claim.last_verification_id + attempt/token match. Refetch and reconcile; never treat the orphan as PASS.',
