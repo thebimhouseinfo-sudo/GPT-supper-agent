@@ -180,10 +180,13 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
   if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
-  if (!['SATISFIED','OBSERVED'].includes(claim.state)) return false
+  if (claim.mode !== checkpoint.mode || !['SATISFIED','OBSERVED'].includes(claim.state)) return false
   if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
-  if (!['TEST','RETEST'].includes(verification.kind) || verification.execution_contract !== 'NEXT') return false
+  if (!['TEST','RETEST'].includes(verification.kind) || verification.execution_contract !== 'NEXT' || verification.producer !== 'tester') return false
   if (verification.project_id !== job.project_id || verification.job_id !== job.job_id || verification.planning_revision !== job.planning_revision || verification.checkpoint_id !== checkpoint.checkpoint_id) return false
+  if (verification.mode !== checkpoint.mode || verification.attempt_kind !== claim.attempt_kind || claim.last_result !== verification.result) return false
+  if (verification.result === 'PASS' && claim.state !== 'SATISFIED') return false
+  if (verification.result === 'OBSERVED' && claim.state !== 'OBSERVED') return false
   if (verification.applicability?.status !== 'CANDIDATE') return false
   if (claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
   const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
@@ -244,17 +247,20 @@ function evaluateNextEvidenceGate(job: any, claimTexts: string[], verificationTe
       blocking.push('Unknown required checkpoint: ' + checkpointId)
       continue
     }
-    const claim = claimParsed.records.find((item: any) =>
+    const matchingClaims = claimParsed.records.filter((item: any) =>
       item?.kind === 'CHECKPOINT_CLAIM' &&
       item.project_id === job.project_id &&
       item.job_id === job.job_id &&
       item.planning_revision === job.planning_revision &&
       item.checkpoint_id === checkpointId
     )
-    const verification = claim
-      ? verificationParsed.records.find((item: any) => item?.verification_id === claim.last_verification_id)
-      : null
-    if (!checkpointVerificationApplicable(job, checkpoint, claim, verification)) {
+    if (matchingClaims.length !== 1) {
+      blocking.push('Expected exactly one current deterministic checkpoint claim: ' + checkpointId)
+      continue
+    }
+    const claim = matchingClaims[0]
+    const matchingVerifications = verificationParsed.records.filter((item: any) => item?.verification_id === claim.last_verification_id)
+    if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0])) {
       blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
     }
   }
@@ -2894,16 +2900,18 @@ function createServer(req: Request) {
       for (const prerequisiteId of runtimePrerequisiteIds) {
         const prerequisiteCheckpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === prerequisiteId)
         if (prerequisiteCheckpoint) {
-          const prerequisiteClaim = prerequisiteClaims.records.find((item: any) =>
+          const prerequisiteClaimMatches = prerequisiteClaims.records.filter((item: any) =>
             item?.kind === 'CHECKPOINT_CLAIM' &&
             item.project_id === project_id &&
             item.job_id === job_id &&
             item.planning_revision === job.planning_revision &&
             item.checkpoint_id === prerequisiteId
           )
-          const prerequisiteVerification = prerequisiteClaim
-            ? prerequisiteVerifications.records.find((item: any) => item?.verification_id === prerequisiteClaim.last_verification_id)
-            : null
+          const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0] : null
+          const prerequisiteVerificationMatches = prerequisiteClaim
+            ? prerequisiteVerifications.records.filter((item: any) => item?.verification_id === prerequisiteClaim.last_verification_id)
+            : []
+          const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0] : null
           if (!checkpointVerificationApplicable(job, prerequisiteCheckpoint, prerequisiteClaim, prerequisiteVerification)) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite checkpoint is not satisfied/applicable: ' + prerequisiteId }], isError: true }
           }
@@ -2961,8 +2969,11 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_PLAN_REVISION_REQUIRED: PLAN_GAP/SPEC_GAP must be resolved by a new reviewed planning revision; do not RETEST this revision.' }], isError: true }
         }
         const reclaimingExpiredActive = current.state === 'ACTIVE' && checkpointLeaseExpired(current)
+        if (reclaimingExpiredActive && current.attempt_kind !== attempt_kind) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_RECLAIM_REJECTED: expired lease reclaim must preserve the original attempt_kind.' }], isError: true }
+        }
         if (attempt_kind === 'RETEST' && reclaimingExpiredActive) {
-          if (current.attempt_kind !== 'RETEST' || current.target_revision !== target_revision || current.prior_verification_id !== retest_of_verification_id) {
+          if (current.target_revision !== target_revision || current.prior_verification_id !== retest_of_verification_id) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: expired RETEST reclaim must preserve the same Retest target and originating Verification.' }], isError: true }
           }
         } else if (attempt_kind === 'RETEST') {
