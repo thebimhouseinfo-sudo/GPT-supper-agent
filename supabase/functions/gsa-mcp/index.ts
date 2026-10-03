@@ -216,6 +216,12 @@ function evaluateNextEvidenceGate(job: any, claimTexts: string[], verificationTe
   if (claimParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [claimParsed.error] }
   const verificationParsed = parseRecordTexts(verificationTexts ?? [], 'checkpoint_verification_record_texts')
   if (verificationParsed.error) return { allowed: false, required_checkpoint_ids: [], blocking: [verificationParsed.error] }
+  if (target.kind === 'TASK' && !(job.tasks ?? []).some((item: any) => item.task_id === target.id)) {
+    return { allowed: false, required_checkpoint_ids: [], blocking: ['Unknown NEXT Task target: ' + String(target.id ?? '')] }
+  }
+  if (target.kind === 'MILESTONE' && !(job.milestones ?? []).some((item: any) => item.milestone_id === target.id)) {
+    return { allowed: false, required_checkpoint_ids: [], blocking: ['Unknown NEXT Milestone target: ' + String(target.id ?? '')] }
+  }
   const ids = requiredCheckpointIds(job, target)
   const blocking: string[] = []
   for (const checkpointId of ids) {
@@ -2360,7 +2366,10 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
       const inProgressNextRevision = executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS'
-      const inProgressReviewRepair = inProgressNextRevision && current.planning_review?.status === 'CHANGES_REQUIRED'
+      const inProgressReviewRepair =
+        inProgressNextRevision &&
+        ['CHANGES_REQUIRED','HUMAN_REVIEW_REQUIRED'].includes(current.planning_review?.status) &&
+        Boolean(current.superseding_verification_ref)
       const inProgressGapSupersession = inProgressNextRevision && !inProgressReviewRepair
       if (current.lifecycle !== 'DRAFT' && !inProgressNextRevision) {
         return { content: [{ type: 'text', text: 'Planner revision is allowed only for DRAFT Jobs or NEXT IN_PROGRESS supersession/review repair.' }], isError: true }
@@ -2393,9 +2402,11 @@ function createServer(req: Request) {
           supersedingClaim.job_id === job_id &&
           supersedingClaim.planning_revision === current.planning_revision &&
           supersedingClaim.state === 'NEEDS_PLANNER_REVISION' &&
+          supersedingClaim.checkpoint_id === supersedingVerification.checkpoint_id &&
           supersedingClaim.last_verification_id === supersedingVerification.verification_id &&
           supersedingClaim.lease_token === supersedingVerification.lease_token &&
-          supersedingClaim.attempt_id === supersedingVerification.attempt_id
+          supersedingClaim.attempt_id === supersedingVerification.attempt_id &&
+          supersedingClaim.last_target_revision === supersedingVerification.target_revision
         if (!supersessionMatches) {
           return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: Verification must be the current terminal PLAN_GAP/SPEC_GAP claim result for this planning revision.' }], isError: true }
         }
@@ -2586,9 +2597,17 @@ function createServer(req: Request) {
             : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
         )
       } else if (result === 'CHANGES_REQUIRED') {
-        steps.push('In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'In this SAME USER TURN, switch to Planner with the findings. Revise the DRAFT Job using job_revise_plan, then immediately switch back to Reviewer. Do not report a final plan yet.'
+            : 'In this SAME USER TURN, switch to Planner with the findings. Revise the superseding NEXT IN_PROGRESS plan, preserving its originating supersession evidence, then immediately switch back to Reviewer.',
+        )
       } else if (result === 'HUMAN_REVIEW_REQUIRED') {
-        steps.push('Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.')
+        steps.push(
+          current.lifecycle === 'DRAFT'
+            ? 'Pause only for the specific material Human decision; after Human resolution, Planner revises/persists and re-review is required.'
+            : 'Pause only for the specific material Human decision; after resolution, Planner continues the same NEXT superseding planning-review loop without requiring a duplicate Tester gap finding.',
+        )
       } else {
         steps.push('Report the concrete blocker because the planning-review loop cannot progress.')
       }
@@ -2786,6 +2805,9 @@ function createServer(req: Request) {
         retest_of_verification_id: z.string().min(1).optional(),
         repair_goal_recheck_record_text: z.string().min(2).optional(),
         repair_goal_recheck_verification_ref: z.string().min(1).optional(),
+        completed_task_ids: z.array(z.string()).default([]),
+        prerequisite_claim_record_texts: z.array(z.string()).default([]),
+        prerequisite_verification_record_texts: z.array(z.string()).default([]),
         lease_seconds: z.number().int().min(60).max(3600).default(900),
         current_claim_record_text: z.string().min(2).optional(),
         current_claim_record_sha: z.string().min(7).optional(),
@@ -2806,7 +2828,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, completed_task_ids, prerequisite_claim_record_texts, prerequisite_verification_record_texts, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
       let job: any
@@ -2825,6 +2847,30 @@ function createServer(req: Request) {
       const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
       if (!checkpoint) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: checkpoint is not part of the current planning revision.' }], isError: true }
+      }
+      const prerequisiteClaims = parseRecordTexts(prerequisite_claim_record_texts ?? [], 'prerequisite_claim_record_texts')
+      if (prerequisiteClaims.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteClaims.error }], isError: true }
+      const prerequisiteVerifications = parseRecordTexts(prerequisite_verification_record_texts ?? [], 'prerequisite_verification_record_texts')
+      if (prerequisiteVerifications.error) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: ' + prerequisiteVerifications.error }], isError: true }
+      for (const prerequisiteId of checkpoint.prerequisite_node_ids ?? []) {
+        const prerequisiteCheckpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === prerequisiteId)
+        if (prerequisiteCheckpoint) {
+          const prerequisiteClaim = prerequisiteClaims.records.find((item: any) =>
+            item?.kind === 'CHECKPOINT_CLAIM' &&
+            item.project_id === project_id &&
+            item.job_id === job_id &&
+            item.planning_revision === job.planning_revision &&
+            item.checkpoint_id === prerequisiteId
+          )
+          const prerequisiteVerification = prerequisiteClaim
+            ? prerequisiteVerifications.records.find((item: any) => item?.verification_id === prerequisiteClaim.last_verification_id)
+            : null
+          if (!checkpointVerificationApplicable(job, prerequisiteCheckpoint, prerequisiteClaim, prerequisiteVerification)) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite checkpoint is not satisfied/applicable: ' + prerequisiteId }], isError: true }
+          }
+        } else if (!(completed_task_ids ?? []).includes(prerequisiteId)) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite Task is not durably completed: ' + prerequisiteId }], isError: true }
+        }
       }
       const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
       let current: any = null
@@ -2875,7 +2921,12 @@ function createServer(req: Request) {
         if (current.state === 'NEEDS_PLANNER_REVISION') {
           return { content: [{ type: 'text', text: 'CHECKPOINT_PLAN_REVISION_REQUIRED: PLAN_GAP/SPEC_GAP must be resolved by a new reviewed planning revision; do not RETEST this revision.' }], isError: true }
         }
-        if (attempt_kind === 'RETEST') {
+        const reclaimingExpiredActive = current.state === 'ACTIVE' && checkpointLeaseExpired(current)
+        if (attempt_kind === 'RETEST' && reclaimingExpiredActive) {
+          if (current.attempt_kind !== 'RETEST' || current.target_revision !== target_revision || current.prior_verification_id !== retest_of_verification_id) {
+            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: expired RETEST reclaim must preserve the same Retest target and originating Verification.' }], isError: true }
+          }
+        } else if (attempt_kind === 'RETEST') {
           if (!current.retest_required || !retest_of_verification_id || current.last_verification_id !== retest_of_verification_id) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST must reference the terminal verification that requested Retest.' }], isError: true }
           }
@@ -2969,9 +3020,9 @@ function createServer(req: Request) {
         'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
         'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
         'Only the current durable lease token may produce terminal Tester Verification.',
-        current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST'
+        current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST' && current.state !== 'ACTIVE'
           ? 'Read back repair_goal_recheck_verification_ref and require it equals the supplied Goal Recheck for the repaired target revision before Tester execution.'
-          : 'No repair Goal Recheck read-back is required for this claim kind.',
+          : 'No additional repair Goal Recheck read-back is required for this claim/reclaim kind.',
       ]
       const out = {
         disposition: 'CLAIM',
@@ -3223,6 +3274,12 @@ function createServer(req: Request) {
       if (!executionContract) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && primary_task_id && !(owningJob.tasks ?? []).some((item: any) => item.task_id === primary_task_id)) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: primary_task_id is not a Task in the current planning revision.' }], isError: true }
+      }
+      if (executionContract === 'NEXT' && ['coder','designer'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT source/design execution must bind one current primary Task so EvidenceRequirement guards cannot be bypassed.' }], isError: true }
       }
       if (
         executionContract === 'NEXT' &&
