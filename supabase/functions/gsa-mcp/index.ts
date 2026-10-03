@@ -4046,10 +4046,14 @@ app.get('/selftest', (c) => {
     execution_contract: 'NEXT',
     planning_revision: 3,
     checkpoint_id: checkpointId,
+    mode: 'VERIFY',
     state: 'SATISFIED',
     attempt_id: attemptId,
+    attempt_kind: 'TEST',
     lease_token: leaseToken,
+    target_revision: 'rev-b',
     last_verification_id: verificationId,
+    last_result: 'PASS',
     last_target_revision: 'rev-b',
   }
   const nextGateVerification = {
@@ -4061,14 +4065,37 @@ app.get('/selftest', (c) => {
     planning_revision: 3,
     checkpoint_id: checkpointId,
     attempt_id: attemptId,
+    attempt_kind: 'TEST',
     lease_token: leaseToken,
+    mode: 'VERIFY',
     target_revision: 'rev-b',
+    producer: 'tester',
     result: 'PASS',
-    applicability: { status: 'CANDIDATE', target_revision: 'rev-b', evidence_need_ids: [evidenceNeedId] },
+    applicability: {
+      status: 'CANDIDATE',
+      planning_revision: 3,
+      checkpoint_id: checkpointId,
+      target_revision: 'rev-b',
+      evidence_need_ids: [evidenceNeedId],
+    },
   }
-  const nextTaskGatePass = evaluateNextEvidenceGate(nextGateJob, [prettyJson(nextGateClaim)], [prettyJson(nextGateVerification)], { kind: 'TASK', id: consumerTaskId })
+  const nextGateClaimSnapshot = {
+    path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId),
+    sha: 'a'.repeat(40),
+    record_text: prettyJson(nextGateClaim),
+  }
+  const nextGateVerificationSnapshot = {
+    path: verificationPath(projectId, verificationId, 'NEXT'),
+    sha: 'b'.repeat(40),
+    record_text: prettyJson(nextGateVerification),
+  }
+  const nextTaskGatePass = evaluateNextEvidenceGate(nextGateJob, [nextGateClaimSnapshot], [nextGateVerificationSnapshot], { kind: 'TASK', id: consumerTaskId })
   const nextTaskGateMissing = evaluateNextEvidenceGate(nextGateJob, [], [], { kind: 'TASK', id: consumerTaskId })
-  const nextTaskGateStale = evaluateNextEvidenceGate({ ...nextGateJob, planning_revision: 4, planning_review: { status: 'PASS', reviewed_revision: 4 } }, [prettyJson(nextGateClaim)], [prettyJson(nextGateVerification)], { kind: 'TASK', id: consumerTaskId })
+  const nextTaskGateStale = evaluateNextEvidenceGate({ ...nextGateJob, planning_revision: 4, planning_review: { status: 'PASS', reviewed_revision: 4 } }, [nextGateClaimSnapshot], [nextGateVerificationSnapshot], { kind: 'TASK', id: consumerTaskId })
+  const nextGateVerificationWrongNestedRevision = {
+    ...nextGateVerification,
+    applicability: { ...nextGateVerification.applicability, planning_revision: 2 },
+  }
   const legacyGatePass = evaluateNextEvidenceGate({ project_id: projectId, job_id: legacyJobId, execution_contract: 'V2_STABLE' }, [], [], { kind: 'JOB', id: null })
   const milestoneBoundaryPrereqs = checkpointBoundaryPrerequisiteIds(
     { milestones: [{ milestone_id: 'M-E29', node_ids: [consumerTaskId, checkpointId] }] },
@@ -4115,6 +4142,7 @@ app.get('/selftest', (c) => {
     cp5_task_gate_rejects_stale_revision_evidence: !nextTaskGateStale.allowed,
     cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
     cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
+    cp5_nested_applicability_revision_mismatch_rejected: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], nextGateClaim, nextGateVerificationWrongNestedRevision),
     cp5_milestone_boundary_expands_runtime_prereqs: milestoneBoundaryPrereqs.includes(consumerTaskId) && !milestoneBoundaryPrereqs.includes(checkpointId),
     cp5_job_final_boundary_expands_runtime_prereqs: jobFinalBoundaryPrereqs.includes(consumerTaskId) && jobFinalBoundaryPrereqs.includes(checkpointId) && !jobFinalBoundaryPrereqs.includes('CP-FINAL'),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
