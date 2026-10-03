@@ -2209,6 +2209,9 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'Completed Job requires at least one durable completion evidence reference.' }], isError: true }
         }
         if (executionContract === 'NEXT') {
+          if (current.planning_review?.status !== 'PASS' || current.planning_review?.reviewed_revision !== current.planning_revision) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: current planning revision is not Reviewer PASS.' }], isError: true }
+          }
           const gate = evaluateNextEvidenceGate(
             current,
             checkpoint_claim_record_texts ?? [],
@@ -2742,6 +2745,8 @@ function createServer(req: Request) {
         target_revision: z.string().min(1),
         attempt_kind: z.enum(['TEST','RETEST']).default('TEST'),
         retest_of_verification_id: z.string().min(1).optional(),
+        repair_goal_recheck_record_text: z.string().min(2).optional(),
+        repair_goal_recheck_verification_ref: z.string().min(1).optional(),
         lease_seconds: z.number().int().min(60).max(3600).default(900),
         current_claim_record_text: z.string().min(2).optional(),
         current_claim_record_sha: z.string().min(7).optional(),
@@ -2762,7 +2767,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claimant_run_id, target_ref, target_revision, attempt_kind, retest_of_verification_id, repair_goal_recheck_record_text, repair_goal_recheck_verification_ref, lease_seconds, current_claim_record_text, current_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to claim a NEXT checkpoint.')
       let job: any
@@ -2774,6 +2779,9 @@ function createServer(req: Request) {
       }
       if (!['READY','IN_PROGRESS'].includes(job.lifecycle)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job is not executable.' }], isError: true }
+      }
+      if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current NEXT planning revision is not Reviewer PASS.' }], isError: true }
       }
       const checkpoint = (job.test_checkpoints ?? []).find((item: any) => item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision)
       if (!checkpoint) {
@@ -2832,10 +2840,33 @@ function createServer(req: Request) {
           if (!current.retest_required || !retest_of_verification_id || current.last_verification_id !== retest_of_verification_id) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST must reference the terminal verification that requested Retest.' }], isError: true }
           }
-          if (current.last_failure_class === 'PRODUCT_FAILURE' && current.last_target_revision === target_revision) {
-            return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires a repaired target revision/state.' }], isError: true }
+          if (current.last_failure_class === 'PRODUCT_FAILURE') {
+            if (current.last_target_revision === target_revision) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires a repaired target revision/state.' }], isError: true }
+            }
+            if (!repair_goal_recheck_record_text || !repair_goal_recheck_verification_ref) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires the repaired revision Goal Recheck.' }], isError: true }
+            }
+            let goal: any
+            try { goal = JSON.parse(repair_goal_recheck_record_text) } catch {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: invalid repair Goal Recheck JSON.' }], isError: true }
+            }
+            const expectedGoalRef = verificationPath(project_id, goal.verification_id, 'NEXT')
+            const validGoal =
+              goal.kind === 'GOAL_RECHECK' &&
+              goal.execution_contract === 'NEXT' &&
+              goal.project_id === project_id &&
+              goal.job_id === job_id &&
+              goal.target_revision === target_revision &&
+              ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result) &&
+              !(goal.criteria ?? []).some((item: any) => item.result === 'NOT_MET') &&
+              !(goal.scope_drift ?? []).length &&
+              repair_goal_recheck_verification_ref === expectedGoalRef
+            if (!validGoal) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: repair Goal Recheck must match the repaired target revision and have no NOT_MET/scope drift.' }], isError: true }
+            }
           }
-        } else if (current.state && !checkpointLeaseExpired(current)) {
+        } else if (current.state !== 'ACTIVE') {
           return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: terminal/blocked checkpoint requires an explicit RETEST claim.' }], isError: true }
         }
       } else if (attempt_kind === 'RETEST') {
@@ -2886,10 +2917,9 @@ function createServer(req: Request) {
         claimant_run_id,
         target_ref,
         target_revision,
-        lifecycle: 'IN_PROGRESS',
+        state: 'STARTED',
         retest_of_verification_id: retest_of_verification_id ?? null,
         started_at: now.toISOString(),
-        ended_at: null,
       }
       const attemptPath = checkpointAttemptPath(project_id, attemptId)
       const claimOperation = current ? 'UPDATE' : 'CREATE'
@@ -2900,6 +2930,9 @@ function createServer(req: Request) {
         'Read back the claim and require lease_token/attempt_id/generation exactly match this grant before creating the attempt child.',
         'Call authorize_memory_mutation(create) for attempt_memory_path and create attempt_record_text. Duplicate create means replay; read existing attempt and require the same lease_token.',
         'Only the current durable lease token may produce terminal Tester Verification.',
+        current?.last_failure_class === 'PRODUCT_FAILURE' && attempt_kind === 'RETEST'
+          ? 'Read back repair_goal_recheck_verification_ref and require it equals the supplied Goal Recheck for the repaired target revision before Tester execution.'
+          : 'No repair Goal Recheck read-back is required for this claim kind.',
       ]
       const out = {
         disposition: 'CLAIM',
@@ -2983,8 +3016,11 @@ function createServer(req: Request) {
       if (claim.target_revision !== target_revision || claim.target_ref !== target_ref) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
       }
-      if (result === 'FAIL' && !failure_class) {
-        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: FAIL requires failure_class.' }], isError: true }
+      if (!['PASS','OBSERVED'].includes(result) && !failure_class) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: non-success result requires failure_class.' }], isError: true }
+      }
+      if (['PASS','OBSERVED'].includes(result) && failure_class) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed evidence cannot carry a failure_class.' }], isError: true }
       }
       if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: OBSERVED is only valid for MEASURE/PROBE.' }], isError: true }
@@ -3145,6 +3181,12 @@ function createServer(req: Request) {
       if (!executionContract) return invalidExecutionContract()
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (
+        executionContract === 'NEXT' &&
+        (owningJob.planning_review?.status !== 'PASS' || owningJob.planning_review?.reviewed_revision !== owningJob.planning_revision)
+      ) {
+        return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
       }
       if (executionContract === 'NEXT' && primary_task_id) {
         const gate = evaluateNextEvidenceGate(
