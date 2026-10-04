@@ -124,7 +124,7 @@ read current main SHA
 
 Any production hotfix therefore enters the integration branch incrementally rather than being discovered only at final release.
 
-The final promotion still requires one full latest-main synchronization followed by CP7 compatibility + E2E rerun.
+Final promotion repeats production-drift review and the full compatibility + E2E gates.
 
 
 ---
