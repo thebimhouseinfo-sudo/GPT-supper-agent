@@ -397,7 +397,13 @@ function validateTesterEvidenceVerificationSnapshot(
     Array.isArray(record?.evidence_bundle_refs) &&
     record.evidence_bundle_refs.length > 0 &&
     Array.isArray(record?.evidence_bundle_attestation_refs) &&
-    record.evidence_bundle_attestation_refs.length === record.evidence_bundle_refs.length
+    record.evidence_bundle_attestation_refs.length === record.evidence_bundle_refs.length &&
+    record.evidence_bundle_attestation_refs.every((item: any) =>
+      item &&
+      typeof item.path === 'string' &&
+      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT') + '/VERIFICATION/') &&
+      /^[0-9a-f]{40}$/.test(String(item.sha || ''))
+    )
   if (!valid) {
     return { error: 'TEST/RETEST Verification is not the exact successful durable evidence record for this Tester Run/target.', ref: null, sha: null, record: null }
   }
@@ -419,8 +425,22 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
   const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
-  if ((verification.evidence_bundle_refs ?? []).length && !workingRepo) return false
-  for (const bundle of verification.evidence_bundle_refs ?? []) {
+  const bundleRefs = verification.evidence_bundle_refs ?? []
+  const attestationRefs = verification.evidence_bundle_attestation_refs ?? []
+  if (bundleRefs.length !== attestationRefs.length) return false
+  if (bundleRefs.length && !workingRepo) return false
+  const attestationPaths = new Set<string>()
+  for (const ref of attestationRefs) {
+    if (
+      !ref ||
+      typeof ref.path !== 'string' ||
+      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT') + '/VERIFICATION/') ||
+      !/^[0-9a-f]{40}$/.test(String(ref.sha || '')) ||
+      attestationPaths.has(ref.path)
+    ) return false
+    attestationPaths.add(ref.path)
+  }
+  for (const bundle of bundleRefs) {
     if (evidenceBundleRefValidationError(bundle, {
       project_id: job.project_id,
       job_id: job.job_id,
