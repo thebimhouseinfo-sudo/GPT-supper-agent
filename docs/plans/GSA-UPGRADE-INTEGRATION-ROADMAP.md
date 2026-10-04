@@ -611,8 +611,8 @@ Before release:
 
 ~~~text
 latest main
-→ reconcile accepted production changes into upgrade/gsa-next
-→ resolve only on upgrade/gsa-next
+→ apply accepted drift in a temporary child branch
+→ review/test that child branch, then merge it into upgrade/gsa-next
 → rerun CP7 compatibility + E2E gates
 ~~~
 
