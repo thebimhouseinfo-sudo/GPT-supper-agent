@@ -5369,11 +5369,17 @@ app.get('/selftest', (c) => {
     target_revision: cp6TargetRevision,
     last_target_revision: cp6TargetRevision,
   }
+  const cp6AttestationRef = {
+    path: verificationPath(projectId, uuidv7(), 'NEXT'),
+    sha: '8'.repeat(40),
+  }
   const cp6VerificationWithBundle = {
     ...nextGateVerification,
+    run_id: nextRunId,
     target_ref: cp6TargetRef,
     target_revision: cp6TargetRevision,
     evidence_bundle_refs: [cp6PrivateBundle],
+    evidence_bundle_attestation_refs: [cp6AttestationRef],
     applicability: {
       ...nextGateVerification.applicability,
       target_revision: cp6TargetRevision,
@@ -5438,6 +5444,7 @@ app.get('/selftest', (c) => {
     cp6_repo_bundle_rejects_automation_side_effects: evidenceBundleRefValidationError({ ...cp6RepoBundle, automation_side_effects_observed: true }, cp6ExpectedBundleContext) !== null,
     cp6_repo_bundle_requires_probe_sha: evidenceBundleRefValidationError({ ...cp6RepoBundle, binary_probe_verification_sha: null }, cp6ExpectedBundleContext) !== null,
     cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
+    cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
