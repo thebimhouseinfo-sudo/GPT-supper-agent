@@ -148,6 +148,7 @@ required_inputs[]
 evidence_bundle_refs[]?
 evidence_bundle_attestation_refs[]?
 evidence_verification_ref?
+evidence_claim_ref?
 blocker_or_gate?
 expected_next_outcome
 created_at?
@@ -468,7 +469,7 @@ The attestation is persisted under NEXT `VERIFICATION/` and is consumed only as 
 
 Raw caller-supplied `evidence_bundle_refs[]` cannot authorize PASS/OBSERVED.
 
-Tester Handoff does not accept raw bundle authority either. It consumes the exact successful TEST/RETEST Verification snapshot, requires that Verification to be included in the Run's `verification_refs[]`, and derives its bundle/attestation refs from that durable Verification.
+Tester Handoff does not accept raw bundle authority either. It consumes both the exact successful TEST/RETEST Verification snapshot and the current terminal checkpoint claim snapshot. The claim must be the canonical deterministic claim for the same planning revision/checkpoint and must currently point to the same Verification/attempt/lease token/target with a satisfying terminal state. The Verification must also be included in the Run's `verification_refs[]`. Only then may Handoff derive bundle/attestation refs. The Handoff records both `evidence_verification_ref` and `evidence_claim_ref`.
 
 Backend identity remains immutable:
 
