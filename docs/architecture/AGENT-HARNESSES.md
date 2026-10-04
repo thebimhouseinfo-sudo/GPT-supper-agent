@@ -33,6 +33,7 @@ Effective authority is the intersection of Project/Job/Task/role/Run/human/capab
 ## 3. Planner
 
 Planner:
+- treats the explicitly opened Project as the default discussion frame and re-grounds durable context before implementation routing;
 - reads Project Memory and selective live source;
 - writes planning/knowledge;
 - defines objective/scope/architecture/dependencies;
