@@ -38,7 +38,7 @@ These guards invoke the same runtime helpers used by checkpoint verification, RE
 PASS when:
 
 1. all ten scenarios have explicit executable or capability-bound evidence;
-2. the two new CP7 guards are true;
+2. all CP7 integration guards listed above are true;
 3. no prior E25–E30 regression is weakened;
 4. exact reviewed CP7 source is deployed only to `gsa-mcp-next`;
 5. production `main` and `gsa-mcp` remain unchanged;
