@@ -5729,6 +5729,87 @@ app.get('/selftest', (c) => {
     }),
   }
 
+  const cp7ProductFailureOutcome = checkpointVerificationOutcome('FAIL', 'PRODUCT_FAILURE')
+  const cp7PlanGapOutcome = checkpointVerificationOutcome('FAIL', 'PLAN_GAP')
+  const cp7RepairRevision = 'e'.repeat(40)
+  const cp7RepairGoalId = uuidv7()
+  const cp7RepairGoal = {
+    verification_id: cp7RepairGoalId,
+    kind: 'GOAL_RECHECK',
+    execution_contract: 'NEXT',
+    project_id: projectId,
+    job_id: nextJobId,
+    target_revision: cp7RepairRevision,
+    result: 'PASS',
+    criteria: [{ result: 'MET' }],
+    scope_drift: [],
+  }
+  const cp7FailedProductClaim = {
+    ...nextGateClaim,
+    state: 'FAILED_PRODUCT',
+    retest_required: true,
+    last_failure_class: 'PRODUCT_FAILURE',
+    last_result: 'FAIL',
+    last_verification_id: verificationId,
+    last_target_revision: cp6TargetRevision,
+  }
+  const cp7RepairGoalRef = verificationPath(projectId, cp7RepairGoalId, 'NEXT')
+  const cp7ProductRetestAllowed =
+    productFailureRetestValidationError(
+      cp7FailedProductClaim,
+      cp7RepairRevision,
+      verificationId,
+      prettyJson(cp7RepairGoal),
+      cp7RepairGoalRef,
+      projectId,
+      nextJobId,
+    ) === null
+  const cp7ProductRetestSameTargetRejected =
+    productFailureRetestValidationError(
+      cp7FailedProductClaim,
+      cp6TargetRevision,
+      verificationId,
+      prettyJson(cp7RepairGoal),
+      cp7RepairGoalRef,
+      projectId,
+      nextJobId,
+    ) !== null
+  const cp7PlanGapVerificationId = uuidv7()
+  const cp7PlanGapVerification = {
+    ...nextGateVerification,
+    verification_id: cp7PlanGapVerificationId,
+    result: 'FAIL',
+    failure_class: 'PLAN_GAP',
+    route: 'PLANNER_REVISION_SUPERSEDE',
+  }
+  const cp7PlanGapClaim = {
+    ...nextGateClaim,
+    state: 'NEEDS_PLANNER_REVISION',
+    last_failure_class: 'PLAN_GAP',
+    last_result: 'FAIL',
+    last_verification_id: cp7PlanGapVerificationId,
+    last_target_revision: cp7PlanGapVerification.target_revision,
+  }
+  const cp7PlanGapVerificationRef = verificationPath(projectId, cp7PlanGapVerificationId, 'NEXT')
+  const cp7PlanGapCurrent = { ...nextGateJob, lifecycle: 'IN_PROGRESS' }
+  const cp7PlanGapSupersessionAccepted = nextPlanSupersessionMatches(
+    cp7PlanGapCurrent,
+    cp7PlanGapVerification,
+    cp7PlanGapVerificationRef,
+    cp7PlanGapClaim,
+    projectId,
+    nextJobId,
+  )
+  const cp7PlanGapSupersessionMismatchRejected = !nextPlanSupersessionMatches(
+    cp7PlanGapCurrent,
+    cp7PlanGapVerification,
+    cp7PlanGapVerificationRef,
+    { ...cp7PlanGapClaim, last_verification_id: uuidv7() },
+    projectId,
+    nextJobId,
+  )
+  const cp7PlannerSkill = RUNTIME_SKILLS['job-planning']?.body ?? ''
+
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -5767,6 +5848,23 @@ app.get('/selftest', (c) => {
     cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
     cp7_next_no_checkpoint_dispatch_allowed: cp7NoCheckpointGate.allowed && cp7NoCheckpointGate.required_checkpoint_ids.length === 0,
     cp7_ui_coder_frontend_remains_opt_in: Boolean(RUNTIME_SKILLS['ui-coder-frontend']) && !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
+    cp7_ui_coder_frontend_handoff_requires_explicit_load:
+      cp7PlannerSkill.includes('handoff must explicitly name ui-coder-frontend') &&
+      cp7PlannerSkill.includes('load that skill before frontend source implementation') &&
+      Boolean(RUNTIME_SKILLS['ui-coder-frontend']) &&
+      !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
+    cp7_product_failure_routes_to_repair_retest:
+      cp7ProductFailureOutcome.state === 'FAILED_PRODUCT' &&
+      cp7ProductFailureOutcome.route === 'CODER_REPAIR_GOAL_RECHECK_RETEST' &&
+      cp7ProductFailureOutcome.retestRequired === true,
+    cp7_product_failure_retest_requires_repaired_goal:
+      cp7ProductRetestAllowed && cp7ProductRetestSameTargetRejected,
+    cp7_plan_gap_routes_to_supersession:
+      cp7PlanGapOutcome.state === 'NEEDS_PLANNER_REVISION' &&
+      cp7PlanGapOutcome.route === 'PLANNER_REVISION_SUPERSEDE' &&
+      cp7PlanGapOutcome.retestRequired === false,
+    cp7_plan_gap_supersession_requires_terminal_claim:
+      cp7PlanGapSupersessionAccepted && cp7PlanGapSupersessionMismatchRejected,
     cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
     cp5_execution_topology_validator_accepts_coherent_plan: executionTopologyValid,
     cp5_execution_topology_validator_rejects_stale_task_mapping: executionTopologyStale,
