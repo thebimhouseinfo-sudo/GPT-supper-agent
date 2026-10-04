@@ -1565,11 +1565,64 @@ function createServer(req: Request) {
   )
 
 
+  function validateRepositoryProbeSnapshot(
+    snapshot: any,
+    expected: {
+      project_id: string
+      job_id: string
+      execution_contract: ExecutionContract
+      repository_full_name: string
+      target_ref: string
+      target_revision: string
+      evidence_ref: string
+    },
+  ) {
+    if (!snapshot) return { error: 'EVIDENCE_REPO_DENY: PUBLISH requires a durable successful probe Verification snapshot.' }
+    const parsed = parseDurableSnapshots([snapshot], 'binary_probe_verification_snapshot')
+    if (parsed.error || parsed.entries.length !== 1) {
+      return { error: 'EVIDENCE_REPO_DENY: invalid binary probe Verification snapshot.' }
+    }
+    const entry = parsed.entries[0]
+    const record = entry.record
+    const expectedPath =
+      typeof record?.verification_id === 'string'
+        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract)
+        : ''
+    const repoMatches =
+      String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase()
+    const valid =
+      expectedPath === entry.path &&
+      record?.kind === 'CAPABILITY_PROBE' &&
+      record?.project_id === expected.project_id &&
+      record?.job_id === expected.job_id &&
+      resolveExecutionContract(record?.execution_contract) === expected.execution_contract &&
+      record?.producer === 'tester' &&
+      record?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
+      record?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
+      record?.result === 'OBSERVED' &&
+      repoMatches &&
+      record?.target_ref === expected.target_ref &&
+      record?.target_revision === expected.target_revision &&
+      record?.evidence_ref === expected.evidence_ref &&
+      record?.source_revision_unchanged === true &&
+      record?.append_only_verified === true &&
+      record?.manifest_readback_verified === true &&
+      record?.artifact_readback_verified === true &&
+      record?.automation_side_effects_observed === false &&
+      record?.usable_as_product_evidence === false &&
+      /^[0-9a-f]{40}$/.test(String(record?.evidence_commit_sha || ''))
+    if (!valid) {
+      return { error: 'EVIDENCE_REPO_DENY: probe Verification is not an exact successful PROBE-GIT-EVIDENCE-01 observation for this publication target.' }
+    }
+    return { error: null, ref: entry.path, sha: entry.sha, record }
+  }
+
+
   server.registerTool(
     'evidence_repository_publish_prepare',
     {
       title: 'Prepare bounded repository evidence publication',
-      description: 'Authorize one REPO_SAFE evidence attempt against the active Project OWNED working repo. Returns a fail-closed Git publication contract; it does not mutate Git itself.',
+      description: 'Authorize one bounded repository evidence PROBE or REPO_SAFE PUBLISH attempt against the active Project OWNED working repo. Returns a fail-closed Git publication contract; it does not mutate Git itself.',
       inputSchema: {
         project_manifest_text: z.string().min(1),
         project_manifest_sha: z.string().min(7),
@@ -1588,8 +1641,7 @@ function createServer(req: Request) {
         automation_evidence_refs: z.array(z.string().min(1)).min(1),
         publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
         probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
-        binary_capability_observed: z.boolean().default(false),
-        binary_probe_verification_ref: z.string().min(1).optional(),
+        binary_probe_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         artifacts: z.array(z.object({
           label: z.string().min(1).max(100),
           mime_type: z.literal('image/png'),
@@ -1618,7 +1670,7 @@ function createServer(req: Request) {
       project_manifest_text, project_manifest_sha, job_record_text, repository_full_name,
       job_id, checkpoint_id, attempt_id, run_id, target_ref, target_revision,
       evidence_ref, expected_evidence_ref_head, automation_evidence_refs,
-      publication_mode, probe_id, binary_capability_observed, binary_probe_verification_ref, artifacts,
+      publication_mode, probe_id, binary_probe_verification_snapshot, artifacts,
     }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to authorize repository evidence publication.')
@@ -1630,6 +1682,8 @@ function createServer(req: Request) {
       try { job = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid Job JSON.' }], isError: true }
       }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
       if (job.project_id !== project.project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -1647,13 +1701,15 @@ function createServer(req: Request) {
       if (evidence_ref !== requiredRef) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must equal ' + requiredRef }], isError: true }
       }
+
       const mode = publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      let probeVerification: any = null
       if (mode === 'PROBE') {
         if (probe_id !== 'PROBE-GIT-EVIDENCE-01') {
           return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
         }
-        if (binary_capability_observed || binary_probe_verification_ref) {
-          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE establishes capability and must not claim a prior observed probe.' }], isError: true }
+        if (binary_probe_verification_snapshot) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE establishes capability and must not consume a prior probe Verification.' }], isError: true }
         }
         if (
           artifacts.length !== 1 ||
@@ -1662,9 +1718,22 @@ function createServer(req: Request) {
         ) {
           return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE requires one synthetic probe-git-evidence-01 artifact <= 64 KiB.' }], isError: true }
         }
-      } else if (!binary_capability_observed || !binary_probe_verification_ref) {
-        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PUBLISH requires an OBSERVED binary capability and persisted successful probe reference.' }], isError: true }
+      } else {
+        const validatedProbe = validateRepositoryProbeSnapshot(binary_probe_verification_snapshot, {
+          project_id: project.project_id,
+          job_id,
+          execution_contract: executionContract,
+          repository_full_name: requested.full_name,
+          target_ref,
+          target_revision,
+          evidence_ref: requiredRef,
+        })
+        if (validatedProbe.error) {
+          return { content: [{ type: 'text', text: validatedProbe.error }], isError: true }
+        }
+        probeVerification = validatedProbe
       }
+
       const totalBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item.size_bytes || 0), 0)
       const maxBundleBytes = 25 * 1024 * 1024
       if (totalBytes > maxBundleBytes) {
@@ -1701,7 +1770,8 @@ function createServer(req: Request) {
         },
         binary_capability: {
           observed: mode === 'PUBLISH',
-          verification_ref: mode === 'PUBLISH' ? binary_probe_verification_ref : null,
+          verification_ref: mode === 'PUBLISH' ? probeVerification.ref : null,
+          verification_sha: mode === 'PUBLISH' ? probeVerification.sha : null,
         },
         artifacts,
       }
@@ -1709,7 +1779,7 @@ function createServer(req: Request) {
         allowed: true,
         reason: mode === 'PROBE'
           ? 'Bounded synthetic repository evidence capability probe authorized.'
-          : 'Bounded REPO_SAFE evidence publication authorized.',
+          : 'Bounded REPO_SAFE evidence publication authorized by exact durable probe Verification.',
         publication_mode: mode,
         probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
         evidence_ref,
@@ -1728,6 +1798,9 @@ function createServer(req: Request) {
           'Move only evidence_ref using a non-force/fast-forward ref update. force=true and non-fast-forward updates are forbidden.',
           'Read back evidence_ref and immutable commit/blob contents; verify hashes and source ref immutability.',
           'Verify no CI, preview deploy, release or source workflow was triggered by the evidence ref update. If isolation is not proven, treat repository routing as unavailable and use PRIVATE_REQUIRED/private backend.',
+          mode === 'PROBE'
+            ? 'Finalize this PROBE, then create/persist its CAPABILITY_PROBE Verification before any PUBLISH attempt.'
+            : 'Immediately re-read the binary probe Verification snapshot before mutation; its path/SHA/record must still be the exact snapshot authorized above.',
           'Call evidence_repository_publish_finalize with observed read-back values before referencing repository evidence from Verification/Handoff.',
         ],
       }
@@ -1739,12 +1812,14 @@ function createServer(req: Request) {
     'evidence_repository_publish_finalize',
     {
       title: 'Finalize repository evidence publication',
-      description: 'Validate immutable read-back for one prepared repository evidence attempt. Fails closed on source drift, ref mismatch, non-append ancestry or automation side effects.',
+      description: 'Validate immutable read-back for one prepared repository evidence PROBE or PUBLISH attempt. Fails closed on source drift, ref mismatch, non-append ancestry, probe-evidence mismatch or automation side effects.',
       inputSchema: {
         publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
         probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
-        binary_probe_verification_ref: z.string().min(1).optional(),
+        binary_probe_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
         repository_full_name: z.string().min(3),
         target_ref: z.string().min(1),
         target_revision: z.string().regex(/^[0-9a-f]{40}$/),
@@ -1778,17 +1853,45 @@ function createServer(req: Request) {
     async (args: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to finalize repository evidence publication.')
+      let job: any
+      try { job = JSON.parse(args.job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: invalid Job JSON.' }], isError: true }
+      }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
+      if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+
+      const requiredRef = 'gsa-evidence/' + args.project_id
       const mode = args.publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      let probeVerification: any = null
       if (mode === 'PROBE') {
         if (args.probe_id !== 'PROBE-GIT-EVIDENCE-01') {
           return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
         }
+        if (args.binary_probe_verification_snapshot) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE must not consume a prior probe Verification.' }], isError: true }
+        }
         if (args.artifact_count !== 1 || args.size_bytes > 64 * 1024) {
           return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE evidence must remain one bounded fixture <= 64 KiB.' }], isError: true }
         }
-      } else if (!args.binary_probe_verification_ref) {
-        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PUBLISH requires the persisted successful probe reference.' }], isError: true }
+      } else {
+        const validatedProbe = validateRepositoryProbeSnapshot(args.binary_probe_verification_snapshot, {
+          project_id: args.project_id,
+          job_id: args.job_id,
+          execution_contract: executionContract,
+          repository_full_name: args.repository_full_name,
+          target_ref: args.target_ref,
+          target_revision: args.target_revision,
+          evidence_ref: requiredRef,
+        })
+        if (validatedProbe.error) {
+          return { content: [{ type: 'text', text: validatedProbe.error.replace('EVIDENCE_REPO_DENY:', 'EVIDENCE_REPO_INVALID:') }], isError: true }
+        }
+        probeVerification = validatedProbe
       }
+
       if (args.source_ref_readback_revision !== args.target_revision) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: tested source revision moved.' }], isError: true }
       }
@@ -1798,7 +1901,6 @@ function createServer(req: Request) {
       if (args.evidence_ref_readback_head !== args.evidence_commit_sha) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence ref read-back does not match evidence commit.' }], isError: true }
       }
-      const requiredRef = 'gsa-evidence/' + args.project_id
       if (args.evidence_ref !== requiredRef) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: unexpected evidence ref.' }], isError: true }
       }
@@ -1806,6 +1908,7 @@ function createServer(req: Request) {
       if (!String(args.evidence_prefix).startsWith(expectedPrefixRoot) || !String(args.manifest_path).startsWith(args.evidence_prefix + '/')) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence prefix/manifest path mismatch.' }], isError: true }
       }
+
       const bundleRef = {
         backend: 'REPOSITORY_GIT',
         publication_mode: mode,
@@ -1825,15 +1928,27 @@ function createServer(req: Request) {
         manifest_readback_verified: true,
         artifact_readback_verified: true,
         automation_side_effects_observed: false,
-        binary_probe_verification_ref: mode === 'PUBLISH' ? args.binary_probe_verification_ref : null,
+        binary_probe_verification_ref: mode === 'PUBLISH' ? probeVerification.ref : null,
+        binary_probe_verification_sha: mode === 'PUBLISH' ? probeVerification.sha : null,
       }
       const probeObservation = mode === 'PROBE' ? {
+        project_id: args.project_id,
+        job_id: args.job_id,
+        execution_contract: executionContract,
         probe_id: 'PROBE-GIT-EVIDENCE-01',
         capability: 'REPOSITORY_BINARY_EVIDENCE',
         observed: true,
+        repository_full_name: args.repository_full_name,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        evidence_ref: args.evidence_ref,
         evidence_commit_sha: args.evidence_commit_sha,
         append_only_parent_sha: args.expected_parent_sha,
+        manifest_path: args.manifest_path,
+        manifest_sha256: args.manifest_sha256,
+        human_openable_url: args.human_openable_url,
         source_revision_unchanged: true,
+        append_only_verified: true,
         manifest_readback_verified: true,
         artifact_readback_verified: true,
         automation_side_effects_observed: false,
@@ -1847,6 +1962,117 @@ function createServer(req: Request) {
         probe_observation: probeObservation,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'evidence_repository_probe_verification_prepare',
+    {
+      title: 'Prepare durable repository evidence capability probe Verification',
+      description: 'Convert one successfully finalized PROBE-GIT-EVIDENCE-01 observation into an append-only CAPABILITY_PROBE Verification record. Persist and read back this exact record before any repository PUBLISH attempt.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        repository_full_name: z.string().min(3),
+        target_ref: z.string().min(1),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        probe_finalize_result_text: z.string().min(2),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, job_id, job_record_text, repository_full_name, target_ref, target_revision, probe_finalize_result_text }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare repository probe Verification.')
+      let job: any, finalized: any
+      try {
+        job = JSON.parse(job_record_text)
+        finalized = JSON.parse(probe_finalize_result_text)
+      } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: invalid Job/finalize JSON.' }], isError: true }
+      }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
+      if (job.project_id !== project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const observation = finalized?.probe_observation
+      const repoMatches = String(observation?.repository_full_name || '').toLowerCase() === String(repository_full_name).toLowerCase()
+      const valid =
+        finalized?.valid === true &&
+        finalized?.backend === 'REPOSITORY_GIT' &&
+        finalized?.publication_mode === 'PROBE' &&
+        finalized?.evidence_bundle_ref == null &&
+        observation?.project_id === project_id &&
+        observation?.job_id === job_id &&
+        resolveExecutionContract(observation?.execution_contract) === executionContract &&
+        observation?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
+        observation?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
+        observation?.observed === true &&
+        repoMatches &&
+        observation?.target_ref === target_ref &&
+        observation?.target_revision === target_revision &&
+        observation?.evidence_ref === 'gsa-evidence/' + project_id &&
+        observation?.source_revision_unchanged === true &&
+        observation?.append_only_verified === true &&
+        observation?.manifest_readback_verified === true &&
+        observation?.artifact_readback_verified === true &&
+        observation?.automation_side_effects_observed === false &&
+        observation?.usable_as_product_evidence === false &&
+        /^[0-9a-f]{40}$/.test(String(observation?.evidence_commit_sha || ''))
+      if (!valid) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: finalized result is not an exact successful bounded repository evidence probe observation.' }], isError: true }
+      }
+
+      const verificationId = uuidv7()
+      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const verification = {
+        verification_id: verificationId,
+        kind: 'CAPABILITY_PROBE',
+        project_id,
+        job_id,
+        execution_contract: executionContract,
+        producer: 'tester',
+        probe_id: 'PROBE-GIT-EVIDENCE-01',
+        capability: 'REPOSITORY_BINARY_EVIDENCE',
+        result: 'OBSERVED',
+        repository_full_name,
+        target_ref,
+        target_revision,
+        evidence_ref: observation.evidence_ref,
+        evidence_commit_sha: observation.evidence_commit_sha,
+        append_only_parent_sha: observation.append_only_parent_sha,
+        manifest_path: observation.manifest_path,
+        manifest_sha256: observation.manifest_sha256,
+        human_openable_url: observation.human_openable_url,
+        source_revision_unchanged: true,
+        append_only_verified: true,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
+        automation_side_effects_observed: false,
+        usable_as_product_evidence: false,
+        created_at: new Date().toISOString(),
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: memoryPath,
+        verification_record_text: prettyJson(verification),
+        external_steps: [
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=verification_memory_path).',
+          'Persist verification_record_text append-only at verification_memory_path.',
+          'Read back the persisted probe Verification and pass its exact {path, sha, record_text} durable snapshot to repository PUBLISH prepare/finalize.',
+          'Any missing/stale/mismatched probe snapshot keeps repository PUBLISH fail-closed.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
