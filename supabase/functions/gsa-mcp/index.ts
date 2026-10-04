@@ -5539,6 +5539,31 @@ app.get('/selftest', (c) => {
       target_revision: cp6TargetRevision,
     },
   }
+  const cp6TerminalClaim = {
+    ...cp6ClaimWithBundle,
+    lease_expires_at: null,
+    retest_required: false,
+  }
+  const cp6TerminalClaimSnapshot = {
+    path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId),
+    sha: '5'.repeat(40),
+    record_text: prettyJson(cp6TerminalClaim),
+  }
+  const cp6OrphanClaimSnapshot = {
+    ...cp6TerminalClaimSnapshot,
+    record_text: prettyJson({
+      ...cp6TerminalClaim,
+      last_verification_id: uuidv7(),
+    }),
+  }
+  const cp6HandoffClaimExpected = {
+    project_id: projectId,
+    job_id: nextJobId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    planning_revision: 3,
+  }
   const cp6JobWithRepo = {
     ...nextGateJob,
     repository_context: { working_repository_url: 'https://github.com/example/source' },
@@ -5692,6 +5717,8 @@ app.get('/selftest', (c) => {
     cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
     cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
+    cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
+    cp6_handoff_claim_rejects_orphan_verification: validateTesterEvidenceClaimSnapshot(cp6OrphanClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error !== null,
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
