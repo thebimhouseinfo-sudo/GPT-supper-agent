@@ -145,6 +145,7 @@ target_revision?
 completed_summary
 remaining
 required_inputs[]
+evidence_bundle_refs[]?
 blocker_or_gate?
 expected_next_outcome
 created_at?
@@ -187,6 +188,7 @@ environment?
 result
 limitations?
 evidence_refs[]
+evidence_bundle_refs[]?
 created_at?
 ```
 
@@ -410,6 +412,7 @@ attempt_kind
 lease_token
 mode
 failure_class?
+evidence_bundle_refs[]
 measurements[]
 retest_of_verification_id?
 applicability {
@@ -427,6 +430,41 @@ route =
 ```
 
 A successful/observed Verification is persisted as `CANDIDATE`, never self-authoritative `APPLICABLE`. Applicability is derived only when the current terminal claim points to the same Verification/attempt/token, target identity and current planning revision. If terminal claim CAS loses, the candidate remains orphaned/non-applicable.
+
+### CP6 durable EvidenceBundle applicability
+
+`evidence_bundle_refs[]` is optional for checkpoints that rely only on non-binary evidence or measurements. When a TEST/RETEST Verification or Tester Handoff carries a bundle ref, that ref is part of the applicability boundary rather than presentation-only metadata.
+
+Every bundle ref must bind the same:
+- Project and Job;
+- checkpoint and attempt when used by TEST/RETEST Verification;
+- owning Tester Run;
+- working repository;
+- tested source ref/revision.
+
+Backend identity is immutable:
+
+```text
+PRIVATE_SUPABASE
+→ evidence_bundle_id
+→ db:gsa_evidence_bundles/<bundle-id>
+→ manifest_sha256
+→ authenticated stable viewer URL
+→ signed object URLs are transport only
+
+REPOSITORY_GIT
+→ publication_mode = PUBLISH
+→ dedicated gsa-evidence/<project-id> ref
+→ immutable evidence_commit_sha
+→ manifest_sha256 + commit-pinned Human URL
+→ durable successful PROBE-GIT-EVIDENCE-01 Verification path + blob SHA
+```
+
+A malformed, stale, target-mismatched, attempt-mismatched, mutable, unverified or automation-side-effecting bundle makes candidate evidence non-applicable. Repository evidence also requires append-only/non-force publication and exact successful capability-probe evidence.
+
+RETEST creates a new attempt and therefore a new bundle identity. It never overwrites the canonical bundle referenced by an earlier Verification. Prior Verification/Handoff refs remain resolvable by immutable identity.
+
+V2_STABLE does not require or interpret CP6 `evidence_bundle_refs[]`.
 
 ## NEXT in-progress planning supersession
 
