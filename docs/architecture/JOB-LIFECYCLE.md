@@ -185,3 +185,38 @@ Recheck lifecycle before consequential actions.
 ## 13. Direct Agent promotion
 
 Promotion creates new Project/Job from promotion packet; no ephemeral lifecycle mutation.
+
+
+## 14. CP5 NEXT checkpoint conditions
+
+Checkpoint attempt liveness is not a new Job/Run lifecycle. It is controlled by the deterministic NEXT checkpoint claim:
+
+```text
+ACTIVE
+SATISFIED
+OBSERVED
+FAILED_PRODUCT
+BLOCKED
+NEEDS_PLANNER_REVISION
+```
+
+`ACTIVE` is valid only until `lease_expires_at`. Reclaim increments claim generation and replaces the lease token. The previous claimant cannot finalize evidence afterward.
+
+A NEXT Job may remain `IN_PROGRESS` while its plan is superseded after PLAN_GAP/SPEC_GAP:
+
+```text
+IN_PROGRESS + reviewed plan revision N
+→ Tester PLAN_GAP/SPEC_GAP
+→ Planner revision N+1 (planning_review=PENDING)
+→ dispatch blocked
+→ Reviewer PASS
+→ IN_PROGRESS resumes on revision N+1
+```
+
+If Reviewer returns CHANGES_REQUIRED, Planner may create N+2 inside the same review-repair loop without requiring another Tester gap finding.
+
+## 15. Mandatory evidence versus PASS_RETEST_REQUIRED
+
+The general rule that a Job may complete with `PASS_RETEST_REQUIRED` does **not** override explicit NEXT dependencies.
+
+If an `EvidenceRequirement`, required checkpoint, Milestone gate or Job-final checkpoint is still missing/stale/blocked, the dependent Task/Milestone/Job cannot advance. A superseding reviewed planning revision may legitimately replace or remove the old requirement.

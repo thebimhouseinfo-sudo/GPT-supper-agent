@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gsa.local/schemas/evidence-bundle.schema.json",
+  "title": "GSA Evidence Bundle Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "backend",
+    "privacy_class",
+    "binding",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evidence_bundle_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "backend": {
+      "enum": [
+        "PRIVATE_SUPABASE",
+        "REPOSITORY_GIT"
+      ]
+    },
+    "privacy_class": {
+      "enum": [
+        "PRIVATE_REQUIRED",
+        "REPO_SAFE"
+      ]
+    },
+    "publication_mode": {
+      "enum": [
+        "PROBE",
+        "PUBLISH"
+      ]
+    },
+    "probe_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "manifest_path": {
+      "type": "string"
+    },
+    "canonical_signed_urls": {
+      "type": "boolean"
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "project_id",
+        "repository",
+        "job_id",
+        "checkpoint_id",
+        "attempt_id",
+        "run_id",
+        "target_revision"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 3
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "checkpoint_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "target_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_ref": {
+      "type": "string"
+    },
+    "expected_parent_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "force_allowed": {
+      "const": false
+    },
+    "manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "human_openable_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "automation_isolation": {
+      "type": "object",
+      "required": [
+        "verified"
+      ],
+      "properties": {
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "binary_capability": {
+      "type": "object",
+      "required": [
+        "observed"
+      ],
+      "properties": {
+        "observed": {
+          "type": "boolean"
+        },
+        "verification_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verification_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object"
+    },
+    "result": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retention": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "mime_type",
+          "size_bytes",
+          "sha256"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mime_type": {
+            "const": "image/png"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5242880
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "storage_path": {
+            "type": "string"
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "PRIVATE_SUPABASE"
+          }
+        },
+        "required": [
+          "backend"
+        ]
+      },
+      "then": {
+        "required": [
+          "evidence_bundle_id",
+          "manifest_path"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "REPOSITORY_GIT"
+          }
+        },
+        "required": [
+          "backend"
+        ]
+      },
+      "then": {
+        "properties": {
+          "privacy_class": {
+            "const": "REPO_SAFE"
+          }
+        },
+        "required": [
+          "publication_mode",
+          "evidence_ref",
+          "expected_parent_sha",
+          "force_allowed",
+          "automation_isolation",
+          "binary_capability"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "REPOSITORY_GIT"
+          },
+          "publication_mode": {
+            "const": "PROBE"
+          }
+        },
+        "required": [
+          "backend",
+          "publication_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "probe_id": {
+            "const": "PROBE-GIT-EVIDENCE-01"
+          },
+          "binary_capability": {
+            "type": "object",
+            "properties": {
+              "observed": {
+                "const": false
+              },
+              "verification_ref": {
+                "type": "null"
+              },
+              "verification_sha": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "observed",
+              "verification_ref",
+              "verification_sha"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "probe_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "REPOSITORY_GIT"
+          },
+          "publication_mode": {
+            "const": "PUBLISH"
+          }
+        },
+        "required": [
+          "backend",
+          "publication_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "binary_capability": {
+            "type": "object",
+            "properties": {
+              "observed": {
+                "const": true
+              },
+              "verification_ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verification_sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            },
+            "required": [
+              "observed",
+              "verification_ref",
+              "verification_sha"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

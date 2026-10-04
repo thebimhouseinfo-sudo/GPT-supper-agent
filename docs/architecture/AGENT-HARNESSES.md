@@ -88,12 +88,23 @@ Reviewer is topology-driven except when the mechanically computed mandatory revi
 ## 7. Tester
 
 Tester:
-- performs practical scripted/exploratory testing only when the required runtime/product capability is `OBSERVED`;
-- source implementation read-only;
+- is source implementation read-only;
+- independently plans practical checks from the approved goal/spec/acceptance criteria;
+- supports three evidence modes:
+  - `VERIFY`: compare observed behavior with an explicit requirement and return a verdict only when the requirement is defined;
+  - `MEASURE`: record observed values/states; without an approved threshold, do not invent PASS/FAIL;
+  - `PROBE`: establish an uncertain runtime/tool/capability fact for later planning or implementation;
+- performs practical execution only when the required runtime/product capability is evidence-backed as `OBSERVED` at the level needed by the check;
 - may execute Retests when capability is observed;
-- otherwise prepares/plans test steps while the human executes practical Retest and GSA records evidence.
+- otherwise prepares precise Retest steps while the human executes practical Retest and GSA records evidence;
+- classifies failures before routing: `PRODUCT_FAILURE`, `TEST_FAILURE`, `ENVIRONMENT_FAILURE`, `NOT_READY`, `INTEGRATION_NOT_READY`, `SPEC_GAP`, or `PLAN_GAP`;
+- never mutates product source or topology to fix a discovered gap.
 
-A merely `SURFACE_PRESENT` action does not justify a successful practical-test claim.
+Tester runs at meaningful Planner-declared checkpoints when topology requires it; there is no universal Tester-after-every-Task rule.
+
+A merely `SURFACE_PRESENT` action does not justify a successful practical-test claim. Tester evidence may refine readiness through `DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET` without replacing the global capability states.
+
+Tester reports exact target/revision, mode, planned checks, readiness/capability state, observations/measurements, applicable verdicts, failure classification, evidence refs, limitations/untested areas and Retest status. Retest evidence is revision/state-bound; a relevant target change invalidates prior coverage for the changed scope.
 
 ## 8. Orchestrator
 
@@ -152,6 +163,21 @@ Phase 2 must define and prove:
 - how the same behavior resumes in a fresh chat.
 
 Until proven, harness loading is an implementation capability, not an architecture assumption.
+
+### Progressive context contract
+
+Use progressively deeper context only when the active role/evidence requires it:
+
+```text
+L0 = repository orientation / structure
+L1 = decision context / canonical contracts / selected entry points
+L2 = exact execution context / callers / consumers / tests
+L3 = deeper investigation triggered by findings, failures or unresolved dependencies
+```
+
+Planner normally owns L0/L1 discovery. Coder, Reviewer and Tester consume L2 for their exact target and expand to L3 only when evidence requires it.
+
+Do not keep broad stale context loaded merely because it was once relevant.
 
 ## 12. Handoff
 
@@ -291,3 +317,55 @@ BLOCKED
 ```
 
 CR is a peer-review backstop, not part of the normal automatic planning-review loop.
+
+
+## CP4 — NEXT empirical planning contract
+
+For `execution_contract=NEXT`, Planner may persist first-class empirical planning structures instead of leaving unknown runtime facts in prose:
+
+- `evidence_needs[]` / `UNKNOWN_RUNTIME_FACT` identify a concrete unknown, its owning Task, downstream consumers and the checkpoint that must resolve it.
+- `test_checkpoints[]` declare `VERIFY | MEASURE | PROBE`, a boundary (`BEFORE_NODE | AFTER_NODE_SET | MILESTONE_GATE | JOB_FINAL`) and prerequisite node set.
+- `evidence_requirements[]` bind downstream consumer Tasks to the EvidenceNeed and checkpoint they require.
+- `milestones[]` group Tasks/checkpoints and optional gate checkpoints.
+- `planning_topology[]` is the typed NEXT planning graph; every Task and TestCheckpointSpec must appear as a typed node.
+
+All CP4 collections are bound to the exact `planning_revision`. Once a NEXT Job has an active CP4 planning model, **every** plan revision must explicitly resupply/rebind the complete model; stale empirical topology must not carry forward silently.
+
+For `V2_STABLE`, these collections remain empty/non-activating. CP4 defines planning truth only; Tester dispatch, checkpoint claims/leases/replay and crash recovery remain CP5.
+
+
+## CP5 — NEXT checkpoint runtime contract
+
+For `execution_contract=NEXT`, a planned `TestCheckpointSpec` becomes executable only under one deterministic durable claim keyed by:
+
+```text
+project_id / job_id / planning_revision / checkpoint_id
+```
+
+The claim is the **single serialization point**. Exact-SHA create/update grants one current lease token and attempt identity. Append-preserving attempt/Verification records are children of that grant; they do not independently make evidence applicable.
+
+Runtime flow:
+
+```text
+checkpoint becomes runnable
+→ Tester Run
+→ checkpoint_claim_prepare
+→ persist/read back deterministic claim
+→ persist append-only attempt start
+→ Tester VERIFY / MEASURE / PROBE
+→ checkpoint_verification_prepare
+→ persist TEST/RETEST Verification
+→ exact-SHA terminal claim update
+→ gate/routing reads terminal claim + matching Verification
+```
+
+Replay by the same live claimant reuses the current token. A competing non-expired claim is rejected. Expired claims may be reclaimed with a new generation/token; stale tokens cannot finalize evidence.
+
+Routing:
+- `PRODUCT_FAILURE` → owning Coder repair → exact Goal Recheck on repaired target → `RETEST`;
+- `PLAN_GAP | SPEC_GAP` → evidence-backed Planner superseding revision → context-isolated planning Reviewer → resume only on PASS;
+- test/environment/integration blockers remain non-PASS and Retest only when ready.
+
+A superseding NEXT planning revision stays `IN_PROGRESS` but becomes non-dispatchable while `planning_review=PENDING/CHANGES_REQUIRED`. Old revision claims and Verifications are non-applicable automatically because runtime gates bind to the current `planning_revision`.
+
+`PASS_RETEST_REQUIRED` is only non-blocking coverage. It never satisfies a mandatory `EvidenceRequirement`, checkpoint, Milestone gate or Job completion prerequisite.

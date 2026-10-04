@@ -1,5 +1,37 @@
 # GSA V2 — Runtime Baseline Matrix
 
+## V2_STABLE — verified 2026-09-30
+
+Status: **VERIFIED / ACTIVE**
+
+The production V2 baseline is pinned to the following runtime source:
+
+- source branch: `main`
+- runtime source commit: `789fcaf7dfc15ffced8efa45c7ee19362fd36718`
+- `supabase/functions/gsa-mcp/index.ts` blob: `38a170a5d8b80f24c19fee13d4f8714a473f3f67`
+- deployed Supabase Edge Function: `gsa-mcp` version `40`
+- deployed function hash: `ee10a557afd6788610e625f691f471a1fb46cec169f51335c6b17fa2221b30b8`
+- `verify_jwt`: `false` intentionally; `gsa-mcp` performs bearer-token validation in the function body.
+
+Verification evidence:
+
+- deployed `index.ts` bytes were read back after deployment and matched the selected source bytes exactly;
+- runtime status remained `M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION / SERVER_DEPLOYED / AUTHENTICATED / CONFIGURED`;
+- Project open/status remained ACTIVE, SINGLE-repo and CONFIRMED;
+- Planner exposed structure-first brownfield planning and same-turn planning-review behavior;
+- Coder exposed inspect-result and Goal Recheck closure;
+- Reviewer exposed revision-bound context-isolated planning review;
+- V2 runtime terms including `job_sizing`, `brownfield_logic_review` and `relationship_knowledge_prepare` are present;
+- future P1/P2 terms such as `evidence_needs`, `test_checkpoints` and Test Lab workflow integration are not present.
+
+Rollback target captured before parity deployment:
+
+- previous production version: `gsa-mcp v39`
+- previous deployed hash: `35dbfc42b226efb69f2beb06bdde89152d7838a3098ef04181929ab6f02e3962`
+- if the V2_STABLE smoke fails later, restore the previous deployment target before continuing any P1/P2 rollout.
+
+This marker freezes **runtime V2 only**. It does not activate the planned UI Coder, Tester, Test Lab, EvidenceNeed, checkpoint, or new workflow integration.
+
 ## Baseline
 
 Branch baseline started from main commit `26640b1bda147ce6f2fb5929eb2faa22448c2ffa`.
