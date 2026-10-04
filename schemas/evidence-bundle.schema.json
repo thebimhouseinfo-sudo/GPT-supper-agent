@@ -150,6 +150,13 @@
             "string",
             "null"
           ]
+        },
+        "verification_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
         }
       },
       "additionalProperties": false
@@ -300,11 +307,15 @@
               },
               "verification_ref": {
                 "type": "null"
+              },
+              "verification_sha": {
+                "type": "null"
               }
             },
             "required": [
               "observed",
-              "verification_ref"
+              "verification_ref",
+              "verification_sha"
             ],
             "additionalProperties": false
           }
@@ -340,11 +351,16 @@
               "verification_ref": {
                 "type": "string",
                 "minLength": 1
+              },
+              "verification_sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
               }
             },
             "required": [
               "observed",
-              "verification_ref"
+              "verification_ref",
+              "verification_sha"
             ],
             "additionalProperties": false
           }
