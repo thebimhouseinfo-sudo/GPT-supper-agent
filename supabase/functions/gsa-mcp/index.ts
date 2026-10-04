@@ -5450,6 +5450,94 @@ app.get('/selftest', (c) => {
     repository_context: { working_repository_url: 'https://github.com/example/source' },
   }
 
+  const cp6PrivateAttestationId = uuidv7()
+  const cp6PrivateAttestation = {
+    verification_id: cp6PrivateAttestationId,
+    kind: 'EVIDENCE_BUNDLE',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    producer: 'tester',
+    result: 'PUBLISHED',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+    backend: 'PRIVATE_SUPABASE',
+    evidence_bundle_ref: cp6PrivateBundle,
+    publication_proof: {
+      kind: 'SUPABASE_MANIFEST_READBACK',
+      evidence_bundle_id: cp6PrivateBundle.evidence_bundle_id,
+      manifest_path: cp6PrivateBundle.manifest_path,
+      manifest_sha256: cp6PrivateBundle.manifest_sha256,
+      row_readback_verified: true,
+    },
+  }
+  const cp6PrivateAttestationSnapshot = {
+    path: verificationPath(projectId, cp6PrivateAttestationId, 'NEXT'),
+    sha: '7'.repeat(40),
+    record_text: prettyJson(cp6PrivateAttestation),
+  }
+  const cp6BadPrivateAttestationSnapshot = {
+    ...cp6PrivateAttestationSnapshot,
+    record_text: prettyJson({
+      ...cp6PrivateAttestation,
+      publication_proof: {
+        ...cp6PrivateAttestation.publication_proof,
+        manifest_sha256: '0'.repeat(64),
+      },
+    }),
+  }
+  const cp6RepoAttestationId = uuidv7()
+  const cp6RepoAttestation = {
+    verification_id: cp6RepoAttestationId,
+    kind: 'EVIDENCE_BUNDLE',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    producer: 'tester',
+    result: 'PUBLISHED',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+    backend: 'REPOSITORY_GIT',
+    evidence_bundle_ref: cp6RepoBundle,
+    publication_proof: {
+      kind: 'REPOSITORY_PUBLISH_FINALIZE',
+      evidence_ref: cp6RepoBundle.evidence_ref,
+      evidence_commit_sha: cp6RepoBundle.evidence_commit_sha,
+      manifest_path: cp6RepoBundle.manifest_path,
+      manifest_sha256: cp6RepoBundle.manifest_sha256,
+      manifest_readback_verified: true,
+      artifact_readback_verified: true,
+      automation_side_effects_observed: false,
+      probe_verification_ref: cp6RepoBundle.binary_probe_verification_ref,
+      probe_verification_sha: cp6RepoBundle.binary_probe_verification_sha,
+    },
+  }
+  const cp6RepoAttestationSnapshot = {
+    path: verificationPath(projectId, cp6RepoAttestationId, 'NEXT'),
+    sha: '6'.repeat(40),
+    record_text: prettyJson(cp6RepoAttestation),
+  }
+  const cp6BadRepoAttestationSnapshot = {
+    ...cp6RepoAttestationSnapshot,
+    record_text: prettyJson({
+      ...cp6RepoAttestation,
+      publication_proof: {
+        ...cp6RepoAttestation.publication_proof,
+        evidence_commit_sha: '1'.repeat(40),
+      },
+    }),
+  }
+
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -5503,6 +5591,10 @@ app.get('/selftest', (c) => {
     cp6_repo_bundle_rejects_mutable_evidence: evidenceBundleRefValidationError({ ...cp6RepoBundle, immutable: false }, cp6ExpectedBundleContext) !== null,
     cp6_repo_bundle_rejects_automation_side_effects: evidenceBundleRefValidationError({ ...cp6RepoBundle, automation_side_effects_observed: true }, cp6ExpectedBundleContext) !== null,
     cp6_repo_bundle_requires_probe_sha: evidenceBundleRefValidationError({ ...cp6RepoBundle, binary_probe_verification_sha: null }, cp6ExpectedBundleContext) !== null,
+    cp6_private_attestation_accepts_authenticated_proof: validateEvidenceBundleAttestationSnapshot(cp6PrivateAttestationSnapshot, cp6ExpectedBundleContext).error === null,
+    cp6_private_attestation_rejects_manifest_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadPrivateAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
+    cp6_repo_attestation_accepts_finalize_proof: validateEvidenceBundleAttestationSnapshot(cp6RepoAttestationSnapshot, cp6ExpectedBundleContext).error === null,
+    cp6_repo_attestation_rejects_commit_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadRepoAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
     cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
     cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
