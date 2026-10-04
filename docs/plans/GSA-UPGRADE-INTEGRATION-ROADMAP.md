@@ -24,7 +24,7 @@ upgrade/gsa-next
 
 final:
 upgrade/gsa-next fully passes
-→ sync latest main into upgrade/gsa-next
+→ reconcile reviewed production drift into upgrade/gsa-next
 → final compatibility + end-to-end validation
 → Human release decision
 → promote upgrade/gsa-next to main
