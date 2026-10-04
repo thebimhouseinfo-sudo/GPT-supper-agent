@@ -83,6 +83,8 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 | WL-028 | Selftests/helper assertions are regression floors, not substitutes for required E2E workflow execution evidence. | CANDIDATE | future E2E-evidence/test-quality contract | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
 | WL-029 | Final cutover must explicitly KEEP/REPLACE/REMOVE every staging-only namespace, path, endpoint, flag or compatibility mechanism. | CANDIDATE | future cutover-retirement checklist | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
 
+| WL-030 | One canonical integration line per migration; checkpoint/topic branches are short-lived workspaces and must not remain competing sources of truth after merge. Excess branch/commit sprawl makes code provenance ambiguous and forces expensive ancestry/tree/semantic-diff reconstruction. | CANDIDATE | future branch/checkpoint lifecycle + release-cleanup contract | `docs/process/lessons/BRANCH-COMMIT-SPRAWL-2026-10-04.md` | LLC backlog |
+
 ## 3.1 Candidate hard requirements from cross-chat safety incidents
 
 Until a later reviewed checkpoint assigns and implements these candidates, the intended safety requirements are:
