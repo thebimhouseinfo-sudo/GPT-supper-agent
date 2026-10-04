@@ -1586,8 +1586,10 @@ function createServer(req: Request) {
         expected_evidence_ref_head: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
         automation_isolation_verified: z.literal(true),
         automation_evidence_refs: z.array(z.string().min(1)).min(1),
-        binary_capability_observed: z.literal(true),
-        binary_probe_verification_ref: z.string().min(1),
+        publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
+        probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
+        binary_capability_observed: z.boolean().default(false),
+        binary_probe_verification_ref: z.string().min(1).optional(),
         artifacts: z.array(z.object({
           label: z.string().min(1).max(100),
           mime_type: z.literal('image/png'),
@@ -1598,6 +1600,8 @@ function createServer(req: Request) {
       outputSchema: {
         allowed: z.boolean(),
         reason: z.string(),
+        publication_mode: z.enum(['PROBE','PUBLISH']),
+        probe_id: z.string().nullable(),
         evidence_ref: z.string(),
         evidence_prefix: z.string(),
         expected_parent_sha: z.string(),
@@ -1614,7 +1618,7 @@ function createServer(req: Request) {
       project_manifest_text, project_manifest_sha, job_record_text, repository_full_name,
       job_id, checkpoint_id, attempt_id, run_id, target_ref, target_revision,
       evidence_ref, expected_evidence_ref_head, automation_evidence_refs,
-      binary_probe_verification_ref, artifacts,
+      publication_mode, probe_id, binary_capability_observed, binary_probe_verification_ref, artifacts,
     }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to authorize repository evidence publication.')
@@ -1643,6 +1647,24 @@ function createServer(req: Request) {
       if (evidence_ref !== requiredRef) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must equal ' + requiredRef }], isError: true }
       }
+      const mode = publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      if (mode === 'PROBE') {
+        if (probe_id !== 'PROBE-GIT-EVIDENCE-01') {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
+        }
+        if (binary_capability_observed || binary_probe_verification_ref) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE establishes capability and must not claim a prior observed probe.' }], isError: true }
+        }
+        if (
+          artifacts.length !== 1 ||
+          Number(artifacts[0]?.size_bytes || 0) > 64 * 1024 ||
+          !String(artifacts[0]?.label || '').toLowerCase().startsWith('probe-git-evidence-01')
+        ) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE requires one synthetic probe-git-evidence-01 artifact <= 64 KiB.' }], isError: true }
+        }
+      } else if (!binary_capability_observed || !binary_probe_verification_ref) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PUBLISH requires an OBSERVED binary capability and persisted successful probe reference.' }], isError: true }
+      }
       const totalBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item.size_bytes || 0), 0)
       const maxBundleBytes = 25 * 1024 * 1024
       if (totalBytes > maxBundleBytes) {
@@ -1658,14 +1680,18 @@ function createServer(req: Request) {
         schema_version: 1,
         backend: 'REPOSITORY_GIT',
         privacy_class: 'REPO_SAFE',
-        project_id: project.project_id,
-        repository: requested.full_name,
-        job_id,
-        checkpoint_id,
-        attempt_id,
-        run_id,
-        target_ref,
-        target_revision,
+        publication_mode: mode,
+        probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
+        binding: {
+          project_id: project.project_id,
+          repository: requested.full_name,
+          job_id,
+          checkpoint_id,
+          attempt_id,
+          run_id,
+          target_ref,
+          target_revision,
+        },
         evidence_ref,
         expected_parent_sha: expectedParent,
         force_allowed: false,
@@ -1674,14 +1700,18 @@ function createServer(req: Request) {
           evidence_refs: automation_evidence_refs,
         },
         binary_capability: {
-          observed: true,
-          verification_ref: binary_probe_verification_ref,
+          observed: mode === 'PUBLISH',
+          verification_ref: mode === 'PUBLISH' ? binary_probe_verification_ref : null,
         },
         artifacts,
       }
       const result = {
         allowed: true,
-        reason: 'Bounded REPO_SAFE evidence publication authorized.',
+        reason: mode === 'PROBE'
+          ? 'Bounded synthetic repository evidence capability probe authorized.'
+          : 'Bounded REPO_SAFE evidence publication authorized.',
+        publication_mode: mode,
+        probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
         evidence_ref,
         evidence_prefix: prefix,
         expected_parent_sha: expectedParent,
@@ -1711,6 +1741,9 @@ function createServer(req: Request) {
       title: 'Finalize repository evidence publication',
       description: 'Validate immutable read-back for one prepared repository evidence attempt. Fails closed on source drift, ref mismatch, non-append ancestry or automation side effects.',
       inputSchema: {
+        publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
+        probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
+        binary_probe_verification_ref: z.string().min(1).optional(),
         project_id: z.string().uuid(),
         repository_full_name: z.string().min(3),
         target_ref: z.string().min(1),
@@ -1734,7 +1767,9 @@ function createServer(req: Request) {
       outputSchema: {
         valid: z.boolean(),
         backend: z.literal('REPOSITORY_GIT'),
-        evidence_bundle_ref: z.any(),
+        publication_mode: z.enum(['PROBE','PUBLISH']),
+        evidence_bundle_ref: z.any().nullable(),
+        probe_observation: z.any().nullable(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -1743,6 +1778,17 @@ function createServer(req: Request) {
     async (args: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to finalize repository evidence publication.')
+      const mode = args.publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      if (mode === 'PROBE') {
+        if (args.probe_id !== 'PROBE-GIT-EVIDENCE-01') {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
+        }
+        if (args.artifact_count !== 1 || args.size_bytes > 64 * 1024) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE evidence must remain one bounded fixture <= 64 KiB.' }], isError: true }
+        }
+      } else if (!args.binary_probe_verification_ref) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PUBLISH requires the persisted successful probe reference.' }], isError: true }
+      }
       if (args.source_ref_readback_revision !== args.target_revision) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: tested source revision moved.' }], isError: true }
       }
@@ -1762,6 +1808,7 @@ function createServer(req: Request) {
       }
       const bundleRef = {
         backend: 'REPOSITORY_GIT',
+        publication_mode: mode,
         privacy_class: 'REPO_SAFE',
         repository: args.repository_full_name,
         target_ref: args.target_ref,
@@ -1778,8 +1825,27 @@ function createServer(req: Request) {
         manifest_readback_verified: true,
         artifact_readback_verified: true,
         automation_side_effects_observed: false,
+        binary_probe_verification_ref: mode === 'PUBLISH' ? args.binary_probe_verification_ref : null,
       }
-      const result = { valid: true, backend: 'REPOSITORY_GIT' as const, evidence_bundle_ref: bundleRef }
+      const probeObservation = mode === 'PROBE' ? {
+        probe_id: 'PROBE-GIT-EVIDENCE-01',
+        capability: 'REPOSITORY_BINARY_EVIDENCE',
+        observed: true,
+        evidence_commit_sha: args.evidence_commit_sha,
+        append_only_parent_sha: args.expected_parent_sha,
+        source_revision_unchanged: true,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
+        automation_side_effects_observed: false,
+        usable_as_product_evidence: false,
+      } : null
+      const result = {
+        valid: true,
+        backend: 'REPOSITORY_GIT' as const,
+        publication_mode: mode,
+        evidence_bundle_ref: mode === 'PUBLISH' ? bundleRef : null,
+        probe_observation: probeObservation,
+      }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
   )
