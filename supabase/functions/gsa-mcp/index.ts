@@ -4922,6 +4922,93 @@ app.get('/selftest', (c) => {
     { planning_topology: [{ node_id: consumerTaskId }, { node_id: checkpointId }, { node_id: 'CP-FINAL' }] },
     { checkpoint_id: 'CP-FINAL', boundary: 'JOB_FINAL', prerequisite_node_ids: [] },
   )
+  const cp6TargetRef = 'refs/heads/cp6-selftest'
+  const cp6TargetRevision = 'c'.repeat(40)
+  const cp6EvidenceCommit = 'd'.repeat(40)
+  const cp6PrivateBundle = {
+    evidence_bundle_id: 'e'.repeat(64),
+    backend: 'PRIVATE_SUPABASE',
+    privacy_class: 'PRIVATE_REQUIRED',
+    binding: {
+      project_id: projectId,
+      repository: 'example/source',
+      job_id: nextJobId,
+      checkpoint_id: checkpointId,
+      attempt_id: attemptId,
+      run_id: nextRunId,
+      target_ref: cp6TargetRef,
+      target_revision: cp6TargetRevision,
+    },
+    manifest_path: 'db:gsa_evidence_bundles/' + 'e'.repeat(64),
+    manifest_sha256: 'f'.repeat(64),
+    viewer_url: 'https://example.test/evidence.html?bundle=' + 'e'.repeat(64),
+    target_revision: cp6TargetRevision,
+    artifact_count: 2,
+    size_bytes: 2048,
+    immutable: true,
+    manifest_readback_verified: true,
+  }
+  const cp6RepoBundle = {
+    backend: 'REPOSITORY_GIT',
+    publication_mode: 'PUBLISH',
+    privacy_class: 'REPO_SAFE',
+    binding: {
+      project_id: projectId,
+      repository: 'example/source',
+      job_id: nextJobId,
+      checkpoint_id: checkpointId,
+      attempt_id: attemptId,
+      run_id: nextRunId,
+      target_ref: cp6TargetRef,
+      target_revision: cp6TargetRevision,
+    },
+    evidence_ref: 'gsa-evidence/' + projectId,
+    evidence_commit_sha: cp6EvidenceCommit,
+    manifest_path: 'tests/gsa/' + projectId + '/' + nextJobId + '/' + checkpointId.toLowerCase() + '/' + attemptId + '/manifest.json',
+    manifest_sha256: 'a'.repeat(64),
+    human_openable_url: 'https://github.com/example/source/blob/' + cp6EvidenceCommit + '/tests/gsa/manifest.json',
+    artifact_count: 1,
+    size_bytes: 1024,
+    immutable: true,
+    append_only_parent_sha: 'b'.repeat(40),
+    manifest_readback_verified: true,
+    artifact_readback_verified: true,
+    automation_side_effects_observed: false,
+    binary_probe_verification_ref: verificationPath(projectId, uuidv7(), 'NEXT'),
+    binary_probe_verification_sha: '9'.repeat(40),
+  }
+  const cp6ExpectedBundleContext = {
+    project_id: projectId,
+    job_id: nextJobId,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+  }
+  const cp6ClaimWithBundle = {
+    ...nextGateClaim,
+    claimant_run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    last_target_revision: cp6TargetRevision,
+  }
+  const cp6VerificationWithBundle = {
+    ...nextGateVerification,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    evidence_bundle_refs: [cp6PrivateBundle],
+    applicability: {
+      ...nextGateVerification.applicability,
+      target_revision: cp6TargetRevision,
+    },
+  }
+  const cp6JobWithRepo = {
+    ...nextGateJob,
+    repository_context: { working_repository_url: 'https://github.com/example/source' },
+  }
+
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -4966,6 +5053,17 @@ app.get('/selftest', (c) => {
     cp5_nested_applicability_revision_mismatch_rejected: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], nextGateClaim, nextGateVerificationWrongNestedRevision),
     cp5_milestone_boundary_expands_runtime_prereqs: milestoneBoundaryPrereqs.includes(consumerTaskId) && !milestoneBoundaryPrereqs.includes(checkpointId),
     cp5_job_final_boundary_expands_runtime_prereqs: jobFinalBoundaryPrereqs.includes(consumerTaskId) && jobFinalBoundaryPrereqs.includes(checkpointId) && !jobFinalBoundaryPrereqs.includes('CP-FINAL'),
+    cp6_private_bundle_accepts_exact_binding: evidenceBundleRefValidationError(cp6PrivateBundle, cp6ExpectedBundleContext) === null,
+    cp6_private_bundle_rejects_stale_revision: evidenceBundleRefValidationError({ ...cp6PrivateBundle, target_revision: '1'.repeat(40) }, cp6ExpectedBundleContext) !== null,
+    cp6_private_bundle_rejects_wrong_attempt: evidenceBundleRefValidationError({ ...cp6PrivateBundle, binding: { ...cp6PrivateBundle.binding, attempt_id: uuidv7() } }, cp6ExpectedBundleContext) !== null,
+    cp6_private_bundle_rejects_oversize: evidenceBundleRefValidationError({ ...cp6PrivateBundle, size_bytes: 51 * 1024 * 1024 }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_accepts_immutable_publish: evidenceBundleRefValidationError(cp6RepoBundle, cp6ExpectedBundleContext) === null,
+    cp6_repo_bundle_rejects_private_class: evidenceBundleRefValidationError({ ...cp6RepoBundle, privacy_class: 'PRIVATE_REQUIRED' }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_rejects_mutable_evidence: evidenceBundleRefValidationError({ ...cp6RepoBundle, immutable: false }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_rejects_automation_side_effects: evidenceBundleRefValidationError({ ...cp6RepoBundle, automation_side_effects_observed: true }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_requires_probe_sha: evidenceBundleRefValidationError({ ...cp6RepoBundle, binary_probe_verification_sha: null }, cp6ExpectedBundleContext) !== null,
+    cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
+    cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
