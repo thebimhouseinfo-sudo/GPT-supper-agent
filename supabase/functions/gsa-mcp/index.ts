@@ -435,6 +435,64 @@ function validateTesterEvidenceVerificationSnapshot(
   return { error: null, ref: entry.path, sha: entry.sha, record }
 }
 
+function validateTesterEvidenceClaimSnapshot(
+  snapshot: any,
+  verification: any,
+  expected: {
+    project_id: string
+    job_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+    planning_revision: number
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'tester_evidence_claim_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable terminal checkpoint claim snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const claim = entry.record
+  const expectedPath =
+    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision))
+      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id)
+      : ''
+  const requiredState =
+    verification?.result === 'PASS' ? 'SATISFIED' :
+    verification?.result === 'OBSERVED' ? 'OBSERVED' :
+    null
+  const valid =
+    expectedPath === entry.path &&
+    claim?.kind === 'CHECKPOINT_CLAIM' &&
+    claim?.execution_contract === 'NEXT' &&
+    claim?.project_id === expected.project_id &&
+    claim?.job_id === expected.job_id &&
+    claim?.planning_revision === expected.planning_revision &&
+    verification?.planning_revision === expected.planning_revision &&
+    claim?.checkpoint_id === verification?.checkpoint_id &&
+    claim?.mode === verification?.mode &&
+    claim?.state === requiredState &&
+    claim?.claimant_run_id === expected.run_id &&
+    claim?.last_verification_id === verification?.verification_id &&
+    claim?.attempt_id === verification?.attempt_id &&
+    claim?.attempt_kind === verification?.attempt_kind &&
+    claim?.lease_token === verification?.lease_token &&
+    claim?.target_ref === expected.target_ref &&
+    claim?.target_revision === expected.target_revision &&
+    claim?.last_target_revision === expected.target_revision &&
+    claim?.last_result === verification?.result &&
+    claim?.retest_required === false &&
+    claim?.lease_expires_at == null &&
+    verification?.applicability?.status === 'CANDIDATE' &&
+    verification?.applicability?.planning_revision === expected.planning_revision &&
+    verification?.applicability?.checkpoint_id === verification?.checkpoint_id &&
+    verification?.applicability?.target_revision === expected.target_revision
+  if (!valid) {
+    return { error: 'terminal checkpoint claim does not currently make this TEST/RETEST Verification applicable.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record: claim }
+}
+
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
@@ -4972,6 +5030,7 @@ function createServer(req: Request) {
           remaining: z.array(z.string()).default([]),
           required_inputs: z.array(z.string()).default([]),
           tester_evidence_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+          tester_evidence_claim_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
           blocker_or_gate: z.string().optional(),
           expected_next_outcome: z.string().min(1),
         }).optional(),
@@ -5027,29 +5086,59 @@ function createServer(req: Request) {
       let handoffEvidenceBundles: any[] = []
       let handoffEvidenceAttestationRefs: any[] = []
       let handoffEvidenceVerificationRef: any = null
-      if (handoff?.tester_evidence_verification_snapshot) {
-        if (executionContract !== 'NEXT' || role !== 'tester' || !current.target_revision || !current.target_ref) {
-          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable EvidenceBundle handoff requires the exact target-bound NEXT Tester Run.' }], isError: true }
+      let handoffEvidenceClaimRef: any = null
+      const hasEvidenceVerification = Boolean(handoff?.tester_evidence_verification_snapshot)
+      const hasEvidenceClaim = Boolean(handoff?.tester_evidence_claim_snapshot)
+      if (hasEvidenceVerification !== hasEvidenceClaim) {
+        return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: Tester evidence Handoff requires both the exact TEST/RETEST Verification snapshot and its current terminal checkpoint claim snapshot.' }], isError: true }
+      }
+      if (hasEvidenceVerification && hasEvidenceClaim) {
+        if (
+          executionContract !== 'NEXT' ||
+          role !== 'tester' ||
+          !current.target_revision ||
+          !current.target_ref ||
+          !Number.isInteger(Number(current.planning_revision))
+        ) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable EvidenceBundle handoff requires the exact target-bound current-planning NEXT Tester Run.' }], isError: true }
         }
+        const targetRef = handoff.target_ref ?? current.target_ref
+        const targetRevision = handoff.target_revision ?? current.target_revision
         const verified = validateTesterEvidenceVerificationSnapshot(
           handoff.tester_evidence_verification_snapshot,
           {
             project_id,
             job_id,
             run_id,
-            target_ref: handoff.target_ref ?? current.target_ref,
-            target_revision: handoff.target_revision ?? current.target_revision,
+            target_ref: targetRef,
+            target_revision: targetRevision,
           },
         )
         if (verified.error) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + verified.error }], isError: true }
         }
+        const claimed = validateTesterEvidenceClaimSnapshot(
+          handoff.tester_evidence_claim_snapshot,
+          verified.record,
+          {
+            project_id,
+            job_id,
+            run_id,
+            target_ref: targetRef,
+            target_revision: targetRevision,
+            planning_revision: Number(current.planning_revision),
+          },
+        )
+        if (claimed.error) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + claimed.error }], isError: true }
+        }
         if (!(verification_refs ?? []).includes(verified.ref)) {
-          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact applicable TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
         }
         handoffEvidenceBundles = verified.record.evidence_bundle_refs
         handoffEvidenceAttestationRefs = verified.record.evidence_bundle_attestation_refs
         handoffEvidenceVerificationRef = { path: verified.ref, sha: verified.sha }
+        handoffEvidenceClaimRef = { path: claimed.ref, sha: claimed.sha }
       }
       const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       let handoffId: string | null = null
@@ -5074,6 +5163,7 @@ function createServer(req: Request) {
           evidence_bundle_refs: handoffEvidenceBundles,
           evidence_bundle_attestation_refs: handoffEvidenceAttestationRefs,
           evidence_verification_ref: handoffEvidenceVerificationRef,
+          evidence_claim_ref: handoffEvidenceClaimRef,
           blocker_or_gate: handoff.blocker_or_gate ?? null,
           expected_next_outcome: handoff.expected_next_outcome,
           created_at: new Date().toISOString(),
@@ -5093,6 +5183,10 @@ function createServer(req: Request) {
         ...durableSnapshotReadbackSteps(
           handoff?.tester_evidence_verification_snapshot ? [handoff.tester_evidence_verification_snapshot] : [],
           'Tester evidence Verification snapshot',
+        ),
+        ...durableSnapshotReadbackSteps(
+          handoff?.tester_evidence_claim_snapshot ? [handoff.tester_evidence_claim_snapshot] : [],
+          'terminal checkpoint claim snapshot',
         ),
       ]
       if (handoffPath) {
