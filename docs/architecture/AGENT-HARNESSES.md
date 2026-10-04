@@ -124,6 +124,7 @@ Tester reports exact target/revision, mode, planned checks, readiness/capability
 Orchestrator is an implicit harness responsibility set, not an always-running process.
 
 Core duties:
+- detect a Project-frame mismatch before routing operational work;
 - route current work;
 - apply/check transitions when invoked;
 - surface pending Handoffs/Human Gates/Retests;
@@ -155,6 +156,8 @@ Reviewer
 ```
 
 Direct work is ephemeral by default.
+
+A newly opened chat/Project defaults to Planner/discussion context. Explicit Human invocation of Direct Coder remains allowed, but Direct Coder stays bound to the active Project scope.
 
 Promotion creates new Project/Job from a promotion packet.
 
