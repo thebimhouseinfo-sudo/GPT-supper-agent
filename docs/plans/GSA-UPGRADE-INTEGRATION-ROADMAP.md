@@ -611,7 +611,7 @@ Before release:
 
 ~~~text
 latest main
-→ merge/rebase into upgrade/gsa-next
+→ reconcile accepted production changes into upgrade/gsa-next
 → resolve only on upgrade/gsa-next
 → rerun CP7 compatibility + E2E gates
 ~~~
