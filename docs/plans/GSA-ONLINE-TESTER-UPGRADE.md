@@ -4,53 +4,201 @@ Status: PROPOSED
 Scope: GPT-supper-agent / GSA Online
 Primary goal: upgrade Tester from a thin capability-gated verifier into a checkpoint-level independent verification and empirical-evidence agent, while preserving lightweight orchestration and keeping browser runtimes replaceable.
 
-## UNDER REVIEW — Target-repository screenshot/evidence handoff
+## UNDER REVIEW — Hybrid repository/private evidence handoff
 
-**Status: UNDER REVIEW / CR REQUIRED**
+**Status: CR REVIEWED — PASS_WITH_FINDINGS / IMPLEMENTATION GUARDS REQUIRED**
 
-This section records a proposed replacement for the current default binary-evidence storage direction. It is not canonical until a **Human-invoked CR** reviews this exact revision and clears the mark. Normal Reviewer PASS does not clear it.
+This section replaces the earlier target-repository-default proposal after CR review `01a1006e-b152-7bfa-b2e2-16c090e55dd4` returned **FAIL**. Human-invoked CR `01a100c0-e41f-7c19-a7af-55713331d84c` then reviewed exact revision `b90860204bdb609dce3b3210ea7998568e641fb0` and returned **PASS_WITH_FINDINGS**. The hybrid architecture is cleared; implementation must additionally enforce append-only/non-force evidence ancestry and prove CI/deploy/release isolation before repository routing is enabled.
 
-The preferred Human handoff is now:
+The intended Human handoff is **hybrid and fail-closed**, not “repository by default”:
 
 ~~~text
 Tester
 → browser/runtime capture
-→ target repository test/evidence folder
-→ commit/update screenshot set + small manifest
-→ return direct GitHub folder/file link to Human
+→ classify evidence before persistence
+   ├─ REPO_SAFE
+   │  → bounded evidence publisher
+   │  → dedicated non-source evidence ref
+   │  → immutable attempt bundle + manifest
+   │  → commit/blob-pinned GitHub evidence link
+   └─ PRIVATE_REQUIRED
+      → private Supabase evidence backend
+      → authenticated/private Human evidence link
+→ Verification records exact tested source revision
+  + immutable evidence identity/ref
 ~~~
 
-Default repository-owned location should follow the target repository's existing test convention. When no stronger convention exists, use a bounded GSA-owned subtree such as:
+### A. Routing classification before persistence
+
+Every persistable artifact must be classified before any backend write.
+
+`REPO_SAFE` means all of the following are true:
+
+- contains no credential, token, cookie, secret, password-field content or other sensitive authentication material;
+- contains no private/personal content that should expire or be deletable outside Git-history semantics;
+- is acceptable for effectively long-lived repository history and for possible future repository visibility changes;
+- fits the repository evidence budgets below;
+- belongs to the active Project's current **OWNED working repository**;
+- repository evidence capability has been proven `OBSERVED` for the exact bounded path.
+
+If any condition is false, unknown or cannot be mechanically established, route the artifact as `PRIVATE_REQUIRED`.
+
+`PRIVATE_REQUIRED` evidence uses the private evidence backend. Repository persistence is never a fallback for a failed/uncertain privacy classification.
+
+### B. Source revision and evidence revision are separate identities
+
+Evidence publication must never advance or mutate the branch/ref that identifies the tested source revision.
+
+The canonical model is:
 
 ~~~text
-tests/gsa/<checkpoint-or-surface>/
-  manifest.json
-  home-desktop.png
-  home-mobile.png
-  lesson-desktop.png
-  lesson-error.png
-  ...
+tested_source_ref / tested_source_revision
+!=
+evidence_ref / evidence_commit
 ~~~
 
-A UI checkpoint may legitimately contain roughly 10–15 representative screenshots when the application has multiple pages, states or viewports. Prefer stable semantic filenames by page/state/viewport; Retest may update the same logical file while Git history preserves prior revisions.
+Repository evidence uses a dedicated **non-source evidence ref**. The exact naming is an implementation detail, but it must:
 
-The manifest should bind the screenshot set to the exact test context, including as applicable:
+- be separate from the working source branch and release branches;
+- never be used as source input for Coder/Reviewer;
+- be writable only by the bounded evidence publisher;
+- preserve an immutable evidence commit for every completed evidence attempt.
 
-- project/repository and checkpoint;
-- target revision/build;
-- page/screen/state;
-- viewport/device class;
-- Tester Run/attempt;
-- capture time;
-- objective result/limitations.
+Verification binds both:
 
-Tester remains read-only for product source and production assets. The implementation must grant only a narrow write boundary to the repository-owned Tester evidence subtree. Because the current GitHub text connector does not upload PNG binaries, implementation of this proposal requires an explicit bounded binary GitHub write/commit path; do not pretend the current connector already provides it.
+- `target_ref` + exact `target_revision` of the tested source;
+- immutable `evidence_ref` + `evidence_commit_sha` (and artifact/blob hashes) when repository persistence succeeds.
 
-Private Supabase screenshot storage may remain as a fallback for cases where repository binary persistence is unavailable or inappropriate, but it should not be the default/canonical Human handoff if this proposal is approved.
+A mutable branch/folder URL may exist as a convenience view, but it is never canonical evidence.
 
-Canonical lifecycle/control evidence may still remain in Project Memory Verification records. The repository screenshot folder is the durable visual artifact surface for Human review, and Verification should reference the target-repo artifact path/commit rather than expiring signed URLs when repository persistence succeeds.
+### C. Immutable bundle identity and append-preserving Retest
 
-This proposal intentionally supersedes the storage preference currently described later in Section 17 only **after CR approval**. Until then, the existing Supabase implementation remains the deployed behavior.
+Do not overwrite one shared screenshot set per checkpoint.
+
+Each evidence attempt has a distinct immutable bundle identity. When the target repository has no stronger approved convention, use a GSA-owned logical namespace equivalent to:
+
+~~~text
+tests/gsa/
+  <project-id>/
+    <job-id>/
+      <checkpoint-id>/
+        <attempt-id>/
+          manifest.json
+          screenshots/
+            home-desktop.png
+            home-mobile.png
+            ...
+~~~
+
+The exact root may follow an approved repository convention, but the identity dimensions above must remain unambiguous.
+
+Rules:
+
+- TEST and every RETEST create a new `attempt-id` bundle;
+- an evidence attempt never overwrites a previous attempt's canonical files;
+- Verification references an immutable evidence commit/blob-pinned path;
+- Retest may expose a mutable “latest” convenience pointer, but prior Verification records must continue resolving to the exact historical bytes they originally referenced;
+- concurrent publication uses exact expected-ref-head/CAS semantics; stale evidence-ref head means reject/reconcile, never silent last-write-wins.
+
+### D. Bounded evidence-write authority
+
+Tester remains **read-only for product source and production assets**.
+
+Tester does not receive general GitHub write authority. It produces an `EvidenceWriteRequest` containing only the evidence publication intent and bounded context, including:
+
+- active `project_id`;
+- current OWNED `repository`;
+- tested `target_ref` + exact `target_revision`;
+- checkpoint + Tester Run/attempt identity;
+- privacy class;
+- requested evidence ref/prefix;
+- artifact metadata/hashes;
+- expected evidence-ref head when applicable.
+
+A dedicated evidence-publisher path may mutate Git only after validating all of those boundaries.
+
+Repository publication authorization must fail closed unless all are true:
+
+1. Project lifecycle/scope is current;
+2. target repository is the active Project's current OWNED working repository;
+3. artifact is `REPO_SAFE`;
+4. destination is the approved evidence ref and approved evidence prefix;
+5. tested source revision still matches the Verification/Test target;
+6. attempt identity is current and not already terminally published;
+7. expected evidence-ref head matches the live head;
+8. binary evidence-write capability is `OBSERVED`.
+
+The publisher may create only the evidence blobs/tree/commit and move only the dedicated evidence ref. It may not modify source refs, source paths, PR heads, release refs, Project Memory or unrelated repository content.
+
+### E. Repository binary capability probe
+
+Repository evidence is not considered available merely because generic Git object tools exist.
+
+Add capability probe `PROBE-GIT-EVIDENCE-01` with a bounded, non-sensitive fixture. It must prove the actual route intended for production:
+
+1. authorize the active Project/OWNED repo/evidence ref/prefix;
+2. create a small binary artifact blob;
+3. create tree + evidence commit without moving the source ref;
+4. update only the dedicated evidence ref with exact expected-head protection;
+5. read back the immutable artifact/manifest identity;
+6. verify bytes/hash and that the tested source ref/revision did not move;
+7. clean up only if cleanup is part of the approved evidence-ref policy; otherwise retain the probe bundle as explicitly marked non-product test evidence.
+
+Until this probe succeeds, repository binary persistence remains `UNOBSERVED`; eligible evidence must use the private backend or be reported as a capability-bound limitation.
+
+### F. Privacy, retention and hard budgets
+
+Repository evidence has effectively long-lived Git-history retention. Therefore only `REPO_SAFE` evidence may enter Git.
+
+The initial repository route must not exceed the stricter of repository-specific policy or these defaults:
+
+~~~text
+max screenshots per verification: 12
+max single screenshot: 5 MiB
+max repository evidence bundle: 25 MiB
+video/recording: disabled
+HAR/trace payloads: disabled
+~~~
+
+The private evidence backend may retain the existing larger bundle budget described in Section 17 if approved by its privacy/retention policy.
+
+For both routes:
+
+- never persist passwords, auth tokens, cookies, Authorization headers or raw secret values;
+- avoid screenshot capture while secret/password fields are populated;
+- do not persist localStorage/sessionStorage contents unless a specifically approved non-secret PROBE requires it;
+- protected/private screens default to `PRIVATE_REQUIRED`;
+- manifest records size, MIME type, SHA-256, privacy class and backend route;
+- exceeding a limit yields explicit evidence limitation/failure, never silent truncation.
+
+Private evidence retention remains configurable/expirable. Repository evidence is treated as long-lived and must be safe for that retention model before publication.
+
+### G. Human-openable evidence surface
+
+Canonical lifecycle/control evidence remains in Project Memory Verification records.
+
+When repository persistence succeeds, Verification/Handoff references:
+
+- exact tested source revision;
+- immutable evidence commit;
+- immutable manifest/artifact path(s);
+- one direct Human-openable GitHub link pinned to that evidence commit.
+
+When private persistence is required, Verification/Handoff references the private bundle identity and authenticated Human evidence surface rather than an expiring URL as canonical identity. Short-lived signed URLs are transport only.
+
+The Human should not need to search a repository/storage bucket manually.
+
+### H. Relationship to current Section 17
+
+Human-invoked CR has cleared this hybrid architecture. Until the CP6 implementation is reviewed, staged and verified, the current deployed screenshot persistence remains the existing private Supabase path implemented in `auth-ui/api/browser.ts`.
+
+If this proposal is approved:
+
+- Section 17 remains the canonical private-backend behavior for `PRIVATE_REQUIRED` evidence and for repository-capability fallback;
+- repository evidence becomes an additional route only for mechanically classified `REPO_SAFE` artifacts;
+- the implementation must preserve the source/evidence revision split, immutable attempt identity, privacy routing and bounded publisher authority defined above.
+
+Repository evidence routing remains disabled until `PROBE-GIT-EVIDENCE-01` proves the bounded binary path, append-only/non-force ancestry and no CI/deploy/release side effects for the exact target repository. If any of those checks is unavailable or fails, use the private evidence backend.
 
 ---
 
@@ -1135,33 +1283,38 @@ UI/browser checkpoints produce a human-viewable evidence bundle in addition to t
 
 ### 17.1 Storage decision
 
-Use a private Supabase Storage bucket dedicated to GSA evidence, provisionally:
+Use the existing private Supabase Storage bucket for screenshot binaries:
 
 ~~~text
-gsa-evidence
+gsa-test-evidence
 ~~~
 
-Logical object prefix:
+The live bucket is private, restricted to `image/png`, and uses a user-id first-folder RLS boundary. CP6 therefore does **not** mutate the Storage schema or force JSON into an image-only bucket.
+
+Bundle binaries use an append-only logical prefix:
 
 ~~~text
-<user-id>/<project-id>/<evidence-bundle-id>/
-  report.md
-  result.json
+<user-id>/bundles/<evidence-bundle-id>/
   screenshots/
     01-desktop-initial.png
     02-desktop-after.png
     03-mobile-failure.png
-  snapshots/
-    initial.txt
-    final.txt
-  console.txt
-  page-errors.txt
-  manifest.json
 ~~~
 
-The exact artifact set is test-dependent; do not create empty files.
+Exact manifest bytes are stored separately in the RLS-protected append-only table:
 
-This resolves the binary-write gap without assuming the GitHub text connector can upload PNG data.
+~~~text
+public.gsa_evidence_bundles
+  user_id
+  evidence_bundle_id
+  manifest_json
+  manifest_sha256
+  created_at
+~~~
+
+There is intentionally no UPDATE permission/policy for bundle manifests. Retest creates a new bundle/attempt identity rather than rewriting prior manifest bytes.
+
+This preserves the existing private binary boundary while providing an immutable canonical manifest identity without depending on expiring signed URLs or unsupported Storage MIME types.
 
 ### 17.2 Auth and write boundary
 
@@ -1170,13 +1323,14 @@ The browser bridge already receives an authenticated GSA bearer token.
 Add a narrow evidence persistence path in the GSA/Vercel browser bridge that:
 
 1. validates the authenticated user;
-2. validates project_id/evidence context against the active GSA Project boundary;
-3. writes only under that user's private gsa-evidence prefix;
-4. uses Supabase Storage RLS/private-bucket policy so users cannot read/write another user's prefix;
-5. returns artifact IDs/paths + hashes/sizes, not raw base64, after persistence;
-6. verifies upload success before returning an artifact as durable evidence.
+2. requires explicit project/repository/job/checkpoint/attempt/Tester Run/target-revision binding for durable bundle mode;
+3. writes PNG binaries only under that user's private Storage prefix;
+4. persists exact `manifest_json` + `manifest_sha256` only as that authenticated `user_id` in `public.gsa_evidence_bundles`;
+5. relies on Storage RLS plus table RLS so users cannot read/write another user's evidence;
+6. returns artifact IDs/paths + SHA-256/sizes and one stable authenticated viewer URL after persistence;
+7. treats short-lived signed URLs as transport only, never canonical evidence identity.
 
-Do not grant Tester arbitrary Supabase Storage paths or source-repository write authority.
+Do not grant Tester arbitrary Supabase Storage paths, unrestricted table mutation or source-repository write authority.
 
 ### 17.3 Evidence bundle identity
 

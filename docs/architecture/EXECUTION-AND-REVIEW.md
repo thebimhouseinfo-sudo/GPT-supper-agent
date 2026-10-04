@@ -388,6 +388,21 @@ A PRODUCT_FAILURE Retest on the same target revision is rejected. Review-repair 
 
 V2_STABLE does not read or enforce CP5 claims, checkpoint evidence gates or superseding-plan runtime behavior.
 
+### CP6 durable evidence binding
+
+When Tester produces binary/browser evidence, the bundle object returned by a persistence surface is presentation metadata until publication is attested.
+
+For `PRIVATE_SUPABASE`, `evidence_bundle_attestation_prepare` reads the authenticated manifest row from Supabase and verifies exact manifest SHA, Project/Job/checkpoint/attempt/Tester Run/repository/target binding, artifact bounds and total bundle size.
+
+For `REPOSITORY_GIT`, `evidence_repository_publish_finalize` validates the dedicated evidence ref, exact source revision, append-only parent, immutable commit/manifest/artifact read-back, successful repository capability probe and absence of CI/deploy/release side effects; successful PUBLISH directly emits the canonical `EVIDENCE_BUNDLE / PUBLISHED` attestation record.
+
+The attestation must be persisted append-only and read back as exact `{path,sha,record_text}` before `checkpoint_verification_prepare` can derive bundle refs. Raw `evidence_bundle_refs[]` never authorize TEST/RETEST PASS.
+
+EvidenceApplicability still requires the terminal claim to point to the exact TEST/RETEST Verification. That Verification records both immutable bundle identities and their attestation refs. A mismatch in count/path/SHA/bundle binding keeps the gate closed.
+
+Tester Handoff derives evidence only from the exact successful TEST/RETEST Verification snapshot **and** its current terminal checkpoint claim snapshot. The terminal claim must canonically match the same planning revision/checkpoint, satisfying state, last Verification id, attempt id, lease token and target. An orphan candidate Verification whose claim CAS lost cannot populate Handoff evidence. RETEST uses a new attempt/bundle/attestation identity; previous evidence remains immutable.
+
+V2_STABLE remains inert with respect to CP6 EvidenceBundle rules.
 
 ### Boundary readiness
 

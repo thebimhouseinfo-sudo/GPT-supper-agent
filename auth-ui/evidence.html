@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GPT Super Agent · Evidence</title>
+  <meta name="description" content="Authenticated GPT Super Agent evidence bundle viewer." />
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { width: min(1120px, 100%); margin: 0 auto; padding: 28px 20px 60px; }
+    header { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    h2 { font-size: 18px; margin: 26px 0 12px; }
+    p { line-height: 1.5; }
+    .muted { opacity: .68; }
+    .panel {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+      border-radius: 14px;
+      background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    .shot {
+      border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+      border-radius: 12px;
+      overflow: hidden;
+      background: color-mix(in srgb, Canvas 97%, CanvasText 3%);
+    }
+    .shot img { width: 100%; display: block; background: #111; }
+    .meta { padding: 11px 12px; font-size: 13px; line-height: 1.45; word-break: break-word; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 0; }
+    dt { font-weight: 650; }
+    dd { margin: 0; word-break: break-word; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      background: CanvasText;
+      color: Canvas;
+    }
+    button.secondary { background: color-mix(in srgb, CanvasText 10%, transparent); color: CanvasText; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .error { color: #d14b4b; white-space: pre-wrap; }
+    .success { color: #2e9d55; }
+    ul { padding-left: 20px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>GSA Evidence</h1>
+      <p class="muted">Private, revision-bound browser evidence.</p>
+    </div>
+    <div>
+      <button id="refresh" class="secondary" hidden>Refresh evidence</button>
+      <button id="login" hidden>Continue with Google</button>
+    </div>
+  </header>
+
+  <div id="status" class="panel">Checking access…</div>
+  <div id="summary" class="panel" hidden></div>
+  <div id="limitations" class="panel" hidden></div>
+
+  <section id="shots" hidden>
+    <h2>Screenshots</h2>
+    <div id="grid" class="grid"></div>
+  </section>
+
+  <div id="error" class="panel error" hidden></div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+  const SUPABASE_URL = "https://fbyqktduoqlpbbtkghkf.supabase.co"
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7oa0dc4bp6gtG7p5bv3wtg_vlL0w5l5"
+  const params = new URLSearchParams(location.search)
+  const bundleId = params.get('bundle') || ''
+
+  const status = document.querySelector('#status')
+  const summary = document.querySelector('#summary')
+  const limitationsBox = document.querySelector('#limitations')
+  const shots = document.querySelector('#shots')
+  const grid = document.querySelector('#grid')
+  const errorBox = document.querySelector('#error')
+  const login = document.querySelector('#login')
+  const refresh = document.querySelector('#refresh')
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  })
+
+  function fail(message) {
+    errorBox.hidden = false
+    errorBox.textContent = message
+    status.textContent = 'Evidence cannot be opened.'
+  }
+
+  function addRow(dl, label, value, code = false) {
+    const dt = document.createElement('dt')
+    dt.textContent = label
+    const dd = document.createElement('dd')
+    if (code) {
+      const el = document.createElement('code')
+      el.textContent = value || '—'
+      dd.append(el)
+    } else {
+      dd.textContent = value || '—'
+    }
+    dl.append(dt, dd)
+  }
+
+  function render(data) {
+    const manifest = data.manifest || {}
+    const binding = manifest.binding || {}
+
+    status.innerHTML = '<span class="success">Evidence bundle loaded</span>'
+
+    summary.hidden = false
+    summary.replaceChildren()
+    const dl = document.createElement('dl')
+    addRow(dl, 'Bundle', manifest.evidence_bundle_id, true)
+    addRow(dl, 'Backend', manifest.backend)
+    addRow(dl, 'Privacy', manifest.privacy_class)
+    addRow(dl, 'Project', binding.project_id, true)
+    addRow(dl, 'Job', binding.job_id, true)
+    addRow(dl, 'Checkpoint', binding.checkpoint_id, true)
+    addRow(dl, 'Attempt', binding.attempt_id, true)
+    addRow(dl, 'Tester run', binding.run_id, true)
+    addRow(dl, 'Target revision', binding.target_revision, true)
+    addRow(dl, 'Result', manifest.result || '—')
+    addRow(dl, 'Created', manifest.created_at)
+    addRow(dl, 'Manifest SHA-256', data.manifest_sha256, true)
+    summary.append(dl)
+
+    const limitations = Array.isArray(manifest.limitations) ? manifest.limitations : []
+    limitationsBox.hidden = limitations.length === 0
+    limitationsBox.replaceChildren()
+    if (limitations.length) {
+      const title = document.createElement('strong')
+      title.textContent = 'Limitations'
+      const list = document.createElement('ul')
+      for (const item of limitations) {
+        const li = document.createElement('li')
+        li.textContent = String(item)
+        list.append(li)
+      }
+      limitationsBox.append(title, list)
+    }
+
+    const artifacts = Array.isArray(data.artifacts) ? data.artifacts : []
+    grid.replaceChildren()
+    for (const artifact of artifacts) {
+      if (artifact.mime_type !== 'image/png' || !artifact.signed_url) continue
+      const card = document.createElement('article')
+      card.className = 'shot'
+
+      const image = document.createElement('img')
+      image.src = artifact.signed_url
+      image.alt = artifact.label || 'Evidence screenshot'
+      image.loading = 'lazy'
+
+      const meta = document.createElement('div')
+      meta.className = 'meta'
+      const label = document.createElement('strong')
+      label.textContent = artifact.label || 'Screenshot'
+      const detail = document.createElement('div')
+      const dims = artifact.width && artifact.height
+        ? artifact.width + '×' + artifact.height + ' · '
+        : ''
+      detail.textContent =
+        dims +
+        Math.round(Number(artifact.size_bytes || 0) / 1024) +
+        ' KiB · SHA-256 ' +
+        String(artifact.sha256 || '').slice(0, 16) +
+        '…'
+      meta.append(label, detail)
+      card.append(image, meta)
+      grid.append(card)
+    }
+    shots.hidden = grid.children.length === 0
+    refresh.hidden = false
+  }
+
+  async function load() {
+    errorBox.hidden = true
+    refresh.disabled = true
+
+    if (!/^[0-9a-f]{64}$/i.test(bundleId)) {
+      fail('Invalid or missing evidence bundle id.')
+      refresh.disabled = false
+      return
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      fail(sessionError.message)
+      refresh.disabled = false
+      return
+    }
+
+    const session = sessionData.session
+    if (!session) {
+      status.textContent = 'Sign in to open this private evidence bundle.'
+      login.hidden = false
+      refresh.hidden = true
+      refresh.disabled = false
+      return
+    }
+
+    login.hidden = true
+    status.textContent = 'Loading evidence…'
+    const response = await fetch('/api/evidence?bundle=' + encodeURIComponent(bundleId), {
+      headers: { Authorization: 'Bearer ' + session.access_token },
+      cache: 'no-store',
+    })
+    const data = await response.json().catch(() => null)
+    if (!response.ok || !data?.ok) {
+      fail(data?.error || ('Evidence request failed: HTTP ' + response.status))
+      refresh.disabled = false
+      return
+    }
+
+    render(data)
+    refresh.disabled = false
+  }
+
+  login.addEventListener('click', async () => {
+    login.disabled = true
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: location.href,
+        scopes: 'email profile',
+      },
+    })
+    if (error) {
+      login.disabled = false
+      fail(error.message)
+    }
+  })
+
+  refresh.addEventListener('click', () => load().catch((error) => fail(String(error?.message ?? error))))
+  load().catch((error) => fail(String(error?.message ?? error)))
+</script>
+</body>
+</html>

@@ -248,6 +248,251 @@ function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   )
 }
 
+function evidenceBundleRefValidationError(
+  bundle: any,
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id?: string | null
+    attempt_id?: string | null
+    run_id?: string | null
+    target_ref?: string | null
+    target_revision: string
+    repository_full_name?: string | null
+  },
+) {
+  if (!bundle || typeof bundle !== 'object') return 'evidence bundle ref must be an object.'
+  const binding = bundle.binding
+  if (!binding || typeof binding !== 'object') return 'evidence bundle ref is missing immutable binding.'
+  const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
+  if (!same(binding.project_id, expected.project_id) || !same(binding.job_id, expected.job_id)) return 'evidence bundle project/job binding mismatch.'
+  if (expected.checkpoint_id != null && !same(binding.checkpoint_id, expected.checkpoint_id)) return 'evidence bundle checkpoint binding mismatch.'
+  if (expected.attempt_id != null && !same(binding.attempt_id, expected.attempt_id)) return 'evidence bundle attempt binding mismatch.'
+  if (expected.run_id != null && !same(binding.run_id, expected.run_id)) return 'evidence bundle Tester Run binding mismatch.'
+  if (expected.target_ref != null && !same(binding.target_ref, expected.target_ref)) return 'evidence bundle target_ref binding mismatch.'
+  if (!same(binding.target_revision, expected.target_revision)) return 'evidence bundle target_revision binding mismatch.'
+  if (!/^[0-9a-f]{40}$/.test(String(binding.target_revision || ''))) return 'evidence bundle target_revision is not an exact Git SHA.'
+  if (expected.repository_full_name) {
+    if (String(binding.repository || '').toLowerCase() !== expected.repository_full_name.toLowerCase()) return 'evidence bundle repository binding mismatch.'
+  }
+  const artifactCount = Number(bundle.artifact_count || 0)
+  const sizeBytes = Number(bundle.size_bytes || 0)
+  if (!Number.isInteger(artifactCount) || artifactCount < 1 || artifactCount > 12) return 'evidence bundle artifact_count is outside the bounded range.'
+  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) return 'evidence bundle size_bytes is invalid.'
+
+  if (bundle.backend === 'PRIVATE_SUPABASE') {
+    const bundleId = String(bundle.evidence_bundle_id || '')
+    if (!/^[0-9a-f]{64}$/.test(bundleId)) return 'private evidence bundle id is invalid.'
+    if (String(bundle.manifest_path || '') !== 'db:gsa_evidence_bundles/' + bundleId) return 'private evidence manifest path is not bound to the bundle id.'
+    if (!/^[0-9a-f]{64}$/.test(String(bundle.manifest_sha256 || ''))) return 'private evidence manifest hash is invalid.'
+    if (!/^https?:\/\//i.test(String(bundle.viewer_url || '')) || !String(bundle.viewer_url).includes(encodeURIComponent(bundleId))) return 'private evidence viewer URL is not bound to the bundle id.'
+    if (bundle.immutable !== true || bundle.manifest_readback_verified !== true) return 'private evidence bundle is not immutable/read-back verified.'
+    if (bundle.target_revision !== expected.target_revision) return 'private evidence top-level target revision mismatch.'
+    if (sizeBytes > 50 * 1024 * 1024) return 'private evidence bundle exceeds the 50 MiB bound.'
+    return null
+  }
+
+  if (bundle.backend === 'REPOSITORY_GIT') {
+    if (bundle.privacy_class !== 'REPO_SAFE' || bundle.publication_mode !== 'PUBLISH') return 'repository evidence must be a completed REPO_SAFE PUBLISH bundle.'
+    if (bundle.evidence_ref !== 'gsa-evidence/' + expected.project_id) return 'repository evidence ref is outside the Project evidence namespace.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.evidence_commit_sha || ''))) return 'repository evidence commit is invalid.'
+    if (!/^[0-9a-f]{64}$/.test(String(bundle.manifest_sha256 || ''))) return 'repository evidence manifest hash is invalid.'
+    if (!String(bundle.manifest_path || '').startsWith('tests/gsa/' + expected.project_id + '/')) return 'repository evidence manifest path is outside the bounded prefix.'
+    if (!/^https?:\/\//i.test(String(bundle.human_openable_url || '')) || !String(bundle.human_openable_url).includes(String(bundle.evidence_commit_sha))) return 'repository evidence Human link is not commit-pinned.'
+    if (bundle.immutable !== true || bundle.manifest_readback_verified !== true || bundle.artifact_readback_verified !== true) return 'repository evidence read-back is incomplete.'
+    if (bundle.automation_side_effects_observed !== false) return 'repository evidence automation isolation is not proven.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.append_only_parent_sha || ''))) return 'repository evidence append-only parent is invalid.'
+    if (typeof bundle.binary_probe_verification_ref !== 'string' || !bundle.binary_probe_verification_ref) return 'repository evidence is missing durable probe Verification ref.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.binary_probe_verification_sha || ''))) return 'repository evidence is missing durable probe Verification SHA.'
+    if (sizeBytes > 25 * 1024 * 1024) return 'repository evidence bundle exceeds the 25 MiB bound.'
+    return null
+  }
+
+  return 'unknown evidence bundle backend.'
+}
+
+async function sha256Utf8Text(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, '0')).join('')
+}
+
+function validateEvidenceBundleAttestationSnapshot(
+  snapshot: any,
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id: string
+    attempt_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+    repository_full_name: string
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'evidence_bundle_attestation_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable EvidenceBundle attestation snapshot.', ref: null, sha: null, record: null, bundle: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const expectedPath =
+    typeof record?.verification_id === 'string'
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+      : ''
+  const bundle = record?.evidence_bundle_ref
+  const bundleError = evidenceBundleRefValidationError(bundle, expected)
+  const publicationProof = record?.publication_proof
+  const privateProofValid =
+    record?.backend !== 'PRIVATE_SUPABASE' || (
+      publicationProof?.kind === 'SUPABASE_MANIFEST_READBACK' &&
+      publicationProof?.evidence_bundle_id === bundle?.evidence_bundle_id &&
+      publicationProof?.manifest_path === bundle?.manifest_path &&
+      publicationProof?.manifest_sha256 === bundle?.manifest_sha256 &&
+      publicationProof?.row_readback_verified === true
+    )
+  const repositoryProofValid =
+    record?.backend !== 'REPOSITORY_GIT' || (
+      publicationProof?.kind === 'REPOSITORY_PUBLISH_FINALIZE' &&
+      publicationProof?.evidence_ref === bundle?.evidence_ref &&
+      publicationProof?.evidence_commit_sha === bundle?.evidence_commit_sha &&
+      publicationProof?.manifest_path === bundle?.manifest_path &&
+      publicationProof?.manifest_sha256 === bundle?.manifest_sha256 &&
+      publicationProof?.manifest_readback_verified === true &&
+      publicationProof?.artifact_readback_verified === true &&
+      publicationProof?.automation_side_effects_observed === false &&
+      publicationProof?.probe_verification_ref === bundle?.binary_probe_verification_ref &&
+      publicationProof?.probe_verification_sha === bundle?.binary_probe_verification_sha
+    )
+  const valid =
+    expectedPath === entry.path &&
+    record?.kind === 'EVIDENCE_BUNDLE' &&
+    record?.project_id === expected.project_id &&
+    record?.job_id === expected.job_id &&
+    resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    record?.producer === 'tester' &&
+    record?.result === 'PUBLISHED' &&
+    record?.checkpoint_id === expected.checkpoint_id &&
+    record?.attempt_id === expected.attempt_id &&
+    record?.run_id === expected.run_id &&
+    record?.target_ref === expected.target_ref &&
+    record?.target_revision === expected.target_revision &&
+    String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase() &&
+    record?.backend === bundle?.backend &&
+    privateProofValid &&
+    repositoryProofValid &&
+    !bundleError
+  if (!valid) {
+    return { error: 'EvidenceBundle attestation does not match the current checkpoint attempt/Tester Run/target.', ref: null, sha: null, record: null, bundle: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record, bundle }
+}
+
+function validateTesterEvidenceVerificationSnapshot(
+  snapshot: any,
+  expected: {
+    project_id: string
+    job_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'tester_evidence_verification_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable TEST/RETEST Verification snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const expectedPath =
+    typeof record?.verification_id === 'string'
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+      : ''
+  const valid =
+    expectedPath === entry.path &&
+    ['TEST','RETEST'].includes(record?.kind) &&
+    resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    record?.producer === 'tester' &&
+    record?.project_id === expected.project_id &&
+    record?.job_id === expected.job_id &&
+    record?.run_id === expected.run_id &&
+    record?.target_ref === expected.target_ref &&
+    record?.target_revision === expected.target_revision &&
+    ['PASS','OBSERVED'].includes(record?.result) &&
+    Array.isArray(record?.evidence_bundle_refs) &&
+    record.evidence_bundle_refs.length > 0 &&
+    Array.isArray(record?.evidence_bundle_attestation_refs) &&
+    record.evidence_bundle_attestation_refs.length === record.evidence_bundle_refs.length &&
+    record.evidence_bundle_attestation_refs.every((item: any) =>
+      item &&
+      typeof item.path === 'string' &&
+      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT') + '/VERIFICATION/') &&
+      /^[0-9a-f]{40}$/.test(String(item.sha || ''))
+    )
+  if (!valid) {
+    return { error: 'TEST/RETEST Verification is not the exact successful durable evidence record for this Tester Run/target.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record }
+}
+
+function validateTesterEvidenceClaimSnapshot(
+  snapshot: any,
+  verification: any,
+  expected: {
+    project_id: string
+    job_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+    planning_revision: number
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'tester_evidence_claim_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable terminal checkpoint claim snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const claim = entry.record
+  const expectedPath =
+    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision))
+      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id)
+      : ''
+  const requiredState =
+    verification?.result === 'PASS' ? 'SATISFIED' :
+    verification?.result === 'OBSERVED' ? 'OBSERVED' :
+    null
+  const valid =
+    expectedPath === entry.path &&
+    claim?.kind === 'CHECKPOINT_CLAIM' &&
+    claim?.execution_contract === 'NEXT' &&
+    claim?.project_id === expected.project_id &&
+    claim?.job_id === expected.job_id &&
+    claim?.planning_revision === expected.planning_revision &&
+    verification?.planning_revision === expected.planning_revision &&
+    claim?.checkpoint_id === verification?.checkpoint_id &&
+    claim?.mode === verification?.mode &&
+    claim?.state === requiredState &&
+    claim?.claimant_run_id === expected.run_id &&
+    claim?.last_verification_id === verification?.verification_id &&
+    claim?.attempt_id === verification?.attempt_id &&
+    claim?.attempt_kind === verification?.attempt_kind &&
+    claim?.lease_token === verification?.lease_token &&
+    claim?.target_ref === expected.target_ref &&
+    claim?.target_revision === expected.target_revision &&
+    claim?.last_target_revision === expected.target_revision &&
+    claim?.last_result === verification?.result &&
+    claim?.retest_required === false &&
+    claim?.lease_expires_at == null &&
+    verification?.applicability?.status === 'CANDIDATE' &&
+    verification?.applicability?.planning_revision === expected.planning_revision &&
+    verification?.applicability?.checkpoint_id === verification?.checkpoint_id &&
+    verification?.applicability?.target_revision === expected.target_revision
+  if (!valid) {
+    return { error: 'terminal checkpoint claim does not currently make this TEST/RETEST Verification applicable.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record: claim }
+}
+
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
@@ -262,6 +507,34 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (verification.applicability?.status !== 'CANDIDATE') return false
   if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
+  const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+  const bundleRefs = verification.evidence_bundle_refs ?? []
+  const attestationRefs = verification.evidence_bundle_attestation_refs ?? []
+  if (bundleRefs.length !== attestationRefs.length) return false
+  if (bundleRefs.length && !workingRepo) return false
+  const attestationPaths = new Set<string>()
+  for (const ref of attestationRefs) {
+    if (
+      !ref ||
+      typeof ref.path !== 'string' ||
+      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT') + '/VERIFICATION/') ||
+      !/^[0-9a-f]{40}$/.test(String(ref.sha || '')) ||
+      attestationPaths.has(ref.path)
+    ) return false
+    attestationPaths.add(ref.path)
+  }
+  for (const bundle of bundleRefs) {
+    if (evidenceBundleRefValidationError(bundle, {
+      project_id: job.project_id,
+      job_id: job.job_id,
+      checkpoint_id: checkpoint.checkpoint_id,
+      attempt_id: claim.attempt_id,
+      run_id: claim.claimant_run_id,
+      target_ref: claim.target_ref,
+      target_revision: verification.target_revision,
+      repository_full_name: workingRepo,
+    })) return false
+  }
   const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
   const applicableEvidenceNeeds = verification.applicability?.evidence_need_ids ?? []
   if (!expectedEvidenceNeeds.every((id: string) => applicableEvidenceNeeds.includes(id))) return false
@@ -1332,6 +1605,19 @@ function createServer(req: Request) {
           persist: z.boolean(),
           label: z.string().min(1).max(80).optional(),
           expires_in: z.number().int().min(60).max(604800).optional(),
+          bundle: z.object({
+            project_id: z.string().min(1).max(240),
+            repository: z.string().min(1).max(500),
+            job_id: z.string().min(1).max(240),
+            checkpoint_id: z.string().min(1).max(240),
+            attempt_id: z.string().min(1).max(240),
+            run_id: z.string().min(1).max(240),
+            target_ref: z.string().max(500).optional(),
+            target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+            privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']).optional(),
+            result: z.string().max(80).optional(),
+            limitations: z.array(z.string().max(500)).max(20).optional(),
+          }).optional(),
         }).optional(),
       },
       outputSchema: {
@@ -1343,12 +1629,40 @@ function createServer(req: Request) {
         page_errors: z.string(),
         screenshot_count: z.number().int(),
         evidence: z.array(z.object({
+          artifact_id: z.string().optional(),
           label: z.string(),
           storage_path: z.string(),
           signed_url: z.string().url(),
           expires_at: z.string(),
           mime_type: z.string(),
+          size_bytes: z.number().int().nonnegative().optional(),
+          sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          width: z.number().int().positive().optional(),
+          height: z.number().int().positive().optional(),
         })).optional(),
+        evidence_bundle: z.object({
+          evidence_bundle_id: z.string().regex(/^[0-9a-f]{64}$/),
+          backend: z.literal('PRIVATE_SUPABASE'),
+          privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']),
+          binding: z.object({
+            project_id: z.string().min(1),
+            repository: z.string().min(1),
+            job_id: z.string().min(1),
+            checkpoint_id: z.string().min(1),
+            attempt_id: z.string().min(1),
+            run_id: z.string().min(1),
+            target_ref: z.string().nullable(),
+            target_revision: z.string().min(1),
+          }),
+          manifest_path: z.string(),
+          manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+          viewer_url: z.string().url(),
+          target_revision: z.string(),
+          artifact_count: z.number().int().positive().max(12),
+          size_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+          immutable: z.literal(true),
+          manifest_readback_verified: z.literal(true),
+        }).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -1369,6 +1683,7 @@ function createServer(req: Request) {
           page_errors: String(data.page_errors ?? ''),
           screenshot_count: screenshots.length,
           evidence: Array.isArray(data.evidence) ? data.evidence : [],
+          evidence_bundle: data.evidence_bundle ?? undefined,
         }
         const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
         for (const shot of screenshots) {
@@ -1418,6 +1733,19 @@ function createServer(req: Request) {
           persist: z.boolean(),
           label: z.string().min(1).max(80).optional(),
           expires_in: z.number().int().min(60).max(604800).optional(),
+          bundle: z.object({
+            project_id: z.string().min(1).max(240),
+            repository: z.string().min(1).max(500),
+            job_id: z.string().min(1).max(240),
+            checkpoint_id: z.string().min(1).max(240),
+            attempt_id: z.string().min(1).max(240),
+            run_id: z.string().min(1).max(240),
+            target_ref: z.string().max(500).optional(),
+            target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+            privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']).optional(),
+            result: z.string().max(80).optional(),
+            limitations: z.array(z.string().max(500)).max(20).optional(),
+          }).optional(),
         }).optional(),
         steps: z.array(z.object({
           action: z.enum(['click', 'fill', 'check', 'hover', 'select', 'press', 'wait_text', 'assert_text']),
@@ -1438,12 +1766,40 @@ function createServer(req: Request) {
         steps: z.array(z.any()),
         screenshot_count: z.number().int(),
         evidence: z.array(z.object({
+          artifact_id: z.string().optional(),
           label: z.string(),
           storage_path: z.string(),
           signed_url: z.string().url(),
           expires_at: z.string(),
           mime_type: z.string(),
+          size_bytes: z.number().int().nonnegative().optional(),
+          sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          width: z.number().int().positive().optional(),
+          height: z.number().int().positive().optional(),
         })).optional(),
+        evidence_bundle: z.object({
+          evidence_bundle_id: z.string().regex(/^[0-9a-f]{64}$/),
+          backend: z.literal('PRIVATE_SUPABASE'),
+          privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']),
+          binding: z.object({
+            project_id: z.string().min(1),
+            repository: z.string().min(1),
+            job_id: z.string().min(1),
+            checkpoint_id: z.string().min(1),
+            attempt_id: z.string().min(1),
+            run_id: z.string().min(1),
+            target_ref: z.string().nullable(),
+            target_revision: z.string().min(1),
+          }),
+          manifest_path: z.string(),
+          manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+          viewer_url: z.string().url(),
+          target_revision: z.string(),
+          artifact_count: z.number().int().positive().max(12),
+          size_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+          immutable: z.literal(true),
+          manifest_readback_verified: z.literal(true),
+        }).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -1472,6 +1828,7 @@ function createServer(req: Request) {
           steps: Array.isArray(data.steps) ? data.steps : [],
           screenshot_count: data.screenshot?.data ? 1 : 0,
           evidence: Array.isArray(data.evidence) ? data.evidence : [],
+          evidence_bundle: data.evidence_bundle ?? undefined,
         }
         const content: any[] = [{ type: 'text', text: JSON.stringify(summary) }]
         if (data.screenshot?.data) {
@@ -1501,6 +1858,804 @@ function createServer(req: Request) {
           isError: true,
         }
       }
+    },
+  )
+
+
+  function validateRepositoryProbeSnapshot(
+    snapshot: any,
+    expected: {
+      project_id: string
+      job_id: string
+      execution_contract: ExecutionContract
+      repository_full_name: string
+      target_ref: string
+      target_revision: string
+      evidence_ref: string
+    },
+  ) {
+    if (!snapshot) return { error: 'EVIDENCE_REPO_DENY: PUBLISH requires a durable successful probe Verification snapshot.' }
+    const parsed = parseDurableSnapshots([snapshot], 'binary_probe_verification_snapshot')
+    if (parsed.error || parsed.entries.length !== 1) {
+      return { error: 'EVIDENCE_REPO_DENY: invalid binary probe Verification snapshot.' }
+    }
+    const entry = parsed.entries[0]
+    const record = entry.record
+    const expectedPath =
+      typeof record?.verification_id === 'string'
+        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract)
+        : ''
+    const repoMatches =
+      String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase()
+    const valid =
+      expectedPath === entry.path &&
+      record?.kind === 'CAPABILITY_PROBE' &&
+      record?.project_id === expected.project_id &&
+      record?.job_id === expected.job_id &&
+      resolveExecutionContract(record?.execution_contract) === expected.execution_contract &&
+      record?.producer === 'tester' &&
+      record?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
+      record?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
+      record?.result === 'OBSERVED' &&
+      repoMatches &&
+      record?.target_ref === expected.target_ref &&
+      record?.target_revision === expected.target_revision &&
+      record?.evidence_ref === expected.evidence_ref &&
+      record?.source_revision_unchanged === true &&
+      record?.append_only_verified === true &&
+      record?.manifest_readback_verified === true &&
+      record?.artifact_readback_verified === true &&
+      record?.automation_side_effects_observed === false &&
+      record?.usable_as_product_evidence === false &&
+      /^[0-9a-f]{40}$/.test(String(record?.evidence_commit_sha || ''))
+    if (!valid) {
+      return { error: 'EVIDENCE_REPO_DENY: probe Verification is not an exact successful PROBE-GIT-EVIDENCE-01 observation for this publication target.' }
+    }
+    return { error: null, ref: entry.path, sha: entry.sha, record }
+  }
+
+
+  server.registerTool(
+    'evidence_repository_publish_prepare',
+    {
+      title: 'Prepare bounded repository evidence publication',
+      description: 'Authorize one bounded repository evidence PROBE or REPO_SAFE PUBLISH attempt against the active Project OWNED working repo. Returns a fail-closed Git publication contract; it does not mutate Git itself.',
+      inputSchema: {
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+        job_record_text: z.string().min(2),
+        repository_full_name: z.string().min(3),
+        job_id: z.string().uuid(),
+        checkpoint_id: z.string().min(1).max(240),
+        attempt_id: z.string().min(1).max(240),
+        run_id: z.string().uuid(),
+        target_ref: z.string().min(1).max(500),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        privacy_class: z.literal('REPO_SAFE'),
+        evidence_ref: z.string().min(1).max(240),
+        expected_evidence_ref_head: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+        automation_isolation_verified: z.literal(true),
+        automation_evidence_refs: z.array(z.string().min(1)).min(1),
+        publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
+        probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
+        binary_probe_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+        artifacts: z.array(z.object({
+          label: z.string().min(1).max(100),
+          mime_type: z.literal('image/png'),
+          size_bytes: z.number().int().positive().max(5 * 1024 * 1024),
+          sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        })).min(1).max(12),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        reason: z.string(),
+        publication_mode: z.enum(['PROBE','PUBLISH']),
+        probe_id: z.string().nullable(),
+        evidence_ref: z.string(),
+        evidence_prefix: z.string(),
+        expected_parent_sha: z.string(),
+        force_allowed: z.literal(false),
+        max_bundle_bytes: z.number().int(),
+        manifest: z.any(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({
+      project_manifest_text, project_manifest_sha, job_record_text, repository_full_name,
+      job_id, checkpoint_id, attempt_id, run_id, target_ref, target_revision,
+      evidence_ref, expected_evidence_ref_head, automation_evidence_refs,
+      publication_mode, probe_id, binary_probe_verification_snapshot, artifacts,
+    }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to authorize repository evidence publication.')
+      const project = parseProjectManifest(project_manifest_text)
+      if (!project || project.lifecycle !== 'ACTIVE') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Project must be ACTIVE.' }], isError: true }
+      }
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid Job JSON.' }], isError: true }
+      }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
+      if (job.project_id !== project.project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const requested = normalizeGithubRepo('https://github.com/' + repository_full_name.replace(/^https?:\/\/github\.com\//i, ''))
+      if (!requested) return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid repository.' }], isError: true }
+      const owned = project.repositories.find((item: any) => item.relation === 'OWNED' && normalizeGithubRepo(item.url)?.full_name.toLowerCase() === requested.full_name.toLowerCase())
+      const working = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')
+      if (!owned || !working || working.full_name.toLowerCase() !== requested.full_name.toLowerCase()) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: repository is not the active Project OWNED working repository.' }], isError: true }
+      }
+      if (!project_manifest_sha || target_ref === evidence_ref) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must be separate from the tested source ref.' }], isError: true }
+      }
+      const requiredRef = 'gsa-evidence/' + project.project_id
+      if (evidence_ref !== requiredRef) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: evidence ref must equal ' + requiredRef }], isError: true }
+      }
+
+      const mode = publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      let probeVerification: any = null
+      if (mode === 'PROBE') {
+        if (probe_id !== 'PROBE-GIT-EVIDENCE-01') {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
+        }
+        if (binary_probe_verification_snapshot) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE establishes capability and must not consume a prior probe Verification.' }], isError: true }
+        }
+        if (
+          artifacts.length !== 1 ||
+          Number(artifacts[0]?.size_bytes || 0) > 64 * 1024 ||
+          !String(artifacts[0]?.label || '').toLowerCase().startsWith('probe-git-evidence-01')
+        ) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: PROBE requires one synthetic probe-git-evidence-01 artifact <= 64 KiB.' }], isError: true }
+        }
+      } else {
+        const validatedProbe = validateRepositoryProbeSnapshot(binary_probe_verification_snapshot, {
+          project_id: project.project_id,
+          job_id,
+          execution_contract: executionContract,
+          repository_full_name: requested.full_name,
+          target_ref,
+          target_revision,
+          evidence_ref: requiredRef,
+        })
+        if (validatedProbe.error) {
+          return { content: [{ type: 'text', text: validatedProbe.error }], isError: true }
+        }
+        probeVerification = validatedProbe
+      }
+
+      const totalBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item.size_bytes || 0), 0)
+      const maxBundleBytes = 25 * 1024 * 1024
+      if (totalBytes > maxBundleBytes) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: repository evidence bundle exceeds 25 MiB.' }], isError: true }
+      }
+      const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
+      const prefix = ['tests/gsa', project.project_id, clean(job_id), clean(checkpoint_id), clean(attempt_id)].join('/')
+      if (!prefix || prefix.includes('..')) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: invalid evidence prefix.' }], isError: true }
+      }
+      const expectedParent = expected_evidence_ref_head || target_revision
+      const manifest = {
+        schema_version: 1,
+        backend: 'REPOSITORY_GIT',
+        privacy_class: 'REPO_SAFE',
+        publication_mode: mode,
+        probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
+        binding: {
+          project_id: project.project_id,
+          repository: requested.full_name,
+          job_id,
+          checkpoint_id,
+          attempt_id,
+          run_id,
+          target_ref,
+          target_revision,
+        },
+        evidence_ref,
+        expected_parent_sha: expectedParent,
+        force_allowed: false,
+        automation_isolation: {
+          verified: true,
+          evidence_refs: automation_evidence_refs,
+        },
+        binary_capability: {
+          observed: mode === 'PUBLISH',
+          verification_ref: mode === 'PUBLISH' ? probeVerification.ref : null,
+          verification_sha: mode === 'PUBLISH' ? probeVerification.sha : null,
+        },
+        artifacts,
+      }
+      const result = {
+        allowed: true,
+        reason: mode === 'PROBE'
+          ? 'Bounded synthetic repository evidence capability probe authorized.'
+          : 'Bounded REPO_SAFE evidence publication authorized by exact durable probe Verification.',
+        publication_mode: mode,
+        probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
+        evidence_ref,
+        evidence_prefix: prefix,
+        expected_parent_sha: expectedParent,
+        force_allowed: false as const,
+        max_bundle_bytes: maxBundleBytes,
+        manifest,
+        external_steps: [
+          'Re-fetch Project, Job, tested source ref and evidence ref immediately before mutation; deny on lifecycle/scope/revision drift.',
+          'Require tested source ref still resolves to target_revision exactly.',
+          'If evidence ref exists, require its live head equals expected_evidence_ref_head and create the new evidence commit with that exact head as parent.',
+          'If evidence ref does not exist, require expected_evidence_ref_head=null and bootstrap the first evidence commit with target_revision as parent.',
+          'Create only artifact blobs plus manifest.json below evidence_prefix. Do not modify any path outside that prefix.',
+          'Create the evidence commit with parent == expected_parent_sha exactly.',
+          'Move only evidence_ref using a non-force/fast-forward ref update. force=true and non-fast-forward updates are forbidden.',
+          'Read back evidence_ref and immutable commit/blob contents; verify hashes and source ref immutability.',
+          'Verify no CI, preview deploy, release or source workflow was triggered by the evidence ref update. If isolation is not proven, treat repository routing as unavailable and use PRIVATE_REQUIRED/private backend.',
+          mode === 'PROBE'
+            ? 'Finalize this PROBE, then create/persist its CAPABILITY_PROBE Verification before any PUBLISH attempt.'
+            : 'Immediately re-read the binary probe Verification snapshot before mutation; its path/SHA/record must still be the exact snapshot authorized above.',
+          'Call evidence_repository_publish_finalize with observed read-back values before referencing repository evidence from Verification/Handoff.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'evidence_repository_publish_finalize',
+    {
+      title: 'Finalize repository evidence publication',
+      description: 'Validate immutable read-back for one prepared repository evidence PROBE or PUBLISH attempt. Fails closed on source drift, ref mismatch, non-append ancestry, probe-evidence mismatch or automation side effects.',
+      inputSchema: {
+        publication_mode: z.enum(['PROBE','PUBLISH']).default('PUBLISH'),
+        probe_id: z.literal('PROBE-GIT-EVIDENCE-01').optional(),
+        binary_probe_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        tester_run_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1).max(240),
+        attempt_id: z.string().min(1).max(240),
+        run_id: z.string().uuid(),
+        repository_full_name: z.string().min(3),
+        target_ref: z.string().min(1),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        source_ref_readback_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_ref: z.string().min(1),
+        expected_parent_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_commit_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_commit_parent_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_ref_readback_head: z.string().regex(/^[0-9a-f]{40}$/),
+        evidence_prefix: z.string().min(1),
+        manifest_path: z.string().min(1),
+        manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        human_openable_url: z.string().url(),
+        artifact_count: z.number().int().min(1).max(12),
+        size_bytes: z.number().int().positive().max(25 * 1024 * 1024),
+        manifest_readback_verified: z.literal(true),
+        artifact_readback_verified: z.literal(true),
+        automation_side_effects_observed: z.literal(false),
+      },
+      outputSchema: {
+        valid: z.boolean(),
+        backend: z.literal('REPOSITORY_GIT'),
+        publication_mode: z.enum(['PROBE','PUBLISH']),
+        evidence_bundle_ref: z.any().nullable(),
+        probe_observation: z.any().nullable(),
+        evidence_bundle_attestation_id: z.string().nullable(),
+        evidence_bundle_attestation_memory_path: z.string().nullable(),
+        evidence_bundle_attestation_record_text: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (args: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to finalize repository evidence publication.')
+      let job: any, testerRun: any
+      try {
+        job = JSON.parse(args.job_record_text)
+        testerRun = JSON.parse(args.tester_run_record_text)
+      } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: invalid Job/Tester Run JSON.' }], isError: true }
+      }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
+      if (executionContract !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: CP6 repository evidence publication is NEXT-only.' }], isError: true }
+      }
+      if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (
+        resolveExecutionContract(testerRun.execution_contract) !== 'NEXT' ||
+        testerRun.project_id !== args.project_id ||
+        testerRun.job_id !== args.job_id ||
+        testerRun.run_id !== args.run_id ||
+        testerRun.role !== 'tester' ||
+        testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.target_ref !== args.target_ref ||
+        testerRun.target_revision !== args.target_revision
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: publication must belong to the current target-bound NEXT Tester Run.' }], isError: true }
+      }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')
+      const requestedRepo = normalizeGithubRepo('https://github.com/' + String(args.repository_full_name || '').replace(/^https?:\/\/github\.com\//i, ''))
+      if (!workingRepo || !requestedRepo || workingRepo.full_name.toLowerCase() !== requestedRepo.full_name.toLowerCase()) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: repository does not match the current Job working repository.' }], isError: true }
+      }
+
+      const requiredRef = 'gsa-evidence/' + args.project_id
+      const mode = args.publication_mode === 'PROBE' ? 'PROBE' : 'PUBLISH'
+      let probeVerification: any = null
+      if (mode === 'PROBE') {
+        if (args.probe_id !== 'PROBE-GIT-EVIDENCE-01') {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE mode requires PROBE-GIT-EVIDENCE-01.' }], isError: true }
+        }
+        if (args.binary_probe_verification_snapshot) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE must not consume a prior probe Verification.' }], isError: true }
+        }
+        if (args.artifact_count !== 1 || args.size_bytes > 64 * 1024) {
+          return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: PROBE evidence must remain one bounded fixture <= 64 KiB.' }], isError: true }
+        }
+      } else {
+        const validatedProbe = validateRepositoryProbeSnapshot(args.binary_probe_verification_snapshot, {
+          project_id: args.project_id,
+          job_id: args.job_id,
+          execution_contract: executionContract,
+          repository_full_name: args.repository_full_name,
+          target_ref: args.target_ref,
+          target_revision: args.target_revision,
+          evidence_ref: requiredRef,
+        })
+        if (validatedProbe.error) {
+          return { content: [{ type: 'text', text: validatedProbe.error.replace('EVIDENCE_REPO_DENY:', 'EVIDENCE_REPO_INVALID:') }], isError: true }
+        }
+        probeVerification = validatedProbe
+      }
+
+      if (args.source_ref_readback_revision !== args.target_revision) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: tested source revision moved.' }], isError: true }
+      }
+      if (args.evidence_commit_parent_sha !== args.expected_parent_sha) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence commit is not append-only from expected parent.' }], isError: true }
+      }
+      if (args.evidence_ref_readback_head !== args.evidence_commit_sha) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence ref read-back does not match evidence commit.' }], isError: true }
+      }
+      if (args.evidence_ref !== requiredRef) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: unexpected evidence ref.' }], isError: true }
+      }
+      const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
+      const expectedPrefix = ['tests/gsa', args.project_id, clean(args.job_id), clean(args.checkpoint_id), clean(args.attempt_id)].join('/')
+      if (String(args.evidence_prefix) !== expectedPrefix || !String(args.manifest_path).startsWith(expectedPrefix + '/')) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence prefix/manifest path does not match project/job/checkpoint/attempt identity.' }], isError: true }
+      }
+
+      const bundleRef = {
+        backend: 'REPOSITORY_GIT',
+        publication_mode: mode,
+        privacy_class: 'REPO_SAFE',
+        binding: {
+          project_id: args.project_id,
+          repository: requestedRepo.full_name,
+          job_id: args.job_id,
+          checkpoint_id: args.checkpoint_id,
+          attempt_id: args.attempt_id,
+          run_id: args.run_id,
+          target_ref: args.target_ref,
+          target_revision: args.target_revision,
+        },
+        repository: requestedRepo.full_name,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        evidence_ref: args.evidence_ref,
+        evidence_commit_sha: args.evidence_commit_sha,
+        manifest_path: args.manifest_path,
+        manifest_sha256: args.manifest_sha256,
+        human_openable_url: args.human_openable_url,
+        artifact_count: args.artifact_count,
+        size_bytes: args.size_bytes,
+        immutable: true,
+        append_only_parent_sha: args.expected_parent_sha,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
+        automation_side_effects_observed: false,
+        binary_probe_verification_ref: mode === 'PUBLISH' ? probeVerification.ref : null,
+        binary_probe_verification_sha: mode === 'PUBLISH' ? probeVerification.sha : null,
+      }
+      const probeObservation = mode === 'PROBE' ? {
+        project_id: args.project_id,
+        job_id: args.job_id,
+        execution_contract: executionContract,
+        probe_id: 'PROBE-GIT-EVIDENCE-01',
+        capability: 'REPOSITORY_BINARY_EVIDENCE',
+        observed: true,
+        repository_full_name: args.repository_full_name,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        evidence_ref: args.evidence_ref,
+        evidence_commit_sha: args.evidence_commit_sha,
+        append_only_parent_sha: args.expected_parent_sha,
+        manifest_path: args.manifest_path,
+        manifest_sha256: args.manifest_sha256,
+        human_openable_url: args.human_openable_url,
+        source_revision_unchanged: true,
+        append_only_verified: true,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
+        automation_side_effects_observed: false,
+        usable_as_product_evidence: false,
+      } : null
+      const attestationId = mode === 'PUBLISH' ? uuidv7() : null
+      const attestationPath = attestationId
+        ? verificationPath(args.project_id, attestationId, 'NEXT')
+        : null
+      const attestation = mode === 'PUBLISH' ? {
+        verification_id: attestationId,
+        kind: 'EVIDENCE_BUNDLE',
+        project_id: args.project_id,
+        job_id: args.job_id,
+        execution_contract: 'NEXT',
+        producer: 'tester',
+        result: 'PUBLISHED',
+        planning_revision: job.planning_revision,
+        checkpoint_id: args.checkpoint_id,
+        attempt_id: args.attempt_id,
+        run_id: args.run_id,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        repository_full_name: requestedRepo.full_name,
+        backend: 'REPOSITORY_GIT',
+        evidence_bundle_ref: bundleRef,
+        publication_proof: {
+          kind: 'REPOSITORY_PUBLISH_FINALIZE',
+          evidence_ref: bundleRef.evidence_ref,
+          evidence_commit_sha: bundleRef.evidence_commit_sha,
+          manifest_path: bundleRef.manifest_path,
+          manifest_sha256: bundleRef.manifest_sha256,
+          manifest_readback_verified: true,
+          artifact_readback_verified: true,
+          automation_side_effects_observed: false,
+          probe_verification_ref: bundleRef.binary_probe_verification_ref,
+          probe_verification_sha: bundleRef.binary_probe_verification_sha,
+        },
+        created_at: new Date().toISOString(),
+      } : null
+      const result = {
+        valid: true,
+        backend: 'REPOSITORY_GIT' as const,
+        publication_mode: mode,
+        evidence_bundle_ref: mode === 'PUBLISH' ? bundleRef : null,
+        probe_observation: probeObservation,
+        evidence_bundle_attestation_id: attestationId,
+        evidence_bundle_attestation_memory_path: attestationPath,
+        evidence_bundle_attestation_record_text: attestation ? prettyJson(attestation) : null,
+        external_steps: mode === 'PUBLISH' ? [
+          'Authorize/create evidence_bundle_attestation_memory_path and persist evidence_bundle_attestation_record_text append-only.',
+          'Read back that attestation and pass its exact {path, sha, record_text} snapshot to checkpoint_verification_prepare.',
+          'Raw evidence_bundle_ref is presentation metadata only and cannot authorize TEST/RETEST PASS.',
+        ] : [
+          'Use evidence_repository_probe_verification_prepare to persist the capability probe observation before repository PUBLISH is considered available.',
+        ],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'evidence_repository_probe_verification_prepare',
+    {
+      title: 'Prepare durable repository evidence capability probe Verification',
+      description: 'Convert one successfully finalized PROBE-GIT-EVIDENCE-01 observation into an append-only CAPABILITY_PROBE Verification record. Persist and read back this exact record before any repository PUBLISH attempt.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        repository_full_name: z.string().min(3),
+        target_ref: z.string().min(1),
+        target_revision: z.string().regex(/^[0-9a-f]{40}$/),
+        probe_finalize_result_text: z.string().min(2),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, job_id, job_record_text, repository_full_name, target_ref, target_revision, probe_finalize_result_text }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare repository probe Verification.')
+      let job: any, finalized: any
+      try {
+        job = JSON.parse(job_record_text)
+        finalized = JSON.parse(probe_finalize_result_text)
+      } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: invalid Job/finalize JSON.' }], isError: true }
+      }
+      const executionContract = jobExecutionContract(job)
+      if (!executionContract) return invalidExecutionContract()
+      if (job.project_id !== project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const observation = finalized?.probe_observation
+      const repoMatches = String(observation?.repository_full_name || '').toLowerCase() === String(repository_full_name).toLowerCase()
+      const valid =
+        finalized?.valid === true &&
+        finalized?.backend === 'REPOSITORY_GIT' &&
+        finalized?.publication_mode === 'PROBE' &&
+        finalized?.evidence_bundle_ref == null &&
+        observation?.project_id === project_id &&
+        observation?.job_id === job_id &&
+        resolveExecutionContract(observation?.execution_contract) === executionContract &&
+        observation?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
+        observation?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
+        observation?.observed === true &&
+        repoMatches &&
+        observation?.target_ref === target_ref &&
+        observation?.target_revision === target_revision &&
+        observation?.evidence_ref === 'gsa-evidence/' + project_id &&
+        observation?.source_revision_unchanged === true &&
+        observation?.append_only_verified === true &&
+        observation?.manifest_readback_verified === true &&
+        observation?.artifact_readback_verified === true &&
+        observation?.automation_side_effects_observed === false &&
+        observation?.usable_as_product_evidence === false &&
+        /^[0-9a-f]{40}$/.test(String(observation?.evidence_commit_sha || ''))
+      if (!valid) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: finalized result is not an exact successful bounded repository evidence probe observation.' }], isError: true }
+      }
+
+      const verificationId = uuidv7()
+      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const verification = {
+        verification_id: verificationId,
+        kind: 'CAPABILITY_PROBE',
+        project_id,
+        job_id,
+        execution_contract: executionContract,
+        producer: 'tester',
+        probe_id: 'PROBE-GIT-EVIDENCE-01',
+        capability: 'REPOSITORY_BINARY_EVIDENCE',
+        result: 'OBSERVED',
+        repository_full_name,
+        target_ref,
+        target_revision,
+        evidence_ref: observation.evidence_ref,
+        evidence_commit_sha: observation.evidence_commit_sha,
+        append_only_parent_sha: observation.append_only_parent_sha,
+        manifest_path: observation.manifest_path,
+        manifest_sha256: observation.manifest_sha256,
+        human_openable_url: observation.human_openable_url,
+        source_revision_unchanged: true,
+        append_only_verified: true,
+        manifest_readback_verified: true,
+        artifact_readback_verified: true,
+        automation_side_effects_observed: false,
+        usable_as_product_evidence: false,
+        created_at: new Date().toISOString(),
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: memoryPath,
+        verification_record_text: prettyJson(verification),
+        external_steps: [
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=verification_memory_path).',
+          'Persist verification_record_text append-only at verification_memory_path.',
+          'Read back the persisted probe Verification and pass its exact {path, sha, record_text} durable snapshot to repository PUBLISH prepare/finalize.',
+          'Any missing/stale/mismatched probe snapshot keeps repository PUBLISH fail-closed.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'evidence_bundle_attestation_prepare',
+    {
+      title: 'Prepare durable EvidenceBundle publication attestation',
+      description: 'Validate one already-persisted PRIVATE_SUPABASE EvidenceBundle against authenticated manifest storage and the active NEXT Tester Run, then prepare an append-only EVIDENCE_BUNDLE attestation. Repository PUBLISH emits the same attestation directly from evidence_repository_publish_finalize.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1),
+        attempt_id: z.string().uuid(),
+        tester_run_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA,
+        backend: z.literal('PRIVATE_SUPABASE'),
+        private_bundle_ref: z.any(),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        evidence_bundle_ref: z.any(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({
+      project_id, job_id, job_record_text, checkpoint_id, attempt_id,
+      tester_run_snapshot, backend, private_bundle_ref,
+    }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare EvidenceBundle attestation.')
+
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: invalid Job JSON.' }], isError: true }
+      }
+      if (
+        job.project_id !== project_id ||
+        job.job_id !== job_id ||
+        jobExecutionContract(job) !== 'NEXT' ||
+        job.lifecycle !== 'IN_PROGRESS'
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: owning Job must be the current IN_PROGRESS NEXT Job.' }], isError: true }
+      }
+
+      const runParsed = parseDurableSnapshots([tester_run_snapshot], 'tester_run_snapshot')
+      if (runParsed.error || runParsed.entries.length !== 1) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: invalid Tester Run snapshot.' }], isError: true }
+      }
+      const runEntry = runParsed.entries[0]
+      const testerRun = runEntry.record
+      if (
+        runEntry.path !== recordPath(project_id, 'RUNS', testerRun?.run_id, 'NEXT') ||
+        resolveExecutionContract(testerRun?.execution_contract) !== 'NEXT' ||
+        testerRun?.project_id !== project_id ||
+        testerRun?.job_id !== job_id ||
+        testerRun?.role !== 'tester' ||
+        testerRun?.lifecycle !== 'IN_PROGRESS' ||
+        testerRun?.planning_revision !== job.planning_revision ||
+        typeof testerRun?.target_ref !== 'string' ||
+        !/^[0-9a-f]{40}$/.test(String(testerRun?.target_revision || ''))
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: bundle must belong to the exact current IN_PROGRESS NEXT Tester Run and exact Git target revision.' }], isError: true }
+      }
+
+      const checkpoint = (job.test_checkpoints ?? []).find((item: any) =>
+        item.checkpoint_id === checkpoint_id && item.planning_revision === job.planning_revision
+      )
+      if (!checkpoint) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: checkpoint is not part of the current plan revision.' }], isError: true }
+      }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+      if (!workingRepo) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: current Job working repository is unavailable.' }], isError: true }
+      }
+
+      const expected = {
+        project_id,
+        job_id,
+        checkpoint_id,
+        attempt_id,
+        run_id: testerRun.run_id,
+        target_ref: testerRun.target_ref,
+        target_revision: testerRun.target_revision,
+        repository_full_name: workingRepo,
+      }
+
+      const bundle = private_bundle_ref
+      let publicationProof: any = null
+      const bundleError = evidenceBundleRefValidationError(bundle, expected)
+      if (bundleError || bundle?.backend !== 'PRIVATE_SUPABASE') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: ' + (bundleError || 'private bundle backend mismatch.') }], isError: true }
+      }
+
+      const { data, error } = await auth.supabase
+        .from('gsa_evidence_bundles')
+        .select('manifest_json,manifest_sha256')
+        .eq('user_id', auth.user.id)
+        .eq('evidence_bundle_id', bundle.evidence_bundle_id)
+        .limit(1)
+        .maybeSingle()
+      if (error || !data) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: authenticated private manifest row was not found.' }], isError: true }
+      }
+      const manifestText = String(data.manifest_json || '')
+      const manifestSha = String(data.manifest_sha256 || '').toLowerCase()
+      const computedSha = await sha256Utf8Text(manifestText)
+      if (
+        manifestSha !== computedSha ||
+        manifestSha !== String(bundle.manifest_sha256 || '').toLowerCase()
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: private manifest SHA/read-back mismatch.' }], isError: true }
+      }
+
+      let manifest: any
+      try { manifest = JSON.parse(manifestText) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest JSON is invalid.' }], isError: true }
+      }
+      const manifestBinding = manifest?.binding ?? {}
+      const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
+      const bindingMatches =
+        manifest?.schema_version === 1 &&
+        manifest?.backend === 'PRIVATE_SUPABASE' &&
+        manifest?.evidence_bundle_id === bundle.evidence_bundle_id &&
+        manifest?.privacy_class === bundle.privacy_class &&
+        manifest?.manifest_path === bundle.manifest_path &&
+        same(manifestBinding.project_id, expected.project_id) &&
+        String(manifestBinding.repository || '').toLowerCase() === workingRepo.toLowerCase() &&
+        same(manifestBinding.job_id, expected.job_id) &&
+        same(manifestBinding.checkpoint_id, expected.checkpoint_id) &&
+        same(manifestBinding.attempt_id, expected.attempt_id) &&
+        same(manifestBinding.run_id, expected.run_id) &&
+        same(manifestBinding.target_ref, expected.target_ref) &&
+        same(manifestBinding.target_revision, expected.target_revision)
+      const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : []
+      const artifactBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item?.size_bytes || 0), 0)
+      const expectedSize = artifactBytes + new TextEncoder().encode(manifestText).byteLength
+      const artifactsValid =
+        artifacts.length === bundle.artifact_count &&
+        artifacts.length >= 1 &&
+        artifacts.length <= 12 &&
+        artifacts.every((item: any) =>
+          item?.mime_type === 'image/png' &&
+          Number.isInteger(Number(item?.size_bytes)) &&
+          Number(item.size_bytes) > 0 &&
+          Number(item.size_bytes) <= 5 * 1024 * 1024 &&
+          /^[0-9a-f]{64}$/.test(String(item?.sha256 || ''))
+        )
+      if (!bindingMatches || !artifactsValid || expectedSize !== bundle.size_bytes) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest does not exactly match bundle identity/artifacts.' }], isError: true }
+      }
+      publicationProof = {
+        kind: 'SUPABASE_MANIFEST_READBACK',
+        evidence_bundle_id: bundle.evidence_bundle_id,
+        manifest_path: bundle.manifest_path,
+        manifest_sha256: computedSha,
+        authenticated_user_id: auth.user.id,
+        row_readback_verified: true,
+      }
+
+      const verificationId = uuidv7()
+      const path = verificationPath(project_id, verificationId, 'NEXT')
+      const record = {
+        verification_id: verificationId,
+        kind: 'EVIDENCE_BUNDLE',
+        project_id,
+        job_id,
+        execution_contract: 'NEXT',
+        producer: 'tester',
+        result: 'PUBLISHED',
+        planning_revision: job.planning_revision,
+        checkpoint_id,
+        attempt_id,
+        run_id: testerRun.run_id,
+        target_ref: testerRun.target_ref,
+        target_revision: testerRun.target_revision,
+        repository_full_name: workingRepo,
+        backend: 'PRIVATE_SUPABASE',
+        evidence_bundle_ref: bundle,
+        publication_proof: publicationProof,
+        created_at: new Date().toISOString(),
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: path,
+        verification_record_text: prettyJson(record),
+        evidence_bundle_ref: bundle,
+        external_steps: [
+          ...durableSnapshotReadbackSteps([tester_run_snapshot], 'Tester Run snapshot'),
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=verification_memory_path).',
+          'Persist verification_record_text append-only and read it back byte-identically with its Git blob SHA.',
+          'Only the exact read-back {path,sha,record_text} snapshot may be passed to checkpoint_verification_prepare.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
@@ -3281,6 +4436,7 @@ function createServer(req: Request) {
         result: z.enum(['PASS','FAIL','BLOCKED','OBSERVED','UNVERIFIED']),
         failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
         evidence_refs: z.array(z.string()).default([]),
+        evidence_bundle_attestation_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).max(8).default([]),
         measurements: z.array(z.object({ name: z.string().min(1), value: z.any() })).default([]),
         limitations: z.array(z.string()).default([]),
       },
@@ -3298,7 +4454,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, evidence_bundle_attestation_snapshots, measurements, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
       let job: any, claim: any
@@ -3343,14 +4499,46 @@ function createServer(req: Request) {
       if (claim.target_revision !== target_revision || claim.target_ref !== target_ref) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
       }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+      if ((evidence_bundle_attestation_snapshots ?? []).length && !workingRepo) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: current Job working repository is unavailable for EvidenceBundle attestation validation.' }], isError: true }
+      }
+      const bundleKeys = new Set<string>()
+      const validatedBundles: any[] = []
+      const attestationRefs: any[] = []
+      for (const snapshot of evidence_bundle_attestation_snapshots ?? []) {
+        const attested = validateEvidenceBundleAttestationSnapshot(snapshot, {
+          project_id,
+          job_id,
+          checkpoint_id,
+          attempt_id,
+          run_id: testerRun.run_id,
+          target_ref,
+          target_revision,
+          repository_full_name: workingRepo,
+        })
+        if (attested.error) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + attested.error }], isError: true }
+        }
+        const bundle = attested.bundle
+        const key = bundle.backend === 'PRIVATE_SUPABASE'
+          ? 'PRIVATE:' + bundle.evidence_bundle_id
+          : 'REPO:' + bundle.evidence_commit_sha + ':' + bundle.manifest_path
+        if (bundleKeys.has(key)) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: duplicate EvidenceBundle attestation.' }], isError: true }
+        }
+        bundleKeys.add(key)
+        validatedBundles.push(bundle)
+        attestationRefs.push({ path: attested.ref, sha: attested.sha })
+      }
       if (!['PASS','OBSERVED'].includes(result) && !failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: non-success result requires failure_class.' }], isError: true }
       }
       if (['PASS','OBSERVED'].includes(result) && failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed evidence cannot carry a failure_class.' }], isError: true }
       }
-      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !(measurements ?? []).length) {
-        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence or measurement.' }], isError: true }
+      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !validatedBundles.length && !(measurements ?? []).length) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence bundle/ref or measurement.' }], isError: true }
       }
       if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: OBSERVED is only valid for MEASURE/PROBE.' }], isError: true }
@@ -3379,10 +4567,13 @@ function createServer(req: Request) {
         mode: checkpoint.mode,
         target_ref,
         target_revision,
+        run_id: testerRun.run_id,
         producer: 'tester',
         result,
         failure_class: failure_class ?? null,
         evidence_refs: evidence_refs ?? [],
+        evidence_bundle_refs: validatedBundles,
+        evidence_bundle_attestation_refs: attestationRefs,
         measurements: measurements ?? [],
         limitations: limitations ?? [],
         retest_of_verification_id: claim.prior_verification_id ?? null,
@@ -3418,6 +4609,7 @@ function createServer(req: Request) {
         next_claim_record_text: prettyJson(nextClaim),
         route,
         external_steps: [
+          ...durableSnapshotReadbackSteps(evidence_bundle_attestation_snapshots ?? [], 'EvidenceBundle attestation snapshot'),
           'Immediately read back the Tester Run and require blob SHA equals tester_run_record_sha plus role=tester, lifecycle=IN_PROGRESS and run_id=claim.claimant_run_id.',
         'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
           'Authorize/create verification_memory_path and persist verification_record_text append-only.',
@@ -3837,6 +5029,8 @@ function createServer(req: Request) {
           completed_summary: z.string().min(1),
           remaining: z.array(z.string()).default([]),
           required_inputs: z.array(z.string()).default([]),
+          tester_evidence_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+          tester_evidence_claim_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
           blocker_or_gate: z.string().optional(),
           expected_next_outcome: z.string().min(1),
         }).optional(),
@@ -3889,6 +5083,63 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
+      let handoffEvidenceBundles: any[] = []
+      let handoffEvidenceAttestationRefs: any[] = []
+      let handoffEvidenceVerificationRef: any = null
+      let handoffEvidenceClaimRef: any = null
+      const hasEvidenceVerification = Boolean(handoff?.tester_evidence_verification_snapshot)
+      const hasEvidenceClaim = Boolean(handoff?.tester_evidence_claim_snapshot)
+      if (hasEvidenceVerification !== hasEvidenceClaim) {
+        return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: Tester evidence Handoff requires both the exact TEST/RETEST Verification snapshot and its current terminal checkpoint claim snapshot.' }], isError: true }
+      }
+      if (hasEvidenceVerification && hasEvidenceClaim) {
+        if (
+          executionContract !== 'NEXT' ||
+          role !== 'tester' ||
+          !current.target_revision ||
+          !current.target_ref ||
+          !Number.isInteger(Number(current.planning_revision))
+        ) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable EvidenceBundle handoff requires the exact target-bound current-planning NEXT Tester Run.' }], isError: true }
+        }
+        const targetRef = handoff.target_ref ?? current.target_ref
+        const targetRevision = handoff.target_revision ?? current.target_revision
+        const verified = validateTesterEvidenceVerificationSnapshot(
+          handoff.tester_evidence_verification_snapshot,
+          {
+            project_id,
+            job_id,
+            run_id,
+            target_ref: targetRef,
+            target_revision: targetRevision,
+          },
+        )
+        if (verified.error) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + verified.error }], isError: true }
+        }
+        const claimed = validateTesterEvidenceClaimSnapshot(
+          handoff.tester_evidence_claim_snapshot,
+          verified.record,
+          {
+            project_id,
+            job_id,
+            run_id,
+            target_ref: targetRef,
+            target_revision: targetRevision,
+            planning_revision: Number(current.planning_revision),
+          },
+        )
+        if (claimed.error) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + claimed.error }], isError: true }
+        }
+        if (!(verification_refs ?? []).includes(verified.ref)) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact applicable TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
+        }
+        handoffEvidenceBundles = verified.record.evidence_bundle_refs
+        handoffEvidenceAttestationRefs = verified.record.evidence_bundle_attestation_refs
+        handoffEvidenceVerificationRef = { path: verified.ref, sha: verified.sha }
+        handoffEvidenceClaimRef = { path: claimed.ref, sha: claimed.sha }
+      }
       const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       let handoffId: string | null = null
       let handoffPath: string | null = null
@@ -3909,6 +5160,10 @@ function createServer(req: Request) {
           completed_summary: handoff.completed_summary,
           remaining: handoff.remaining ?? [],
           required_inputs: handoff.required_inputs ?? [],
+          evidence_bundle_refs: handoffEvidenceBundles,
+          evidence_bundle_attestation_refs: handoffEvidenceAttestationRefs,
+          evidence_verification_ref: handoffEvidenceVerificationRef,
+          evidence_claim_ref: handoffEvidenceClaimRef,
           blocker_or_gate: handoff.blocker_or_gate ?? null,
           expected_next_outcome: handoff.expected_next_outcome,
           created_at: new Date().toISOString(),
@@ -3925,6 +5180,14 @@ function createServer(req: Request) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...durableSnapshotReadbackSteps(
+          handoff?.tester_evidence_verification_snapshot ? [handoff.tester_evidence_verification_snapshot] : [],
+          'Tester evidence Verification snapshot',
+        ),
+        ...durableSnapshotReadbackSteps(
+          handoff?.tester_evidence_claim_snapshot ? [handoff.tester_evidence_claim_snapshot] : [],
+          'terminal checkpoint claim snapshot',
+        ),
       ]
       if (handoffPath) {
         externalSteps.push(
@@ -4188,6 +5451,212 @@ app.get('/selftest', (c) => {
     { planning_topology: [{ node_id: consumerTaskId }, { node_id: checkpointId }, { node_id: 'CP-FINAL' }] },
     { checkpoint_id: 'CP-FINAL', boundary: 'JOB_FINAL', prerequisite_node_ids: [] },
   )
+  const cp6TargetRef = 'refs/heads/cp6-selftest'
+  const cp6TargetRevision = 'c'.repeat(40)
+  const cp6EvidenceCommit = 'd'.repeat(40)
+  const cp6PrivateBundle = {
+    evidence_bundle_id: 'e'.repeat(64),
+    backend: 'PRIVATE_SUPABASE',
+    privacy_class: 'PRIVATE_REQUIRED',
+    binding: {
+      project_id: projectId,
+      repository: 'example/source',
+      job_id: nextJobId,
+      checkpoint_id: checkpointId,
+      attempt_id: attemptId,
+      run_id: nextRunId,
+      target_ref: cp6TargetRef,
+      target_revision: cp6TargetRevision,
+    },
+    manifest_path: 'db:gsa_evidence_bundles/' + 'e'.repeat(64),
+    manifest_sha256: 'f'.repeat(64),
+    viewer_url: 'https://example.test/evidence.html?bundle=' + 'e'.repeat(64),
+    target_revision: cp6TargetRevision,
+    artifact_count: 2,
+    size_bytes: 2048,
+    immutable: true,
+    manifest_readback_verified: true,
+  }
+  const cp6RepoBundle = {
+    backend: 'REPOSITORY_GIT',
+    publication_mode: 'PUBLISH',
+    privacy_class: 'REPO_SAFE',
+    binding: {
+      project_id: projectId,
+      repository: 'example/source',
+      job_id: nextJobId,
+      checkpoint_id: checkpointId,
+      attempt_id: attemptId,
+      run_id: nextRunId,
+      target_ref: cp6TargetRef,
+      target_revision: cp6TargetRevision,
+    },
+    evidence_ref: 'gsa-evidence/' + projectId,
+    evidence_commit_sha: cp6EvidenceCommit,
+    manifest_path: 'tests/gsa/' + projectId + '/' + nextJobId + '/' + checkpointId.toLowerCase() + '/' + attemptId + '/manifest.json',
+    manifest_sha256: 'a'.repeat(64),
+    human_openable_url: 'https://github.com/example/source/blob/' + cp6EvidenceCommit + '/tests/gsa/manifest.json',
+    artifact_count: 1,
+    size_bytes: 1024,
+    immutable: true,
+    append_only_parent_sha: 'b'.repeat(40),
+    manifest_readback_verified: true,
+    artifact_readback_verified: true,
+    automation_side_effects_observed: false,
+    binary_probe_verification_ref: verificationPath(projectId, uuidv7(), 'NEXT'),
+    binary_probe_verification_sha: '9'.repeat(40),
+  }
+  const cp6ExpectedBundleContext = {
+    project_id: projectId,
+    job_id: nextJobId,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+  }
+  const cp6ClaimWithBundle = {
+    ...nextGateClaim,
+    claimant_run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    last_target_revision: cp6TargetRevision,
+  }
+  const cp6AttestationRef = {
+    path: verificationPath(projectId, uuidv7(), 'NEXT'),
+    sha: '8'.repeat(40),
+  }
+  const cp6VerificationWithBundle = {
+    ...nextGateVerification,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    evidence_bundle_refs: [cp6PrivateBundle],
+    evidence_bundle_attestation_refs: [cp6AttestationRef],
+    applicability: {
+      ...nextGateVerification.applicability,
+      target_revision: cp6TargetRevision,
+    },
+  }
+  const cp6TerminalClaim = {
+    ...cp6ClaimWithBundle,
+    lease_expires_at: null,
+    retest_required: false,
+  }
+  const cp6TerminalClaimSnapshot = {
+    path: checkpointClaimPath(projectId, nextJobId, 3, checkpointId),
+    sha: '5'.repeat(40),
+    record_text: prettyJson(cp6TerminalClaim),
+  }
+  const cp6OrphanClaimSnapshot = {
+    ...cp6TerminalClaimSnapshot,
+    record_text: prettyJson({
+      ...cp6TerminalClaim,
+      last_verification_id: uuidv7(),
+    }),
+  }
+  const cp6HandoffClaimExpected = {
+    project_id: projectId,
+    job_id: nextJobId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    planning_revision: 3,
+  }
+  const cp6JobWithRepo = {
+    ...nextGateJob,
+    repository_context: { working_repository_url: 'https://github.com/example/source' },
+  }
+
+  const cp6PrivateAttestationId = uuidv7()
+  const cp6PrivateAttestation = {
+    verification_id: cp6PrivateAttestationId,
+    kind: 'EVIDENCE_BUNDLE',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    producer: 'tester',
+    result: 'PUBLISHED',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+    backend: 'PRIVATE_SUPABASE',
+    evidence_bundle_ref: cp6PrivateBundle,
+    publication_proof: {
+      kind: 'SUPABASE_MANIFEST_READBACK',
+      evidence_bundle_id: cp6PrivateBundle.evidence_bundle_id,
+      manifest_path: cp6PrivateBundle.manifest_path,
+      manifest_sha256: cp6PrivateBundle.manifest_sha256,
+      row_readback_verified: true,
+    },
+  }
+  const cp6PrivateAttestationSnapshot = {
+    path: verificationPath(projectId, cp6PrivateAttestationId, 'NEXT'),
+    sha: '7'.repeat(40),
+    record_text: prettyJson(cp6PrivateAttestation),
+  }
+  const cp6BadPrivateAttestationSnapshot = {
+    ...cp6PrivateAttestationSnapshot,
+    record_text: prettyJson({
+      ...cp6PrivateAttestation,
+      publication_proof: {
+        ...cp6PrivateAttestation.publication_proof,
+        manifest_sha256: '0'.repeat(64),
+      },
+    }),
+  }
+  const cp6RepoAttestationId = uuidv7()
+  const cp6RepoAttestation = {
+    verification_id: cp6RepoAttestationId,
+    kind: 'EVIDENCE_BUNDLE',
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    producer: 'tester',
+    result: 'PUBLISHED',
+    planning_revision: 3,
+    checkpoint_id: checkpointId,
+    attempt_id: attemptId,
+    run_id: nextRunId,
+    target_ref: cp6TargetRef,
+    target_revision: cp6TargetRevision,
+    repository_full_name: 'example/source',
+    backend: 'REPOSITORY_GIT',
+    evidence_bundle_ref: cp6RepoBundle,
+    publication_proof: {
+      kind: 'REPOSITORY_PUBLISH_FINALIZE',
+      evidence_ref: cp6RepoBundle.evidence_ref,
+      evidence_commit_sha: cp6RepoBundle.evidence_commit_sha,
+      manifest_path: cp6RepoBundle.manifest_path,
+      manifest_sha256: cp6RepoBundle.manifest_sha256,
+      manifest_readback_verified: true,
+      artifact_readback_verified: true,
+      automation_side_effects_observed: false,
+      probe_verification_ref: cp6RepoBundle.binary_probe_verification_ref,
+      probe_verification_sha: cp6RepoBundle.binary_probe_verification_sha,
+    },
+  }
+  const cp6RepoAttestationSnapshot = {
+    path: verificationPath(projectId, cp6RepoAttestationId, 'NEXT'),
+    sha: '6'.repeat(40),
+    record_text: prettyJson(cp6RepoAttestation),
+  }
+  const cp6BadRepoAttestationSnapshot = {
+    ...cp6RepoAttestationSnapshot,
+    record_text: prettyJson({
+      ...cp6RepoAttestation,
+      publication_proof: {
+        ...cp6RepoAttestation.publication_proof,
+        evidence_commit_sha: '1'.repeat(40),
+      },
+    }),
+  }
+
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -4232,6 +5701,24 @@ app.get('/selftest', (c) => {
     cp5_nested_applicability_revision_mismatch_rejected: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], nextGateClaim, nextGateVerificationWrongNestedRevision),
     cp5_milestone_boundary_expands_runtime_prereqs: milestoneBoundaryPrereqs.includes(consumerTaskId) && !milestoneBoundaryPrereqs.includes(checkpointId),
     cp5_job_final_boundary_expands_runtime_prereqs: jobFinalBoundaryPrereqs.includes(consumerTaskId) && jobFinalBoundaryPrereqs.includes(checkpointId) && !jobFinalBoundaryPrereqs.includes('CP-FINAL'),
+    cp6_private_bundle_accepts_exact_binding: evidenceBundleRefValidationError(cp6PrivateBundle, cp6ExpectedBundleContext) === null,
+    cp6_private_bundle_rejects_stale_revision: evidenceBundleRefValidationError({ ...cp6PrivateBundle, target_revision: '1'.repeat(40) }, cp6ExpectedBundleContext) !== null,
+    cp6_private_bundle_rejects_wrong_attempt: evidenceBundleRefValidationError({ ...cp6PrivateBundle, binding: { ...cp6PrivateBundle.binding, attempt_id: uuidv7() } }, cp6ExpectedBundleContext) !== null,
+    cp6_private_bundle_rejects_oversize: evidenceBundleRefValidationError({ ...cp6PrivateBundle, size_bytes: 51 * 1024 * 1024 }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_accepts_immutable_publish: evidenceBundleRefValidationError(cp6RepoBundle, cp6ExpectedBundleContext) === null,
+    cp6_repo_bundle_rejects_private_class: evidenceBundleRefValidationError({ ...cp6RepoBundle, privacy_class: 'PRIVATE_REQUIRED' }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_rejects_mutable_evidence: evidenceBundleRefValidationError({ ...cp6RepoBundle, immutable: false }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_rejects_automation_side_effects: evidenceBundleRefValidationError({ ...cp6RepoBundle, automation_side_effects_observed: true }, cp6ExpectedBundleContext) !== null,
+    cp6_repo_bundle_requires_probe_sha: evidenceBundleRefValidationError({ ...cp6RepoBundle, binary_probe_verification_sha: null }, cp6ExpectedBundleContext) !== null,
+    cp6_private_attestation_accepts_authenticated_proof: validateEvidenceBundleAttestationSnapshot(cp6PrivateAttestationSnapshot, cp6ExpectedBundleContext).error === null,
+    cp6_private_attestation_rejects_manifest_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadPrivateAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
+    cp6_repo_attestation_accepts_finalize_proof: validateEvidenceBundleAttestationSnapshot(cp6RepoAttestationSnapshot, cp6ExpectedBundleContext).error === null,
+    cp6_repo_attestation_rejects_commit_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadRepoAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
+    cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
+    cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
+    cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
+    cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
+    cp6_handoff_claim_rejects_orphan_verification: validateTesterEvidenceClaimSnapshot(cp6OrphanClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error !== null,
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
