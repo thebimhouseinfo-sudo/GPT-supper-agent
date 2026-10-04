@@ -4298,7 +4298,7 @@ function createServer(req: Request) {
         result: z.enum(['PASS','FAIL','BLOCKED','OBSERVED','UNVERIFIED']),
         failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
         evidence_refs: z.array(z.string()).default([]),
-        evidence_bundle_refs: z.array(z.any()).max(8).default([]),
+        evidence_bundle_attestation_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).max(8).default([]),
         measurements: z.array(z.object({ name: z.string().min(1), value: z.any() })).default([]),
         limitations: z.array(z.string()).default([]),
       },
@@ -4316,7 +4316,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, evidence_bundle_refs, measurements, limitations }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, evidence_bundle_attestation_snapshots, measurements, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
       let job: any, claim: any
@@ -4362,12 +4362,14 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
       }
       const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
-      if ((evidence_bundle_refs ?? []).length && !workingRepo) {
-        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: current Job working repository is unavailable for evidence bundle validation.' }], isError: true }
+      if ((evidence_bundle_attestation_snapshots ?? []).length && !workingRepo) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: current Job working repository is unavailable for EvidenceBundle attestation validation.' }], isError: true }
       }
       const bundleKeys = new Set<string>()
-      for (const bundle of evidence_bundle_refs ?? []) {
-        const bundleError = evidenceBundleRefValidationError(bundle, {
+      const validatedBundles: any[] = []
+      const attestationRefs: any[] = []
+      for (const snapshot of evidence_bundle_attestation_snapshots ?? []) {
+        const attested = validateEvidenceBundleAttestationSnapshot(snapshot, {
           project_id,
           job_id,
           checkpoint_id,
@@ -4377,16 +4379,19 @@ function createServer(req: Request) {
           target_revision,
           repository_full_name: workingRepo,
         })
-        if (bundleError) {
-          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + bundleError }], isError: true }
+        if (attested.error) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + attested.error }], isError: true }
         }
+        const bundle = attested.bundle
         const key = bundle.backend === 'PRIVATE_SUPABASE'
           ? 'PRIVATE:' + bundle.evidence_bundle_id
           : 'REPO:' + bundle.evidence_commit_sha + ':' + bundle.manifest_path
         if (bundleKeys.has(key)) {
-          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: duplicate evidence bundle ref.' }], isError: true }
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: duplicate EvidenceBundle attestation.' }], isError: true }
         }
         bundleKeys.add(key)
+        validatedBundles.push(bundle)
+        attestationRefs.push({ path: attested.ref, sha: attested.sha })
       }
       if (!['PASS','OBSERVED'].includes(result) && !failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: non-success result requires failure_class.' }], isError: true }
@@ -4394,7 +4399,7 @@ function createServer(req: Request) {
       if (['PASS','OBSERVED'].includes(result) && failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed evidence cannot carry a failure_class.' }], isError: true }
       }
-      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !(evidence_bundle_refs ?? []).length && !(measurements ?? []).length) {
+      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !validatedBundles.length && !(measurements ?? []).length) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence bundle/ref or measurement.' }], isError: true }
       }
       if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
@@ -4424,11 +4429,13 @@ function createServer(req: Request) {
         mode: checkpoint.mode,
         target_ref,
         target_revision,
+        run_id: testerRun.run_id,
         producer: 'tester',
         result,
         failure_class: failure_class ?? null,
         evidence_refs: evidence_refs ?? [],
-        evidence_bundle_refs: evidence_bundle_refs ?? [],
+        evidence_bundle_refs: validatedBundles,
+        evidence_bundle_attestation_refs: attestationRefs,
         measurements: measurements ?? [],
         limitations: limitations ?? [],
         retest_of_verification_id: claim.prior_verification_id ?? null,
@@ -4464,6 +4471,7 @@ function createServer(req: Request) {
         next_claim_record_text: prettyJson(nextClaim),
         route,
         external_steps: [
+          ...durableSnapshotReadbackSteps(evidence_bundle_attestation_snapshots ?? [], 'EvidenceBundle attestation snapshot'),
           'Immediately read back the Tester Run and require blob SHA equals tester_run_record_sha plus role=tester, lifecycle=IN_PROGRESS and run_id=claim.claimant_run_id.',
         'Immediately refetch claim_memory_path and require blob SHA, state=ACTIVE, attempt_id and lease_token still match this preparation. Stale/expired claim blocks persistence.',
           'Authorize/create verification_memory_path and persist verification_record_text append-only.',
