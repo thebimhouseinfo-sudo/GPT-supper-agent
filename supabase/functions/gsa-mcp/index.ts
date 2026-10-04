@@ -628,6 +628,91 @@ function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationS
   return { allowed: blocking.length === 0, required_checkpoint_ids: ids, blocking }
 }
 
+function checkpointVerificationOutcome(result: string, failureClass?: string | null) {
+  const successful = result === 'PASS' || result === 'OBSERVED'
+  const plannerGap = ['PLAN_GAP','SPEC_GAP'].includes(failureClass ?? '')
+  const productFailure = failureClass === 'PRODUCT_FAILURE'
+  return {
+    successful,
+    plannerGap,
+    productFailure,
+    state: result === 'PASS' ? 'SATISFIED' : result === 'OBSERVED' ? 'OBSERVED' : plannerGap ? 'NEEDS_PLANNER_REVISION' : productFailure ? 'FAILED_PRODUCT' : 'BLOCKED',
+    route: successful ? 'CONTINUE' : plannerGap ? 'PLANNER_REVISION_SUPERSEDE' : productFailure ? 'CODER_REPAIR_GOAL_RECHECK_RETEST' : 'RETEST_WHEN_READY',
+    retestRequired: !successful && !plannerGap,
+    applicabilityStatus: successful ? 'CANDIDATE' : 'NON_APPLICABLE',
+  }
+}
+
+function productFailureRetestValidationError(
+  current: any,
+  targetRevision: string,
+  retestOfVerificationId: string | null | undefined,
+  goalRecordText: string | null | undefined,
+  goalVerificationRef: string | null | undefined,
+  projectId: string,
+  jobId: string,
+) {
+  if (!current?.retest_required || !retestOfVerificationId || current.last_verification_id !== retestOfVerificationId) {
+    return 'RETEST must reference the terminal verification that requested Retest.'
+  }
+  if (current.last_target_revision === targetRevision) {
+    return 'PRODUCT_FAILURE Retest requires a repaired target revision/state.'
+  }
+  if (!goalRecordText || !goalVerificationRef) {
+    return 'PRODUCT_FAILURE Retest requires the repaired revision Goal Recheck.'
+  }
+  let goal: any
+  try { goal = JSON.parse(goalRecordText) } catch {
+    return 'invalid repair Goal Recheck JSON.'
+  }
+  const expectedGoalRef = verificationPath(projectId, goal.verification_id, 'NEXT')
+  const validGoal =
+    goal.kind === 'GOAL_RECHECK' &&
+    goal.execution_contract === 'NEXT' &&
+    goal.project_id === projectId &&
+    goal.job_id === jobId &&
+    goal.target_revision === targetRevision &&
+    ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result) &&
+    !(goal.criteria ?? []).some((item: any) => item.result === 'NOT_MET') &&
+    !(goal.scope_drift ?? []).length &&
+    goalVerificationRef === expectedGoalRef
+  return validGoal ? null : 'repair Goal Recheck must match the repaired target revision and have no NOT_MET/scope drift.'
+}
+
+function nextPlanSupersessionMatches(
+  current: any,
+  verification: any,
+  verificationRef: string,
+  claim: any,
+  projectId: string,
+  jobId: string,
+) {
+  const expectedVerificationRef = verificationPath(projectId, verification?.verification_id, 'NEXT')
+  return (
+    ['TEST','RETEST'].includes(verification?.kind) &&
+    verification?.execution_contract === 'NEXT' &&
+    verification?.project_id === projectId &&
+    verification?.job_id === jobId &&
+    verification?.planning_revision === current?.planning_revision &&
+    ['PLAN_GAP','SPEC_GAP'].includes(verification?.failure_class) &&
+    verification?.route === 'PLANNER_REVISION_SUPERSEDE' &&
+    verificationRef === expectedVerificationRef &&
+    claim?.kind === 'CHECKPOINT_CLAIM' &&
+    claim?.execution_contract === 'NEXT' &&
+    claim?.project_id === projectId &&
+    claim?.job_id === jobId &&
+    claim?.planning_revision === current?.planning_revision &&
+    claim?.state === 'NEEDS_PLANNER_REVISION' &&
+    claim?.checkpoint_id === verification?.checkpoint_id &&
+    claim?.last_failure_class === verification?.failure_class &&
+    claim?.last_result === verification?.result &&
+    claim?.last_verification_id === verification?.verification_id &&
+    claim?.lease_token === verification?.lease_token &&
+    claim?.attempt_id === verification?.attempt_id &&
+    claim?.last_target_revision === verification?.target_revision
+  )
+}
+
 function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
   const safeSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'knowledge'
   return 'projects/' + projectId + '/KNOWLEDGE/' + knowledgeId + '-' + safeSlug + '.md'
@@ -3700,29 +3785,14 @@ function createServer(req: Request) {
         } catch {
           return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: invalid superseding Verification/claim JSON.' }], isError: true }
         }
-        const expectedVerificationRef = verificationPath(project_id, supersedingVerification.verification_id, 'NEXT')
-        const supersessionMatches =
-          ['TEST','RETEST'].includes(supersedingVerification.kind) &&
-          supersedingVerification.execution_contract === 'NEXT' &&
-          supersedingVerification.project_id === project_id &&
-          supersedingVerification.job_id === job_id &&
-          supersedingVerification.planning_revision === current.planning_revision &&
-          ['PLAN_GAP','SPEC_GAP'].includes(supersedingVerification.failure_class) &&
-          supersedingVerification.route === 'PLANNER_REVISION_SUPERSEDE' &&
-          superseding_verification_ref === expectedVerificationRef &&
-          supersedingClaim.kind === 'CHECKPOINT_CLAIM' &&
-          supersedingClaim.execution_contract === 'NEXT' &&
-          supersedingClaim.project_id === project_id &&
-          supersedingClaim.job_id === job_id &&
-          supersedingClaim.planning_revision === current.planning_revision &&
-          supersedingClaim.state === 'NEEDS_PLANNER_REVISION' &&
-          supersedingClaim.checkpoint_id === supersedingVerification.checkpoint_id &&
-          supersedingClaim.last_failure_class === supersedingVerification.failure_class &&
-          supersedingClaim.last_result === supersedingVerification.result &&
-          supersedingClaim.last_verification_id === supersedingVerification.verification_id &&
-          supersedingClaim.lease_token === supersedingVerification.lease_token &&
-          supersedingClaim.attempt_id === supersedingVerification.attempt_id &&
-          supersedingClaim.last_target_revision === supersedingVerification.target_revision
+        const supersessionMatches = nextPlanSupersessionMatches(
+          current,
+          supersedingVerification,
+          superseding_verification_ref,
+          supersedingClaim,
+          project_id,
+          job_id,
+        )
         if (!supersessionMatches) {
           return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: Verification must be the current terminal PLAN_GAP/SPEC_GAP claim result for this planning revision.' }], isError: true }
         }
@@ -4300,29 +4370,17 @@ function createServer(req: Request) {
             return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: RETEST must reference the terminal verification that requested Retest.' }], isError: true }
           }
           if (current.last_failure_class === 'PRODUCT_FAILURE') {
-            if (current.last_target_revision === target_revision) {
-              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires a repaired target revision/state.' }], isError: true }
-            }
-            if (!repair_goal_recheck_record_text || !repair_goal_recheck_verification_ref) {
-              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: PRODUCT_FAILURE Retest requires the repaired revision Goal Recheck.' }], isError: true }
-            }
-            let goal: any
-            try { goal = JSON.parse(repair_goal_recheck_record_text) } catch {
-              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: invalid repair Goal Recheck JSON.' }], isError: true }
-            }
-            const expectedGoalRef = verificationPath(project_id, goal.verification_id, 'NEXT')
-            const validGoal =
-              goal.kind === 'GOAL_RECHECK' &&
-              goal.execution_contract === 'NEXT' &&
-              goal.project_id === project_id &&
-              goal.job_id === job_id &&
-              goal.target_revision === target_revision &&
-              ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result) &&
-              !(goal.criteria ?? []).some((item: any) => item.result === 'NOT_MET') &&
-              !(goal.scope_drift ?? []).length &&
-              repair_goal_recheck_verification_ref === expectedGoalRef
-            if (!validGoal) {
-              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: repair Goal Recheck must match the repaired target revision and have no NOT_MET/scope drift.' }], isError: true }
+            const retestError = productFailureRetestValidationError(
+              current,
+              target_revision,
+              retest_of_verification_id,
+              repair_goal_recheck_record_text,
+              repair_goal_recheck_verification_ref,
+              project_id,
+              job_id,
+            )
+            if (retestError) {
+              return { content: [{ type: 'text', text: 'CHECKPOINT_RETEST_REJECTED: ' + retestError }], isError: true }
             }
           }
         } else if (current.state !== 'ACTIVE') {
@@ -4545,13 +4603,8 @@ function createServer(req: Request) {
       }
 
       const verificationId = uuidv7()
-      const successful = result === 'PASS' || result === 'OBSERVED'
-      const plannerGap = ['PLAN_GAP','SPEC_GAP'].includes(failure_class ?? '')
-      const productFailure = failure_class === 'PRODUCT_FAILURE'
-      const state = result === 'PASS' ? 'SATISFIED' : result === 'OBSERVED' ? 'OBSERVED' : plannerGap ? 'NEEDS_PLANNER_REVISION' : productFailure ? 'FAILED_PRODUCT' : 'BLOCKED'
-      const route = successful ? 'CONTINUE' : plannerGap ? 'PLANNER_REVISION_SUPERSEDE' : productFailure ? 'CODER_REPAIR_GOAL_RECHECK_RETEST' : 'RETEST_WHEN_READY'
-      const retestRequired = !successful && !plannerGap
-      const applicabilityStatus = successful ? 'CANDIDATE' : 'NON_APPLICABLE'
+      const outcome = checkpointVerificationOutcome(result, failure_class)
+      const { successful, state, route, retestRequired, applicabilityStatus } = outcome
       const now = new Date().toISOString()
       const verification = {
         verification_id: verificationId,
