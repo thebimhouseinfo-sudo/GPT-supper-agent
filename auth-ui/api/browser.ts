@@ -150,6 +150,11 @@ function evidenceRequest(body: any): EvidenceRequest | null {
     throw new Error("EVIDENCE_BUNDLE_PRIVACY_CLASS_INVALID");
   }
 
+  const targetRevision = required("target_revision");
+  if (!/^[0-9a-f]{40}$/.test(targetRevision)) {
+    throw new Error("EVIDENCE_BUNDLE_TARGET_REVISION_INVALID");
+  }
+
   return {
     label,
     expiresIn,
@@ -161,7 +166,7 @@ function evidenceRequest(body: any): EvidenceRequest | null {
       attempt_id: required("attempt_id"),
       run_id: required("run_id"),
       target_ref: raw.target_ref ? String(raw.target_ref).slice(0, 500) : null,
-      target_revision: required("target_revision"),
+      target_revision: targetRevision,
       privacy_class: privacy as "PRIVATE_REQUIRED" | "REPO_SAFE",
       result: raw.result ? String(raw.result).slice(0, 80) : null,
       limitations: Array.isArray(raw.limitations)
