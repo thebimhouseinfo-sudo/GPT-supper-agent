@@ -723,7 +723,7 @@ CURRENT MAIN / V2_STABLE-COMPATIBLE
                                                    │
                                  upgrade/gsa-next complete
                                                    │
-                           sync latest main into integration
+                           assess production drift before final gates
                                                    │
                                 final compatibility + E2E
                                                    │
