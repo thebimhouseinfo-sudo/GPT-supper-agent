@@ -123,19 +123,19 @@ For the active correction program, every accepted requirement must carry:
 
 Missing owner, implementation surface, evidence target, or disposition is `PLAN_GAP`. Schema presence alone is not implementation proof. `VERIFIED` requires evidence bound to the exact current implementation revision. Planner must reread this matrix before downstream correction work; Reviewer must compare the exact target against the rows owned by that phase; P5 audits all accepted rows before release.
 
-| Requirement | Owner | Implementation / evidence obligation | Disposition |
-|---|---|---|---|
-| CR-P0-BASELINE | P0 J-D057 | selectively reconcile required lesson inputs; exact diff/tree proof | PLANNED |
-| CR-WL-023 | P0 J-D057 | wrong-frame admission contract + negative/positive evidence | PLANNED |
-| CR-WL-024 | P0 J-D057 | active-Project mutation scope guard + rejection/positive evidence | PLANNED |
-| CR-WL-026 | P0/P1/P2 | compare approved invariants against executable behavior | PLANNED |
-| CR-WL-027 | P0/P1/P2 | every accepted requirement has owner/surface/evidence/disposition | PLANNED |
-| CR-P1 | P1 J-2EF7 | wrong-role/prerequisite/stale-revision dispatch evidence | PLANNED |
-| CR-P2 | P2 J-AACD | Goal Recheck/durable Verification/UI specialization evidence | PLANNED |
-| CR-WL-029 | P3 J-7793 + P5 J-4D20 | complete cutover disposition + unresolved-item gate | PLANNED |
-| CR-WL-028 | P5 J-4D20 | real public-path E2E evidence independent from /selftest | PLANNED |
-| CR-WL-030 | P0 + P5 | one canonical integration line + exact absorption audit | PLANNED |
-| CR-V2-COMPAT | P0/P1/P2/P3/P5 | preserve historical V2_STABLE behavior through phase smoke + final E2E | PLANNED |
+| Requirement | Durable source | Owner | Implementation surface | Required evidence | Disposition |
+|---|---|---|---|---|---|
+| CR-P0-BASELINE | CR 01a106a5 + Correction Program | P0 J-D057 | lessons ledger + lesson notes + roadmap | main-only disposition + exact diff/tree proof | IMPLEMENTED |
+| CR-WL-023 | WL-023 | P0 J-D057 | AGENT-HARNESSES + EXECUTION-AND-REVIEW + runtime harness | wrong-frame contract review + admission eval | IMPLEMENTED |
+| CR-WL-024 | WL-024 | P0 J-D057 | authorize_project_scope + shared runtime harness | scope selftest + staging runtime evidence | IMPLEMENTED |
+| CR-WL-026 | WL-026 + drift lesson | P0/P1/P2 | traceability matrix + Planner/Reviewer rules + owning runtime | invariant-to-runtime Reviewer comparison | IMPLEMENTED_P0_FOUNDATION |
+| CR-WL-027 | WL-027 + drift lesson | P0/P1/P2 | this matrix + owning Job plans | complete source/owner/surface/evidence/disposition coverage | IMPLEMENTED_P0_FOUNDATION |
+| CR-P1 | Correction Program P1 | P1 J-2EF7 | NEXT dispatch/topology runtime | wrong-role/prerequisite/stale-revision tests | PLANNED |
+| CR-P2 | Correction Program P2 | P2 J-AACD | Goal Recheck + durable Verification + UI specialization | closure/evidence/UI activation tests | PLANNED |
+| CR-WL-029 | WL-029 | P3 J-7793 + P5 J-4D20 | cutover inventory + namespace/runtime gates | KEEP/REPLACE/REMOVE coverage + unresolved-item rejection | PLANNED |
+| CR-WL-028 | WL-028 | P5 J-4D20 | public GSA control paths | real E2E evidence independent from /selftest | PLANNED |
+| CR-WL-030 | WL-030 + branch-sprawl lesson | P0 + P5 | branch policy + branch audit | exact absorption proof + no unique completed side-branch source | IMPLEMENTED_P0_POLICY |
+| CR-V2-COMPAT | compatibility fence | P0/P1/P2/P3/P5 | legacy execution-contract paths | phase smoke + final legacy E2E | IMPLEMENTED_P0_SMOKE |
 
 The newer fresh-chat Planner-default candidate that arrived on the canonical branch with ID WL-026 is renumbered to WL-031 to preserve both observations without overwriting the correction program's WL-026.
 
