@@ -239,11 +239,6 @@
         ]
       },
       "then": {
-        "properties": {
-          "privacy_class": {
-            "const": "PRIVATE_REQUIRED"
-          }
-        },
         "required": [
           "evidence_bundle_id",
           "manifest_path"
