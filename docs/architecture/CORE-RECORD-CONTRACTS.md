@@ -146,6 +146,8 @@ completed_summary
 remaining
 required_inputs[]
 evidence_bundle_refs[]?
+evidence_bundle_attestation_refs[]?
+evidence_verification_ref?
 blocker_or_gate?
 expected_next_outcome
 created_at?
@@ -189,6 +191,7 @@ result
 limitations?
 evidence_refs[]
 evidence_bundle_refs[]?
+evidence_bundle_attestation_refs[]?
 created_at?
 ```
 
@@ -413,6 +416,7 @@ lease_token
 mode
 failure_class?
 evidence_bundle_refs[]
+evidence_bundle_attestation_refs[]
 measurements[]
 retest_of_verification_id?
 applicability {
@@ -433,16 +437,40 @@ A successful/observed Verification is persisted as `CANDIDATE`, never self-autho
 
 ### CP6 durable EvidenceBundle applicability
 
-`evidence_bundle_refs[]` is optional for checkpoints that rely only on non-binary evidence or measurements. When a TEST/RETEST Verification or Tester Handoff carries a bundle ref, that ref is part of the applicability boundary rather than presentation-only metadata.
+Binary/browser bundle objects are not authority by themselves. CP6 uses an append-only `EVIDENCE_BUNDLE` attestation before a bundle may participate in TEST/RETEST Verification.
 
-Every bundle ref must bind the same:
-- Project and Job;
-- checkpoint and attempt when used by TEST/RETEST Verification;
-- owning Tester Run;
-- working repository;
-- tested source ref/revision.
+Canonical route:
 
-Backend identity is immutable:
+```text
+PRIVATE_SUPABASE
+→ browser persistence verifies uploads + writes manifest
+→ evidence_bundle_attestation_prepare
+→ authenticated Supabase manifest row read-back
+→ exact manifest SHA + binding/artifact/size validation
+→ append-only EVIDENCE_BUNDLE / PUBLISHED attestation
+
+REPOSITORY_GIT
+→ bounded PUBLISH prepare/external mutation/finalize
+→ evidence_repository_publish_finalize
+→ exact source/evidence read-back + append-only/non-force/automation checks
+→ append-only EVIDENCE_BUNDLE / PUBLISHED attestation
+```
+
+The attestation is persisted under NEXT `VERIFICATION/` and is consumed only as an exact durable snapshot:
+
+```text
+{ path, sha, record_text }
+```
+
+`checkpoint_verification_prepare` accepts `evidence_bundle_attestation_snapshots[]`, validates every attestation against the current Project/Job/checkpoint/attempt/Tester Run/working repository/target revision, and only then derives:
+- `evidence_bundle_refs[]` for Human-facing immutable identity;
+- `evidence_bundle_attestation_refs[]` for durable provenance.
+
+Raw caller-supplied `evidence_bundle_refs[]` cannot authorize PASS/OBSERVED.
+
+Tester Handoff does not accept raw bundle authority either. It consumes the exact successful TEST/RETEST Verification snapshot, requires that Verification to be included in the Run's `verification_refs[]`, and derives its bundle/attestation refs from that durable Verification.
+
+Backend identity remains immutable:
 
 ```text
 PRIVATE_SUPABASE
@@ -460,11 +488,9 @@ REPOSITORY_GIT
 → durable successful PROBE-GIT-EVIDENCE-01 Verification path + blob SHA
 ```
 
-A malformed, stale, target-mismatched, attempt-mismatched, mutable, unverified or automation-side-effecting bundle makes candidate evidence non-applicable. Repository evidence also requires append-only/non-force publication and exact successful capability-probe evidence.
+A stale, mutable, target/attempt/run-mismatched, unauthenticated, unpublished, orphaned or automation-side-effecting bundle/attestation is non-applicable. RETEST creates a new attempt and therefore a new immutable bundle + attestation identity; prior Verification/Handoff refs remain resolvable.
 
-RETEST creates a new attempt and therefore a new bundle identity. It never overwrites the canonical bundle referenced by an earlier Verification. Prior Verification/Handoff refs remain resolvable by immutable identity.
-
-V2_STABLE does not require or interpret CP6 `evidence_bundle_refs[]`.
+V2_STABLE does not require or interpret CP6 EvidenceBundle attestations.
 
 ## NEXT in-progress planning supersession
 
