@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "checkpoint": "CP7",
+  "base_ref": "upgrade/gsa-next",
+  "scenarios": [
+    {
+      "id": "CP7-01",
+      "name": "NEXT no-checkpoint dispatch",
+      "coverage": [
+        "E25",
+        "runtime:selftest/cp7_next_no_checkpoint_dispatch_allowed"
+      ]
+    },
+    {
+      "id": "CP7-02",
+      "name": "VERIFY checkpoint",
+      "coverage": [
+        "E29-05",
+        "E29-09"
+      ]
+    },
+    {
+      "id": "CP7-03",
+      "name": "MEASURE/PROBE downstream evidence",
+      "coverage": [
+        "E28-01",
+        "E29-06"
+      ]
+    },
+    {
+      "id": "CP7-04",
+      "name": "UI Coder frontend opt-in",
+      "coverage": [
+        "E27",
+        "runtime:selftest/cp7_ui_coder_frontend_remains_opt_in"
+      ]
+    },
+    {
+      "id": "CP7-05",
+      "name": "PRODUCT_FAILURE repair RETEST",
+      "coverage": [
+        "E29-07"
+      ]
+    },
+    {
+      "id": "CP7-06",
+      "name": "PLAN_GAP supersession",
+      "coverage": [
+        "E29-08"
+      ]
+    },
+    {
+      "id": "CP7-07",
+      "name": "checkpoint crash resume",
+      "coverage": [
+        "E29-02",
+        "E29-03",
+        "E29-16"
+      ]
+    },
+    {
+      "id": "CP7-08",
+      "name": "multi-prerequisite checkpoint",
+      "coverage": [
+        "E28-01",
+        "E29-13",
+        "E29-17"
+      ]
+    },
+    {
+      "id": "CP7-09",
+      "name": "legacy V2_STABLE compatibility",
+      "coverage": [
+        "E25",
+        "E29-11"
+      ]
+    },
+    {
+      "id": "CP7-10",
+      "name": "lessons closure",
+      "coverage": [
+        "E26",
+        "docs/process/GSA-WORKFLOW-LESSONS-LEDGER.md"
+      ]
+    }
+  ],
+  "limitations": [
+    "Authenticated staging MCP redirect may remain capability-bound Retest in the current connected tool surface.",
+    "CP6 durable Job lifecycle update remains platform-blocked and must stay explicit."
+  ]
+}
