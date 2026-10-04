@@ -63,12 +63,24 @@ type EvidenceBundleRef = {
   evidence_bundle_id: string;
   backend: "PRIVATE_SUPABASE";
   privacy_class: "PRIVATE_REQUIRED" | "REPO_SAFE";
+  binding: {
+    project_id: string;
+    repository: string;
+    job_id: string;
+    checkpoint_id: string;
+    attempt_id: string;
+    run_id: string;
+    target_ref: string | null;
+    target_revision: string;
+  };
   manifest_path: string;
   manifest_sha256: string;
   viewer_url: string;
   target_revision: string;
   artifact_count: number;
   size_bytes: number;
+  immutable: true;
+  manifest_readback_verified: true;
 };
 
 type PageErrorSummary = { text: string; hasErrors: boolean };
@@ -516,12 +528,24 @@ async function persistEvidenceBundle(
       evidence_bundle_id: bundleId,
       backend: "PRIVATE_SUPABASE",
       privacy_class: binding.privacy_class,
+      binding: {
+        project_id: binding.project_id,
+        repository: binding.repository,
+        job_id: binding.job_id,
+        checkpoint_id: binding.checkpoint_id,
+        attempt_id: binding.attempt_id,
+        run_id: binding.run_id,
+        target_ref: binding.target_ref,
+        target_revision: binding.target_revision,
+      },
       manifest_path: manifestPath,
       manifest_sha256: manifestSha256,
       viewer_url: viewerOrigin.replace(/\/$/, "") + "/evidence.html?bundle=" + encodeURIComponent(bundleId),
       target_revision: binding.target_revision,
       artifact_count: evidence.length,
       size_bytes: totalBytes + manifestBytes.byteLength,
+      immutable: true,
+      manifest_readback_verified: true,
     },
   };
 }
