@@ -20,8 +20,8 @@ Regression contract for CP6 EvidenceBundle publication attestation, TEST/RETEST 
 | E30.10 | attestation record publication_proof conflicts with bundle manifest/commit/hash/probe identity | rejected |
 | E30.11 | successful TEST/RETEST supplies exact durable attestation snapshots | Verification derives bundle refs + attestation refs and records exact source revision |
 | E30.12 | applicable Verification has bundle refs but missing/duplicate/malformed attestation refs | EvidenceApplicability remains false |
-| E30.13 | Tester Handoff supplies exact successful TEST/RETEST Verification snapshot included in `verification_refs[]` | Handoff derives immutable bundle + attestation refs |
-| E30.14 | Handoff supplies raw bundle authority, wrong Run/target Verification, or Verification not listed in `verification_refs[]` | rejected |
+| E30.13 | Tester Handoff supplies exact successful TEST/RETEST Verification snapshot **and** the matching current terminal checkpoint claim snapshot; Verification is included in `verification_refs[]` | Handoff derives immutable bundle + attestation refs and records Verification + claim provenance |
+| E30.14 | Handoff supplies raw bundle authority, omits the terminal claim, uses an orphan Verification whose claim points elsewhere, uses wrong Run/target, or omits the Verification from `verification_refs[]` | rejected |
 | E30.15 | RETEST uses a new attempt id | new bundle + attestation; prior Verification refs remain immutable/resolvable |
 | E30.16 | browser evidence persistence receives non-40-hex target revision | rejected before persistence |
 | E30.17 | V2_STABLE Job without CP6 attestation fields | legacy execution/gating path remains unchanged |
