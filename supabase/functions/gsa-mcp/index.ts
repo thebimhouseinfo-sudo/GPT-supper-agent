@@ -5425,6 +5425,25 @@ app.get('/selftest', (c) => {
     applicability: { ...nextGateVerification.applicability, planning_revision: 2 },
   }
   const legacyGatePass = evaluateNextEvidenceGate({ project_id: projectId, job_id: legacyJobId, execution_contract: 'V2_STABLE' }, [], [], { kind: 'JOB', id: null })
+  const cp7NoCheckpointTaskId = uuidv7()
+  const cp7NoCheckpointGate = evaluateNextEvidenceGate(
+    {
+      project_id: projectId,
+      job_id: uuidv7(),
+      execution_contract: 'NEXT',
+      planning_revision: 1,
+      planning_review: { status: 'PASS', reviewed_revision: 1 },
+      tasks: [{ task_id: cp7NoCheckpointTaskId }],
+      evidence_needs: [],
+      evidence_requirements: [],
+      test_checkpoints: [],
+      milestones: [],
+      planning_topology: [{ node_id: cp7NoCheckpointTaskId, node_type: 'TASK', depends_on: [], planning_revision: 1 }],
+    },
+    [],
+    [],
+    { kind: 'TASK', id: cp7NoCheckpointTaskId },
+  )
   const executionTopologyValid = validateExecutionTopology(
     [{ task_id: consumerTaskId, dependencies: [] }],
     [{ stage: 1, handler: 'coder', task_id: consumerTaskId, depends_on: [], next: null }],
@@ -5693,6 +5712,8 @@ app.get('/selftest', (c) => {
     cp5_task_gate_blocks_missing_evidence: !nextTaskGateMissing.allowed && nextTaskGateMissing.blocking.length === 1,
     cp5_task_gate_rejects_stale_revision_evidence: !nextTaskGateStale.allowed,
     cp5_v2_gate_preserves_legacy_path: legacyGatePass.allowed,
+    cp7_next_no_checkpoint_dispatch_allowed: cp7NoCheckpointGate.allowed && cp7NoCheckpointGate.required_checkpoint_ids.length === 0,
+    cp7_ui_coder_frontend_remains_opt_in: Boolean(RUNTIME_SKILLS['ui-coder-frontend']) && !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp5_orphan_verification_not_applicable: !checkpointVerificationApplicable(nextGateJob, nextGateJob.test_checkpoints[0], { ...nextGateClaim, last_verification_id: uuidv7() }, nextGateVerification),
     cp5_execution_topology_validator_accepts_coherent_plan: executionTopologyValid,
     cp5_execution_topology_validator_rejects_stale_task_mapping: executionTopologyStale,
