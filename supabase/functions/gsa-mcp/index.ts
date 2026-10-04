@@ -271,6 +271,7 @@ function evidenceBundleRefValidationError(
   if (expected.run_id != null && !same(binding.run_id, expected.run_id)) return 'evidence bundle Tester Run binding mismatch.'
   if (expected.target_ref != null && !same(binding.target_ref, expected.target_ref)) return 'evidence bundle target_ref binding mismatch.'
   if (!same(binding.target_revision, expected.target_revision)) return 'evidence bundle target_revision binding mismatch.'
+  if (!/^[0-9a-f]{40}$/.test(String(binding.target_revision || ''))) return 'evidence bundle target_revision is not an exact Git SHA.'
   if (expected.repository_full_name) {
     if (String(binding.repository || '').toLowerCase() !== expected.repository_full_name.toLowerCase()) return 'evidence bundle repository binding mismatch.'
   }
@@ -280,10 +281,11 @@ function evidenceBundleRefValidationError(
   if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) return 'evidence bundle size_bytes is invalid.'
 
   if (bundle.backend === 'PRIVATE_SUPABASE') {
-    if (!/^[0-9a-f]{64}$/.test(String(bundle.evidence_bundle_id || ''))) return 'private evidence bundle id is invalid.'
-    if (!String(bundle.manifest_path || '').startsWith('db:gsa_evidence_bundles/')) return 'private evidence manifest path is not canonical.'
+    const bundleId = String(bundle.evidence_bundle_id || '')
+    if (!/^[0-9a-f]{64}$/.test(bundleId)) return 'private evidence bundle id is invalid.'
+    if (String(bundle.manifest_path || '') !== 'db:gsa_evidence_bundles/' + bundleId) return 'private evidence manifest path is not bound to the bundle id.'
     if (!/^[0-9a-f]{64}$/.test(String(bundle.manifest_sha256 || ''))) return 'private evidence manifest hash is invalid.'
-    if (!/^https?:\/\//i.test(String(bundle.viewer_url || ''))) return 'private evidence viewer URL is invalid.'
+    if (!/^https?:\/\//i.test(String(bundle.viewer_url || '')) || !String(bundle.viewer_url).includes(encodeURIComponent(bundleId))) return 'private evidence viewer URL is not bound to the bundle id.'
     if (bundle.immutable !== true || bundle.manifest_readback_verified !== true) return 'private evidence bundle is not immutable/read-back verified.'
     if (bundle.target_revision !== expected.target_revision) return 'private evidence top-level target revision mismatch.'
     if (sizeBytes > 50 * 1024 * 1024) return 'private evidence bundle exceeds the 50 MiB bound.'
@@ -324,6 +326,7 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
   const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+  if ((verification.evidence_bundle_refs ?? []).length && !workingRepo) return false
   for (const bundle of verification.evidence_bundle_refs ?? []) {
     if (evidenceBundleRefValidationError(bundle, {
       project_id: job.project_id,
@@ -4034,6 +4037,9 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
       }
       const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+      if ((evidence_bundle_refs ?? []).length && !workingRepo) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: current Job working repository is unavailable for evidence bundle validation.' }], isError: true }
+      }
       const bundleKeys = new Set<string>()
       for (const bundle of evidence_bundle_refs ?? []) {
         const bundleError = evidenceBundleRefValidationError(bundle, {
