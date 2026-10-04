@@ -2268,6 +2268,7 @@ function createServer(req: Request) {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
+        tester_run_record_text: z.string().min(2),
         checkpoint_id: z.string().min(1).max(240),
         attempt_id: z.string().min(1).max(240),
         run_id: z.string().uuid(),
@@ -2296,6 +2297,10 @@ function createServer(req: Request) {
         publication_mode: z.enum(['PROBE','PUBLISH']),
         evidence_bundle_ref: z.any().nullable(),
         probe_observation: z.any().nullable(),
+        evidence_publication_verification_id: z.string().nullable(),
+        evidence_publication_verification_memory_path: z.string().nullable(),
+        evidence_publication_verification_record_text: z.string().nullable(),
+        external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -2304,14 +2309,28 @@ function createServer(req: Request) {
     async (args: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to finalize repository evidence publication.')
-      let job: any
-      try { job = JSON.parse(args.job_record_text) } catch {
-        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: invalid Job JSON.' }], isError: true }
+      let job: any, testerRun: any
+      try {
+        job = JSON.parse(args.job_record_text)
+        testerRun = JSON.parse(args.tester_run_record_text)
+      } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: invalid Job/Tester Run JSON.' }], isError: true }
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
       if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (
+        resolveExecutionContract(testerRun.execution_contract) !== 'NEXT' ||
+        testerRun.project_id !== args.project_id ||
+        testerRun.job_id !== args.job_id ||
+        testerRun.run_id !== args.run_id ||
+        testerRun.role !== 'tester' ||
+        testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.target_revision !== args.target_revision
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: publication must belong to the current target-bound NEXT Tester Run.' }], isError: true }
       }
       const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')
       const requestedRepo = normalizeGithubRepo('https://github.com/' + String(args.repository_full_name || '').replace(/^https?:\/\/github\.com\//i, ''))
@@ -2421,12 +2440,47 @@ function createServer(req: Request) {
         automation_side_effects_observed: false,
         usable_as_product_evidence: false,
       } : null
+      const publicationVerificationId = mode === 'PUBLISH' ? uuidv7() : null
+      const publicationVerificationPath = publicationVerificationId
+        ? verificationPath(args.project_id, publicationVerificationId, 'NEXT')
+        : null
+      const publicationVerification = mode === 'PUBLISH' ? {
+        verification_id: publicationVerificationId,
+        kind: 'EVIDENCE_BUNDLE',
+        project_id: args.project_id,
+        job_id: args.job_id,
+        execution_contract: 'NEXT',
+        producer: 'tester',
+        result: 'PERSISTED',
+        backend: 'REPOSITORY_GIT',
+        bundle_ref: bundleRef,
+        readback: {
+          evidence_commit_sha: args.evidence_commit_sha,
+          manifest_sha256: args.manifest_sha256,
+          source_revision_unchanged: true,
+          append_only_verified: true,
+          manifest_readback_verified: true,
+          artifact_readback_verified: true,
+          automation_side_effects_observed: false,
+        },
+        created_at: new Date().toISOString(),
+      } : null
       const result = {
         valid: true,
         backend: 'REPOSITORY_GIT' as const,
         publication_mode: mode,
         evidence_bundle_ref: mode === 'PUBLISH' ? bundleRef : null,
         probe_observation: probeObservation,
+        evidence_publication_verification_id: publicationVerificationId,
+        evidence_publication_verification_memory_path: publicationVerificationPath,
+        evidence_publication_verification_record_text: publicationVerification ? prettyJson(publicationVerification) : null,
+        external_steps: mode === 'PUBLISH' ? [
+          'Authorize/create evidence_publication_verification_memory_path and persist evidence_publication_verification_record_text append-only.',
+          'Read back that proof and pass its exact {path, sha, record_text} snapshot to checkpoint_verification_prepare or Tester run_complete Handoff.',
+          'Raw evidence_bundle_ref is presentation metadata only and cannot authorize TEST/RETEST PASS.',
+        ] : [
+          'Use evidence_repository_probe_verification_prepare to persist the capability probe observation before repository PUBLISH is considered available.',
+        ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
