@@ -1554,6 +1554,54 @@ function validMemoryPath(path: string) {
   return /^projects\/[0-9a-fA-F-]{36}\//.test(path)
 }
 
+
+function projectScopeDecision(args: {
+  project_manifest_text: string
+  project_id: string
+  operation: 'READ_EXTERNAL' | 'MUTATE_SOURCE' | 'MUTATE_MEMORY'
+  target_repository_url?: string | null
+  target_memory_path?: string | null
+  user_directed_external_read?: boolean
+}) {
+  const parsed = parseProjectManifest(args.project_manifest_text)
+  if (!parsed || parsed.project_id !== args.project_id) {
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'Project identity mismatch.' }
+  }
+  const ownedRepos = new Set(parsed.repositories
+    .filter((item: any) => item.relation === 'OWNED')
+    .map((item: any) => normalizeGithubRepo(item.url)?.url)
+    .filter(Boolean))
+  const targetRepo = args.target_repository_url ? normalizeGithubRepo(args.target_repository_url)?.url : null
+
+  if (args.operation === 'READ_EXTERNAL') {
+    if (!targetRepo) return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'A valid target repository is required.' }
+    if (ownedRepos.has(targetRepo)) return { allowed: true, mutation_allowed: false, scope: 'ACTIVE_PROJECT_READ', reason: 'Read stays inside the active Project.' }
+    if (args.user_directed_external_read === true) return { allowed: true, mutation_allowed: false, scope: 'EXPLICIT_EXTERNAL_READ', reason: 'Explicit external read is allowed without widening Project mutation scope.' }
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'External read requires explicit Human reference.' }
+  }
+
+  if (parsed.lifecycle !== 'ACTIVE') {
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'Project mutation requires lifecycle=ACTIVE.' }
+  }
+  if (args.operation === 'MUTATE_SOURCE') {
+    const allowed = Boolean(targetRepo && ownedRepos.has(targetRepo))
+    return {
+      allowed,
+      mutation_allowed: allowed,
+      scope: allowed ? 'ACTIVE_PROJECT_SOURCE' : 'NONE',
+      reason: allowed ? 'Source target is an OWNED repository of the active Project.' : 'Source target is outside the active Project OWNED repository set.',
+    }
+  }
+  const expectedPrefix = 'projects/' + args.project_id + '/'
+  const allowed = Boolean(args.target_memory_path && args.target_memory_path.startsWith(expectedPrefix) && validMemoryPath(args.target_memory_path))
+  return {
+    allowed,
+    mutation_allowed: allowed,
+    scope: allowed ? 'ACTIVE_PROJECT_MEMORY' : 'NONE',
+    reason: allowed ? 'Memory target is inside the active Project path.' : 'Memory target is outside the active Project path.',
+  }
+}
+
 async function readMemoryConfig(auth: any) {
   return auth.supabase
     .from('user_memory_config')
