@@ -2910,6 +2910,48 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'authorize_project_scope',
+    {
+      title: 'Authorize active Project scope',
+      description: 'Validate an exact active PROJECT.md against one external-read or Project-owned mutation target. External reads may be explicitly user-directed; mutation never widens beyond the active Project.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+        operation: z.enum(['READ_EXTERNAL','MUTATE_SOURCE','MUTATE_MEMORY']),
+        target_repository_url: z.string().url().optional(),
+        target_memory_path: z.string().min(1).optional(),
+        user_directed_external_read: z.boolean().default(false),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        mutation_allowed: z.boolean(),
+        scope: z.string(),
+        reason: z.string(),
+        project_id: z.string(),
+        project_manifest_sha: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to authorize Project scope.')
+      const decision = projectScopeDecision({
+        project_manifest_text,
+        project_id,
+        operation,
+        target_repository_url: target_repository_url ?? null,
+        target_memory_path: target_memory_path ?? null,
+        user_directed_external_read,
+      })
+      const out = { ...decision, project_id, project_manifest_sha }
+      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW: ' : 'DENY: ') + decision.reason }] }
+    },
+  )
+
+  server.registerTool(
     'authorize_memory_mutation',
     {
       title: 'Authorize a GSA Memory Repo mutation',
