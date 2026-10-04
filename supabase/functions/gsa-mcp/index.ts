@@ -311,6 +311,99 @@ function evidenceBundleRefValidationError(
   return 'unknown evidence bundle backend.'
 }
 
+async function sha256Utf8Text(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, '0')).join('')
+}
+
+function validateEvidenceBundleAttestationSnapshot(
+  snapshot: any,
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id: string
+    attempt_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+    repository_full_name: string
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'evidence_bundle_attestation_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable EvidenceBundle attestation snapshot.', ref: null, sha: null, record: null, bundle: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const expectedPath =
+    typeof record?.verification_id === 'string'
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+      : ''
+  const bundle = record?.evidence_bundle_ref
+  const bundleError = evidenceBundleRefValidationError(bundle, expected)
+  const valid =
+    expectedPath === entry.path &&
+    record?.kind === 'EVIDENCE_BUNDLE' &&
+    record?.project_id === expected.project_id &&
+    record?.job_id === expected.job_id &&
+    resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    record?.producer === 'tester' &&
+    record?.result === 'PUBLISHED' &&
+    record?.checkpoint_id === expected.checkpoint_id &&
+    record?.attempt_id === expected.attempt_id &&
+    record?.run_id === expected.run_id &&
+    record?.target_ref === expected.target_ref &&
+    record?.target_revision === expected.target_revision &&
+    String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase() &&
+    !bundleError
+  if (!valid) {
+    return { error: 'EvidenceBundle attestation does not match the current checkpoint attempt/Tester Run/target.', ref: null, sha: null, record: null, bundle: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record, bundle }
+}
+
+function validateTesterEvidenceVerificationSnapshot(
+  snapshot: any,
+  expected: {
+    project_id: string
+    job_id: string
+    run_id: string
+    target_ref: string
+    target_revision: string
+  },
+) {
+  const parsed = parseDurableSnapshots([snapshot], 'tester_evidence_verification_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'invalid durable TEST/RETEST Verification snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const expectedPath =
+    typeof record?.verification_id === 'string'
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+      : ''
+  const valid =
+    expectedPath === entry.path &&
+    ['TEST','RETEST'].includes(record?.kind) &&
+    resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    record?.producer === 'tester' &&
+    record?.project_id === expected.project_id &&
+    record?.job_id === expected.job_id &&
+    record?.run_id === expected.run_id &&
+    record?.target_ref === expected.target_ref &&
+    record?.target_revision === expected.target_revision &&
+    ['PASS','OBSERVED'].includes(record?.result) &&
+    Array.isArray(record?.evidence_bundle_refs) &&
+    record.evidence_bundle_refs.length > 0 &&
+    Array.isArray(record?.evidence_bundle_attestation_refs) &&
+    record.evidence_bundle_attestation_refs.length === record.evidence_bundle_refs.length
+  if (!valid) {
+    return { error: 'TEST/RETEST Verification is not the exact successful durable evidence record for this Tester Run/target.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record }
+}
+
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
