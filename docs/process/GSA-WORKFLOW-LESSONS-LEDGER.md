@@ -114,6 +114,30 @@ CP7 reread confirms:
 
 This audit closes the CP7 **lesson ownership check** only. It does not resolve candidate lessons or authorize production promotion.
 
+
+## 3.3 Correction requirement traceability
+
+For the active correction program, every accepted requirement must carry:
+`requirement_id → durable source → owner Job/Task or gate → implementation surface → required evidence → disposition`.
+
+Missing owner, implementation surface, evidence target, or disposition is `PLAN_GAP`. Schema presence alone is not implementation proof. `VERIFIED` requires evidence bound to the exact current implementation revision. Planner must reread this matrix before downstream correction work; Reviewer must compare the exact target against the rows owned by that phase; P5 audits all accepted rows before release.
+
+| Requirement | Owner | Implementation / evidence obligation | Disposition |
+|---|---|---|---|
+| CR-P0-BASELINE | P0 J-D057 | selectively reconcile required lesson inputs; exact diff/tree proof | PLANNED |
+| CR-WL-023 | P0 J-D057 | wrong-frame admission contract + negative/positive evidence | PLANNED |
+| CR-WL-024 | P0 J-D057 | active-Project mutation scope guard + rejection/positive evidence | PLANNED |
+| CR-WL-026 | P0/P1/P2 | compare approved invariants against executable behavior | PLANNED |
+| CR-WL-027 | P0/P1/P2 | every accepted requirement has owner/surface/evidence/disposition | PLANNED |
+| CR-P1 | P1 J-2EF7 | wrong-role/prerequisite/stale-revision dispatch evidence | PLANNED |
+| CR-P2 | P2 J-AACD | Goal Recheck/durable Verification/UI specialization evidence | PLANNED |
+| CR-WL-029 | P3 J-7793 + P5 J-4D20 | complete cutover disposition + unresolved-item gate | PLANNED |
+| CR-WL-028 | P5 J-4D20 | real public-path E2E evidence independent from /selftest | PLANNED |
+| CR-WL-030 | P0 + P5 | one canonical integration line + exact absorption audit | PLANNED |
+| CR-V2-COMPAT | P0/P1/P2/P3/P5 | preserve historical V2_STABLE behavior through phase smoke + final E2E | PLANNED |
+
+The newer fresh-chat Planner-default candidate that arrived on the canonical branch with ID WL-026 is renumbered to WL-031 to preserve both observations without overwriting the correction program's WL-026.
+
 ## 4. CP1 closure rule
 
 CP1 is complete only when:
