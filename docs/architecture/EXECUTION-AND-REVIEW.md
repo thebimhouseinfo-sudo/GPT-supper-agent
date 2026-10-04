@@ -400,7 +400,7 @@ The attestation must be persisted append-only and read back as exact `{path,sha,
 
 EvidenceApplicability still requires the terminal claim to point to the exact TEST/RETEST Verification. That Verification records both immutable bundle identities and their attestation refs. A mismatch in count/path/SHA/bundle binding keeps the gate closed.
 
-Tester Handoff derives evidence from the exact successful TEST/RETEST Verification snapshot and never accepts independent raw bundle refs. RETEST uses a new attempt/bundle/attestation identity; previous evidence remains immutable.
+Tester Handoff derives evidence only from the exact successful TEST/RETEST Verification snapshot **and** its current terminal checkpoint claim snapshot. The terminal claim must canonically match the same planning revision/checkpoint, satisfying state, last Verification id, attempt id, lease token and target. An orphan candidate Verification whose claim CAS lost cannot populate Handoff evidence. RETEST uses a new attempt/bundle/attestation identity; previous evidence remains immutable.
 
 V2_STABLE remains inert with respect to CP6 EvidenceBundle rules.
 
