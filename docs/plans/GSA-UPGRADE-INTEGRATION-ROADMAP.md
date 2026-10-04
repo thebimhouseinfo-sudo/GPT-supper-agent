@@ -116,7 +116,7 @@ Before starting each new checkpoint:
 read current main SHA
 → compare with integration baseline SHA
 → if main advanced:
-   review production drift and apply only accepted changes on the integration branch
+   apply accepted drift in a temporary child branch
    resolve only on integration branch
    rerun the V2_STABLE compatibility smoke gate
 → then branch/start the next checkpoint
