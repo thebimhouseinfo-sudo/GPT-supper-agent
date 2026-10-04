@@ -1625,6 +1625,8 @@ function createServer(req: Request) {
         'For brownfield discovery, if live evidence suggests additional dependent/owned repos that are not registered, stop at a Human Gate and ask the user to confirm the Project repo set before finalizing planning.',
         'Every executable Job must identify one working repository. Even when only one repo is modified, Planner/Reviewer must inspect the registered Project repo map for cross-repo impact and record that assessment.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
+        'The explicitly opened Project is the default operational frame. If the user starts discussing an unrelated Project without intentionally referencing it for current work, surface the mismatch before operational continuation.',
+        'Before external Project reads or Project-owned source/Memory mutations, call authorize_project_scope with the exact current PROJECT.md. Explicit external read remains read-only and never widens mutation scope.',
         'All GSA memory writes are confined to the exact configured Memory Repo and paths under projects/<project-id>/.',
         'Never write GSA memory to any other repository. Fail closed on repo mismatch or path outside projects/<project-id>/.',
         'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
