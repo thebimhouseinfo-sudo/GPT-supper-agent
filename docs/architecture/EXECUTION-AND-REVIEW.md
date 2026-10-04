@@ -390,18 +390,19 @@ V2_STABLE does not read or enforce CP5 claims, checkpoint evidence gates or supe
 
 ### CP6 durable evidence binding
 
-When Tester produces binary/browser evidence, CP6 extends the CP5 applicability check with immutable EvidenceBundle validation.
+When Tester produces binary/browser evidence, the bundle object returned by a persistence surface is presentation metadata until publication is attested.
 
-- Browser/private evidence is bound to the exact Project, Job, checkpoint, attempt, Tester Run, working repository and 40-hex tested source revision before persistence.
-- Repository evidence uses a separate append-only `gsa-evidence/<project-id>` ref. It never advances the tested source ref and normal PUBLISH requires the exact durable successful `PROBE-GIT-EVIDENCE-01` Verification snapshot.
-- TEST/RETEST Verification stores validated `evidence_bundle_refs[]`; the runtime revalidates those refs when deriving EvidenceApplicability.
-- A stale/mutable/orphaned or mismatched bundle keeps the evidence gate closed even when the Verification record itself says PASS/OBSERVED.
-- Tester Handoff may carry the same immutable bundle refs for direct Human review; non-Tester Runs cannot attach CP6 bundle evidence.
-- PRIVATE_REQUIRED artifacts remain on the private backend. REPO_SAFE artifacts may use repository persistence only when binary capability and CI/deploy/release isolation are observed.
-- Retest is append-preserving: a new attempt gets a new bundle identity, while previous Verification/Handoff evidence stays immutable.
+For `PRIVATE_SUPABASE`, `evidence_bundle_attestation_prepare` reads the authenticated manifest row from Supabase and verifies exact manifest SHA, Project/Job/checkpoint/attempt/Tester Run/repository/target binding, artifact bounds and total bundle size.
+
+For `REPOSITORY_GIT`, `evidence_repository_publish_finalize` validates the dedicated evidence ref, exact source revision, append-only parent, immutable commit/manifest/artifact read-back, successful repository capability probe and absence of CI/deploy/release side effects; successful PUBLISH directly emits the canonical `EVIDENCE_BUNDLE / PUBLISHED` attestation record.
+
+The attestation must be persisted append-only and read back as exact `{path,sha,record_text}` before `checkpoint_verification_prepare` can derive bundle refs. Raw `evidence_bundle_refs[]` never authorize TEST/RETEST PASS.
+
+EvidenceApplicability still requires the terminal claim to point to the exact TEST/RETEST Verification. That Verification records both immutable bundle identities and their attestation refs. A mismatch in count/path/SHA/bundle binding keeps the gate closed.
+
+Tester Handoff derives evidence from the exact successful TEST/RETEST Verification snapshot and never accepts independent raw bundle refs. RETEST uses a new attempt/bundle/attestation identity; previous evidence remains immutable.
 
 V2_STABLE remains inert with respect to CP6 EvidenceBundle rules.
-
 
 ### Boundary readiness
 
