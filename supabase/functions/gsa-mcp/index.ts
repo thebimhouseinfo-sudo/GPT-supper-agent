@@ -936,6 +936,7 @@ const BASE_AGENT_HARNESS = [
   '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
+  '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
