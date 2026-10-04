@@ -639,7 +639,7 @@ Human owns the promotion.
 Preferred Git operation:
 
 - fast-forward `main` if ancestry permits;
-- otherwise merge `upgrade/gsa-next` into `main` after final sync.
+- otherwise merge `upgrade/gsa-next` into `main` after final drift review.
 
 Do not force-reset or rewrite production history by default.
 
