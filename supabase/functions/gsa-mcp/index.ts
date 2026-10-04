@@ -1873,6 +1873,146 @@ function createServer(req: Request) {
   )
 
 
+  server.registerTool(
+    'evidence_private_bundle_verification_prepare',
+    {
+      title: 'Prepare durable private evidence publication proof',
+      description: 'Read back one authenticated private EvidenceBundle manifest, verify exact binding/hash identity, and prepare an append-only EVIDENCE_BUNDLE Verification proof for later TEST/RETEST or Tester Handoff consumption.',
+      inputSchema: {
+        job_record_text: z.string().min(2),
+        tester_run_record_text: z.string().min(2),
+        bundle_ref: z.any(),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        verification_memory_path: z.string(),
+        verification_record_text: z.string(),
+        bundle_ref: z.any(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ job_record_text, tester_run_record_text, bundle_ref }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to verify private evidence.')
+      let job: any, testerRun: any
+      try {
+        job = JSON.parse(job_record_text)
+        testerRun = JSON.parse(tester_run_record_text)
+      } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: invalid Job/Tester Run JSON.' }], isError: true }
+      }
+      if (jobExecutionContract(job) !== 'NEXT' || job.lifecycle !== 'IN_PROGRESS') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: owning Job must be current NEXT IN_PROGRESS.' }], isError: true }
+      }
+      if (
+        resolveExecutionContract(testerRun.execution_contract) !== 'NEXT' ||
+        testerRun.project_id !== job.project_id ||
+        testerRun.job_id !== job.job_id ||
+        testerRun.role !== 'tester' ||
+        testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.run_id !== bundle_ref?.binding?.run_id
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: bundle must belong to the current IN_PROGRESS NEXT Tester Run.' }], isError: true }
+      }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+      if (!workingRepo) return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: current Job working repository is unavailable.' }], isError: true }
+      const binding = bundle_ref?.binding
+      const bundleError = evidenceBundleRefValidationError(bundle_ref, {
+        project_id: job.project_id,
+        job_id: job.job_id,
+        checkpoint_id: binding?.checkpoint_id ?? null,
+        attempt_id: binding?.attempt_id ?? null,
+        run_id: testerRun.run_id,
+        target_ref: binding?.target_ref ?? null,
+        target_revision: String(binding?.target_revision || ''),
+        repository_full_name: workingRepo,
+      })
+      if (bundleError || bundle_ref?.backend !== 'PRIVATE_SUPABASE') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: ' + (bundleError || 'backend is not PRIVATE_SUPABASE.') }], isError: true }
+      }
+
+      let readback: any
+      try {
+        readback = await callPrivateEvidenceReadback(req, bundle_ref.evidence_bundle_id)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: ' + message }], isError: true }
+      }
+      const manifest = readback?.manifest
+      const manifestBinding = manifest?.binding
+      const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
+      const bindingMatches =
+        manifestBinding &&
+        same(manifestBinding.project_id, binding.project_id) &&
+        String(manifestBinding.repository || '').toLowerCase() === String(binding.repository || '').toLowerCase() &&
+        same(manifestBinding.job_id, binding.job_id) &&
+        same(manifestBinding.checkpoint_id, binding.checkpoint_id) &&
+        same(manifestBinding.attempt_id, binding.attempt_id) &&
+        same(manifestBinding.run_id, binding.run_id) &&
+        same(manifestBinding.target_ref, binding.target_ref) &&
+        same(manifestBinding.target_revision, binding.target_revision)
+      const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : []
+      const valid =
+        readback?.ok === true &&
+        readback?.evidence_bundle_id === bundle_ref.evidence_bundle_id &&
+        readback?.manifest_sha256 === bundle_ref.manifest_sha256 &&
+        manifest?.schema_version === 1 &&
+        manifest?.backend === 'PRIVATE_SUPABASE' &&
+        manifest?.privacy_class === bundle_ref.privacy_class &&
+        manifest?.evidence_bundle_id === bundle_ref.evidence_bundle_id &&
+        manifest?.manifest_path === bundle_ref.manifest_path &&
+        bindingMatches &&
+        artifacts.length === bundle_ref.artifact_count &&
+        artifacts.every((item: any) =>
+          typeof item?.storage_path === 'string' &&
+          item.storage_path.includes('/bundles/' + bundle_ref.evidence_bundle_id + '/') &&
+          /^[0-9a-f]{64}$/.test(String(item?.sha256 || '')) &&
+          Number.isInteger(Number(item?.size_bytes)) &&
+          Number(item.size_bytes) > 0
+        )
+      if (!valid) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PRIVATE_PROOF_REJECTED: authenticated manifest read-back does not match the supplied bundle identity.' }], isError: true }
+      }
+
+      const verificationId = uuidv7()
+      const memoryPath = verificationPath(job.project_id, verificationId, 'NEXT')
+      const verification = {
+        verification_id: verificationId,
+        kind: 'EVIDENCE_BUNDLE',
+        project_id: job.project_id,
+        job_id: job.job_id,
+        execution_contract: 'NEXT',
+        producer: 'tester',
+        result: 'PERSISTED',
+        backend: 'PRIVATE_SUPABASE',
+        bundle_ref,
+        readback: {
+          authenticated: true,
+          evidence_bundle_id: bundle_ref.evidence_bundle_id,
+          manifest_sha256: bundle_ref.manifest_sha256,
+          binding_verified: true,
+          artifact_count: artifacts.length,
+        },
+        created_at: new Date().toISOString(),
+      }
+      const out = {
+        verification_id: verificationId,
+        verification_memory_path: memoryPath,
+        verification_record_text: prettyJson(verification),
+        bundle_ref,
+        external_steps: [
+          'Authorize/create verification_memory_path and persist verification_record_text append-only.',
+          'Read back the persisted proof and pass its exact {path, sha, record_text} snapshot to checkpoint_verification_prepare or Tester run_complete Handoff.',
+          'Never pass raw private bundle_ref as authority for TEST/RETEST PASS.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
   function validateRepositoryProbeSnapshot(
     snapshot: any,
     expected: {
