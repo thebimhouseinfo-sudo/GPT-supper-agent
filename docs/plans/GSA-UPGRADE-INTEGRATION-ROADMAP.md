@@ -605,7 +605,7 @@ CP7 PASS
 
 This is the only checkpoint that changes production `main`.
 
-## Step F1 — synchronize production drift
+## Step F1 — review production drift
 
 Before release:
 
