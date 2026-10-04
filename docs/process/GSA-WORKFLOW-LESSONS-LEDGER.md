@@ -78,6 +78,11 @@ A workaround or temporary Human-approved bypass is evidence of a possible workfl
 
 | WL-025 | **Prepared lifecycle transition is not durable completion.** A control-plane tool may validate/prepare a Job/Run transition while the authoritative Memory Repo write is later denied or blocked by the host/platform. The prepared record must not be treated as persisted state, and the agent must not route around the denied write through alternate mutation APIs. Preserve the mismatch explicitly, keep durable source truth authoritative, and require a later legitimate persistence/recovery path before final promotion claims the lifecycle is closed. | CANDIDATE | future durable-control-plane persistence/recovery contract review (`JOB-LIFECYCLE.md` / `EXECUTION-AND-REVIEW.md`) | CP6/CP7 real execution: `job_transition` prepared valid completion/READY records while authorized Memory Repo update was blocked by platform safety; source checkpoint merge remained independently verifiable | LLC backlog |
 
+| WL-026 | Approved-plan invariants must be revalidated against executable runtime behavior before merge; implementation divergence is not an acceptable silent detail. | CANDIDATE | future plan-to-runtime traceability contract | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
+| WL-027 | Accepted requirements from detail/specialist plans must map explicitly into the master roadmap, owning checkpoint, implementation surface and eval; missing ownership is PLAN_GAP. | CANDIDATE | future migration requirement-traceability contract | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
+| WL-028 | Selftests/helper assertions are regression floors, not substitutes for required E2E workflow execution evidence. | CANDIDATE | future E2E-evidence/test-quality contract | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
+| WL-029 | Final cutover must explicitly KEEP/REPLACE/REMOVE every staging-only namespace, path, endpoint, flag or compatibility mechanism. | CANDIDATE | future cutover-retirement checklist | `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md` | LLC backlog |
+
 ## 3.1 Candidate hard requirements from cross-chat safety incidents
 
 Until a later reviewed checkpoint assigns and implements these candidates, the intended safety requirements are:
