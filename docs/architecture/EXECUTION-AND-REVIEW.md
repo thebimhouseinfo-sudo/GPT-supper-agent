@@ -388,6 +388,20 @@ A PRODUCT_FAILURE Retest on the same target revision is rejected. Review-repair 
 
 V2_STABLE does not read or enforce CP5 claims, checkpoint evidence gates or superseding-plan runtime behavior.
 
+### CP6 durable evidence binding
+
+When Tester produces binary/browser evidence, CP6 extends the CP5 applicability check with immutable EvidenceBundle validation.
+
+- Browser/private evidence is bound to the exact Project, Job, checkpoint, attempt, Tester Run, working repository and 40-hex tested source revision before persistence.
+- Repository evidence uses a separate append-only `gsa-evidence/<project-id>` ref. It never advances the tested source ref and normal PUBLISH requires the exact durable successful `PROBE-GIT-EVIDENCE-01` Verification snapshot.
+- TEST/RETEST Verification stores validated `evidence_bundle_refs[]`; the runtime revalidates those refs when deriving EvidenceApplicability.
+- A stale/mutable/orphaned or mismatched bundle keeps the evidence gate closed even when the Verification record itself says PASS/OBSERVED.
+- Tester Handoff may carry the same immutable bundle refs for direct Human review; non-Tester Runs cannot attach CP6 bundle evidence.
+- PRIVATE_REQUIRED artifacts remain on the private backend. REPO_SAFE artifacts may use repository persistence only when binary capability and CI/deploy/release isolation are observed.
+- Retest is append-preserving: a new attempt gets a new bundle identity, while previous Verification/Handoff evidence stays immutable.
+
+V2_STABLE remains inert with respect to CP6 EvidenceBundle rules.
+
 
 ### Boundary readiness
 
