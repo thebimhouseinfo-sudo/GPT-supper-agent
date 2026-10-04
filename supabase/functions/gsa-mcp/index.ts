@@ -922,6 +922,9 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
+  '- The explicitly opened Project is the default operational frame. Remembered context never silently switches Project.',
+  '- If a request belongs to another unrelated Project, surface the Project mismatch before operational continuation unless the Human explicitly referenced it for the active Project work.',
+  '- Before external Project read or Project-owned source/Memory mutation, authorize_project_scope against the exact current PROJECT.md. Explicit external read never grants mutation authority.',
   '- Preserve unrelated or unexpected source changes as user-owned. Never stage, rewrite, revert or hide unrelated work.',
   '- Read the current target before writing. If a file changed since an earlier read, re-read it before editing.',
   '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
