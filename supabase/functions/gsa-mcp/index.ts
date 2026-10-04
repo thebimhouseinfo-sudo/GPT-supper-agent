@@ -4891,7 +4891,7 @@ function createServer(req: Request) {
           completed_summary: z.string().min(1),
           remaining: z.array(z.string()).default([]),
           required_inputs: z.array(z.string()).default([]),
-          evidence_bundle_refs: z.array(z.any()).max(8).default([]),
+          tester_evidence_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
           blocker_or_gate: z.string().optional(),
           expected_next_outcome: z.string().min(1),
         }).optional(),
@@ -4944,22 +4944,32 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
-      if ((handoff?.evidence_bundle_refs ?? []).length) {
-        if (role !== 'tester' || !current.target_revision) {
-          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable evidence bundles may be handed off only by a target-bound Tester Run.' }], isError: true }
+      let handoffEvidenceBundles: any[] = []
+      let handoffEvidenceAttestationRefs: any[] = []
+      let handoffEvidenceVerificationRef: any = null
+      if (handoff?.tester_evidence_verification_snapshot) {
+        if (executionContract !== 'NEXT' || role !== 'tester' || !current.target_revision || !current.target_ref) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable EvidenceBundle handoff requires the exact target-bound NEXT Tester Run.' }], isError: true }
         }
-        for (const bundle of handoff.evidence_bundle_refs ?? []) {
-          const bundleError = evidenceBundleRefValidationError(bundle, {
+        const verified = validateTesterEvidenceVerificationSnapshot(
+          handoff.tester_evidence_verification_snapshot,
+          {
             project_id,
             job_id,
             run_id,
-            target_ref: handoff.target_ref ?? current.target_ref ?? null,
+            target_ref: handoff.target_ref ?? current.target_ref,
             target_revision: handoff.target_revision ?? current.target_revision,
-          })
-          if (bundleError) {
-            return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + bundleError }], isError: true }
-          }
+          },
+        )
+        if (verified.error) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + verified.error }], isError: true }
         }
+        if (!(verification_refs ?? []).includes(verified.ref)) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
+        }
+        handoffEvidenceBundles = verified.record.evidence_bundle_refs
+        handoffEvidenceAttestationRefs = verified.record.evidence_bundle_attestation_refs
+        handoffEvidenceVerificationRef = { path: verified.ref, sha: verified.sha }
       }
       const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       let handoffId: string | null = null
@@ -4981,7 +4991,9 @@ function createServer(req: Request) {
           completed_summary: handoff.completed_summary,
           remaining: handoff.remaining ?? [],
           required_inputs: handoff.required_inputs ?? [],
-          evidence_bundle_refs: handoff.evidence_bundle_refs ?? [],
+          evidence_bundle_refs: handoffEvidenceBundles,
+          evidence_bundle_attestation_refs: handoffEvidenceAttestationRefs,
+          evidence_verification_ref: handoffEvidenceVerificationRef,
           blocker_or_gate: handoff.blocker_or_gate ?? null,
           expected_next_outcome: handoff.expected_next_outcome,
           created_at: new Date().toISOString(),
@@ -4998,6 +5010,10 @@ function createServer(req: Request) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...durableSnapshotReadbackSteps(
+          handoff?.tester_evidence_verification_snapshot ? [handoff.tester_evidence_verification_snapshot] : [],
+          'Tester evidence Verification snapshot',
+        ),
       ]
       if (handoffPath) {
         externalSteps.push(
