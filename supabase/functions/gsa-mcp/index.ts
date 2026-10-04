@@ -5905,6 +5905,56 @@ app.get('/selftest', (c) => {
     nextJobId,
   )
   const cp7PlannerSkill = RUNTIME_SKILLS['job-planning']?.body ?? ''
+  const p0OwnedSourceScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
+  const p0ExternalSourceScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/other',
+  })
+  const p0ExternalReadExplicit = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'READ_EXTERNAL',
+    target_repository_url: 'https://github.com/example/other',
+    user_directed_external_read: true,
+  })
+  const p0ExternalReadImplicit = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'READ_EXTERNAL',
+    target_repository_url: 'https://github.com/example/other',
+    user_directed_external_read: false,
+  })
+  const p0OwnedMemoryScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_MEMORY',
+    target_memory_path: 'projects/' + projectId + '/WORK/JOBS/example.json',
+  })
+  const p0OtherMemoryScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_MEMORY',
+    target_memory_path: 'projects/' + uuidv7() + '/WORK/JOBS/example.json',
+  })
+  const p0PausedMutationScope = projectScopeDecision({
+    project_manifest_text: paused?.next ?? manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
+  const p0WrongProjectIdentity = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: uuidv7(),
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
