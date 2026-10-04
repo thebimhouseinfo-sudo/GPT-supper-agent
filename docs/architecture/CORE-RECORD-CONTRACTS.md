@@ -178,7 +178,7 @@ Common envelope:
 
 ```text
 verification_id
-kind = REVIEW | EVIDENCE | TEST | RETEST | GOAL_RECHECK
+kind = REVIEW | EVIDENCE | EVIDENCE_BUNDLE | TEST | RETEST | GOAL_RECHECK
 project_id
 job_id
 task_id?
