@@ -248,6 +248,67 @@ function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   )
 }
 
+function evidenceBundleRefValidationError(
+  bundle: any,
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id?: string | null
+    attempt_id?: string | null
+    run_id?: string | null
+    target_ref?: string | null
+    target_revision: string
+    repository_full_name?: string | null
+  },
+) {
+  if (!bundle || typeof bundle !== 'object') return 'evidence bundle ref must be an object.'
+  const binding = bundle.binding
+  if (!binding || typeof binding !== 'object') return 'evidence bundle ref is missing immutable binding.'
+  const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
+  if (!same(binding.project_id, expected.project_id) || !same(binding.job_id, expected.job_id)) return 'evidence bundle project/job binding mismatch.'
+  if (expected.checkpoint_id != null && !same(binding.checkpoint_id, expected.checkpoint_id)) return 'evidence bundle checkpoint binding mismatch.'
+  if (expected.attempt_id != null && !same(binding.attempt_id, expected.attempt_id)) return 'evidence bundle attempt binding mismatch.'
+  if (expected.run_id != null && !same(binding.run_id, expected.run_id)) return 'evidence bundle Tester Run binding mismatch.'
+  if (expected.target_ref != null && !same(binding.target_ref, expected.target_ref)) return 'evidence bundle target_ref binding mismatch.'
+  if (!same(binding.target_revision, expected.target_revision)) return 'evidence bundle target_revision binding mismatch.'
+  if (expected.repository_full_name) {
+    if (String(binding.repository || '').toLowerCase() !== expected.repository_full_name.toLowerCase()) return 'evidence bundle repository binding mismatch.'
+  }
+  const artifactCount = Number(bundle.artifact_count || 0)
+  const sizeBytes = Number(bundle.size_bytes || 0)
+  if (!Number.isInteger(artifactCount) || artifactCount < 1 || artifactCount > 12) return 'evidence bundle artifact_count is outside the bounded range.'
+  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) return 'evidence bundle size_bytes is invalid.'
+
+  if (bundle.backend === 'PRIVATE_SUPABASE') {
+    if (!/^[0-9a-f]{64}$/.test(String(bundle.evidence_bundle_id || ''))) return 'private evidence bundle id is invalid.'
+    if (!String(bundle.manifest_path || '').startsWith('db:gsa_evidence_bundles/')) return 'private evidence manifest path is not canonical.'
+    if (!/^[0-9a-f]{64}$/.test(String(bundle.manifest_sha256 || ''))) return 'private evidence manifest hash is invalid.'
+    if (!/^https?:\/\//i.test(String(bundle.viewer_url || ''))) return 'private evidence viewer URL is invalid.'
+    if (bundle.immutable !== true || bundle.manifest_readback_verified !== true) return 'private evidence bundle is not immutable/read-back verified.'
+    if (bundle.target_revision !== expected.target_revision) return 'private evidence top-level target revision mismatch.'
+    if (sizeBytes > 50 * 1024 * 1024) return 'private evidence bundle exceeds the 50 MiB bound.'
+    return null
+  }
+
+  if (bundle.backend === 'REPOSITORY_GIT') {
+    if (bundle.privacy_class !== 'REPO_SAFE' || bundle.publication_mode !== 'PUBLISH') return 'repository evidence must be a completed REPO_SAFE PUBLISH bundle.'
+    if (bundle.evidence_ref !== 'gsa-evidence/' + expected.project_id) return 'repository evidence ref is outside the Project evidence namespace.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.evidence_commit_sha || ''))) return 'repository evidence commit is invalid.'
+    if (!/^[0-9a-f]{64}$/.test(String(bundle.manifest_sha256 || ''))) return 'repository evidence manifest hash is invalid.'
+    if (!String(bundle.manifest_path || '').startsWith('tests/gsa/' + expected.project_id + '/')) return 'repository evidence manifest path is outside the bounded prefix.'
+    if (!/^https?:\/\//i.test(String(bundle.human_openable_url || '')) || !String(bundle.human_openable_url).includes(String(bundle.evidence_commit_sha))) return 'repository evidence Human link is not commit-pinned.'
+    if (bundle.immutable !== true || bundle.manifest_readback_verified !== true || bundle.artifact_readback_verified !== true) return 'repository evidence read-back is incomplete.'
+    if (bundle.automation_side_effects_observed !== false) return 'repository evidence automation isolation is not proven.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.append_only_parent_sha || ''))) return 'repository evidence append-only parent is invalid.'
+    if (typeof bundle.binary_probe_verification_ref !== 'string' || !bundle.binary_probe_verification_ref) return 'repository evidence is missing durable probe Verification ref.'
+    if (!/^[0-9a-f]{40}$/.test(String(bundle.binary_probe_verification_sha || ''))) return 'repository evidence is missing durable probe Verification SHA.'
+    if (sizeBytes > 25 * 1024 * 1024) return 'repository evidence bundle exceeds the 25 MiB bound.'
+    return null
+  }
+
+  return 'unknown evidence bundle backend.'
+}
+
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
@@ -262,6 +323,19 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   if (verification.applicability?.status !== 'CANDIDATE') return false
   if (verification.applicability?.planning_revision !== job.planning_revision || verification.applicability?.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.target_revision !== verification.target_revision || claim.last_target_revision !== verification.target_revision || verification.applicability?.target_revision !== verification.target_revision) return false
+  const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+  for (const bundle of verification.evidence_bundle_refs ?? []) {
+    if (evidenceBundleRefValidationError(bundle, {
+      project_id: job.project_id,
+      job_id: job.job_id,
+      checkpoint_id: checkpoint.checkpoint_id,
+      attempt_id: claim.attempt_id,
+      run_id: claim.claimant_run_id,
+      target_ref: claim.target_ref,
+      target_revision: verification.target_revision,
+      repository_full_name: workingRepo,
+    })) return false
+  }
   const expectedEvidenceNeeds = checkpoint.evidence_need_ids ?? []
   const applicableEvidenceNeeds = verification.applicability?.evidence_need_ids ?? []
   if (!expectedEvidenceNeeds.every((id: string) => applicableEvidenceNeeds.includes(id))) return false
@@ -1371,12 +1445,24 @@ function createServer(req: Request) {
           evidence_bundle_id: z.string().regex(/^[0-9a-f]{64}$/),
           backend: z.literal('PRIVATE_SUPABASE'),
           privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']),
+          binding: z.object({
+            project_id: z.string().min(1),
+            repository: z.string().min(1),
+            job_id: z.string().min(1),
+            checkpoint_id: z.string().min(1),
+            attempt_id: z.string().min(1),
+            run_id: z.string().min(1),
+            target_ref: z.string().nullable(),
+            target_revision: z.string().min(1),
+          }),
           manifest_path: z.string(),
           manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
           viewer_url: z.string().url(),
           target_revision: z.string(),
-          artifact_count: z.number().int().nonnegative(),
-          size_bytes: z.number().int().nonnegative(),
+          artifact_count: z.number().int().positive().max(12),
+          size_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+          immutable: z.literal(true),
+          manifest_readback_verified: z.literal(true),
         }).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -1496,12 +1582,24 @@ function createServer(req: Request) {
           evidence_bundle_id: z.string().regex(/^[0-9a-f]{64}$/),
           backend: z.literal('PRIVATE_SUPABASE'),
           privacy_class: z.enum(['PRIVATE_REQUIRED','REPO_SAFE']),
+          binding: z.object({
+            project_id: z.string().min(1),
+            repository: z.string().min(1),
+            job_id: z.string().min(1),
+            checkpoint_id: z.string().min(1),
+            attempt_id: z.string().min(1),
+            run_id: z.string().min(1),
+            target_ref: z.string().nullable(),
+            target_revision: z.string().min(1),
+          }),
           manifest_path: z.string(),
           manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/),
           viewer_url: z.string().url(),
           target_revision: z.string(),
-          artifact_count: z.number().int().nonnegative(),
-          size_bytes: z.number().int().nonnegative(),
+          artifact_count: z.number().int().positive().max(12),
+          size_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+          immutable: z.literal(true),
+          manifest_readback_verified: z.literal(true),
         }).optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -3853,6 +3951,7 @@ function createServer(req: Request) {
         result: z.enum(['PASS','FAIL','BLOCKED','OBSERVED','UNVERIFIED']),
         failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
         evidence_refs: z.array(z.string()).default([]),
+        evidence_bundle_refs: z.array(z.any()).max(8).default([]),
         measurements: z.array(z.object({ name: z.string().min(1), value: z.any() })).default([]),
         limitations: z.array(z.string()).default([]),
       },
@@ -3870,7 +3969,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, measurements, limitations }: any) => {
+    async ({ project_id, job_id, job_record_text, checkpoint_id, claim_record_text, claim_record_sha, tester_run_record_text, tester_run_record_sha, attempt_id, lease_token, target_ref, target_revision, result, failure_class, evidence_refs, evidence_bundle_refs, measurements, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare checkpoint Verification.')
       let job: any, claim: any
@@ -3915,14 +4014,38 @@ function createServer(req: Request) {
       if (claim.target_revision !== target_revision || claim.target_ref !== target_ref) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: target revision/state differs from the claimed attempt.' }], isError: true }
       }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')?.full_name ?? null
+      const bundleKeys = new Set<string>()
+      for (const bundle of evidence_bundle_refs ?? []) {
+        const bundleError = evidenceBundleRefValidationError(bundle, {
+          project_id,
+          job_id,
+          checkpoint_id,
+          attempt_id,
+          run_id: testerRun.run_id,
+          target_ref,
+          target_revision,
+          repository_full_name: workingRepo,
+        })
+        if (bundleError) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + bundleError }], isError: true }
+        }
+        const key = bundle.backend === 'PRIVATE_SUPABASE'
+          ? 'PRIVATE:' + bundle.evidence_bundle_id
+          : 'REPO:' + bundle.evidence_commit_sha + ':' + bundle.manifest_path
+        if (bundleKeys.has(key)) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: duplicate evidence bundle ref.' }], isError: true }
+        }
+        bundleKeys.add(key)
+      }
       if (!['PASS','OBSERVED'].includes(result) && !failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: non-success result requires failure_class.' }], isError: true }
       }
       if (['PASS','OBSERVED'].includes(result) && failure_class) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed evidence cannot carry a failure_class.' }], isError: true }
       }
-      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !(measurements ?? []).length) {
-        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence or measurement.' }], isError: true }
+      if (['PASS','OBSERVED'].includes(result) && !(evidence_refs ?? []).length && !(evidence_bundle_refs ?? []).length && !(measurements ?? []).length) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: successful/observed result requires durable evidence bundle/ref or measurement.' }], isError: true }
       }
       if (result === 'OBSERVED' && !['MEASURE','PROBE'].includes(checkpoint.mode)) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: OBSERVED is only valid for MEASURE/PROBE.' }], isError: true }
@@ -3955,6 +4078,7 @@ function createServer(req: Request) {
         result,
         failure_class: failure_class ?? null,
         evidence_refs: evidence_refs ?? [],
+        evidence_bundle_refs: evidence_bundle_refs ?? [],
         measurements: measurements ?? [],
         limitations: limitations ?? [],
         retest_of_verification_id: claim.prior_verification_id ?? null,
@@ -4409,6 +4533,7 @@ function createServer(req: Request) {
           completed_summary: z.string().min(1),
           remaining: z.array(z.string()).default([]),
           required_inputs: z.array(z.string()).default([]),
+          evidence_bundle_refs: z.array(z.any()).max(8).default([]),
           blocker_or_gate: z.string().optional(),
           expected_next_outcome: z.string().min(1),
         }).optional(),
@@ -4461,6 +4586,23 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
         }
       }
+      if ((handoff?.evidence_bundle_refs ?? []).length) {
+        if (role !== 'tester' || !current.target_revision) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: durable evidence bundles may be handed off only by a target-bound Tester Run.' }], isError: true }
+        }
+        for (const bundle of handoff.evidence_bundle_refs ?? []) {
+          const bundleError = evidenceBundleRefValidationError(bundle, {
+            project_id,
+            job_id,
+            run_id,
+            target_ref: handoff.target_ref ?? current.target_ref ?? null,
+            target_revision: handoff.target_revision ?? current.target_revision,
+          })
+          if (bundleError) {
+            return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + bundleError }], isError: true }
+          }
+        }
+      }
       const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
       let handoffId: string | null = null
       let handoffPath: string | null = null
@@ -4481,6 +4623,7 @@ function createServer(req: Request) {
           completed_summary: handoff.completed_summary,
           remaining: handoff.remaining ?? [],
           required_inputs: handoff.required_inputs ?? [],
+          evidence_bundle_refs: handoff.evidence_bundle_refs ?? [],
           blocker_or_gate: handoff.blocker_or_gate ?? null,
           expected_next_outcome: handoff.expected_next_outcome,
           created_at: new Date().toISOString(),
