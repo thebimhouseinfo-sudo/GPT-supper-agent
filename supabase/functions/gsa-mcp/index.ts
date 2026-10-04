@@ -16,6 +16,7 @@ const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gp
 const EXECUTION_CONTRACT_VALUES = ['V2_STABLE', 'NEXT'] as const
 type ExecutionContract = typeof EXECUTION_CONTRACT_VALUES[number]
 const DEFAULT_EXECUTION_CONTRACT: ExecutionContract = 'V2_STABLE'
+const JOB_CREATION_EXECUTION_CONTRACT_DEFAULT: ExecutionContract = 'NEXT'
 const GSA_SOURCE_BUILD_ID = 'CP0-J-F177-R2'
 
 function resolveExecutionContract(value: unknown): ExecutionContract | null {
@@ -1668,7 +1669,7 @@ function createServer(req: Request) {
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
         source_build_id: GSA_SOURCE_BUILD_ID,
-        execution_contract_default: DEFAULT_EXECUTION_CONTRACT,
+        execution_contract_default: JOB_CREATION_EXECUTION_CONTRACT_DEFAULT,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
     },
@@ -3363,7 +3364,7 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
-        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
+        execution_contract: z.enum(['V2_STABLE','NEXT']).default(JOB_CREATION_EXECUTION_CONTRACT_DEFAULT),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -5894,6 +5895,7 @@ app.get('/selftest', (c) => {
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
+    job_creation_execution_contract_default_is_next: JOB_CREATION_EXECUTION_CONTRACT_DEFAULT === 'NEXT',
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
     execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
     execution_contract_invalid_rejected: resolveExecutionContract('UNKNOWN') === null,
