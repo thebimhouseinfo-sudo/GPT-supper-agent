@@ -1918,6 +1918,9 @@ function createServer(req: Request) {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
+        checkpoint_id: z.string().min(1).max(240),
+        attempt_id: z.string().min(1).max(240),
+        run_id: z.string().uuid(),
         repository_full_name: z.string().min(3),
         target_ref: z.string().min(1),
         target_revision: z.string().regex(/^[0-9a-f]{40}$/),
@@ -1959,6 +1962,11 @@ function createServer(req: Request) {
       if (!executionContract) return invalidExecutionContract()
       if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      const workingRepo = normalizeGithubRepo(job?.repository_context?.working_repository_url || '')
+      const requestedRepo = normalizeGithubRepo('https://github.com/' + String(args.repository_full_name || '').replace(/^https?:\/\/github\.com\//i, ''))
+      if (!workingRepo || !requestedRepo || workingRepo.full_name.toLowerCase() !== requestedRepo.full_name.toLowerCase()) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: repository does not match the current Job working repository.' }], isError: true }
       }
 
       const requiredRef = 'gsa-evidence/' + args.project_id
@@ -2002,16 +2010,27 @@ function createServer(req: Request) {
       if (args.evidence_ref !== requiredRef) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: unexpected evidence ref.' }], isError: true }
       }
-      const expectedPrefixRoot = 'tests/gsa/' + args.project_id + '/'
-      if (!String(args.evidence_prefix).startsWith(expectedPrefixRoot) || !String(args.manifest_path).startsWith(args.evidence_prefix + '/')) {
-        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence prefix/manifest path mismatch.' }], isError: true }
+      const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
+      const expectedPrefix = ['tests/gsa', args.project_id, clean(args.job_id), clean(args.checkpoint_id), clean(args.attempt_id)].join('/')
+      if (String(args.evidence_prefix) !== expectedPrefix || !String(args.manifest_path).startsWith(expectedPrefix + '/')) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: evidence prefix/manifest path does not match project/job/checkpoint/attempt identity.' }], isError: true }
       }
 
       const bundleRef = {
         backend: 'REPOSITORY_GIT',
         publication_mode: mode,
         privacy_class: 'REPO_SAFE',
-        repository: args.repository_full_name,
+        binding: {
+          project_id: args.project_id,
+          repository: requestedRepo.full_name,
+          job_id: args.job_id,
+          checkpoint_id: args.checkpoint_id,
+          attempt_id: args.attempt_id,
+          run_id: args.run_id,
+          target_ref: args.target_ref,
+          target_revision: args.target_revision,
+        },
+        repository: requestedRepo.full_name,
         target_ref: args.target_ref,
         target_revision: args.target_revision,
         evidence_ref: args.evidence_ref,
