@@ -97,6 +97,33 @@ async function callBrowserBridge(req: Request, payload: Record<string, unknown>)
   return data
 }
 
+function privateEvidenceReadbackUrl(bundleId: string) {
+  const url = new URL(BROWSER_BRIDGE_URL)
+  url.pathname = url.pathname.replace(/\/api\/browser\/?$/, '/api/evidence')
+  url.search = ''
+  url.searchParams.set('bundle', bundleId)
+  return url.toString()
+}
+
+async function callPrivateEvidenceReadback(req: Request, bundleId: string) {
+  const authHeader = req.headers.get('Authorization') ?? ''
+  if (!authHeader.startsWith('Bearer ')) throw new Error('Authentication required for private evidence read-back.')
+  const response = await fetch(privateEvidenceReadbackUrl(bundleId), {
+    method: 'GET',
+    headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(30_000),
+  })
+  const text = await response.text()
+  let data: any = null
+  try { data = JSON.parse(text) } catch {
+    throw new Error('Private evidence read-back returned invalid JSON (HTTP ' + response.status + ').')
+  }
+  if (!response.ok || data?.ok !== true) {
+    throw new Error('Private evidence read-back failed: ' + String(data?.error ?? ('HTTP ' + response.status)))
+  }
+  return data
+}
+
 async function authContext(req: Request) {
   const authHeader = req.headers.get('Authorization') ?? ''
   if (!authHeader.startsWith('Bearer ')) return null
@@ -408,6 +435,73 @@ function validateTesterEvidenceVerificationSnapshot(
     return { error: 'TEST/RETEST Verification is not the exact successful durable evidence record for this Tester Run/target.', ref: null, sha: null, record: null }
   }
   return { error: null, ref: entry.path, sha: entry.sha, record }
+}
+
+function evidencePublicationProofValidationError(
+  record: any,
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id?: string | null
+    attempt_id?: string | null
+    run_id?: string | null
+    target_ref?: string | null
+    target_revision: string
+    repository_full_name?: string | null
+  },
+) {
+  if (!record || record.kind !== 'EVIDENCE_BUNDLE') return 'evidence publication proof kind is invalid.'
+  if (record.execution_contract !== 'NEXT' || record.producer !== 'tester' || record.result !== 'PERSISTED') return 'evidence publication proof is not a successful NEXT Tester proof.'
+  if (record.project_id !== expected.project_id || record.job_id !== expected.job_id) return 'evidence publication proof project/job mismatch.'
+  if (!record.bundle_ref) return 'evidence publication proof is missing bundle_ref.'
+  const bundleError = evidenceBundleRefValidationError(record.bundle_ref, expected)
+  if (bundleError) return bundleError
+  if (record.backend !== record.bundle_ref.backend) return 'evidence publication proof backend mismatch.'
+  if (record.backend === 'PRIVATE_SUPABASE') {
+    if (record.readback?.manifest_sha256 !== record.bundle_ref.manifest_sha256 || record.readback?.authenticated !== true) return 'private evidence publication proof lacks exact authenticated manifest read-back.'
+  } else if (record.backend === 'REPOSITORY_GIT') {
+    if (record.readback?.evidence_commit_sha !== record.bundle_ref.evidence_commit_sha || record.readback?.manifest_sha256 !== record.bundle_ref.manifest_sha256) return 'repository evidence publication proof lacks exact immutable commit/manifest read-back.'
+    if (record.readback?.source_revision_unchanged !== true || record.readback?.append_only_verified !== true || record.readback?.automation_side_effects_observed !== false) return 'repository evidence publication proof does not prove source/append/automation isolation.'
+  }
+  return null
+}
+
+function parseEvidencePublicationProofSnapshots(
+  snapshots: any[],
+  expected: {
+    project_id: string
+    job_id: string
+    checkpoint_id?: string | null
+    attempt_id?: string | null
+    run_id?: string | null
+    target_ref?: string | null
+    target_revision: string
+    repository_full_name?: string | null
+  },
+) {
+  const parsed = parseDurableSnapshots(snapshots ?? [], 'evidence_bundle_proof_snapshots')
+  if (parsed.error) return { error: parsed.error, bundles: [] as any[], refs: [] as any[] }
+  const bundles: any[] = []
+  const refs: any[] = []
+  const keys = new Set<string>()
+  for (const entry of parsed.entries) {
+    const record = entry.record
+    const expectedPath = typeof record?.verification_id === 'string'
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+      : ''
+    if (entry.path !== expectedPath) return { error: 'evidence bundle proof snapshot path is not canonical.', bundles: [], refs: [] }
+    const proofError = evidencePublicationProofValidationError(record, expected)
+    if (proofError) return { error: proofError, bundles: [], refs: [] }
+    const bundle = record.bundle_ref
+    const key = bundle.backend === 'PRIVATE_SUPABASE'
+      ? 'PRIVATE:' + bundle.evidence_bundle_id
+      : 'REPO:' + bundle.evidence_commit_sha + ':' + bundle.manifest_path
+    if (keys.has(key)) return { error: 'duplicate evidence publication proof snapshot.', bundles: [], refs: [] }
+    keys.add(key)
+    bundles.push(bundle)
+    refs.push({ path: entry.path, sha: entry.sha })
+  }
+  return { error: null as string | null, bundles, refs }
 }
 
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
