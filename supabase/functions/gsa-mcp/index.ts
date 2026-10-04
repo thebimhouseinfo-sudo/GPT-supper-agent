@@ -2088,9 +2088,9 @@ function createServer(req: Request) {
         publication_mode: z.enum(['PROBE','PUBLISH']),
         evidence_bundle_ref: z.any().nullable(),
         probe_observation: z.any().nullable(),
-        evidence_publication_verification_id: z.string().nullable(),
-        evidence_publication_verification_memory_path: z.string().nullable(),
-        evidence_publication_verification_record_text: z.string().nullable(),
+        evidence_bundle_attestation_id: z.string().nullable(),
+        evidence_bundle_attestation_memory_path: z.string().nullable(),
+        evidence_bundle_attestation_record_text: z.string().nullable(),
         external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -2109,6 +2109,9 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
+      if (executionContract !== 'NEXT') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: CP6 repository evidence publication is NEXT-only.' }], isError: true }
+      }
       if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2119,6 +2122,7 @@ function createServer(req: Request) {
         testerRun.run_id !== args.run_id ||
         testerRun.role !== 'tester' ||
         testerRun.lifecycle !== 'IN_PROGRESS' ||
+        testerRun.target_ref !== args.target_ref ||
         testerRun.target_revision !== args.target_revision
       ) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: publication must belong to the current target-bound NEXT Tester Run.' }], isError: true }
@@ -2231,28 +2235,38 @@ function createServer(req: Request) {
         automation_side_effects_observed: false,
         usable_as_product_evidence: false,
       } : null
-      const publicationVerificationId = mode === 'PUBLISH' ? uuidv7() : null
-      const publicationVerificationPath = publicationVerificationId
-        ? verificationPath(args.project_id, publicationVerificationId, 'NEXT')
+      const attestationId = mode === 'PUBLISH' ? uuidv7() : null
+      const attestationPath = attestationId
+        ? verificationPath(args.project_id, attestationId, 'NEXT')
         : null
-      const publicationVerification = mode === 'PUBLISH' ? {
-        verification_id: publicationVerificationId,
+      const attestation = mode === 'PUBLISH' ? {
+        verification_id: attestationId,
         kind: 'EVIDENCE_BUNDLE',
         project_id: args.project_id,
         job_id: args.job_id,
         execution_contract: 'NEXT',
         producer: 'tester',
-        result: 'PERSISTED',
+        result: 'PUBLISHED',
+        planning_revision: job.planning_revision,
+        checkpoint_id: args.checkpoint_id,
+        attempt_id: args.attempt_id,
+        run_id: args.run_id,
+        target_ref: args.target_ref,
+        target_revision: args.target_revision,
+        repository_full_name: requestedRepo.full_name,
         backend: 'REPOSITORY_GIT',
-        bundle_ref: bundleRef,
-        readback: {
-          evidence_commit_sha: args.evidence_commit_sha,
-          manifest_sha256: args.manifest_sha256,
-          source_revision_unchanged: true,
-          append_only_verified: true,
+        evidence_bundle_ref: bundleRef,
+        publication_proof: {
+          kind: 'REPOSITORY_PUBLISH_FINALIZE',
+          evidence_ref: bundleRef.evidence_ref,
+          evidence_commit_sha: bundleRef.evidence_commit_sha,
+          manifest_path: bundleRef.manifest_path,
+          manifest_sha256: bundleRef.manifest_sha256,
           manifest_readback_verified: true,
           artifact_readback_verified: true,
           automation_side_effects_observed: false,
+          probe_verification_ref: bundleRef.binary_probe_verification_ref,
+          probe_verification_sha: bundleRef.binary_probe_verification_sha,
         },
         created_at: new Date().toISOString(),
       } : null
@@ -2262,12 +2276,12 @@ function createServer(req: Request) {
         publication_mode: mode,
         evidence_bundle_ref: mode === 'PUBLISH' ? bundleRef : null,
         probe_observation: probeObservation,
-        evidence_publication_verification_id: publicationVerificationId,
-        evidence_publication_verification_memory_path: publicationVerificationPath,
-        evidence_publication_verification_record_text: publicationVerification ? prettyJson(publicationVerification) : null,
+        evidence_bundle_attestation_id: attestationId,
+        evidence_bundle_attestation_memory_path: attestationPath,
+        evidence_bundle_attestation_record_text: attestation ? prettyJson(attestation) : null,
         external_steps: mode === 'PUBLISH' ? [
-          'Authorize/create evidence_publication_verification_memory_path and persist evidence_publication_verification_record_text append-only.',
-          'Read back that proof and pass its exact {path, sha, record_text} snapshot to checkpoint_verification_prepare or Tester run_complete Handoff.',
+          'Authorize/create evidence_bundle_attestation_memory_path and persist evidence_bundle_attestation_record_text append-only.',
+          'Read back that attestation and pass its exact {path, sha, record_text} snapshot to checkpoint_verification_prepare.',
           'Raw evidence_bundle_ref is presentation metadata only and cannot authorize TEST/RETEST PASS.',
         ] : [
           'Use evidence_repository_probe_verification_prepare to persist the capability probe observation before repository PUBLISH is considered available.',
@@ -2392,7 +2406,7 @@ function createServer(req: Request) {
     'evidence_bundle_attestation_prepare',
     {
       title: 'Prepare durable EvidenceBundle publication attestation',
-      description: 'Validate one already-persisted private or repository evidence bundle against the active NEXT Tester Run, then prepare an append-only EVIDENCE_BUNDLE Verification. Persist/read back this exact attestation before checkpoint Verification or Human Handoff may consume the bundle.',
+      description: 'Validate one already-persisted PRIVATE_SUPABASE EvidenceBundle against authenticated manifest storage and the active NEXT Tester Run, then prepare an append-only EVIDENCE_BUNDLE attestation. Repository PUBLISH emits the same attestation directly from evidence_repository_publish_finalize.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -2400,9 +2414,8 @@ function createServer(req: Request) {
         checkpoint_id: z.string().min(1),
         attempt_id: z.string().uuid(),
         tester_run_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA,
-        backend: z.enum(['PRIVATE_SUPABASE','REPOSITORY_GIT']),
-        private_bundle_ref: z.any().optional(),
-        repository_finalize_result_text: z.string().min(2).optional(),
+        backend: z.literal('PRIVATE_SUPABASE'),
+        private_bundle_ref: z.any(),
       },
       outputSchema: {
         verification_id: z.string(),
@@ -2417,7 +2430,7 @@ function createServer(req: Request) {
     } as any,
     async ({
       project_id, job_id, job_record_text, checkpoint_id, attempt_id,
-      tester_run_snapshot, backend, private_bundle_ref, repository_finalize_result_text,
+      tester_run_snapshot, backend, private_bundle_ref,
     }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare EvidenceBundle attestation.')
@@ -2477,109 +2490,77 @@ function createServer(req: Request) {
         repository_full_name: workingRepo,
       }
 
-      let bundle: any = null
+      const bundle = private_bundle_ref
       let publicationProof: any = null
+      const bundleError = evidenceBundleRefValidationError(bundle, expected)
+      if (bundleError || bundle?.backend !== 'PRIVATE_SUPABASE') {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: ' + (bundleError || 'private bundle backend mismatch.') }], isError: true }
+      }
 
-      if (backend === 'PRIVATE_SUPABASE') {
-        bundle = private_bundle_ref
-        const bundleError = evidenceBundleRefValidationError(bundle, expected)
-        if (bundleError || bundle?.backend !== 'PRIVATE_SUPABASE') {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: ' + (bundleError || 'private bundle backend mismatch.') }], isError: true }
-        }
+      const { data, error } = await auth.supabase
+        .from('gsa_evidence_bundles')
+        .select('manifest_json,manifest_sha256')
+        .eq('user_id', auth.user.id)
+        .eq('evidence_bundle_id', bundle.evidence_bundle_id)
+        .limit(1)
+        .maybeSingle()
+      if (error || !data) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: authenticated private manifest row was not found.' }], isError: true }
+      }
+      const manifestText = String(data.manifest_json || '')
+      const manifestSha = String(data.manifest_sha256 || '').toLowerCase()
+      const computedSha = await sha256Utf8Text(manifestText)
+      if (
+        manifestSha !== computedSha ||
+        manifestSha !== String(bundle.manifest_sha256 || '').toLowerCase()
+      ) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: private manifest SHA/read-back mismatch.' }], isError: true }
+      }
 
-        const { data, error } = await auth.supabase
-          .from('gsa_evidence_bundles')
-          .select('manifest_json,manifest_sha256')
-          .eq('user_id', auth.user.id)
-          .eq('evidence_bundle_id', bundle.evidence_bundle_id)
-          .limit(1)
-          .maybeSingle()
-        if (error || !data) {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: authenticated private manifest row was not found.' }], isError: true }
-        }
-        const manifestText = String(data.manifest_json || '')
-        const manifestSha = String(data.manifest_sha256 || '').toLowerCase()
-        const computedSha = await sha256Utf8Text(manifestText)
-        if (
-          manifestSha !== computedSha ||
-          manifestSha !== String(bundle.manifest_sha256 || '').toLowerCase()
-        ) {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: private manifest SHA/read-back mismatch.' }], isError: true }
-        }
-
-        let manifest: any
-        try { manifest = JSON.parse(manifestText) } catch {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest JSON is invalid.' }], isError: true }
-        }
-        const manifestBinding = manifest?.binding ?? {}
-        const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
-        const bindingMatches =
-          manifest?.schema_version === 1 &&
-          manifest?.backend === 'PRIVATE_SUPABASE' &&
-          manifest?.evidence_bundle_id === bundle.evidence_bundle_id &&
-          manifest?.privacy_class === bundle.privacy_class &&
-          manifest?.manifest_path === bundle.manifest_path &&
-          same(manifestBinding.project_id, expected.project_id) &&
-          String(manifestBinding.repository || '').toLowerCase() === workingRepo.toLowerCase() &&
-          same(manifestBinding.job_id, expected.job_id) &&
-          same(manifestBinding.checkpoint_id, expected.checkpoint_id) &&
-          same(manifestBinding.attempt_id, expected.attempt_id) &&
-          same(manifestBinding.run_id, expected.run_id) &&
-          same(manifestBinding.target_ref, expected.target_ref) &&
-          same(manifestBinding.target_revision, expected.target_revision)
-        const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : []
-        const artifactBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item?.size_bytes || 0), 0)
-        const expectedSize = artifactBytes + new TextEncoder().encode(manifestText).byteLength
-        const artifactsValid =
-          artifacts.length === bundle.artifact_count &&
-          artifacts.length >= 1 &&
-          artifacts.length <= 12 &&
-          artifacts.every((item: any) =>
-            item?.mime_type === 'image/png' &&
-            Number.isInteger(Number(item?.size_bytes)) &&
-            Number(item.size_bytes) > 0 &&
-            Number(item.size_bytes) <= 5 * 1024 * 1024 &&
-            /^[0-9a-f]{64}$/.test(String(item?.sha256 || ''))
-          )
-        if (!bindingMatches || !artifactsValid || expectedSize !== bundle.size_bytes) {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest does not exactly match bundle identity/artifacts.' }], isError: true }
-        }
-        publicationProof = {
-          kind: 'SUPABASE_MANIFEST_READBACK',
-          evidence_bundle_id: bundle.evidence_bundle_id,
-          manifest_path: bundle.manifest_path,
-          manifest_sha256: computedSha,
-          authenticated_user_id: auth.user.id,
-          row_readback_verified: true,
-        }
-      } else {
-        let finalized: any
-        try { finalized = JSON.parse(String(repository_finalize_result_text || '')) } catch {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: repository finalize result JSON is invalid.' }], isError: true }
-        }
-        bundle = finalized?.evidence_bundle_ref
-        const bundleError = evidenceBundleRefValidationError(bundle, expected)
-        if (
-          finalized?.valid !== true ||
-          finalized?.backend !== 'REPOSITORY_GIT' ||
-          finalized?.publication_mode !== 'PUBLISH' ||
-          finalized?.probe_observation != null ||
-          bundleError
-        ) {
-          return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: repository bundle is not an exact successful finalized PUBLISH result' + (bundleError ? ': ' + bundleError : '.') }], isError: true }
-        }
-        publicationProof = {
-          kind: 'REPOSITORY_PUBLISH_FINALIZE',
-          evidence_ref: bundle.evidence_ref,
-          evidence_commit_sha: bundle.evidence_commit_sha,
-          manifest_path: bundle.manifest_path,
-          manifest_sha256: bundle.manifest_sha256,
-          manifest_readback_verified: bundle.manifest_readback_verified === true,
-          artifact_readback_verified: bundle.artifact_readback_verified === true,
-          automation_side_effects_observed: bundle.automation_side_effects_observed,
-          probe_verification_ref: bundle.binary_probe_verification_ref,
-          probe_verification_sha: bundle.binary_probe_verification_sha,
-        }
+      let manifest: any
+      try { manifest = JSON.parse(manifestText) } catch {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest JSON is invalid.' }], isError: true }
+      }
+      const manifestBinding = manifest?.binding ?? {}
+      const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '')
+      const bindingMatches =
+        manifest?.schema_version === 1 &&
+        manifest?.backend === 'PRIVATE_SUPABASE' &&
+        manifest?.evidence_bundle_id === bundle.evidence_bundle_id &&
+        manifest?.privacy_class === bundle.privacy_class &&
+        manifest?.manifest_path === bundle.manifest_path &&
+        same(manifestBinding.project_id, expected.project_id) &&
+        String(manifestBinding.repository || '').toLowerCase() === workingRepo.toLowerCase() &&
+        same(manifestBinding.job_id, expected.job_id) &&
+        same(manifestBinding.checkpoint_id, expected.checkpoint_id) &&
+        same(manifestBinding.attempt_id, expected.attempt_id) &&
+        same(manifestBinding.run_id, expected.run_id) &&
+        same(manifestBinding.target_ref, expected.target_ref) &&
+        same(manifestBinding.target_revision, expected.target_revision)
+      const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : []
+      const artifactBytes = artifacts.reduce((sum: number, item: any) => sum + Number(item?.size_bytes || 0), 0)
+      const expectedSize = artifactBytes + new TextEncoder().encode(manifestText).byteLength
+      const artifactsValid =
+        artifacts.length === bundle.artifact_count &&
+        artifacts.length >= 1 &&
+        artifacts.length <= 12 &&
+        artifacts.every((item: any) =>
+          item?.mime_type === 'image/png' &&
+          Number.isInteger(Number(item?.size_bytes)) &&
+          Number(item.size_bytes) > 0 &&
+          Number(item.size_bytes) <= 5 * 1024 * 1024 &&
+          /^[0-9a-f]{64}$/.test(String(item?.sha256 || ''))
+        )
+      if (!bindingMatches || !artifactsValid || expectedSize !== bundle.size_bytes) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: persisted private manifest does not exactly match bundle identity/artifacts.' }], isError: true }
+      }
+      publicationProof = {
+        kind: 'SUPABASE_MANIFEST_READBACK',
+        evidence_bundle_id: bundle.evidence_bundle_id,
+        manifest_path: bundle.manifest_path,
+        manifest_sha256: computedSha,
+        authenticated_user_id: auth.user.id,
+        row_readback_verified: true,
       }
 
       const verificationId = uuidv7()
@@ -2599,7 +2580,7 @@ function createServer(req: Request) {
         target_ref: testerRun.target_ref,
         target_revision: testerRun.target_revision,
         repository_full_name: workingRepo,
-        backend,
+        backend: 'PRIVATE_SUPABASE',
         evidence_bundle_ref: bundle,
         publication_proof: publicationProof,
         created_at: new Date().toISOString(),
