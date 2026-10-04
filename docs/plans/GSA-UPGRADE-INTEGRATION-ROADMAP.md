@@ -102,7 +102,7 @@ During the upgrade:
 - upgrade code does not replace production `gsa-mcp`;
 - upgrade tests must not mutate active production Job records;
 - production hotfixes, if any, may still land on `main`;
-- before final promotion, latest `main` must be synchronized into `upgrade/gsa-next` and the final gates rerun.
+- before final promotion, classify current production drift and apply only accepted changes to `upgrade/gsa-next`, then rerun the final gates.
 
 No force-push or destructive history rewrite is part of the normal promotion path.
 
