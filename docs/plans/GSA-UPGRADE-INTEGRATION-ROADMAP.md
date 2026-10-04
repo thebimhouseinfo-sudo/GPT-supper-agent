@@ -89,7 +89,7 @@ After the checkpoint passes:
 checkpoint branch
 → Reviewer / Tester / eval gate
 → squash or bounded merge into upgrade/gsa-next
-→ delete checkpoint branch
+→ verify absorption; cleanup may occur later
 ~~~
 
 This keeps `upgrade/gsa-next` readable as a sequence of meaningful checkpoint merges rather than hundreds of unstructured commits.
