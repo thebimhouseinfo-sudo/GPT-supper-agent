@@ -32,6 +32,7 @@
       "name": "UI Coder frontend opt-in",
       "coverage": [
         "E27",
+        "runtime:selftest/cp7_ui_coder_frontend_handoff_requires_explicit_load",
         "runtime:selftest/cp7_ui_coder_frontend_remains_opt_in"
       ]
     },
@@ -39,14 +40,18 @@
       "id": "CP7-05",
       "name": "PRODUCT_FAILURE repair RETEST",
       "coverage": [
-        "E29-07"
+        "E29-07",
+        "runtime:selftest/cp7_product_failure_routes_to_repair_retest",
+        "runtime:selftest/cp7_product_failure_retest_requires_repaired_goal"
       ]
     },
     {
       "id": "CP7-06",
       "name": "PLAN_GAP supersession",
       "coverage": [
-        "E29-08"
+        "E29-08",
+        "runtime:selftest/cp7_plan_gap_routes_to_supersession",
+        "runtime:selftest/cp7_plan_gap_supersession_requires_terminal_claim"
       ]
     },
     {
