@@ -4875,12 +4875,14 @@ function createServer(req: Request) {
         input_refs: z.array(z.string()).default([]),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         run_id: z.string(),
         handle: z.string(),
         memory_path: z.string(),
         run_record_text: z.string(),
+        expected_job_sha: z.string().nullable(),
         next_step: z.string(),
         external_steps: z.array(z.string()),
       },
@@ -5013,12 +5015,15 @@ function createServer(req: Request) {
         handle: runHandle(runId),
         memory_path: path,
         run_record_text: prettyJson(record),
+        expected_job_sha: executionContract === 'NEXT' ? (job_record_sha ?? null) : null,
         next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
           ...(executionContract === 'NEXT'
             ? [
+                'Immediately re-fetch the owning Job before Run persistence and require blob SHA=' + String(job_record_sha) + ' plus planning_revision=' + String(planning_revision) + '. A mismatch rejects dispatch as stale.',
+                ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'completed prerequisite Task Run snapshot'),
                 ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
                 ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
               ]
