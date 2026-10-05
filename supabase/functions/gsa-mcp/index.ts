@@ -969,6 +969,7 @@ const BASE_AGENT_HARNESS = [
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
+  '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
@@ -6015,6 +6016,48 @@ app.get('/selftest', (c) => {
     operation: 'MUTATE_SOURCE',
     target_repository_url: 'https://github.com/example/source',
   })
+  const p1TaskA = uuidv7()
+  const p1TaskB = uuidv7()
+  const p1RunA = uuidv7()
+  const p1DispatchJob = {
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    planning_review: { status: 'PASS', reviewed_revision: 7 },
+    tasks: [
+      { task_id: p1TaskA, dependencies: [] },
+      { task_id: p1TaskB, dependencies: [p1TaskA] },
+    ],
+    topology: [
+      { stage: 1, handler: 'coder', task_id: p1TaskA, depends_on: [], next: p1TaskB },
+      { stage: 2, handler: 'tester', task_id: p1TaskB, depends_on: [p1TaskA], next: null },
+    ],
+  }
+  const p1CompletedRun = {
+    run_id: p1RunA,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p1TaskA,
+    role: 'coder',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+  }
+  const p1CompletedEntry = {
+    path: recordPath(projectId, 'RUNS', p1RunA, 'NEXT'),
+    sha: '4'.repeat(40),
+    record_text: prettyJson(p1CompletedRun),
+    record: p1CompletedRun,
+  }
+  const p1JobSha = '5'.repeat(40)
+  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [])
+  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry])
+  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, []) === null
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
@@ -6036,6 +6079,13 @@ app.get('/selftest', (c) => {
     p0_shared_harness_requires_project_scope_guard: BASE_AGENT_HARNESS.includes('authorize_project_scope'),
     p0_planner_traceability_guard: Boolean(renderHarness('planner')?.includes('owner/surface/evidence/disposition traceability')),
     p0_reviewer_runtime_invariant_check: Boolean(renderHarness('reviewer')?.includes('schema presence alone is not implementation proof')),
+    p1_valid_next_dispatch_allowed: p1DispatchValid === null,
+    p1_wrong_role_dispatch_rejected: Boolean(p1WrongRole?.includes('NEXT_DISPATCH_WRONG_ROLE')),
+    p1_unmet_prerequisite_dispatch_rejected: Boolean(p1MissingPrerequisite?.includes('NEXT_DISPATCH_PREREQUISITE_BLOCKED')),
+    p1_stale_planning_revision_rejected: Boolean(p1StaleRevision?.includes('NEXT_DISPATCH_STALE_PLANNING_REVISION')),
+    p1_stale_job_sha_rejected: Boolean(p1StaleJobSha?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
+    p1_v2_stable_dispatch_unchanged: p1V2StableUnaffected,
+    p1_shared_harness_requires_exact_dispatch_state: BASE_AGENT_HARNESS.includes('exact current Job SHA and planning_revision'),
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
