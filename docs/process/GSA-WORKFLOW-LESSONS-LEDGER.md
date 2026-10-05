@@ -139,7 +139,7 @@ Missing owner, implementation surface, evidence target, or disposition is `PLAN_
 | CR-WL-030 | WL-030 + branch-sprawl lesson | P0 + P5 | branch policy + branch audit | exact absorption proof + no unique completed side-branch source | IMPLEMENTED_P0_POLICY |
 | CR-V2-COMPAT | compatibility fence | P0/P1/P2/P3/P5 | legacy execution-contract paths | phase smoke + final legacy E2E | IMPLEMENTED_P0_SMOKE |
 
-The newer fresh-chat Planner-default candidate that arrived on the canonical branch with ID WL-026 is renumbered to WL-031 to preserve both observations without overwriting the correction program's WL-026.
+The newer fresh-chat Planner-default candidate that arrived with ID WL-026 is renumbered to WL-031, and the pre-existing failed-hotfix/full-scan candidate that arrived with ID WL-027 is renumbered to WL-032. Both remain CANDIDATE; Correction WL-026/WL-027 keep their program IDs.
 
 Concurrent canonical drift note: upgrade/gsa-next added the hotfix-retest candidate using WL-027 while correction P0 already owns WL-027. P0 preserves both by renumbering the newer candidate to WL-032; this is ID reconciliation only.
 
