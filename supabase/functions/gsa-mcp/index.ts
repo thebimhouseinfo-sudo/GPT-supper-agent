@@ -242,6 +242,38 @@ function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
   return { completed, error: null as string | null }
 }
 
+function nextDispatchPreflightError(
+  job: any,
+  role: string,
+  taskIds: string[],
+  requestedPlanningRevision: number | null,
+  jobRecordSha: string | null,
+  currentJobRecordSha: string | null,
+  completedTaskRunEntries: any[],
+): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  if (!Number.isInteger(requestedPlanningRevision) || requestedPlanningRevision !== job.planning_revision) {
+    return 'NEXT_DISPATCH_STALE_PLANNING_REVISION: dispatch planning_revision must equal the current Job planning_revision.'
+  }
+  if (!jobRecordSha || !currentJobRecordSha || !/^[0-9a-f]{40}$/.test(jobRecordSha) || !/^[0-9a-f]{40}$/.test(currentJobRecordSha) || jobRecordSha !== currentJobRecordSha) {
+    return 'NEXT_DISPATCH_STALE_JOB_SHA: supplied Job snapshot SHA must equal the immediate current Job read-back SHA.'
+  }
+  const completedState = validateCompletedTaskRunSnapshots(job, completedTaskRunEntries)
+  if (completedState.error) return 'NEXT_DISPATCH_PREREQUISITE_INVALID: ' + completedState.error
+  for (const taskId of [...new Set(taskIds.filter(Boolean))]) {
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+    const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
+    if (!task || !stage) return 'NEXT_DISPATCH_TASK_INVALID: dispatch Task is missing from the current Job/topology.'
+    if (stage.handler !== role) return 'NEXT_DISPATCH_WRONG_ROLE: Task ' + taskId + ' belongs to ' + String(stage.handler) + ', not ' + role + '.'
+    for (const dependencyId of task.dependencies ?? []) {
+      if (!completedState.completed.has(dependencyId)) {
+        return 'NEXT_DISPATCH_PREREQUISITE_BLOCKED: Task ' + taskId + ' requires completed Task ' + dependencyId + '.'
+      }
+    }
+  }
+  return null
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
