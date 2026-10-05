@@ -3706,6 +3706,7 @@ function createServer(req: Request) {
         planning_review_verification_ref: z.string().optional(),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -4861,6 +4862,9 @@ function createServer(req: Request) {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
+        job_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        current_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        planning_revision: z.number().int().positive().optional(),
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         scope_claim: z.array(z.string()).min(1),
         primary_task_id: z.string().uuid().optional(),
@@ -4884,7 +4888,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -4903,14 +4907,33 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && (affected_task_refs ?? []).some((id: string) => !currentTaskIds.has(id))) {
         return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: every affected_task_ref must be a current Task in this planning revision.' }], isError: true }
       }
-      if (executionContract === 'NEXT' && ['coder','designer'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
-        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT source/design execution must bind one current primary Task so EvidenceRequirement guards cannot be bypassed.' }], isError: true }
+      if (executionContract === 'NEXT' && ['coder','designer','reviewer','tester'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT execution must bind one current primary Task so role, prerequisite and evidence guards cannot be bypassed.' }], isError: true }
       }
       if (
         executionContract === 'NEXT' &&
         (owningJob.planning_review?.status !== 'PASS' || owningJob.planning_review?.reviewed_revision !== owningJob.planning_revision)
       ) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
+      }
+      if (executionContract === 'NEXT') {
+        const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+        if (completedRuns.error) {
+          return { content: [{ type: 'text', text: 'NEXT_DISPATCH_PREREQUISITE_INVALID: ' + completedRuns.error }], isError: true }
+        }
+        const dispatchTaskIds = primary_task_id
+          ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]
+          : []
+        const dispatchError = nextDispatchPreflightError(
+          owningJob,
+          role,
+          dispatchTaskIds,
+          planning_revision ?? null,
+          job_record_sha ?? null,
+          current_job_record_sha ?? null,
+          completedRuns.entries,
+        )
+        if (dispatchError) return { content: [{ type: 'text', text: dispatchError }], isError: true }
       }
       if (executionContract === 'NEXT' && primary_task_id) {
         const gatedTaskIds = new Set<string>([primary_task_id])
