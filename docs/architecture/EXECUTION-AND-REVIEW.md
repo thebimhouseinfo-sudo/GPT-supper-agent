@@ -33,6 +33,18 @@ Coder refines exact source-level HOW.
 
 Standalone `review` Job exists only when review itself is the objective.
 
+### NEXT dispatch admission
+
+For a NEXT Job, dispatch is valid only when all of the following are true:
+
+- the supplied Job snapshot is still the immediate current blob SHA at Run persistence time;
+- the requested planning revision equals the Job's current reviewed planning revision;
+- every dispatched Task exists in current topology and the role matches its handler;
+- every declared Task dependency is proven by a successful COMPLETED NEXT Run snapshot bound to the same Job and planning revision;
+- mandatory evidence/checkpoint gates remain satisfied.
+
+A stale Job SHA, stale planning revision, wrong role, or unmet Task prerequisite rejects dispatch. These guards are NEXT-only; historical V2_STABLE dispatch behavior is unchanged.
+
 ## 3. Review placement
 
 Normal work is topology-driven; not every Task/PR/milestone/Job receives Reviewer.
