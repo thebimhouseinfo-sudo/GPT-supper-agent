@@ -116,9 +116,10 @@ Before starting each new checkpoint:
 read current main SHA
 → compare with integration baseline SHA
 → if main advanced:
-   apply accepted drift in a temporary child branch
-   resolve only on integration branch
-   rerun the V2_STABLE compatibility smoke gate
+   create a temporary child branch from latest upgrade/gsa-next
+   apply and resolve accepted drift only on that child branch
+   rerun the V2_STABLE compatibility smoke gate on that child branch
+   review and merge the child branch into upgrade/gsa-next
 → then branch/start the next checkpoint
 ~~~
 
