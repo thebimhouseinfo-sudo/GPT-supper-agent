@@ -922,6 +922,9 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
+  '- The explicitly opened Project is the default operational frame. Remembered context never silently switches Project.',
+  '- If a request belongs to another unrelated Project, surface the Project mismatch before operational continuation unless the Human explicitly referenced it for the active Project work.',
+  '- Before external Project read or Project-owned source/Memory mutation, authorize_project_scope against the exact current PROJECT.md. Explicit external read never grants mutation authority.',
   '- Preserve unrelated or unexpected source changes as user-owned. Never stage, rewrite, revert or hide unrelated work.',
   '- Read the current target before writing. If a file changed since an earlier read, re-read it before editing.',
   '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
@@ -933,6 +936,7 @@ const BASE_AGENT_HARNESS = [
   '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
+  '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
@@ -983,7 +987,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'DECOMPOSE TOP-DOWN: Objective → Phase → Task → Job Pack → Milestone. Phase and Job Pack are planning concepts expressed with existing Job/Task topology; do not create new persistent entity types by default.',
       'SIZE JOB: choose SMALL/MEDIUM/LARGE and prove the Job is one meaningful objective with one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
       'GATE: place required review/test/human checkpoints and capability requirements. For NEXT planning, unknown runtime facts must become first-class EvidenceNeed/UnknownRuntimeFact records linked to sparse TestCheckpointSpec and downstream EvidenceRequirement; never guess the value in prose.',
-      'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, and cross-repo impact/precedence has been assessed.',
+      'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, cross-repo impact/precedence has been assessed, and every accepted correction/migration requirement has durable owner/surface/evidence/disposition traceability.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
       'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
       'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, repair actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer.',
@@ -1042,7 +1046,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
       'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
       'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
-      'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. Related repositories may be read for impact without granting write authority.',
+      'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
@@ -1554,6 +1558,54 @@ function validMemoryPath(path: string) {
   return /^projects\/[0-9a-fA-F-]{36}\//.test(path)
 }
 
+
+function projectScopeDecision(args: {
+  project_manifest_text: string
+  project_id: string
+  operation: 'READ_EXTERNAL' | 'MUTATE_SOURCE' | 'MUTATE_MEMORY'
+  target_repository_url?: string | null
+  target_memory_path?: string | null
+  user_directed_external_read?: boolean
+}) {
+  const parsed = parseProjectManifest(args.project_manifest_text)
+  if (!parsed || parsed.project_id !== args.project_id) {
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'Project identity mismatch.' }
+  }
+  const ownedRepos = new Set(parsed.repositories
+    .filter((item: any) => item.relation === 'OWNED')
+    .map((item: any) => normalizeGithubRepo(item.url)?.url)
+    .filter(Boolean))
+  const targetRepo = args.target_repository_url ? normalizeGithubRepo(args.target_repository_url)?.url : null
+
+  if (args.operation === 'READ_EXTERNAL') {
+    if (!targetRepo) return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'A valid target repository is required.' }
+    if (ownedRepos.has(targetRepo)) return { allowed: true, mutation_allowed: false, scope: 'ACTIVE_PROJECT_READ', reason: 'Read stays inside the active Project.' }
+    if (args.user_directed_external_read === true) return { allowed: true, mutation_allowed: false, scope: 'EXPLICIT_EXTERNAL_READ', reason: 'Explicit external read is allowed without widening Project mutation scope.' }
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'External read requires explicit Human reference.' }
+  }
+
+  if (parsed.lifecycle !== 'ACTIVE') {
+    return { allowed: false, mutation_allowed: false, scope: 'NONE', reason: 'Project mutation requires lifecycle=ACTIVE.' }
+  }
+  if (args.operation === 'MUTATE_SOURCE') {
+    const allowed = Boolean(targetRepo && ownedRepos.has(targetRepo))
+    return {
+      allowed,
+      mutation_allowed: allowed,
+      scope: allowed ? 'ACTIVE_PROJECT_SOURCE' : 'NONE',
+      reason: allowed ? 'Source target is an OWNED repository of the active Project.' : 'Source target is outside the active Project OWNED repository set.',
+    }
+  }
+  const expectedPrefix = 'projects/' + args.project_id + '/'
+  const allowed = Boolean(args.target_memory_path && args.target_memory_path.startsWith(expectedPrefix) && validMemoryPath(args.target_memory_path))
+  return {
+    allowed,
+    mutation_allowed: allowed,
+    scope: allowed ? 'ACTIVE_PROJECT_MEMORY' : 'NONE',
+    reason: allowed ? 'Memory target is inside the active Project path.' : 'Memory target is outside the active Project path.',
+  }
+}
+
 async function readMemoryConfig(auth: any) {
   return auth.supabase
     .from('user_memory_config')
@@ -1574,6 +1626,8 @@ function createServer(req: Request) {
         'For brownfield discovery, if live evidence suggests additional dependent/owned repos that are not registered, stop at a Human Gate and ask the user to confirm the Project repo set before finalizing planning.',
         'Every executable Job must identify one working repository. Even when only one repo is modified, Planner/Reviewer must inspect the registered Project repo map for cross-repo impact and record that assessment.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
+        'The explicitly opened Project is the default operational frame. If the user starts discussing an unrelated Project without intentionally referencing it for current work, surface the mismatch before operational continuation.',
+        'Before external Project reads or Project-owned source/Memory mutations, call authorize_project_scope with the exact current PROJECT.md. Explicit external read remains read-only and never widens mutation scope.',
         'All GSA memory writes are confined to the exact configured Memory Repo and paths under projects/<project-id>/.',
         'Never write GSA memory to any other repository. Fail closed on repo mismatch or path outside projects/<project-id>/.',
         'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
@@ -2858,6 +2912,48 @@ function createServer(req: Request) {
         write_scope: 'EXACT_CONFIGURED_REPO_AND_PROJECTS_PREFIX_ONLY',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'authorize_project_scope',
+    {
+      title: 'Authorize active Project scope',
+      description: 'Validate an exact active PROJECT.md against one external-read or Project-owned mutation target. External reads may be explicitly user-directed; mutation never widens beyond the active Project.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().min(7),
+        operation: z.enum(['READ_EXTERNAL','MUTATE_SOURCE','MUTATE_MEMORY']),
+        target_repository_url: z.string().url().optional(),
+        target_memory_path: z.string().min(1).optional(),
+        user_directed_external_read: z.boolean().default(false),
+      },
+      outputSchema: {
+        allowed: z.boolean(),
+        mutation_allowed: z.boolean(),
+        scope: z.string(),
+        reason: z.string(),
+        project_id: z.string(),
+        project_manifest_sha: z.string(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to authorize Project scope.')
+      const decision = projectScopeDecision({
+        project_manifest_text,
+        project_id,
+        operation,
+        target_repository_url: target_repository_url ?? null,
+        target_memory_path: target_memory_path ?? null,
+        user_directed_external_read,
+      })
+      const out = { ...decision, project_id, project_manifest_sha }
+      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW: ' : 'DENY: ') + decision.reason }] }
     },
   )
 
@@ -5809,6 +5905,56 @@ app.get('/selftest', (c) => {
     nextJobId,
   )
   const cp7PlannerSkill = RUNTIME_SKILLS['job-planning']?.body ?? ''
+  const p0OwnedSourceScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
+  const p0ExternalSourceScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/other',
+  })
+  const p0ExternalReadExplicit = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'READ_EXTERNAL',
+    target_repository_url: 'https://github.com/example/other',
+    user_directed_external_read: true,
+  })
+  const p0ExternalReadImplicit = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'READ_EXTERNAL',
+    target_repository_url: 'https://github.com/example/other',
+    user_directed_external_read: false,
+  })
+  const p0OwnedMemoryScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_MEMORY',
+    target_memory_path: 'projects/' + projectId + '/WORK/JOBS/example.json',
+  })
+  const p0OtherMemoryScope = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: projectId,
+    operation: 'MUTATE_MEMORY',
+    target_memory_path: 'projects/' + uuidv7() + '/WORK/JOBS/example.json',
+  })
+  const p0PausedMutationScope = projectScopeDecision({
+    project_manifest_text: paused?.next ?? manifest,
+    project_id: projectId,
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
+  const p0WrongProjectIdentity = projectScopeDecision({
+    project_manifest_text: manifest,
+    project_id: uuidv7(),
+    operation: 'MUTATE_SOURCE',
+    target_repository_url: 'https://github.com/example/source',
+  })
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
@@ -5817,8 +5963,19 @@ app.get('/selftest', (c) => {
     resume_transition: Boolean(resumed && parseProjectManifest(resumed.next)?.lifecycle === 'ACTIVE'),
     memory_path_accept: validMemoryPath('projects/' + projectId + '/PROJECT.md'),
     memory_path_reject: !validMemoryPath('README.md') && !validMemoryPath('../projects/' + projectId + '/PROJECT.md'),
+    p0_owned_source_scope_allowed: p0OwnedSourceScope.allowed && p0OwnedSourceScope.mutation_allowed,
+    p0_external_source_mutation_rejected: !p0ExternalSourceScope.allowed && !p0ExternalSourceScope.mutation_allowed,
+    p0_explicit_external_read_is_read_only: p0ExternalReadExplicit.allowed && !p0ExternalReadExplicit.mutation_allowed && p0ExternalReadExplicit.scope === 'EXPLICIT_EXTERNAL_READ',
+    p0_implicit_external_read_rejected: !p0ExternalReadImplicit.allowed,
+    p0_owned_memory_scope_allowed: p0OwnedMemoryScope.allowed && p0OwnedMemoryScope.mutation_allowed,
+    p0_other_project_memory_rejected: !p0OtherMemoryScope.allowed,
+    p0_paused_project_mutation_rejected: !p0PausedMutationScope.allowed,
+    p0_wrong_project_identity_rejected: !p0WrongProjectIdentity.allowed,
     repo_normalization: normalizeGithubRepo('https://github.com/example/memory.git')?.full_name === 'example/memory',
     planner_harness_present: Boolean(renderHarness('planner')?.includes('ROLE LOOP')),
+    p0_shared_harness_requires_project_scope_guard: BASE_AGENT_HARNESS.includes('authorize_project_scope'),
+    p0_planner_traceability_guard: Boolean(renderHarness('planner')?.includes('owner/surface/evidence/disposition traceability')),
+    p0_reviewer_runtime_invariant_check: Boolean(renderHarness('reviewer')?.includes('schema presence alone is not implementation proof')),
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),

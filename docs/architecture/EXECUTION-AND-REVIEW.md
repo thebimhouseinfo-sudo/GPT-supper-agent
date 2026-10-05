@@ -10,6 +10,18 @@ Milestones/stages are topology elements, not hierarchy nodes.
 
 Job is a finite primary objective, not one role.
 
+
+### Active Project admission
+
+The opened Project is the operational frame. Before consequential routing or mutation:
+
+1. re-ground the exact Project from durable `PROJECT.md`;
+2. require Project lifecycle to permit the action;
+3. keep unrelated remembered Projects outside the operational frame unless the Human explicitly references them;
+4. if the request belongs to another unrelated Project, surface the mismatch before continuing operational work;
+5. external reads may be explicitly user-directed, but they do not widen write scope;
+6. Project-owned writes must stay inside that Project's registered owned repository set or its own Memory path.
+
 ## 2. Topology
 
 Planner defines:
