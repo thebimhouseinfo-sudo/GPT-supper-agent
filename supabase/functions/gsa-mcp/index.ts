@@ -242,6 +242,38 @@ function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
   return { completed, error: null as string | null }
 }
 
+function nextDispatchPreflightError(
+  job: any,
+  role: string,
+  taskIds: string[],
+  requestedPlanningRevision: number | null,
+  jobRecordSha: string | null,
+  currentJobRecordSha: string | null,
+  completedTaskRunEntries: any[],
+): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  if (!Number.isInteger(requestedPlanningRevision) || requestedPlanningRevision !== job.planning_revision) {
+    return 'NEXT_DISPATCH_STALE_PLANNING_REVISION: dispatch planning_revision must equal the current Job planning_revision.'
+  }
+  if (!jobRecordSha || !currentJobRecordSha || !/^[0-9a-f]{40}$/.test(jobRecordSha) || !/^[0-9a-f]{40}$/.test(currentJobRecordSha) || jobRecordSha !== currentJobRecordSha) {
+    return 'NEXT_DISPATCH_STALE_JOB_SHA: supplied Job snapshot SHA must equal the immediate current Job read-back SHA.'
+  }
+  const completedState = validateCompletedTaskRunSnapshots(job, completedTaskRunEntries)
+  if (completedState.error) return 'NEXT_DISPATCH_PREREQUISITE_INVALID: ' + completedState.error
+  for (const taskId of [...new Set(taskIds.filter(Boolean))]) {
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+    const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
+    if (!task || !stage) return 'NEXT_DISPATCH_TASK_INVALID: dispatch Task is missing from the current Job/topology.'
+    if (stage.handler !== role) return 'NEXT_DISPATCH_WRONG_ROLE: Task ' + taskId + ' belongs to ' + String(stage.handler) + ', not ' + role + '.'
+    for (const dependencyId of task.dependencies ?? []) {
+      if (!completedState.completed.has(dependencyId)) {
+        return 'NEXT_DISPATCH_PREREQUISITE_BLOCKED: Task ' + taskId + ' requires completed Task ' + dependencyId + '.'
+      }
+    }
+  }
+  return null
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
@@ -937,6 +969,7 @@ const BASE_AGENT_HARNESS = [
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
+  '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
@@ -4829,6 +4862,9 @@ function createServer(req: Request) {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
+        job_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        current_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        planning_revision: z.number().int().positive().optional(),
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         scope_claim: z.array(z.string()).min(1),
         primary_task_id: z.string().uuid().optional(),
@@ -4839,12 +4875,14 @@ function createServer(req: Request) {
         input_refs: z.array(z.string()).default([]),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         run_id: z.string(),
         handle: z.string(),
         memory_path: z.string(),
         run_record_text: z.string(),
+        expected_job_sha: z.string().nullable(),
         next_step: z.string(),
         external_steps: z.array(z.string()),
       },
@@ -4852,7 +4890,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -4871,14 +4909,33 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && (affected_task_refs ?? []).some((id: string) => !currentTaskIds.has(id))) {
         return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: every affected_task_ref must be a current Task in this planning revision.' }], isError: true }
       }
-      if (executionContract === 'NEXT' && ['coder','designer'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
-        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT source/design execution must bind one current primary Task so EvidenceRequirement guards cannot be bypassed.' }], isError: true }
+      if (executionContract === 'NEXT' && ['coder','designer','reviewer','tester'].includes(role) && (owningJob.tasks ?? []).length > 0 && !primary_task_id) {
+        return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REQUIRED: NEXT execution must bind one current primary Task so role, prerequisite and evidence guards cannot be bypassed.' }], isError: true }
       }
       if (
         executionContract === 'NEXT' &&
         (owningJob.planning_review?.status !== 'PASS' || owningJob.planning_review?.reviewed_revision !== owningJob.planning_revision)
       ) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
+      }
+      if (executionContract === 'NEXT') {
+        const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+        if (completedRuns.error) {
+          return { content: [{ type: 'text', text: 'NEXT_DISPATCH_PREREQUISITE_INVALID: ' + completedRuns.error }], isError: true }
+        }
+        const dispatchTaskIds = primary_task_id
+          ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]
+          : []
+        const dispatchError = nextDispatchPreflightError(
+          owningJob,
+          role,
+          dispatchTaskIds,
+          planning_revision ?? null,
+          job_record_sha ?? null,
+          current_job_record_sha ?? null,
+          completedRuns.entries,
+        )
+        if (dispatchError) return { content: [{ type: 'text', text: dispatchError }], isError: true }
       }
       if (executionContract === 'NEXT' && primary_task_id) {
         const gatedTaskIds = new Set<string>([primary_task_id])
@@ -4958,12 +5015,15 @@ function createServer(req: Request) {
         handle: runHandle(runId),
         memory_path: path,
         run_record_text: prettyJson(record),
+        expected_job_sha: executionContract === 'NEXT' ? (job_record_sha ?? null) : null,
         next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
           ...(executionContract === 'NEXT'
             ? [
+                'Immediately re-fetch the owning Job before Run persistence and require blob SHA=' + String(job_record_sha) + ' plus planning_revision=' + String(planning_revision) + '. A mismatch rejects dispatch as stale.',
+                ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'completed prerequisite Task Run snapshot'),
                 ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
                 ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
               ]
@@ -5955,6 +6015,48 @@ app.get('/selftest', (c) => {
     operation: 'MUTATE_SOURCE',
     target_repository_url: 'https://github.com/example/source',
   })
+  const p1TaskA = uuidv7()
+  const p1TaskB = uuidv7()
+  const p1RunA = uuidv7()
+  const p1DispatchJob = {
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    planning_review: { status: 'PASS', reviewed_revision: 7 },
+    tasks: [
+      { task_id: p1TaskA, dependencies: [] },
+      { task_id: p1TaskB, dependencies: [p1TaskA] },
+    ],
+    topology: [
+      { stage: 1, handler: 'coder', task_id: p1TaskA, depends_on: [], next: p1TaskB },
+      { stage: 2, handler: 'tester', task_id: p1TaskB, depends_on: [p1TaskA], next: null },
+    ],
+  }
+  const p1CompletedRun = {
+    run_id: p1RunA,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p1TaskA,
+    role: 'coder',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+  }
+  const p1CompletedEntry = {
+    path: recordPath(projectId, 'RUNS', p1RunA, 'NEXT'),
+    sha: '4'.repeat(40),
+    record_text: prettyJson(p1CompletedRun),
+    record: p1CompletedRun,
+  }
+  const p1JobSha = '5'.repeat(40)
+  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [])
+  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry])
+  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, []) === null
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
@@ -5976,6 +6078,13 @@ app.get('/selftest', (c) => {
     p0_shared_harness_requires_project_scope_guard: BASE_AGENT_HARNESS.includes('authorize_project_scope'),
     p0_planner_traceability_guard: Boolean(renderHarness('planner')?.includes('owner/surface/evidence/disposition traceability')),
     p0_reviewer_runtime_invariant_check: Boolean(renderHarness('reviewer')?.includes('schema presence alone is not implementation proof')),
+    p1_valid_next_dispatch_allowed: p1DispatchValid === null,
+    p1_wrong_role_dispatch_rejected: Boolean(p1WrongRole?.includes('NEXT_DISPATCH_WRONG_ROLE')),
+    p1_unmet_prerequisite_dispatch_rejected: Boolean(p1MissingPrerequisite?.includes('NEXT_DISPATCH_PREREQUISITE_BLOCKED')),
+    p1_stale_planning_revision_rejected: Boolean(p1StaleRevision?.includes('NEXT_DISPATCH_STALE_PLANNING_REVISION')),
+    p1_stale_job_sha_rejected: Boolean(p1StaleJobSha?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
+    p1_v2_stable_dispatch_unchanged: p1V2StableUnaffected,
+    p1_shared_harness_requires_exact_dispatch_state: BASE_AGENT_HARNESS.includes('exact current Job SHA and planning_revision'),
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
