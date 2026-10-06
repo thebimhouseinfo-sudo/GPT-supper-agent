@@ -3830,6 +3830,8 @@ function createServer(req: Request) {
         planning_review_verification_ref: z.string().optional(),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        closure_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -3841,7 +3843,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -3897,6 +3899,23 @@ function createServer(req: Request) {
               isError: true,
             }
           }
+          const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+          if (completedRuns.error) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: ' + completedRuns.error }], isError: true }
+          }
+          const closureVerifications = parseDurableSnapshots(closure_verification_snapshots ?? [], 'closure_verification_snapshots')
+          if (closureVerifications.error) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: ' + closureVerifications.error }], isError: true }
+          }
+          const coverageError = nextClosureCoverageError(
+            current,
+            completedRuns.entries,
+            closureVerifications.entries,
+            completion_evidence_refs ?? [],
+          )
+          if (coverageError) {
+            return { content: [{ type: 'text', text: coverageError }], isError: true }
+          }
         }
       }
       const next = {
@@ -3917,6 +3936,8 @@ function createServer(req: Request) {
           externalSteps.push(
             ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
             ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+            ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'closure Task Run snapshot'),
+            ...durableSnapshotReadbackSteps(closure_verification_snapshots ?? [], 'closure REVIEW/TEST Verification snapshot'),
           )
         }
       }
