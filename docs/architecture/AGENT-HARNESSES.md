@@ -119,6 +119,14 @@ A merely `SURFACE_PRESENT` action does not justify a successful practical-test c
 
 Tester reports exact target/revision, mode, planned checks, readiness/capability state, observations/measurements, applicable verdicts, failure classification, evidence refs, limitations/untested areas and Retest status. Retest evidence is revision/state-bound; a relevant target change invalidates prior coverage for the changed scope.
 
+### NEXT closure and specialization
+
+For NEXT work:
+- Coder Goal Recheck must cover every approved completion criterion in the current Run Task scope using exact `task_id` binding.
+- Reviewer and non-checkpoint Tester success must first persist an exact Run-bound `REVIEW` / `TEST` Verification; bare chat verdicts or path strings do not authorize successful Run closure.
+- Job closure reconstructs Reviewer/Tester coverage from current-revision Run + Verification snapshots.
+- A frontend/UI Coder Task declares `required_skills=[ui-coder-frontend]`; dispatch rejects it until that skill is loaded. Generic Coder work keeps no UI specialization requirement.
+
 ## 8. Orchestrator
 
 Orchestrator is an implicit harness responsibility set, not an always-running process.
