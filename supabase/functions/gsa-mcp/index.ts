@@ -3546,6 +3546,7 @@ function createServer(req: Request) {
           objective: z.string().min(1),
           scope: z.array(z.string()).default([]),
           dependencies: z.array(z.string()).default([]),
+          required_skills: z.array(z.enum(['ui-coder-frontend'])).default([]),
           completion_criteria: z.array(z.string()).min(1),
         })).min(1),
         evidence_needs: z.array(EVIDENCE_NEED_SCHEMA).default([]),
@@ -3598,6 +3599,7 @@ function createServer(req: Request) {
         objective: task.objective,
         scope: task.scope ?? [],
         dependencies: task.dependencies ?? [],
+        required_skills: task.required_skills ?? [],
         completion_criteria: task.completion_criteria,
         lifecycle: 'READY',
       }))
@@ -4882,6 +4884,7 @@ function createServer(req: Request) {
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        loaded_skills: z.array(z.string().min(1)).default([]),
       },
       outputSchema: {
         run_id: z.string(),
@@ -4896,7 +4899,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, loaded_skills }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -4940,6 +4943,7 @@ function createServer(req: Request) {
           job_record_sha ?? null,
           current_job_record_sha ?? null,
           completedRuns.entries,
+          loaded_skills ?? [],
         )
         if (dispatchError) return { content: [{ type: 'text', text: dispatchError }], isError: true }
       }
@@ -5006,6 +5010,7 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         scope_claim,
         input_refs: input_refs ?? [],
+        loaded_skills: executionContract === 'NEXT' ? (loaded_skills ?? []) : [],
         lifecycle: 'IN_PROGRESS',
         derived_condition: null,
         result: null,
