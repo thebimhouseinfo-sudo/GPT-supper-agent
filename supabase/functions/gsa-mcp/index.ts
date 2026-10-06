@@ -360,6 +360,41 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
   return { error: null, ref: entry.path, sha: entry.sha, record }
 }
 
+function nextClosureCoverageError(job: any, runEntries: any[], verificationEntries: any[], completionEvidenceRefs: string[]): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  const completedState = validateCompletedTaskRunSnapshots(job, runEntries)
+  if (completedState.error) return 'NEXT_CLOSURE_COVERAGE_REJECTED: ' + completedState.error
+
+  const requiredStages = (job.topology ?? []).filter((stage: any) => ['reviewer','tester'].includes(stage.handler))
+  for (const stage of requiredStages) {
+    const runMatches = runEntries.filter((entry: any) =>
+      entry.record?.primary_task_id === stage.task_id &&
+      entry.record?.role === stage.handler
+    )
+    if (runMatches.length !== 1) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: each Reviewer/Tester Task requires exactly one selected successful current-revision Run snapshot.'
+    }
+    const runEntry = runMatches[0]
+    const run = runEntry.record
+    const verificationMatches = verificationEntries.filter((entry: any) => entry.record?.run_id === run.run_id)
+    if (verificationMatches.length !== 1) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: each selected Reviewer/Tester Run requires exactly one durable matching Verification snapshot.'
+    }
+    const verificationEntry = verificationMatches[0]
+    const verified = validateRunVerificationSnapshot(
+      { path: verificationEntry.path, sha: verificationEntry.sha, record_text: verificationEntry.record_text },
+      run,
+      stage.handler,
+      run.result,
+    )
+    if (verified.error) return 'NEXT_CLOSURE_COVERAGE_REJECTED: ' + verified.error
+    if (!(completionEvidenceRefs ?? []).includes(runEntry.path) || !(completionEvidenceRefs ?? []).includes(verificationEntry.path)) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: selected closure Run and Verification paths must be present in completion_evidence_refs.'
+    }
+  }
+  return null
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
