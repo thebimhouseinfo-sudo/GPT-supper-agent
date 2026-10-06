@@ -250,6 +250,7 @@ function nextDispatchPreflightError(
   jobRecordSha: string | null,
   currentJobRecordSha: string | null,
   completedTaskRunEntries: any[],
+  loadedSkills: string[],
 ): string | null {
   if (jobExecutionContract(job) !== 'NEXT') return null
   if (!Number.isInteger(requestedPlanningRevision) || requestedPlanningRevision !== job.planning_revision) {
@@ -265,6 +266,11 @@ function nextDispatchPreflightError(
     const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
     if (!task || !stage) return 'NEXT_DISPATCH_TASK_INVALID: dispatch Task is missing from the current Job/topology.'
     if (stage.handler !== role) return 'NEXT_DISPATCH_WRONG_ROLE: Task ' + taskId + ' belongs to ' + String(stage.handler) + ', not ' + role + '.'
+    for (const requiredSkill of task.required_skills ?? []) {
+      if (!(loadedSkills ?? []).includes(requiredSkill)) {
+        return 'NEXT_DISPATCH_REQUIRED_SKILL_MISSING: Task ' + taskId + ' requires skill ' + requiredSkill + '.'
+      }
+    }
     for (const dependencyId of task.dependencies ?? []) {
       if (!completedState.completed.has(dependencyId)) {
         return 'NEXT_DISPATCH_PREREQUISITE_BLOCKED: Task ' + taskId + ' requires completed Task ' + dependencyId + '.'
