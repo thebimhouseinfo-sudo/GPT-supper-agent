@@ -5468,6 +5468,10 @@ function createServer(req: Request) {
         verification_refs: z.array(z.string()).default([]),
         goal_recheck_record_text: z.string().min(2).optional(),
         goal_recheck_verification_ref: z.string().min(1).optional(),
+        goal_recheck_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+        job_record_text: z.string().min(2).optional(),
+        job_record_sha: z.string().min(7).optional(),
+        run_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
           primary_task_id: z.string().uuid().optional(),
@@ -5495,7 +5499,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, handoff }: any) => {
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, goal_recheck_snapshot, job_record_text, job_record_sha, run_verification_snapshot, handoff }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to complete a Run.')
       let current: any
@@ -5508,26 +5512,74 @@ function createServer(req: Request) {
       const executionContract = resolveExecutionContract(current.execution_contract)
       if (!executionContract) return invalidExecutionContract()
       if (role === 'coder' && lifecycle === 'COMPLETED') {
-        if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+        let goal: any = null
+        let goalRef: string | null = null
+        if (executionContract === 'NEXT') {
+          const parsedGoal = parseDurableSnapshots(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'goal_recheck_snapshot')
+          if (parsedGoal.error || parsedGoal.entries.length !== 1) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: NEXT completion requires one exact durable GOAL_RECHECK snapshot.' }], isError: true }
+          }
+          const entry = parsedGoal.entries[0]
+          goal = entry.record
+          goalRef = entry.path
+          if (!job_record_text || !job_record_sha) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: NEXT completion requires the exact current Job snapshot and blob SHA.' }], isError: true }
+          }
+          let owningJob: any
+          try { owningJob = JSON.parse(job_record_text) } catch {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid owning Job JSON.' }], isError: true }
+          }
+          if (
+            owningJob.project_id !== project_id ||
+            owningJob.job_id !== job_id ||
+            owningJob.planning_revision !== current.planning_revision ||
+            jobExecutionContract(owningJob) !== 'NEXT'
+          ) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: owning Job does not match the Run current NEXT planning revision.' }], isError: true }
+          }
+          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT') : ''
+          const coverageError = goalRecheckCoverageError(owningJob, current, goal?.criteria ?? [])
+          if (entry.path !== expectedGoalPath || coverageError) {
+            return { content: [{ type: 'text', text: coverageError ?? 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK snapshot path mismatch.' }], isError: true }
+          }
+        } else {
+          if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+          }
+          try { goal = JSON.parse(goal_recheck_record_text) } catch {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
+          }
+          goalRef = goal_recheck_verification_ref
         }
-        if (!(verification_refs ?? []).includes(goal_recheck_verification_ref)) {
+
+        if (!goalRef || !(verification_refs ?? []).includes(goalRef)) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK verification ref must be included in verification_refs.' }], isError: true }
-        }
-        let goal: any
-        try { goal = JSON.parse(goal_recheck_record_text) } catch {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
         const goalExecutionContract = resolveExecutionContract(goal.execution_contract)
         const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract) : ''
-        const persistedRefMatches = expectedGoalPath === goal_recheck_verification_ref
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches
+        const persistedRefMatches = expectedGoalPath === goalRef
+        const planningRevisionMatches = executionContract !== 'NEXT' || goal.planning_revision === current.planning_revision
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches && planningRevisionMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
         if (!goalMatches || unresolvedNotMet || unresolvedDrift || !acceptableResult) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/current planning revision/target, have exact criterion coverage, no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+        }
+      }
+      if (
+        executionContract === 'NEXT' &&
+        ['reviewer','tester'].includes(role) &&
+        lifecycle === 'COMPLETED' &&
+        ['PASS','PASS_RETEST_REQUIRED'].includes(result ?? '')
+      ) {
+        const verified = validateRunVerificationSnapshot(run_verification_snapshot, current, role as 'reviewer' | 'tester', result ?? null)
+        if (verified.error) {
+          return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: ' + verified.error }], isError: true }
+        }
+        if (!(verification_refs ?? []).includes(verified.ref)) {
+          return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: exact REVIEW/TEST Verification ref must be included in verification_refs.' }], isError: true }
         }
       }
       let handoffEvidenceBundles: any[] = []
@@ -5627,6 +5679,8 @@ function createServer(req: Request) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),
+        ...durableSnapshotReadbackSteps(run_verification_snapshot ? [run_verification_snapshot] : [], 'Reviewer/Tester Run Verification snapshot'),
         ...durableSnapshotReadbackSteps(
           handoff?.tester_evidence_verification_snapshot ? [handoff.tester_evidence_verification_snapshot] : [],
           'Tester evidence Verification snapshot',
