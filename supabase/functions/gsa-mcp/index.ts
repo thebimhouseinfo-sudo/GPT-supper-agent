@@ -250,7 +250,6 @@ function nextDispatchPreflightError(
   jobRecordSha: string | null,
   currentJobRecordSha: string | null,
   completedTaskRunEntries: any[],
-  loadedSkills: string[],
 ): string | null {
   if (jobExecutionContract(job) !== 'NEXT') return null
   if (!Number.isInteger(requestedPlanningRevision) || requestedPlanningRevision !== job.planning_revision) {
@@ -266,11 +265,6 @@ function nextDispatchPreflightError(
     const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
     if (!task || !stage) return 'NEXT_DISPATCH_TASK_INVALID: dispatch Task is missing from the current Job/topology.'
     if (stage.handler !== role) return 'NEXT_DISPATCH_WRONG_ROLE: Task ' + taskId + ' belongs to ' + String(stage.handler) + ', not ' + role + '.'
-    for (const requiredSkill of task.required_skills ?? []) {
-      if (!(loadedSkills ?? []).includes(requiredSkill)) {
-        return 'NEXT_DISPATCH_REQUIRED_SKILL_MISSING: Task ' + taskId + ' requires skill ' + requiredSkill + '.'
-      }
-    }
     for (const dependencyId of task.dependencies ?? []) {
       if (!completedState.completed.has(dependencyId)) {
         return 'NEXT_DISPATCH_PREREQUISITE_BLOCKED: Task ' + taskId + ' requires completed Task ' + dependencyId + '.'
@@ -278,6 +272,30 @@ function nextDispatchPreflightError(
     }
   }
   return null
+}
+
+function resolveRequiredTaskSkills(job: any, taskIds: string[]) {
+  const names = [...new Set(
+    [...new Set(taskIds.filter(Boolean))]
+      .flatMap((taskId: string) => {
+        const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+        return task?.required_skills ?? []
+      })
+      .filter((name: any) => typeof name === 'string' && name)
+  )]
+  const contexts: any[] = []
+  for (const name of names) {
+    const skill = RUNTIME_SKILLS[name]
+    if (!skill) {
+      return {
+        names: [],
+        contexts: [],
+        error: 'NEXT_DISPATCH_REQUIRED_SKILL_UNKNOWN: required Task skill is not present in the runtime skill catalog: ' + name + '.',
+      }
+    }
+    contexts.push({ name, description: skill.description, skill_text: skill.body })
+  }
+  return { names, contexts, error: null as string | null }
 }
 
 function goalRecheckCoverageError(job: any, run: any, criteria: any[]): string | null {
