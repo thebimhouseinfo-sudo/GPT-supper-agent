@@ -6062,12 +6062,30 @@ app.get('/selftest', (c) => {
     record: p1CompletedRun,
   }
   const p1JobSha = '5'.repeat(40)
-  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
-  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
-  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [])
-  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry])
-  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry])
-  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, []) === null
+  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry], [])
+  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry], [])
+  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [], [])
+  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry], [])
+  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry], [])
+  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, [], []) === null
+  const p2UiTask = uuidv7()
+  const p2UiJob = {
+    ...p1DispatchJob,
+    tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: ['ui-coder-frontend'] }],
+    topology: [{ stage: 1, handler: 'coder', task_id: p2UiTask, depends_on: [], next: null }],
+  }
+  const p2UiSkillMissing = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [], [])
+  const p2UiSkillLoaded = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [], ['ui-coder-frontend'])
+  const p2GenericCoderUnaffected = nextDispatchPreflightError(
+    { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: [] }] },
+    'coder',
+    [p2UiTask],
+    7,
+    p1JobSha,
+    p1JobSha,
+    [],
+    [],
+  )
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
@@ -6096,6 +6114,9 @@ app.get('/selftest', (c) => {
     p1_stale_job_sha_rejected: Boolean(p1StaleJobSha?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
     p1_v2_stable_dispatch_unchanged: p1V2StableUnaffected,
     p1_shared_harness_requires_exact_dispatch_state: BASE_AGENT_HARNESS.includes('exact current Job SHA and planning_revision'),
+    p2_ui_coder_required_skill_rejected_when_missing: Boolean(p2UiSkillMissing?.includes('NEXT_DISPATCH_REQUIRED_SKILL_MISSING')),
+    p2_ui_coder_required_skill_allowed_when_loaded: p2UiSkillLoaded === null,
+    p2_generic_coder_unaffected_by_ui_skill: p2GenericCoderUnaffected === null,
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
