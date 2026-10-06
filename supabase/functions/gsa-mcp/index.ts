@@ -6445,28 +6445,33 @@ app.get('/selftest', (c) => {
     record: p1CompletedRun,
   }
   const p1JobSha = '5'.repeat(40)
-  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry], [])
-  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry], [])
-  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [], [])
-  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry], [])
-  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry], [])
-  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, [], []) === null
+  const p1DispatchValid = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1WrongRole = nextDispatchPreflightError(p1DispatchJob, 'coder', [p1TaskB], 7, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1MissingPrerequisite = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, p1JobSha, [])
+  const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry])
+  const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry])
+  const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, []) === null
   const p2UiTask = uuidv7()
   const p2UiJob = {
     ...p1DispatchJob,
     tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: ['ui-coder-frontend'] }],
     topology: [{ stage: 1, handler: 'coder', task_id: p2UiTask, depends_on: [], next: null }],
   }
-  const p2UiSkillMissing = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [], [])
-  const p2UiSkillLoaded = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [], ['ui-coder-frontend'])
+  const p2UiSkillResolution = resolveRequiredTaskSkills(p2UiJob, [p2UiTask])
+  const p2UiDispatch = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [])
+  const p2UnknownSkillResolution = resolveRequiredTaskSkills(
+    { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: ['missing-runtime-skill'] }] },
+    [p2UiTask],
+  )
+  const p2GenericJob = { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: [] }] }
+  const p2GenericSkillResolution = resolveRequiredTaskSkills(p2GenericJob, [p2UiTask])
   const p2GenericCoderUnaffected = nextDispatchPreflightError(
-    { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: [] }] },
+    p2GenericJob,
     'coder',
     [p2UiTask],
     7,
     p1JobSha,
     p1JobSha,
-    [],
     [],
   )
 
@@ -6570,6 +6575,8 @@ app.get('/selftest', (c) => {
     execution_contract: 'NEXT',
     planning_revision: 7,
     result: 'PASS',
+    findings: [],
+    evidence_refs: ['review-evidence'],
   }
   const p2TestVerification = {
     verification_id: p2TestVerificationId,
@@ -6584,6 +6591,8 @@ app.get('/selftest', (c) => {
     execution_contract: 'NEXT',
     planning_revision: 7,
     result: 'PASS',
+    failure_class: null,
+    evidence_refs: ['test-evidence'],
   }
   const p2ReviewVerificationEntry = {
     path: verificationPath(projectId, p2ReviewVerificationId, 'NEXT'),
@@ -6621,6 +6630,33 @@ app.get('/selftest', (c) => {
     'reviewer',
     'PASS',
   )
+  const p2EmptyEvidenceReviewVerification = validateRunVerificationSnapshot(
+    { ...p2ReviewVerificationEntry, record_text: prettyJson({ ...p2ReviewVerification, evidence_refs: [] }) },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2ImportantFindingReviewVerification = validateRunVerificationSnapshot(
+    {
+      ...p2ReviewVerificationEntry,
+      record_text: prettyJson({
+        ...p2ReviewVerification,
+        findings: [{ severity: 'IMPORTANT', finding: 'unresolved', evidence: [] }],
+      }),
+    },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2TesterFailureClassVerification = validateRunVerificationSnapshot(
+    {
+      ...p2TestVerificationEntry,
+      record_text: prettyJson({ ...p2TestVerification, failure_class: 'PRODUCT_FAILURE' }),
+    },
+    p2TesterRun,
+    'tester',
+    'PASS',
+  )
   const p2V2ClosureUnaffected = nextClosureCoverageError(
     { ...p2ClosureJob, execution_contract: 'V2_STABLE' },
     [],
@@ -6655,14 +6691,24 @@ app.get('/selftest', (c) => {
     p1_stale_job_sha_rejected: Boolean(p1StaleJobSha?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
     p1_v2_stable_dispatch_unchanged: p1V2StableUnaffected,
     p1_shared_harness_requires_exact_dispatch_state: BASE_AGENT_HARNESS.includes('exact current Job SHA and planning_revision'),
-    p2_ui_coder_required_skill_rejected_when_missing: Boolean(p2UiSkillMissing?.includes('NEXT_DISPATCH_REQUIRED_SKILL_MISSING')),
-    p2_ui_coder_required_skill_allowed_when_loaded: p2UiSkillLoaded === null,
-    p2_generic_coder_unaffected_by_ui_skill: p2GenericCoderUnaffected === null,
+    p2_ui_coder_required_skill_context_injected:
+      p2UiSkillResolution.error === null &&
+      p2UiSkillResolution.names.includes('ui-coder-frontend') &&
+      p2UiSkillResolution.contexts.some((item: any) => item.name === 'ui-coder-frontend' && item.skill_text.length > 0),
+    p2_ui_coder_dispatch_allowed_with_runtime_injection: p2UiDispatch === null,
+    p2_unknown_required_skill_rejected: Boolean(p2UnknownSkillResolution.error?.includes('NEXT_DISPATCH_REQUIRED_SKILL_UNKNOWN')),
+    p2_generic_coder_unaffected_by_ui_skill:
+      p2GenericSkillResolution.error === null &&
+      p2GenericSkillResolution.names.length === 0 &&
+      p2GenericCoderUnaffected === null,
     p2_goal_recheck_full_criterion_coverage_passes: p2GoalCompleteCoverage === null,
     p2_goal_recheck_missing_criterion_rejected: Boolean(p2GoalMissingCoverage?.includes('GOAL_RECHECK_COVERAGE_REJECTED')),
     p2_reviewer_tester_closure_coverage_passes: p2ClosureCoveragePass === null,
     p2_missing_durable_verification_blocks_closure: Boolean(p2ClosureMissingVerification?.includes('NEXT_CLOSURE_COVERAGE_REJECTED')),
     p2_stale_review_verification_rejected: Boolean(p2StaleReviewVerification.error),
+    p2_empty_evidence_review_verification_rejected: Boolean(p2EmptyEvidenceReviewVerification.error),
+    p2_important_finding_review_verification_rejected: Boolean(p2ImportantFindingReviewVerification.error),
+    p2_tester_success_failure_class_rejected: Boolean(p2TesterFailureClassVerification.error),
     p2_v2_stable_closure_unchanged: p2V2ClosureUnaffected,
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
