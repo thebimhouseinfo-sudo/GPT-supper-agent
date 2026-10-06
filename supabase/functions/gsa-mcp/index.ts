@@ -280,6 +280,50 @@ function nextDispatchPreflightError(
   return null
 }
 
+function goalRecheckCoverageError(job: any, run: any, criteria: any[]): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  if (
+    job.project_id !== run.project_id ||
+    job.job_id !== run.job_id ||
+    job.planning_revision !== run.planning_revision
+  ) return 'GOAL_RECHECK_COVERAGE_REJECTED: Job/Run current planning revision mismatch.'
+
+  const taskIds = [...new Set(
+    [run.primary_task_id, ...(run.affected_task_refs ?? [])]
+      .filter((id: any) => typeof id === 'string' && id)
+  )]
+  if (!taskIds.length) return 'GOAL_RECHECK_COVERAGE_REJECTED: NEXT Coder Run has no bound Task scope.'
+
+  const expected = new Set<string>()
+  for (const taskId of taskIds) {
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+    const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
+    if (!task || !stage || stage.handler !== 'coder') {
+      return 'GOAL_RECHECK_COVERAGE_REJECTED: Run Task scope is not current Coder-owned topology.'
+    }
+    for (const criterion of task.completion_criteria ?? []) {
+      expected.add(taskId + '\u0000' + String(criterion))
+    }
+  }
+
+  const provided = new Set<string>()
+  for (const item of criteria ?? []) {
+    if (typeof item?.task_id !== 'string' || !item.task_id) {
+      return 'GOAL_RECHECK_COVERAGE_REJECTED: every NEXT criterion requires task_id.'
+    }
+    const key = item.task_id + '\u0000' + String(item.criterion ?? '')
+    if (provided.has(key)) return 'GOAL_RECHECK_COVERAGE_REJECTED: duplicate Task criterion.'
+    provided.add(key)
+  }
+
+  const missing = [...expected].filter((key) => !provided.has(key))
+  const extra = [...provided].filter((key) => !expected.has(key))
+  if (missing.length || extra.length) {
+    return 'GOAL_RECHECK_COVERAGE_REJECTED: criteria must exactly cover every approved Task completion criterion in the Run scope.'
+  }
+  return null
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
