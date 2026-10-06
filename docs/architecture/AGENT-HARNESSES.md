@@ -125,7 +125,7 @@ For NEXT work:
 - Coder Goal Recheck must cover every approved completion criterion in the current Run Task scope using exact `task_id` binding.
 - Reviewer and non-checkpoint Tester success must first persist an exact Run-bound `REVIEW` / `TEST` Verification; bare chat verdicts or path strings do not authorize successful Run closure.
 - Job closure reconstructs Reviewer/Tester coverage from current-revision Run + Verification snapshots.
-- A frontend/UI Coder Task declares `required_skills=[ui-coder-frontend]`; dispatch rejects it until that skill is loaded. Generic Coder work keeps no UI specialization requirement.
+- A frontend/UI Coder Task declares `required_skills=[ui-coder-frontend]`; NEXT `run_begin` resolves and injects that required skill context automatically and records the derived activation. Callers cannot satisfy the gate by self-declaring a skill name. Generic Coder work gets no UI specialization context.
 
 ## 8. Orchestrator
 
