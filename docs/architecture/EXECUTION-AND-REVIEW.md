@@ -116,7 +116,7 @@ Unavailable/unproven checks remain UNVERIFIED unless another evidence path exist
 
 Tester practical execution is capability-gated and source-read-only.
 
-For an attributed NEXT Reviewer or non-checkpoint Tester Run, PASS/PASS_RETEST_REQUIRED is not a chat-only verdict. The role persists an exact Run-bound `REVIEW` or `TEST` Verification first; `run_complete` consumes its durable snapshot and rejects missing, stale, wrong-run, wrong-target or wrong-planning-revision evidence.
+For an attributed NEXT Reviewer or non-checkpoint Tester Run, PASS/PASS_RETEST_REQUIRED is not a chat-only verdict. The role persists an exact Run-bound `REVIEW` or `TEST` Verification first; `run_complete` consumes its durable snapshot and rejects missing, stale, wrong-run, wrong-target or wrong-planning-revision evidence. Closure revalidates success semantics too: evidence refs must exist, Reviewer success cannot retain CRITICAL/IMPORTANT findings, and Tester success cannot carry a failure class.
 
 At NEXT Job completion, every Reviewer/Tester Task in current topology must be covered by one selected successful current-revision Run and one exact matching durable Verification, both listed in completion evidence. This is the executable Review Coverage Summary gate.
 
