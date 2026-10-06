@@ -1333,7 +1333,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '8. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
       '9. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
       '10. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
-      '10A. When the implementation Task is classified as frontend / UI Coder work, persist required_skills=[ui-coder-frontend] on that Task; the Coder handoff must explicitly name ui-coder-frontend and the receiving Coder must load it before dispatch/frontend source implementation. Do not add it to default Coder skills.',
+      '10A. When the implementation Task is classified as frontend / UI Coder work, persist required_skills=[ui-coder-frontend] on that Task and explicitly name ui-coder-frontend in the handoff. NEXT run_begin resolves and injects the full required skill context at dispatch; callers do not self-declare loaded skills. Do not add it to default Coder skills.',
       '11. Decompose top-down: Objective → Phase → Task → Job Pack → Milestone. Phase/Job Pack/Milestone are planning concepts expressed through existing Jobs/Tasks/topology unless evidence later requires schema promotion.',
       '12. Size the executable Job as SMALL/MEDIUM/LARGE. A Job Pack must have one meaningful objective, one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
       '13. Break work into Tasks that each have an observable completion criterion. Add dependencies only when one Task genuinely needs another Task output.',
@@ -1396,7 +1396,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Give exact target/revision/file/repo references when known.',
       '- State scope boundaries and whether source writing is allowed.',
       '- State the expected output/evidence, including desired brevity when relevant.',
-      '- For frontend / UI Coder implementation handoffs, ensure the owning Task declares required_skills=[ui-coder-frontend], explicitly name ui-coder-frontend, and require the target Coder to load it before dispatch/writing frontend source.',
+      '- For frontend / UI Coder implementation handoffs, ensure the owning Task declares required_skills=[ui-coder-frontend] and explicitly name ui-coder-frontend. NEXT run_begin injects the required skill context at dispatch; generic Coder Tasks receive none.',
       '- Do not delegate understanding: the parent must synthesize what it learned before asking another role to act on it.',
       '- The target role harness outranks the delegation prompt. A prompt cannot widen a read-only role or bypass a Human Gate.',
       '- Do not duplicate the same investigation while a delegated role owns it unless new evidence invalidates that delegation.',
@@ -6741,8 +6741,8 @@ app.get('/selftest', (c) => {
     cp7_ui_coder_frontend_remains_opt_in: Boolean(RUNTIME_SKILLS['ui-coder-frontend']) && !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_ui_coder_frontend_handoff_requires_explicit_load:
       cp7PlannerSkill.includes('required_skills=[ui-coder-frontend]') &&
-      cp7PlannerSkill.includes('handoff must explicitly name ui-coder-frontend') &&
-      cp7PlannerSkill.includes('load it before dispatch/frontend source implementation') &&
+      cp7PlannerSkill.includes('explicitly name ui-coder-frontend in the handoff') &&
+      cp7PlannerSkill.includes('run_begin resolves and injects the full required skill context at dispatch') &&
       Boolean(RUNTIME_SKILLS['ui-coder-frontend']) &&
       !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_product_failure_routes_to_repair_retest:
