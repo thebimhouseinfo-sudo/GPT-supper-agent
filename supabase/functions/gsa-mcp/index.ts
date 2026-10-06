@@ -358,6 +358,18 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
     executionContract !== 'NEXT' ||
     (record?.planning_revision === run.planning_revision && Number.isInteger(Number(run.planning_revision)))
   const resultMatches = !terminalResult || record?.result === terminalResult
+  const successLike = ['PASS','PASS_RETEST_REQUIRED','OBSERVED'].includes(record?.result)
+  const successEvidenceValid =
+    !successLike ||
+    (Array.isArray(record?.evidence_refs) && record.evidence_refs.some((ref: any) => typeof ref === 'string' && ref.trim()))
+  const reviewerSuccessValid =
+    role !== 'reviewer' ||
+    !['PASS','PASS_RETEST_REQUIRED'].includes(record?.result) ||
+    !(Array.isArray(record?.findings) && record.findings.some((item: any) => ['CRITICAL','IMPORTANT'].includes(item?.severity)))
+  const testerSuccessValid =
+    role !== 'tester' ||
+    !successLike ||
+    record?.failure_class == null
   const valid =
     executionContract != null &&
     entry.path === expectedPath &&
@@ -371,9 +383,12 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
     record?.target_ref === run.target_ref &&
     record?.target_revision === run.target_revision &&
     nextRevisionMatches &&
-    resultMatches
+    resultMatches &&
+    successEvidenceValid &&
+    reviewerSuccessValid &&
+    testerSuccessValid
   if (!valid) {
-    return { error: 'Run Verification does not match the exact Run/role/planning revision/target/result.', ref: null, sha: null, record: null }
+    return { error: 'Run Verification does not match exact Run/role/planning revision/target/result or required success evidence semantics.', ref: null, sha: null, record: null }
   }
   return { error: null, ref: entry.path, sha: entry.sha, record }
 }
