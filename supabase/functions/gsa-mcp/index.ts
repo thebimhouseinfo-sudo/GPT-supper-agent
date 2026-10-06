@@ -6424,6 +6424,164 @@ app.get('/selftest', (c) => {
     [],
   )
 
+  const p2GoalTask = uuidv7()
+  const p2GoalJob = {
+    ...p1DispatchJob,
+    tasks: [{
+      task_id: p2GoalTask,
+      dependencies: [],
+      required_skills: [],
+      completion_criteria: ['criterion A', 'criterion B'],
+    }],
+    topology: [{ stage: 1, handler: 'coder', task_id: p2GoalTask, depends_on: [], next: null }],
+  }
+  const p2GoalRun = {
+    run_id: uuidv7(),
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2GoalTask,
+    affected_task_refs: [p2GoalTask],
+    role: 'coder',
+    lifecycle: 'IN_PROGRESS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2GoalCompleteCoverage = goalRecheckCoverageError(p2GoalJob, p2GoalRun, [
+    { task_id: p2GoalTask, criterion: 'criterion A', result: 'MET' },
+    { task_id: p2GoalTask, criterion: 'criterion B', result: 'MET' },
+  ])
+  const p2GoalMissingCoverage = goalRecheckCoverageError(p2GoalJob, p2GoalRun, [
+    { task_id: p2GoalTask, criterion: 'criterion A', result: 'MET' },
+  ])
+
+  const p2ReviewerTask = uuidv7()
+  const p2TesterTask = uuidv7()
+  const p2ReviewerRunId = uuidv7()
+  const p2TesterRunId = uuidv7()
+  const p2ClosureJob = {
+    ...p1DispatchJob,
+    tasks: [
+      { task_id: p2ReviewerTask, dependencies: [], completion_criteria: ['review'] },
+      { task_id: p2TesterTask, dependencies: [], completion_criteria: ['test'] },
+    ],
+    topology: [
+      { stage: 1, handler: 'reviewer', task_id: p2ReviewerTask, depends_on: [], next: p2TesterTask },
+      { stage: 2, handler: 'tester', task_id: p2TesterTask, depends_on: [], next: null },
+    ],
+  }
+  const p2ReviewerRun = {
+    run_id: p2ReviewerRunId,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2ReviewerTask,
+    role: 'reviewer',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2TesterRun = {
+    run_id: p2TesterRunId,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2TesterTask,
+    role: 'tester',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2ReviewerRunEntry = {
+    path: recordPath(projectId, 'RUNS', p2ReviewerRunId, 'NEXT'),
+    sha: '8'.repeat(40),
+    record_text: prettyJson(p2ReviewerRun),
+    record: p2ReviewerRun,
+  }
+  const p2TesterRunEntry = {
+    path: recordPath(projectId, 'RUNS', p2TesterRunId, 'NEXT'),
+    sha: '9'.repeat(40),
+    record_text: prettyJson(p2TesterRun),
+    record: p2TesterRun,
+  }
+  const p2ReviewVerificationId = uuidv7()
+  const p2TestVerificationId = uuidv7()
+  const p2ReviewVerification = {
+    verification_id: p2ReviewVerificationId,
+    kind: 'REVIEW',
+    project_id: projectId,
+    job_id: nextJobId,
+    task_id: p2ReviewerTask,
+    run_id: p2ReviewerRunId,
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+    producer: 'reviewer',
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    result: 'PASS',
+  }
+  const p2TestVerification = {
+    verification_id: p2TestVerificationId,
+    kind: 'TEST',
+    project_id: projectId,
+    job_id: nextJobId,
+    task_id: p2TesterTask,
+    run_id: p2TesterRunId,
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+    producer: 'tester',
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    result: 'PASS',
+  }
+  const p2ReviewVerificationEntry = {
+    path: verificationPath(projectId, p2ReviewVerificationId, 'NEXT'),
+    sha: 'a'.repeat(40),
+    record_text: prettyJson(p2ReviewVerification),
+    record: p2ReviewVerification,
+  }
+  const p2TestVerificationEntry = {
+    path: verificationPath(projectId, p2TestVerificationId, 'NEXT'),
+    sha: 'b'.repeat(40),
+    record_text: prettyJson(p2TestVerification),
+    record: p2TestVerification,
+  }
+  const p2ClosureRefs = [
+    p2ReviewerRunEntry.path,
+    p2TesterRunEntry.path,
+    p2ReviewVerificationEntry.path,
+    p2TestVerificationEntry.path,
+  ]
+  const p2ClosureCoveragePass = nextClosureCoverageError(
+    p2ClosureJob,
+    [p2ReviewerRunEntry, p2TesterRunEntry],
+    [p2ReviewVerificationEntry, p2TestVerificationEntry],
+    p2ClosureRefs,
+  )
+  const p2ClosureMissingVerification = nextClosureCoverageError(
+    p2ClosureJob,
+    [p2ReviewerRunEntry, p2TesterRunEntry],
+    [p2ReviewVerificationEntry],
+    p2ClosureRefs,
+  )
+  const p2StaleReviewVerification = validateRunVerificationSnapshot(
+    { ...p2ReviewVerificationEntry, record_text: prettyJson({ ...p2ReviewVerification, target_revision: '6'.repeat(40) }) },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2V2ClosureUnaffected = nextClosureCoverageError(
+    { ...p2ClosureJob, execution_contract: 'V2_STABLE' },
+    [],
+    [],
+    [],
+  ) === null
+
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
     manifest_parse: Boolean(parsed && parsed.project_id === projectId && parsed.lifecycle === 'ACTIVE'),
@@ -6454,6 +6612,12 @@ app.get('/selftest', (c) => {
     p2_ui_coder_required_skill_rejected_when_missing: Boolean(p2UiSkillMissing?.includes('NEXT_DISPATCH_REQUIRED_SKILL_MISSING')),
     p2_ui_coder_required_skill_allowed_when_loaded: p2UiSkillLoaded === null,
     p2_generic_coder_unaffected_by_ui_skill: p2GenericCoderUnaffected === null,
+    p2_goal_recheck_full_criterion_coverage_passes: p2GoalCompleteCoverage === null,
+    p2_goal_recheck_missing_criterion_rejected: Boolean(p2GoalMissingCoverage?.includes('GOAL_RECHECK_COVERAGE_REJECTED')),
+    p2_reviewer_tester_closure_coverage_passes: p2ClosureCoveragePass === null,
+    p2_missing_durable_verification_blocks_closure: Boolean(p2ClosureMissingVerification?.includes('NEXT_CLOSURE_COVERAGE_REJECTED')),
+    p2_stale_review_verification_rejected: Boolean(p2StaleReviewVerification.error),
+    p2_v2_stable_closure_unchanged: p2V2ClosureUnaffected,
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
