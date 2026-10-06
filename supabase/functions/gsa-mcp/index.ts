@@ -6650,8 +6650,9 @@ app.get('/selftest', (c) => {
     cp7_next_no_checkpoint_dispatch_allowed: cp7NoCheckpointGate.allowed && cp7NoCheckpointGate.required_checkpoint_ids.length === 0,
     cp7_ui_coder_frontend_remains_opt_in: Boolean(RUNTIME_SKILLS['ui-coder-frontend']) && !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_ui_coder_frontend_handoff_requires_explicit_load:
+      cp7PlannerSkill.includes('required_skills=[ui-coder-frontend]') &&
       cp7PlannerSkill.includes('handoff must explicitly name ui-coder-frontend') &&
-      cp7PlannerSkill.includes('load that skill before frontend source implementation') &&
+      cp7PlannerSkill.includes('load it before dispatch/frontend source implementation') &&
       Boolean(RUNTIME_SKILLS['ui-coder-frontend']) &&
       !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_product_failure_routes_to_repair_retest:
