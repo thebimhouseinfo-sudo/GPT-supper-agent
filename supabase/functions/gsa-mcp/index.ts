@@ -5040,7 +5040,6 @@ function createServer(req: Request) {
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
-        loaded_skills: z.array(z.string().min(1)).default([]),
       },
       outputSchema: {
         run_id: z.string(),
@@ -5048,6 +5047,11 @@ function createServer(req: Request) {
         memory_path: z.string(),
         run_record_text: z.string(),
         expected_job_sha: z.string().nullable(),
+        required_skill_contexts: z.array(z.object({
+          name: z.string(),
+          description: z.string(),
+          skill_text: z.string(),
+        })),
         next_step: z.string(),
         external_steps: z.array(z.string()),
       },
@@ -5055,7 +5059,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, loaded_skills }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -5083,6 +5087,7 @@ function createServer(req: Request) {
       ) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
       }
+      let resolvedRequiredSkills: any = { names: [], contexts: [], error: null }
       if (executionContract === 'NEXT') {
         const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
         if (completedRuns.error) {
@@ -5091,6 +5096,10 @@ function createServer(req: Request) {
         const dispatchTaskIds = primary_task_id
           ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]
           : []
+        resolvedRequiredSkills = resolveRequiredTaskSkills(owningJob, dispatchTaskIds)
+        if (resolvedRequiredSkills.error) {
+          return { content: [{ type: 'text', text: resolvedRequiredSkills.error }], isError: true }
+        }
         const dispatchError = nextDispatchPreflightError(
           owningJob,
           role,
@@ -5099,7 +5108,6 @@ function createServer(req: Request) {
           job_record_sha ?? null,
           current_job_record_sha ?? null,
           completedRuns.entries,
-          loaded_skills ?? [],
         )
         if (dispatchError) return { content: [{ type: 'text', text: dispatchError }], isError: true }
       }
@@ -5166,7 +5174,7 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         scope_claim,
         input_refs: input_refs ?? [],
-        loaded_skills: executionContract === 'NEXT' ? (loaded_skills ?? []) : [],
+        loaded_skills: executionContract === 'NEXT' ? resolvedRequiredSkills.names : [],
         lifecycle: 'IN_PROGRESS',
         derived_condition: null,
         result: null,
@@ -5183,7 +5191,10 @@ function createServer(req: Request) {
         memory_path: path,
         run_record_text: prettyJson(record),
         expected_job_sha: executionContract === 'NEXT' ? (job_record_sha ?? null) : null,
-        next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
+        required_skill_contexts: executionContract === 'NEXT' ? resolvedRequiredSkills.contexts : [],
+        next_step: (executionContract === 'NEXT' && resolvedRequiredSkills.contexts.length
+          ? 'Required Task skills are already injected in required_skill_contexts. Apply them together with get_agent_harness(role=' + role + ') before execution.'
+          : 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.'),
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
