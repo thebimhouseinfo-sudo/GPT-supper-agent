@@ -324,6 +324,42 @@ function goalRecheckCoverageError(job: any, run: any, criteria: any[]): string |
   return null
 }
 
+function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewer' | 'tester', terminalResult?: string | null) {
+  const parsed = parseDurableSnapshots(snapshot ? [snapshot] : [], 'run_verification_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'missing or invalid durable Run Verification snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const executionContract = resolveExecutionContract(run?.execution_contract)
+  const expectedKind = role === 'reviewer' ? 'REVIEW' : 'TEST'
+  const expectedPath = typeof record?.verification_id === 'string'
+    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE')
+    : ''
+  const nextRevisionMatches =
+    executionContract !== 'NEXT' ||
+    (record?.planning_revision === run.planning_revision && Number.isInteger(Number(run.planning_revision)))
+  const resultMatches = !terminalResult || record?.result === terminalResult
+  const valid =
+    executionContract != null &&
+    entry.path === expectedPath &&
+    record?.kind === expectedKind &&
+    record?.project_id === run.project_id &&
+    record?.job_id === run.job_id &&
+    record?.run_id === run.run_id &&
+    record?.task_id === (run.primary_task_id ?? null) &&
+    record?.producer === role &&
+    resolveExecutionContract(record?.execution_contract) === executionContract &&
+    record?.target_ref === run.target_ref &&
+    record?.target_revision === run.target_revision &&
+    nextRevisionMatches &&
+    resultMatches
+  if (!valid) {
+    return { error: 'Run Verification does not match the exact Run/role/planning revision/target/result.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record }
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
