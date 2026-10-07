@@ -16,6 +16,35 @@ const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gp
 const EXECUTION_CONTRACT_VALUES = ['V2_STABLE', 'NEXT'] as const
 type ExecutionContract = typeof EXECUTION_CONTRACT_VALUES[number]
 const DEFAULT_EXECUTION_CONTRACT: ExecutionContract = 'V2_STABLE'
+
+const NEXT_MEMORY_NAMESPACE_VALUES = ['TEST_LAB', 'PRODUCTION'] as const
+type NextMemoryNamespace = typeof NEXT_MEMORY_NAMESPACE_VALUES[number]
+const DEFAULT_NEXT_MEMORY_NAMESPACE: NextMemoryNamespace = 'TEST_LAB'
+
+const CUTOVER_INVENTORY_IDS = [
+  'P3-C01','P3-C02','P3-C03','P3-C04','P3-C05','P3-C06','P3-C07','P3-C08',
+  'P3-C09','P3-C10','P3-C11','P3-C12','P3-C13','P3-C14','P3-C15','P3-C16',
+] as const
+
+const CUTOVER_INVENTORY = [
+  { id: 'P3-C01', owner: 'runtime path contract', disposition: 'REPLACE', production_target: 'NEXT memory_namespace=PRODUCTION resolves to projects/<project-id>.' },
+  { id: 'P3-C02', owner: 'runtime path contract', disposition: 'REPLACE', production_target: 'Job/Run/Handoff/Attempt paths derive from the Job/Run memory_namespace.' },
+  { id: 'P3-C03', owner: 'runtime verification contract', disposition: 'REPLACE', production_target: 'Verification paths derive from the owning record memory_namespace.' },
+  { id: 'P3-C04', owner: 'checkpoint runtime', disposition: 'REPLACE', production_target: 'Checkpoint claim/attempt paths derive from the owning NEXT Job memory_namespace.' },
+  { id: 'P3-C05', owner: 'Edge Function staging runtime', disposition: 'KEEP' },
+  { id: 'P3-C06', owner: 'OAuth/resource routing', disposition: 'KEEP' },
+  { id: 'P3-C07', owner: 'production runtime', disposition: 'KEEP' },
+  { id: 'P3-C08', owner: 'execution-contract compatibility fence', disposition: 'KEEP' },
+  { id: 'P3-C09', owner: 'Planner / Job creation contract', disposition: 'REPLACE', production_target: 'Production gsa-mcp defaults new Jobs to NEXT after that source is Human-approved and deployed; gsa-mcp-next staging keeps V2_STABLE default unless NEXT is explicit.' },
+  { id: 'P3-C10', owner: 'runtime observability', disposition: 'REPLACE', production_target: 'Status/health report request surface, creation default, NEXT namespace and cutover readiness.' },
+  { id: 'P3-C11', owner: 'regression suite', disposition: 'REPLACE', production_target: 'Selftest covers TEST_LAB and PRODUCTION namespace routing plus unresolved-inventory rejection.' },
+  { id: 'P3-C12', owner: 'repository Test Lab', disposition: 'KEEP' },
+  { id: 'P3-C13', owner: 'Supabase staging runtime ops', disposition: 'KEEP' },
+  { id: 'P3-C14', owner: 'Memory Repo / Project control plane', disposition: 'KEEP' },
+  { id: 'P3-C15', owner: 'compatibility fence / Memory Repo', disposition: 'KEEP' },
+  { id: 'P3-C16', owner: 'correction governance / branch audit', disposition: 'REMOVE', retirement_evidence: 'Excluded alternate-line commit eb26729 is not imported; request-surface activation replaces its unconditional default-NEXT behavior.' },
+] as const
+
 const GSA_SOURCE_BUILD_ID = 'CP0-J-F177-R2'
 
 function resolveExecutionContract(value: unknown): ExecutionContract | null {
@@ -42,12 +71,55 @@ function invalidExecutionContract() {
   }
 }
 
-function edgeFunctionBase(req: Request) {
+function edgeFunctionSlug(req: Request) {
   const url = new URL(req.url)
   const parts = url.pathname.split('/').filter(Boolean)
   const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
-  const slug = candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
-  return `${url.origin}/functions/v1/${slug}`
+  return candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
+}
+
+function runtimeSurface(req: Request) {
+  return edgeFunctionSlug(req) === 'gsa-mcp-next' ? 'STAGING_NEXT' as const : 'PRODUCTION' as const
+}
+
+function jobCreationExecutionContractDefault(req: Request): ExecutionContract {
+  return runtimeSurface(req) === 'PRODUCTION' ? 'NEXT' : 'V2_STABLE'
+}
+
+function nextMemoryNamespaceForRequest(req: Request): NextMemoryNamespace {
+  return runtimeSurface(req) === 'PRODUCTION' ? 'PRODUCTION' : 'TEST_LAB'
+}
+
+function cutoverInventoryError(inventory: readonly any[] = CUTOVER_INVENTORY): string | null {
+  const expected = new Set<string>(CUTOVER_INVENTORY_IDS as readonly string[])
+  const seen = new Set<string>()
+  for (const item of inventory ?? []) {
+    if (!item || typeof item.id !== 'string' || !expected.has(item.id) || seen.has(item.id)) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: inventory ids must exactly match the reviewed P3 set with no duplicates.'
+    }
+    seen.add(item.id)
+    if (typeof item.owner !== 'string' || !item.owner.trim()) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: item ' + item.id + ' has unknown ownership.'
+    }
+    if (!['KEEP','REPLACE','REMOVE'].includes(item.disposition)) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: item ' + item.id + ' has unresolved disposition.'
+    }
+    if (item.disposition === 'REPLACE' && (typeof item.production_target !== 'string' || !item.production_target.trim())) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: REPLACE item ' + item.id + ' has no production target.'
+    }
+    if (item.disposition === 'REMOVE' && (typeof item.retirement_evidence !== 'string' || !item.retirement_evidence.trim())) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: REMOVE item ' + item.id + ' has no retirement evidence.'
+    }
+  }
+  if (seen.size !== expected.size || [...expected].some((id) => !seen.has(id))) {
+    return 'CUTOVER_INVENTORY_UNRESOLVED: one or more reviewed P3 inventory rows are missing.'
+  }
+  return null
+}
+
+function edgeFunctionBase(req: Request) {
+  const url = new URL(req.url)
+  return `${url.origin}/functions/v1/${edgeFunctionSlug(req)}`
 }
 
 function mcpResource(req: Request) {
@@ -138,27 +210,59 @@ function runHandle(runId: string) {
   return 'R-' + runId.replace(/-/g, '').slice(-4).toUpperCase()
 }
 
-function executionMemoryRoot(projectId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionContract === 'NEXT'
-    ? 'projects/' + projectId + '/TEST-LAB/NEXT'
-    : 'projects/' + projectId
+function resolveNextMemoryNamespace(value: unknown, executionContract: ExecutionContract | null = 'NEXT'): NextMemoryNamespace | null {
+  if (executionContract !== 'NEXT') return null
+  if (value == null || value === '') return DEFAULT_NEXT_MEMORY_NAMESPACE
+  return value === 'TEST_LAB' || value === 'PRODUCTION' ? value : null
 }
 
-function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionMemoryRoot(projectId, executionContract) + '/WORK/' + family + '/' + recordId + '.json'
+function recordNextMemoryNamespace(record: any): NextMemoryNamespace | null {
+  const executionContract = resolveExecutionContract(record?.execution_contract)
+  return resolveNextMemoryNamespace(record?.memory_namespace, executionContract)
 }
 
-function verificationPath(projectId: string, verificationId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionMemoryRoot(projectId, executionContract) + '/VERIFICATION/' + verificationId + '.json'
+function executionMemoryRoot(
+  projectId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  if (executionContract !== 'NEXT') return 'projects/' + projectId
+  return nextMemoryNamespace === 'PRODUCTION'
+    ? 'projects/' + projectId
+    : 'projects/' + projectId + '/TEST-LAB/NEXT'
 }
 
-
-function checkpointClaimPath(projectId: string, jobId: string, planningRevision: number, checkpointId: string) {
-  return executionMemoryRoot(projectId, 'NEXT') + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+function recordPath(
+  projectId: string,
+  family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS',
+  recordId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, executionContract, nextMemoryNamespace) + '/WORK/' + family + '/' + recordId + '.json'
 }
 
-function checkpointAttemptPath(projectId: string, attemptId: string) {
-  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT')
+function verificationPath(
+  projectId: string,
+  verificationId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, executionContract, nextMemoryNamespace) + '/VERIFICATION/' + verificationId + '.json'
+}
+
+function checkpointClaimPath(
+  projectId: string,
+  jobId: string,
+  planningRevision: number,
+  checkpointId: string,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, 'NEXT', nextMemoryNamespace) + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+}
+
+function checkpointAttemptPath(projectId: string, attemptId: string, nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE) {
+  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT', nextMemoryNamespace)
 }
 
 function checkpointLeaseExpired(claim: any, nowMs = Date.now()) {
@@ -195,7 +299,9 @@ function validateClaimSnapshots(entries: any[], label: string) {
   for (const entry of entries) {
     const record = entry.record
     if (record?.kind !== 'CHECKPOINT_CLAIM' || record.execution_contract !== 'NEXT') return label + ' contains a non-NEXT checkpoint claim.'
-    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id)) {
+    const memoryNamespace = recordNextMemoryNamespace(record)
+    if (!memoryNamespace) return label + ' contains a NEXT checkpoint claim with invalid memory_namespace.'
+    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id, memoryNamespace)) {
       return label + ' path does not match the deterministic checkpoint claim path.'
     }
   }
@@ -208,7 +314,9 @@ function validateVerificationSnapshots(entries: any[], label: string) {
     if (!['TEST','RETEST'].includes(record?.kind) || record.execution_contract !== 'NEXT' || typeof record.verification_id !== 'string') {
       return label + ' contains a non-NEXT TEST/RETEST Verification.'
     }
-    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT')) {
+    const memoryNamespace = recordNextMemoryNamespace(record)
+    if (!memoryNamespace) return label + ' contains a NEXT Verification with invalid memory_namespace.'
+    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT', memoryNamespace)) {
       return label + ' path does not match the deterministic Verification path.'
     }
   }
@@ -217,10 +325,17 @@ function validateVerificationSnapshots(entries: any[], label: string) {
 
 function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
   const completed = new Set<string>()
+  const jobMemoryNamespace = recordNextMemoryNamespace(job)
+  if (jobExecutionContract(job) === 'NEXT' && !jobMemoryNamespace) {
+    return { completed, error: 'owning NEXT Job has invalid memory_namespace.' }
+  }
   for (const entry of entries) {
     const run = entry.record
+    const runMemoryNamespace = recordNextMemoryNamespace(run)
     if (
       resolveExecutionContract(run?.execution_contract) !== 'NEXT' ||
+      !jobMemoryNamespace ||
+      runMemoryNamespace !== jobMemoryNamespace ||
       run.project_id !== job.project_id ||
       run.job_id !== job.job_id ||
       run.planning_revision !== job.planning_revision ||
@@ -228,8 +343,8 @@ function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
       !['PASS','PASS_RETEST_REQUIRED'].includes(run.result) ||
       typeof run.run_id !== 'string' ||
       typeof run.primary_task_id !== 'string'
-    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision NEXT Task Run.' }
-    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT')) {
+    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision same-namespace NEXT Task Run.' }
+    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT', jobMemoryNamespace)) {
       return { completed, error: 'completed_task_run_snapshots path does not match the NEXT Run path.' }
     }
     const task = (job.tasks ?? []).find((item: any) => item.task_id === run.primary_task_id)
