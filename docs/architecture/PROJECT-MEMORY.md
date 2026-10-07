@@ -44,6 +44,28 @@ projects/<project-id>/
 
 Git directories materialize lazily when files are created; empty placeholder folders are not required.
 
+### NEXT cutover namespaces
+
+NEXT execution has two durable memory namespaces after P3:
+
+```text
+memory_namespace = TEST_LAB
+→ projects/<project-id>/TEST-LAB/NEXT/**
+
+memory_namespace = PRODUCTION
+→ projects/<project-id>/WORK/**
+→ projects/<project-id>/VERIFICATION/**
+```
+
+A NEXT Job owns the namespace for its execution chain. Runs, Handoffs, checkpoint claims/attempts and Verification-family records inherit that namespace and must not cross-link durable evidence from the other namespace.
+
+Compatibility rules:
+- historical records with no `execution_contract` remain `V2_STABLE`;
+- historical NEXT records with no `memory_namespace` remain `TEST_LAB`;
+- therefore the P3 cutover does not move or reinterpret existing lab evidence.
+
+The staging `gsa-mcp-next` request surface continues to create explicit NEXT work in `TEST_LAB`. The production `gsa-mcp` source is prepared to create new NEXT Jobs in `PRODUCTION` only after the later Human-approved production release.
+
 ## 4. PROJECT.md
 
 PROJECT.md is:
