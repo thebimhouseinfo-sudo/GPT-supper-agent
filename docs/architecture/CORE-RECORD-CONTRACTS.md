@@ -56,6 +56,8 @@ Job is a relatively stable planning/control record, not a Run write-back aggrega
 job_id
 handle?
 project_id
+execution_contract?
+memory_namespace?   # NEXT only: TEST_LAB | PRODUCTION
 type
 objective
 scope
@@ -112,6 +114,8 @@ run_id
 handle?
 project_id
 job_id
+execution_contract?
+memory_namespace?   # NEXT only; inherited from owning Job
 primary_task_id?
 affected_task_refs[]
 parent_run_id?
@@ -139,6 +143,8 @@ ended_at?
 handoff_id
 project_id
 job_id
+execution_contract?
+memory_namespace?   # NEXT only; inherited from source Run
 source_run_id
 next_role
 primary_task_id?
@@ -446,6 +452,28 @@ When the Job topology contains Reviewer or Tester Tasks, NEXT Job completion req
 
 Frontend/UI Coder Tasks declare `required_skills = [ui-coder-frontend]`. NEXT `run_begin` derives those requirements from the Task, resolves them against the runtime skill catalog, injects the full required skill context in the dispatch result, and records the derived `loaded_skills[]` in the Run. Callers cannot self-declare activation. Non-UI Coder Tasks keep `required_skills=[]` and receive no injected UI specialization.
 
+### P3 NEXT cutover namespace
+
+NEXT records use a first-class `memory_namespace`:
+
+```text
+TEST_LAB
+→ projects/<project-id>/TEST-LAB/NEXT/**
+
+PRODUCTION
+→ projects/<project-id>/{WORK,VERIFICATION}/**
+```
+
+The owning NEXT Job chooses the namespace. Run, Handoff, Goal Recheck, REVIEW/TEST/RETEST, checkpoint claim/attempt and EvidenceBundle attestation records inherit it. Durable snapshot validation rejects cross-namespace evidence.
+
+Compatibility is asymmetric by design:
+- missing `execution_contract` continues to resolve to `V2_STABLE`;
+- missing `memory_namespace` on a NEXT record resolves to `TEST_LAB`, preserving all pre-P3 staging evidence;
+- V2_STABLE records do not interpret `memory_namespace`.
+
+New-Job activation is request-surface-bound rather than a global decoder default. `gsa-mcp-next` remains staging and does not silently create NEXT Jobs. The production `gsa-mcp` source is prepared to default new Jobs to NEXT only after that exact source is later Human-approved and deployed. This does not reinterpret historical records.
+
+P3 cutover readiness is fail-closed against the reviewed P3-C01..P3-C16 inventory. Every row must exist exactly once with an owner and KEEP/REPLACE/REMOVE disposition; REPLACE requires a production target and REMOVE requires retirement evidence.
 
 ### CP6 durable EvidenceBundle applicability
 
