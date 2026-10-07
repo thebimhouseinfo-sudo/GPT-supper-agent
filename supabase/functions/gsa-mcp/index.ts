@@ -221,6 +221,13 @@ function recordNextMemoryNamespace(record: any): NextMemoryNamespace | null {
   return resolveNextMemoryNamespace(record?.memory_namespace, executionContract)
 }
 
+function sameNextMemoryNamespace(a: any, b: any) {
+  const aContract = resolveExecutionContract(a?.execution_contract)
+  const bContract = resolveExecutionContract(b?.execution_contract)
+  if (aContract !== 'NEXT' || bContract !== 'NEXT') return aContract === bContract
+  return recordNextMemoryNamespace(a) === recordNextMemoryNamespace(b)
+}
+
 function executionMemoryRoot(
   projectId: string,
   executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
@@ -465,9 +472,10 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
   const entry = parsed.entries[0]
   const record = entry.record
   const executionContract = resolveExecutionContract(run?.execution_contract)
+  const runMemoryNamespace = recordNextMemoryNamespace(run)
   const expectedKind = role === 'reviewer' ? 'REVIEW' : 'TEST'
   const expectedPath = typeof record?.verification_id === 'string'
-    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE')
+    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE', runMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
     : ''
   const nextRevisionMatches =
     executionContract !== 'NEXT' ||
@@ -495,6 +503,7 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
     record?.task_id === (run.primary_task_id ?? null) &&
     record?.producer === role &&
     resolveExecutionContract(record?.execution_contract) === executionContract &&
+    (executionContract !== 'NEXT' || (runMemoryNamespace != null && recordNextMemoryNamespace(record) === runMemoryNamespace)) &&
     record?.target_ref === run.target_ref &&
     record?.target_revision === run.target_revision &&
     nextRevisionMatches &&
@@ -3763,7 +3772,7 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
-        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
+        execution_contract: z.enum(['V2_STABLE','NEXT']).default(jobCreationExecutionContractDefault(req)),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -3857,6 +3866,11 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = executionContract === 'NEXT' ? nextMemoryNamespaceForRequest(req) : null
+      if (executionContract === 'NEXT' && nextMemoryNamespace === 'PRODUCTION') {
+        const cutoverError = cutoverInventoryError()
+        if (cutoverError) return { content: [{ type: 'text', text: cutoverError }], isError: true }
+      }
       const jobId = uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -3889,6 +3903,7 @@ function createServer(req: Request) {
         scope,
         non_goals,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         planning_context: {
           work_context,
           phase,
@@ -3939,7 +3954,7 @@ function createServer(req: Request) {
         created_at: now,
         updated_at: now,
       }
-      const path = recordPath(project_id, 'JOBS', jobId, executionContract)
+      const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
         'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
@@ -4002,6 +4017,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_JOB_NAMESPACE_INVALID: current Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -4075,7 +4094,7 @@ function createServer(req: Request) {
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
         'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
@@ -4184,6 +4203,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_JOB_NAMESPACE_INVALID: current Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -4280,7 +4303,7 @@ function createServer(req: Request) {
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const out = {
         memory_path: memoryPath,
         expected_job_sha: job_record_sha,
@@ -4344,6 +4367,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       const reviewableLifecycle = current.lifecycle === 'DRAFT' || (executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS')
       if (current.job_id !== job_id || current.project_id !== project_id || !reviewableLifecycle || current.planning_revision !== planning_revision) {
         return { content: [{ type: 'text', text: 'Planning review target does not match the current reviewable planning revision.' }], isError: true }
@@ -4376,7 +4403,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const verificationMemoryPath = verificationPath(project_id, verificationId, executionContract)
+      const verificationMemoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'PLANNING_REVIEW',
@@ -4385,6 +4412,7 @@ function createServer(req: Request) {
         planning_revision,
         producer: 'reviewer',
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         result,
         findings: findings ?? [],
         limitations: limitations ?? [],
@@ -4402,7 +4430,7 @@ function createServer(req: Request) {
         },
         updated_at: new Date().toISOString(),
       }
-      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
       const steps = [
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
