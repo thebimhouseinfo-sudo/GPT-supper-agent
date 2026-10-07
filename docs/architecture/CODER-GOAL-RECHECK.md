@@ -54,6 +54,9 @@ implement
 
 PR-ready/handoff should not claim success while applicable criteria remain NOT_MET.
 
+For NEXT, coverage is exact rather than prose-equivalent: every criterion entry carries its owning `task_id`, and the set of `task_id + criterion` pairs must equal the approved `completion_criteria[]` of every Task bound to the current Coder Run. Missing, duplicate, extra, stale-revision, or wrong-target criteria reject Goal Recheck persistence/closure. The current Job snapshot and exact blob SHA are reread before the Verification is treated as durable.
+
+
 PARTIAL requires explicit routing/acceptance decision.
 
 UNVERIFIED may remain only when capability/evidence limitation is explicit and topology allows it.

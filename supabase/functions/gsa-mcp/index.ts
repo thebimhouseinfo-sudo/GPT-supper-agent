@@ -274,6 +274,160 @@ function nextDispatchPreflightError(
   return null
 }
 
+function resolveRequiredTaskSkills(job: any, taskIds: string[]) {
+  const names = [...new Set(
+    [...new Set(taskIds.filter(Boolean))]
+      .flatMap((taskId: string) => {
+        const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+        return task?.required_skills ?? []
+      })
+      .filter((name: any) => typeof name === 'string' && name)
+  )]
+  const contexts: any[] = []
+  for (const name of names) {
+    const skill = RUNTIME_SKILLS[name]
+    if (!skill) {
+      return {
+        names: [],
+        contexts: [],
+        error: 'NEXT_DISPATCH_REQUIRED_SKILL_UNKNOWN: required Task skill is not present in the runtime skill catalog: ' + name + '.',
+      }
+    }
+    contexts.push({ name, description: skill.description, skill_text: skill.body })
+  }
+  return { names, contexts, error: null as string | null }
+}
+
+function goalRecheckCoverageError(job: any, run: any, criteria: any[]): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  if (
+    job.project_id !== run.project_id ||
+    job.job_id !== run.job_id ||
+    job.planning_revision !== run.planning_revision
+  ) return 'GOAL_RECHECK_COVERAGE_REJECTED: Job/Run current planning revision mismatch.'
+
+  const taskIds = [...new Set(
+    [run.primary_task_id, ...(run.affected_task_refs ?? [])]
+      .filter((id: any) => typeof id === 'string' && id)
+  )]
+  if (!taskIds.length) return 'GOAL_RECHECK_COVERAGE_REJECTED: NEXT Coder Run has no bound Task scope.'
+
+  const expected = new Set<string>()
+  for (const taskId of taskIds) {
+    const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
+    const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
+    if (!task || !stage || stage.handler !== 'coder') {
+      return 'GOAL_RECHECK_COVERAGE_REJECTED: Run Task scope is not current Coder-owned topology.'
+    }
+    for (const criterion of task.completion_criteria ?? []) {
+      expected.add(taskId + '\u0000' + String(criterion))
+    }
+  }
+
+  const provided = new Set<string>()
+  for (const item of criteria ?? []) {
+    if (typeof item?.task_id !== 'string' || !item.task_id) {
+      return 'GOAL_RECHECK_COVERAGE_REJECTED: every NEXT criterion requires task_id.'
+    }
+    const key = item.task_id + '\u0000' + String(item.criterion ?? '')
+    if (provided.has(key)) return 'GOAL_RECHECK_COVERAGE_REJECTED: duplicate Task criterion.'
+    provided.add(key)
+  }
+
+  const missing = [...expected].filter((key) => !provided.has(key))
+  const extra = [...provided].filter((key) => !expected.has(key))
+  if (missing.length || extra.length) {
+    return 'GOAL_RECHECK_COVERAGE_REJECTED: criteria must exactly cover every approved Task completion criterion in the Run scope.'
+  }
+  return null
+}
+
+function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewer' | 'tester', terminalResult?: string | null) {
+  const parsed = parseDurableSnapshots(snapshot ? [snapshot] : [], 'run_verification_snapshot')
+  if (parsed.error || parsed.entries.length !== 1) {
+    return { error: 'missing or invalid durable Run Verification snapshot.', ref: null, sha: null, record: null }
+  }
+  const entry = parsed.entries[0]
+  const record = entry.record
+  const executionContract = resolveExecutionContract(run?.execution_contract)
+  const expectedKind = role === 'reviewer' ? 'REVIEW' : 'TEST'
+  const expectedPath = typeof record?.verification_id === 'string'
+    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE')
+    : ''
+  const nextRevisionMatches =
+    executionContract !== 'NEXT' ||
+    (record?.planning_revision === run.planning_revision && Number.isInteger(Number(run.planning_revision)))
+  const resultMatches = !terminalResult || record?.result === terminalResult
+  const successLike = ['PASS','PASS_RETEST_REQUIRED','OBSERVED'].includes(record?.result)
+  const successEvidenceValid =
+    !successLike ||
+    (Array.isArray(record?.evidence_refs) && record.evidence_refs.some((ref: any) => typeof ref === 'string' && ref.trim()))
+  const reviewerSuccessValid =
+    role !== 'reviewer' ||
+    !['PASS','PASS_RETEST_REQUIRED'].includes(record?.result) ||
+    !(Array.isArray(record?.findings) && record.findings.some((item: any) => ['CRITICAL','IMPORTANT'].includes(item?.severity)))
+  const testerSuccessValid =
+    role !== 'tester' ||
+    !successLike ||
+    record?.failure_class == null
+  const valid =
+    executionContract != null &&
+    entry.path === expectedPath &&
+    record?.kind === expectedKind &&
+    record?.project_id === run.project_id &&
+    record?.job_id === run.job_id &&
+    record?.run_id === run.run_id &&
+    record?.task_id === (run.primary_task_id ?? null) &&
+    record?.producer === role &&
+    resolveExecutionContract(record?.execution_contract) === executionContract &&
+    record?.target_ref === run.target_ref &&
+    record?.target_revision === run.target_revision &&
+    nextRevisionMatches &&
+    resultMatches &&
+    successEvidenceValid &&
+    reviewerSuccessValid &&
+    testerSuccessValid
+  if (!valid) {
+    return { error: 'Run Verification does not match exact Run/role/planning revision/target/result or required success evidence semantics.', ref: null, sha: null, record: null }
+  }
+  return { error: null, ref: entry.path, sha: entry.sha, record }
+}
+
+function nextClosureCoverageError(job: any, runEntries: any[], verificationEntries: any[], completionEvidenceRefs: string[]): string | null {
+  if (jobExecutionContract(job) !== 'NEXT') return null
+  const completedState = validateCompletedTaskRunSnapshots(job, runEntries)
+  if (completedState.error) return 'NEXT_CLOSURE_COVERAGE_REJECTED: ' + completedState.error
+
+  const requiredStages = (job.topology ?? []).filter((stage: any) => ['reviewer','tester'].includes(stage.handler))
+  for (const stage of requiredStages) {
+    const runMatches = runEntries.filter((entry: any) =>
+      entry.record?.primary_task_id === stage.task_id &&
+      entry.record?.role === stage.handler
+    )
+    if (runMatches.length !== 1) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: each Reviewer/Tester Task requires exactly one selected successful current-revision Run snapshot.'
+    }
+    const runEntry = runMatches[0]
+    const run = runEntry.record
+    const verificationMatches = verificationEntries.filter((entry: any) => entry.record?.run_id === run.run_id)
+    if (verificationMatches.length !== 1) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: each selected Reviewer/Tester Run requires exactly one durable matching Verification snapshot.'
+    }
+    const verificationEntry = verificationMatches[0]
+    const verified = validateRunVerificationSnapshot(
+      { path: verificationEntry.path, sha: verificationEntry.sha, record_text: verificationEntry.record_text },
+      run,
+      stage.handler,
+      run.result,
+    )
+    if (verified.error) return 'NEXT_CLOSURE_COVERAGE_REJECTED: ' + verified.error
+    if (!(completionEvidenceRefs ?? []).includes(runEntry.path) || !(completionEvidenceRefs ?? []).includes(verificationEntry.path)) {
+      return 'NEXT_CLOSURE_COVERAGE_REJECTED: selected closure Run and Verification paths must be present in completion_evidence_refs.'
+    }
+  }
+  return null
+}
+
 function durableSnapshotReadbackSteps(snapshots: any[], label: string) {
   return (snapshots ?? []).map((snapshot: any) =>
     'Read back ' + label + ' at ' + snapshot.path + ' and require blob SHA=' + snapshot.sha + ' plus byte-identical record_text before the consequential persistence step.'
@@ -969,7 +1123,8 @@ const BASE_AGENT_HARNESS = [
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
-  '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
+  '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, required Task skills, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
+  '- NEXT success closure requires exact current-revision Goal Recheck / REVIEW / TEST Verification snapshots; bare refs or stale target evidence never satisfy closure.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
   '- Agent-authored text never counts as human approval for a Human Gate, merge, release or material governance decision.',
   '- Browser QA tools are internal GPT capabilities, not user-facing commands. Use them only for bounded UI observation and non-destructive application testing.',
@@ -1019,7 +1174,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'FRAME: define objective, scope, non-goals and material assumptions.',
       'DECOMPOSE TOP-DOWN: Objective → Phase → Task → Job Pack → Milestone. Phase and Job Pack are planning concepts expressed with existing Job/Task topology; do not create new persistent entity types by default.',
       'SIZE JOB: choose SMALL/MEDIUM/LARGE and prove the Job is one meaningful objective with one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
-      'GATE: place required review/test/human checkpoints and capability requirements. For NEXT planning, unknown runtime facts must become first-class EvidenceNeed/UnknownRuntimeFact records linked to sparse TestCheckpointSpec and downstream EvidenceRequirement; never guess the value in prose.',
+      'GATE: place required review/test/human checkpoints and capability requirements. For NEXT planning, unknown runtime facts must become first-class EvidenceNeed/UnknownRuntimeFact records linked to sparse TestCheckpointSpec and downstream EvidenceRequirement; frontend/UI Coder Tasks must declare required_skills=[ui-coder-frontend] while non-UI Coder Tasks keep no specialization requirement.',
       'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, cross-repo impact/precedence has been assessed, and every accepted correction/migration requirement has durable owner/surface/evidence/disposition traceability.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
       'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
@@ -1062,7 +1217,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'VERIFY: run available repository-specific objective checks when capability is OBSERVED.',
       'SELF-REVIEW CLOSURE: re-read the original Job objective and active Task criteria, inspect the actual diff and affected relationships, and identify ordinary correctness/coverage findings before handoff.',
       'REPAIR: fix ordinary within-scope findings autonomously, then repeat INSPECT → VERIFY. Material scope/contract/authority changes route instead of being invented away; downstream work is recorded without drifting into another Job.',
-      'GOAL RECHECK: only after repair, map every completion criterion to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NOT_MET or unresolved scope drift cannot complete successfully.',
+      'GOAL RECHECK: only after repair, map every approved completion criterion in the current Run Task scope, with its exact task_id, to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NEXT Goal Recheck must consume the current Job snapshot; missing/extra criteria are rejected.',
       'HANDOFF/COMPLETE: persist Goal Recheck/evidence and any required Handoff first; terminal Run update is last and must validate the Goal Recheck for this exact Run.',
     ],
     outputs: ['source diff', 'Goal Recheck', 'evidence', 'handoff when another role is required'],
@@ -1083,6 +1238,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
+      'PERSIST: for an attributed Reviewer Run, call run_verification_record and persist/read back the exact REVIEW Verification before any successful run_complete.',
       'ROUTE: send findings back to owning work without modifying source.',
     ],
     outputs: ['review Verification record', 'findings', 'revision-bound result'],
@@ -1125,7 +1281,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'EXECUTE: run practical verification only for evidence-backed OBSERVED capability; otherwise create precise Retest steps.',
       'ANALYZE: VERIFY compares against explicit requirements; MEASURE records values without invented thresholds; PROBE records empirical facts/limitations.',
       'CLASSIFY: route evidence as PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP or PLAN_GAP before proposing next action.',
-      'REPORT: for NEXT checkpoint execution, use checkpoint_verification_prepare to create append-preserving TEST/RETEST evidence and the terminal claim update. Evidence is applicable only after claim read-back points to the same verification/attempt/lease token.',
+      'REPORT: for NEXT checkpoint execution, use checkpoint_verification_prepare to create append-preserving TEST/RETEST evidence and the terminal claim update. For a non-checkpoint attributed Tester Run, call run_verification_record and persist/read back the exact TEST Verification before successful run_complete. Evidence is revision/target-bound.',
       'RETEST: bind evidence to the exact target revision/state; relevant changes invalidate prior coverage. PRODUCT_FAILURE Retest requires a repaired target revision plus its exact Coder Goal Recheck; blocked environment/test conditions may Retest only when ready.',
       'ROUTE: PRODUCT_FAILURE → owning implementation repair → Goal Recheck → RETEST. SPEC_GAP/PLAN_GAP → Planner superseding revision + Reviewer. Other blockers remain non-PASS and Retest when ready.',
       'GATE: PASS_RETEST_REQUIRED is non-blocking coverage only; it never satisfies a mandatory EvidenceRequirement/checkpoint prerequisite.',
@@ -1177,7 +1333,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '8. For product/UI work classify the Project workflow as UI_FIRST or UX_FIRST before topology is finalized.',
       '9. UI_FIRST: first read/define the UX execution contract for the affected surface, then derive UI requirements from it. If a sufficiently detailed shell/UI contract does not exist, schedule Designer BEFORE UI implementation. The shell must be designed to host the known execution states/content so later content can be assembled without recurring structural redesign.',
       '10. UX_FIRST: plan product/interaction behavior first, define the minimum TEMPORARY_UI needed to execute/test the UX, and present any material user-visible interaction choices to Human for explicit approval before implementation. Temporary UI should reuse the current shell/components, remain explicitly provisional, and still respect approved command/menu/navigation/action structure. Collect every durable UI need exposed by the work; do not trigger a full visual redesign for each Job—accumulate them until Planner forms a larger UI Update Pack.',
-      '10A. When the implementation Task is classified as frontend / UI Coder work, the Coder handoff must explicitly name ui-coder-frontend and require the receiving Coder to load that skill before frontend source implementation. Do not add it to default Coder skills.',
+      '10A. When the implementation Task is classified as frontend / UI Coder work, persist required_skills=[ui-coder-frontend] on that Task and explicitly name ui-coder-frontend in the handoff. NEXT run_begin resolves and injects the full required skill context at dispatch; callers do not self-declare loaded skills. Do not add it to default Coder skills.',
       '11. Decompose top-down: Objective → Phase → Task → Job Pack → Milestone. Phase/Job Pack/Milestone are planning concepts expressed through existing Jobs/Tasks/topology unless evidence later requires schema promotion.',
       '12. Size the executable Job as SMALL/MEDIUM/LARGE. A Job Pack must have one meaningful objective, one bounded causal chain, manageable context, clear verification and an independently meaningful completion state. Job boundary = context boundary.',
       '13. Break work into Tasks that each have an observable completion criterion. Add dependencies only when one Task genuinely needs another Task output.',
@@ -1218,7 +1374,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Record downstream follow-up without drifting into another Job.',
       '',
       'GOAL RECHECK',
-      '- Evaluate every Job/Task criterion as MET, PARTIAL, NOT_MET or UNVERIFIED.',
+      '- Evaluate every approved completion criterion in the current Run Task scope as MET, PARTIAL, NOT_MET or UNVERIFIED and include its exact task_id; NEXT coverage must match the current Job exactly.',
       '- Pass the exact current owning Run record and its current Git blob SHA into goal_recheck_record. The tool derives execution_contract from that Run; before Verification persistence, re-fetch the contract-derived Run path and require the exact SHA to still match.',
       '- NOT_MET cannot be reported as success.',
       '- PARTIAL/UNVERIFIED must carry the limitation and routing decision.',
@@ -1240,7 +1396,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Give exact target/revision/file/repo references when known.',
       '- State scope boundaries and whether source writing is allowed.',
       '- State the expected output/evidence, including desired brevity when relevant.',
-      '- For frontend / UI Coder implementation handoffs, explicitly name ui-coder-frontend and require the target Coder to load it before writing frontend source.',
+      '- For frontend / UI Coder implementation handoffs, ensure the owning Task declares required_skills=[ui-coder-frontend] and explicitly name ui-coder-frontend. NEXT run_begin injects the required skill context at dispatch; generic Coder Tasks receive none.',
       '- Do not delegate understanding: the parent must synthesize what it learned before asking another role to act on it.',
       '- The target role harness outranks the delegation prompt. A prompt cannot widen a read-only role or bypass a Human Gate.',
       '- Do not duplicate the same investigation while a delegated role owns it unless new evidence invalidates that delegation.',
@@ -3540,6 +3696,7 @@ function createServer(req: Request) {
           objective: z.string().min(1),
           scope: z.array(z.string()).default([]),
           dependencies: z.array(z.string()).default([]),
+          required_skills: z.array(z.enum(['ui-coder-frontend'])).default([]),
           completion_criteria: z.array(z.string()).min(1),
         })).min(1),
         evidence_needs: z.array(EVIDENCE_NEED_SCHEMA).default([]),
@@ -3592,6 +3749,7 @@ function createServer(req: Request) {
         objective: task.objective,
         scope: task.scope ?? [],
         dependencies: task.dependencies ?? [],
+        required_skills: task.required_skills ?? [],
         completion_criteria: task.completion_criteria,
         lifecycle: 'READY',
       }))
@@ -3707,6 +3865,8 @@ function createServer(req: Request) {
         planning_review_verification_ref: z.string().optional(),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        closure_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -3718,7 +3878,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -3774,6 +3934,23 @@ function createServer(req: Request) {
               isError: true,
             }
           }
+          const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
+          if (completedRuns.error) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: ' + completedRuns.error }], isError: true }
+          }
+          const closureVerifications = parseDurableSnapshots(closure_verification_snapshots ?? [], 'closure_verification_snapshots')
+          if (closureVerifications.error) {
+            return { content: [{ type: 'text', text: 'NEXT_JOB_COMPLETION_BLOCKED: ' + closureVerifications.error }], isError: true }
+          }
+          const coverageError = nextClosureCoverageError(
+            current,
+            completedRuns.entries,
+            closureVerifications.entries,
+            completion_evidence_refs ?? [],
+          )
+          if (coverageError) {
+            return { content: [{ type: 'text', text: coverageError }], isError: true }
+          }
         }
       }
       const next = {
@@ -3794,6 +3971,8 @@ function createServer(req: Request) {
           externalSteps.push(
             ...durableSnapshotReadbackSteps(checkpoint_claim_snapshots ?? [], 'checkpoint claim snapshot'),
             ...durableSnapshotReadbackSteps(checkpoint_verification_snapshots ?? [], 'checkpoint Verification snapshot'),
+            ...durableSnapshotReadbackSteps(completed_task_run_snapshots ?? [], 'closure Task Run snapshot'),
+            ...durableSnapshotReadbackSteps(closure_verification_snapshots ?? [], 'closure REVIEW/TEST Verification snapshot'),
           )
         }
       }
@@ -4883,6 +5062,11 @@ function createServer(req: Request) {
         memory_path: z.string(),
         run_record_text: z.string(),
         expected_job_sha: z.string().nullable(),
+        required_skill_contexts: z.array(z.object({
+          name: z.string(),
+          description: z.string(),
+          skill_text: z.string(),
+        })),
         next_step: z.string(),
         external_steps: z.array(z.string()),
       },
@@ -4918,6 +5102,7 @@ function createServer(req: Request) {
       ) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_REVIEW_PENDING: current NEXT planning revision is not Reviewer PASS; dispatch is blocked.' }], isError: true }
       }
+      let resolvedRequiredSkills: any = { names: [], contexts: [], error: null }
       if (executionContract === 'NEXT') {
         const completedRuns = parseDurableSnapshots(completed_task_run_snapshots ?? [], 'completed_task_run_snapshots')
         if (completedRuns.error) {
@@ -4926,6 +5111,10 @@ function createServer(req: Request) {
         const dispatchTaskIds = primary_task_id
           ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]
           : []
+        resolvedRequiredSkills = resolveRequiredTaskSkills(owningJob, dispatchTaskIds)
+        if (resolvedRequiredSkills.error) {
+          return { content: [{ type: 'text', text: resolvedRequiredSkills.error }], isError: true }
+        }
         const dispatchError = nextDispatchPreflightError(
           owningJob,
           role,
@@ -5000,6 +5189,7 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         scope_claim,
         input_refs: input_refs ?? [],
+        loaded_skills: executionContract === 'NEXT' ? resolvedRequiredSkills.names : [],
         lifecycle: 'IN_PROGRESS',
         derived_condition: null,
         result: null,
@@ -5016,7 +5206,10 @@ function createServer(req: Request) {
         memory_path: path,
         run_record_text: prettyJson(record),
         expected_job_sha: executionContract === 'NEXT' ? (job_record_sha ?? null) : null,
-        next_step: 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.',
+        required_skill_contexts: executionContract === 'NEXT' ? resolvedRequiredSkills.contexts : [],
+        next_step: (executionContract === 'NEXT' && resolvedRequiredSkills.contexts.length
+          ? 'Required Task skills are already injected in required_skill_contexts. Apply them together with get_agent_harness(role=' + role + ') before execution.'
+          : 'Load get_agent_harness(role=' + role + ') and execute its loop with minimum sufficient context.'),
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
@@ -5128,10 +5321,13 @@ function createServer(req: Request) {
         run_id: z.string().uuid(),
         run_record_text: z.string().min(2),
         run_record_sha: z.string().min(7),
+        job_record_text: z.string().min(2).optional(),
+        job_record_sha: z.string().min(7).optional(),
         task_id: z.string().uuid().optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
         criteria: z.array(z.object({
+          task_id: z.string().uuid().optional(),
           criterion: z.string().min(1),
           result: z.enum(['MET','PARTIAL','NOT_MET','UNVERIFIED']),
           evidence: z.array(z.string()).default([]),
@@ -5145,6 +5341,8 @@ function createServer(req: Request) {
         memory_path: z.string(),
         owning_run_memory_path: z.string(),
         expected_run_sha: z.string(),
+        owning_job_memory_path: z.string().nullable(),
+        expected_job_sha: z.string().nullable(),
         verification_record_text: z.string(),
         ready_for_success_handoff: z.boolean(),
         blocking_reasons: z.array(z.string()),
@@ -5154,7 +5352,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, job_id, run_id, run_record_text, run_record_sha, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
+    async ({ project_id, job_id, run_id, run_record_text, run_record_sha, job_record_text, job_record_sha, task_id, target_ref, target_revision, criteria, scope_drift, limitations }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to persist Goal Recheck.')
       let owningRun: any
@@ -5166,6 +5364,20 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(owningRun.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      if (executionContract === 'NEXT' && (!owningRun.target_revision || owningRun.target_revision !== target_revision || owningRun.target_ref !== target_ref)) {
+        return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: NEXT Goal Recheck must bind the exact Run target ref/revision.' }], isError: true }
+      }
+      let owningJob: any = null
+      if (executionContract === 'NEXT') {
+        if (!job_record_text || !job_record_sha) {
+          return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: NEXT Goal Recheck requires the exact current Job snapshot and blob SHA.' }], isError: true }
+        }
+        try { owningJob = JSON.parse(job_record_text) } catch {
+          return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: invalid owning Job JSON.' }], isError: true }
+        }
+        const coverageError = goalRecheckCoverageError(owningJob, owningRun, criteria ?? [])
+        if (coverageError) return { content: [{ type: 'text', text: coverageError }], isError: true }
+      }
       const verificationId = uuidv7()
       const blocking = criteria
         .filter((c: any) => c.result === 'NOT_MET')
@@ -5182,6 +5394,7 @@ function createServer(req: Request) {
         target_revision,
         producer: 'coder',
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { planning_revision: owningRun.planning_revision } : {}),
         result: blocking.length ? 'CHANGES_REQUIRED' : (criteria.some((c: any) => c.result === 'PARTIAL' || c.result === 'UNVERIFIED') ? 'PASS_RETEST_REQUIRED' : 'PASS'),
         limitations: limitations ?? [],
         evidence_refs: criteria.flatMap((c: any) => c.evidence ?? []),
@@ -5191,11 +5404,14 @@ function createServer(req: Request) {
       }
       const path = verificationPath(project_id, verificationId, executionContract)
       const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const owningJobPath = executionContract === 'NEXT' ? recordPath(project_id, 'JOBS', job_id, executionContract) : null
       const result = {
         verification_id: verificationId,
         memory_path: path,
         owning_run_memory_path: owningRunPath,
         expected_run_sha: run_record_sha,
+        owning_job_memory_path: owningJobPath,
+        expected_job_sha: executionContract === 'NEXT' ? job_record_sha : null,
         verification_record_text: prettyJson(record),
         ready_for_success_handoff: blocking.length === 0,
         blocking_reasons: blocking,
@@ -5203,12 +5419,136 @@ function createServer(req: Request) {
           'Fetch the current owning Run at owning_run_memory_path immediately before Verification persistence.',
           'Require the fetched Run blob SHA to equal expected_run_sha exactly. Missing path or stale SHA blocks Goal Recheck persistence.',
           'Re-parse the fetched Run and require project_id/job_id/run_id, role=coder, lifecycle=IN_PROGRESS and resolved execution_contract to still match the supplied owning Run snapshot.',
+          ...(executionContract === 'NEXT'
+            ? [
+                'Fetch the current owning Job at owning_job_memory_path immediately before Verification persistence.',
+                'Require the fetched Job blob SHA to equal expected_job_sha exactly and planning_revision to remain ' + String(owningRun.planning_revision) + '.',
+              ]
+            : []),
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'Persist this Verification record only after the owning Run read-back guard passes.',
           blocking.length ? 'Continue the Coder loop; do not claim success while blocking_reasons remain.' : 'If topology permits, proceed to required review/test/handoff or terminal Run completion.',
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'run_verification_record',
+    {
+      title: 'Prepare exact Reviewer/Tester Run Verification',
+      description: 'Create an append-preserving REVIEW or TEST Verification bound to the exact current Reviewer/Tester Run and target revision. NEXT success closure must consume this durable record.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        job_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+        run_record_text: z.string().min(2),
+        run_record_sha: z.string().min(7),
+        result: z.enum(['PASS','PASS_RETEST_REQUIRED','CHANGES_REQUIRED','BLOCKED','HUMAN_REVIEW_REQUIRED','FAIL','OBSERVED','UNVERIFIED']),
+        findings: z.array(z.object({
+          severity: z.enum(['CRITICAL','IMPORTANT','MINOR']),
+          finding: z.string().min(1),
+          evidence: z.array(z.string()).default([]),
+          required_change: z.string().optional(),
+        })).default([]),
+        coverage_summary: z.string().optional(),
+        failure_class: z.enum(['PRODUCT_FAILURE','TEST_FAILURE','ENVIRONMENT_FAILURE','NOT_READY','INTEGRATION_NOT_READY','SPEC_GAP','PLAN_GAP']).optional(),
+        evidence_refs: z.array(z.string()).default([]),
+        limitations: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        verification_id: z.string(),
+        memory_path: z.string(),
+        owning_run_memory_path: z.string(),
+        expected_run_sha: z.string(),
+        verification_record_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, job_id, run_id, run_record_text, run_record_sha, result, findings, coverage_summary, failure_class, evidence_refs, limitations }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare Run Verification.')
+      let run: any
+      try { run = JSON.parse(run_record_text) } catch {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: invalid Run JSON.' }], isError: true }
+      }
+      if (
+        run.project_id !== project_id ||
+        run.job_id !== job_id ||
+        run.run_id !== run_id ||
+        run.lifecycle !== 'IN_PROGRESS' ||
+        !['reviewer','tester'].includes(run.role)
+      ) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: Verification must bind the exact current IN_PROGRESS Reviewer/Tester Run.' }], isError: true }
+      }
+      const executionContract = resolveExecutionContract(run.execution_contract)
+      if (!executionContract) return invalidExecutionContract()
+      if (executionContract === 'NEXT' && (!run.target_ref || !run.target_revision || !Number.isInteger(Number(run.planning_revision)))) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: NEXT Verification requires exact target ref/revision and current planning revision.' }], isError: true }
+      }
+
+      const reviewerResults = new Set(['PASS','PASS_RETEST_REQUIRED','CHANGES_REQUIRED','BLOCKED','HUMAN_REVIEW_REQUIRED'])
+      const testerResults = new Set(['PASS','PASS_RETEST_REQUIRED','FAIL','BLOCKED','OBSERVED','UNVERIFIED'])
+      const allowed = run.role === 'reviewer' ? reviewerResults.has(result) : testerResults.has(result)
+      if (!allowed) return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: result is not valid for role=' + run.role + '.' }], isError: true }
+
+      const successLike = ['PASS','PASS_RETEST_REQUIRED','OBSERVED'].includes(result)
+      if (successLike && !(evidence_refs ?? []).length) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: successful/observed Verification requires evidence_refs.' }], isError: true }
+      }
+      if (run.role === 'reviewer' && ['PASS','PASS_RETEST_REQUIRED'].includes(result) && (findings ?? []).some((item: any) => ['CRITICAL','IMPORTANT'].includes(item.severity))) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: Reviewer success cannot contain unresolved CRITICAL/IMPORTANT findings.' }], isError: true }
+      }
+      if (run.role === 'tester') {
+        const needsFailureClass = ['FAIL','BLOCKED','UNVERIFIED'].includes(result)
+        if (needsFailureClass && !failure_class) {
+          return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: non-success Tester result requires failure_class.' }], isError: true }
+        }
+        if (successLike && failure_class) {
+          return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: successful/observed Tester Verification cannot carry failure_class.' }], isError: true }
+        }
+      }
+
+      const verificationId = uuidv7()
+      const record = {
+        verification_id: verificationId,
+        kind: run.role === 'reviewer' ? 'REVIEW' : 'TEST',
+        project_id,
+        job_id,
+        task_id: run.primary_task_id ?? null,
+        run_id,
+        target_ref: run.target_ref ?? null,
+        target_revision: run.target_revision ?? null,
+        producer: run.role,
+        execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { planning_revision: run.planning_revision } : {}),
+        result,
+        ...(run.role === 'reviewer' ? { findings: findings ?? [], coverage_summary: coverage_summary ?? null } : {}),
+        ...(run.role === 'tester' ? { failure_class: failure_class ?? null } : {}),
+        limitations: limitations ?? [],
+        evidence_refs: evidence_refs ?? [],
+        created_at: new Date().toISOString(),
+      }
+      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const out = {
+        verification_id: verificationId,
+        memory_path: memoryPath,
+        owning_run_memory_path: runPath,
+        expected_run_sha: run_record_sha,
+        verification_record_text: prettyJson(record),
+        external_steps: [
+          'Fetch the current owning Run immediately before Verification persistence and require blob SHA=' + run_record_sha + '.',
+          'Require the read-back Run identity/role/lifecycle/target/planning revision to remain byte-consistent with this Verification.',
+          'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
+          'Persist verification_record_text append-only and read it back before Run completion.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
@@ -5230,6 +5570,10 @@ function createServer(req: Request) {
         verification_refs: z.array(z.string()).default([]),
         goal_recheck_record_text: z.string().min(2).optional(),
         goal_recheck_verification_ref: z.string().min(1).optional(),
+        goal_recheck_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
+        job_record_text: z.string().min(2).optional(),
+        job_record_sha: z.string().min(7).optional(),
+        run_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
           primary_task_id: z.string().uuid().optional(),
@@ -5257,7 +5601,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, handoff }: any) => {
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, goal_recheck_snapshot, job_record_text, job_record_sha, run_verification_snapshot, handoff }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to complete a Run.')
       let current: any
@@ -5270,26 +5614,74 @@ function createServer(req: Request) {
       const executionContract = resolveExecutionContract(current.execution_contract)
       if (!executionContract) return invalidExecutionContract()
       if (role === 'coder' && lifecycle === 'COMPLETED') {
-        if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+        let goal: any = null
+        let goalRef: string | null = null
+        if (executionContract === 'NEXT') {
+          const parsedGoal = parseDurableSnapshots(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'goal_recheck_snapshot')
+          if (parsedGoal.error || parsedGoal.entries.length !== 1) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: NEXT completion requires one exact durable GOAL_RECHECK snapshot.' }], isError: true }
+          }
+          const entry = parsedGoal.entries[0]
+          goal = entry.record
+          goalRef = entry.path
+          if (!job_record_text || !job_record_sha) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: NEXT completion requires the exact current Job snapshot and blob SHA.' }], isError: true }
+          }
+          let owningJob: any
+          try { owningJob = JSON.parse(job_record_text) } catch {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid owning Job JSON.' }], isError: true }
+          }
+          if (
+            owningJob.project_id !== project_id ||
+            owningJob.job_id !== job_id ||
+            owningJob.planning_revision !== current.planning_revision ||
+            jobExecutionContract(owningJob) !== 'NEXT'
+          ) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: owning Job does not match the Run current NEXT planning revision.' }], isError: true }
+          }
+          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT') : ''
+          const coverageError = goalRecheckCoverageError(owningJob, current, goal?.criteria ?? [])
+          if (entry.path !== expectedGoalPath || coverageError) {
+            return { content: [{ type: 'text', text: coverageError ?? 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK snapshot path mismatch.' }], isError: true }
+          }
+        } else {
+          if (!goal_recheck_record_text || !goal_recheck_verification_ref) {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: exact GOAL_RECHECK record and its persisted verification ref are required for successful completion.' }], isError: true }
+          }
+          try { goal = JSON.parse(goal_recheck_record_text) } catch {
+            return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
+          }
+          goalRef = goal_recheck_verification_ref
         }
-        if (!(verification_refs ?? []).includes(goal_recheck_verification_ref)) {
+
+        if (!goalRef || !(verification_refs ?? []).includes(goalRef)) {
           return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK verification ref must be included in verification_refs.' }], isError: true }
-        }
-        let goal: any
-        try { goal = JSON.parse(goal_recheck_record_text) } catch {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: invalid GOAL_RECHECK JSON.' }], isError: true }
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
         const goalExecutionContract = resolveExecutionContract(goal.execution_contract)
         const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract) : ''
-        const persistedRefMatches = expectedGoalPath === goal_recheck_verification_ref
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches
+        const persistedRefMatches = expectedGoalPath === goalRef
+        const planningRevisionMatches = executionContract !== 'NEXT' || goal.planning_revision === current.planning_revision
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches && planningRevisionMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
         if (!goalMatches || unresolvedNotMet || unresolvedDrift || !acceptableResult) {
-          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/target revision and its verification path, have no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+          return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: Goal Recheck must match this Run/current planning revision/target, have exact criterion coverage, no NOT_MET/unresolved scope drift, and result PASS or PASS_RETEST_REQUIRED.' }], isError: true }
+        }
+      }
+      if (
+        executionContract === 'NEXT' &&
+        ['reviewer','tester'].includes(role) &&
+        lifecycle === 'COMPLETED' &&
+        ['PASS','PASS_RETEST_REQUIRED'].includes(result ?? '')
+      ) {
+        const verified = validateRunVerificationSnapshot(run_verification_snapshot, current, role as 'reviewer' | 'tester', result ?? null)
+        if (verified.error) {
+          return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: ' + verified.error }], isError: true }
+        }
+        if (!(verification_refs ?? []).includes(verified.ref)) {
+          return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: exact REVIEW/TEST Verification ref must be included in verification_refs.' }], isError: true }
         }
       }
       let handoffEvidenceBundles: any[] = []
@@ -5389,6 +5781,8 @@ function createServer(req: Request) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),
+        ...durableSnapshotReadbackSteps(run_verification_snapshot ? [run_verification_snapshot] : [], 'Reviewer/Tester Run Verification snapshot'),
         ...durableSnapshotReadbackSteps(
           handoff?.tester_evidence_verification_snapshot ? [handoff.tester_evidence_verification_snapshot] : [],
           'Tester evidence Verification snapshot',
@@ -6057,6 +6451,218 @@ app.get('/selftest', (c) => {
   const p1StaleRevision = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 6, p1JobSha, p1JobSha, [p1CompletedEntry])
   const p1StaleJobSha = nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, p1JobSha, '6'.repeat(40), [p1CompletedEntry])
   const p1V2StableUnaffected = nextDispatchPreflightError({ ...p1DispatchJob, execution_contract: 'V2_STABLE' }, 'coder', [p1TaskB], 1, null, null, []) === null
+  const p2UiTask = uuidv7()
+  const p2UiJob = {
+    ...p1DispatchJob,
+    tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: ['ui-coder-frontend'] }],
+    topology: [{ stage: 1, handler: 'coder', task_id: p2UiTask, depends_on: [], next: null }],
+  }
+  const p2UiSkillResolution = resolveRequiredTaskSkills(p2UiJob, [p2UiTask])
+  const p2UiDispatch = nextDispatchPreflightError(p2UiJob, 'coder', [p2UiTask], 7, p1JobSha, p1JobSha, [])
+  const p2UnknownSkillResolution = resolveRequiredTaskSkills(
+    { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: ['missing-runtime-skill'] }] },
+    [p2UiTask],
+  )
+  const p2GenericJob = { ...p2UiJob, tasks: [{ task_id: p2UiTask, dependencies: [], required_skills: [] }] }
+  const p2GenericSkillResolution = resolveRequiredTaskSkills(p2GenericJob, [p2UiTask])
+  const p2GenericCoderUnaffected = nextDispatchPreflightError(
+    p2GenericJob,
+    'coder',
+    [p2UiTask],
+    7,
+    p1JobSha,
+    p1JobSha,
+    [],
+  )
+
+  const p2GoalTask = uuidv7()
+  const p2GoalJob = {
+    ...p1DispatchJob,
+    tasks: [{
+      task_id: p2GoalTask,
+      dependencies: [],
+      required_skills: [],
+      completion_criteria: ['criterion A', 'criterion B'],
+    }],
+    topology: [{ stage: 1, handler: 'coder', task_id: p2GoalTask, depends_on: [], next: null }],
+  }
+  const p2GoalRun = {
+    run_id: uuidv7(),
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2GoalTask,
+    affected_task_refs: [p2GoalTask],
+    role: 'coder',
+    lifecycle: 'IN_PROGRESS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2GoalCompleteCoverage = goalRecheckCoverageError(p2GoalJob, p2GoalRun, [
+    { task_id: p2GoalTask, criterion: 'criterion A', result: 'MET' },
+    { task_id: p2GoalTask, criterion: 'criterion B', result: 'MET' },
+  ])
+  const p2GoalMissingCoverage = goalRecheckCoverageError(p2GoalJob, p2GoalRun, [
+    { task_id: p2GoalTask, criterion: 'criterion A', result: 'MET' },
+  ])
+
+  const p2ReviewerTask = uuidv7()
+  const p2TesterTask = uuidv7()
+  const p2ReviewerRunId = uuidv7()
+  const p2TesterRunId = uuidv7()
+  const p2ClosureJob = {
+    ...p1DispatchJob,
+    tasks: [
+      { task_id: p2ReviewerTask, dependencies: [], completion_criteria: ['review'] },
+      { task_id: p2TesterTask, dependencies: [], completion_criteria: ['test'] },
+    ],
+    topology: [
+      { stage: 1, handler: 'reviewer', task_id: p2ReviewerTask, depends_on: [], next: p2TesterTask },
+      { stage: 2, handler: 'tester', task_id: p2TesterTask, depends_on: [], next: null },
+    ],
+  }
+  const p2ReviewerRun = {
+    run_id: p2ReviewerRunId,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2ReviewerTask,
+    role: 'reviewer',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2TesterRun = {
+    run_id: p2TesterRunId,
+    project_id: projectId,
+    job_id: nextJobId,
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    primary_task_id: p2TesterTask,
+    role: 'tester',
+    lifecycle: 'COMPLETED',
+    result: 'PASS',
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+  }
+  const p2ReviewerRunEntry = {
+    path: recordPath(projectId, 'RUNS', p2ReviewerRunId, 'NEXT'),
+    sha: '8'.repeat(40),
+    record_text: prettyJson(p2ReviewerRun),
+    record: p2ReviewerRun,
+  }
+  const p2TesterRunEntry = {
+    path: recordPath(projectId, 'RUNS', p2TesterRunId, 'NEXT'),
+    sha: '9'.repeat(40),
+    record_text: prettyJson(p2TesterRun),
+    record: p2TesterRun,
+  }
+  const p2ReviewVerificationId = uuidv7()
+  const p2TestVerificationId = uuidv7()
+  const p2ReviewVerification = {
+    verification_id: p2ReviewVerificationId,
+    kind: 'REVIEW',
+    project_id: projectId,
+    job_id: nextJobId,
+    task_id: p2ReviewerTask,
+    run_id: p2ReviewerRunId,
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+    producer: 'reviewer',
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    result: 'PASS',
+    findings: [],
+    evidence_refs: ['review-evidence'],
+  }
+  const p2TestVerification = {
+    verification_id: p2TestVerificationId,
+    kind: 'TEST',
+    project_id: projectId,
+    job_id: nextJobId,
+    task_id: p2TesterTask,
+    run_id: p2TesterRunId,
+    target_ref: 'correction/p2',
+    target_revision: '7'.repeat(40),
+    producer: 'tester',
+    execution_contract: 'NEXT',
+    planning_revision: 7,
+    result: 'PASS',
+    failure_class: null,
+    evidence_refs: ['test-evidence'],
+  }
+  const p2ReviewVerificationEntry = {
+    path: verificationPath(projectId, p2ReviewVerificationId, 'NEXT'),
+    sha: 'a'.repeat(40),
+    record_text: prettyJson(p2ReviewVerification),
+    record: p2ReviewVerification,
+  }
+  const p2TestVerificationEntry = {
+    path: verificationPath(projectId, p2TestVerificationId, 'NEXT'),
+    sha: 'b'.repeat(40),
+    record_text: prettyJson(p2TestVerification),
+    record: p2TestVerification,
+  }
+  const p2ClosureRefs = [
+    p2ReviewerRunEntry.path,
+    p2TesterRunEntry.path,
+    p2ReviewVerificationEntry.path,
+    p2TestVerificationEntry.path,
+  ]
+  const p2ClosureCoveragePass = nextClosureCoverageError(
+    p2ClosureJob,
+    [p2ReviewerRunEntry, p2TesterRunEntry],
+    [p2ReviewVerificationEntry, p2TestVerificationEntry],
+    p2ClosureRefs,
+  )
+  const p2ClosureMissingVerification = nextClosureCoverageError(
+    p2ClosureJob,
+    [p2ReviewerRunEntry, p2TesterRunEntry],
+    [p2ReviewVerificationEntry],
+    p2ClosureRefs,
+  )
+  const p2StaleReviewVerification = validateRunVerificationSnapshot(
+    { ...p2ReviewVerificationEntry, record_text: prettyJson({ ...p2ReviewVerification, target_revision: '6'.repeat(40) }) },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2EmptyEvidenceReviewVerification = validateRunVerificationSnapshot(
+    { ...p2ReviewVerificationEntry, record_text: prettyJson({ ...p2ReviewVerification, evidence_refs: [] }) },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2ImportantFindingReviewVerification = validateRunVerificationSnapshot(
+    {
+      ...p2ReviewVerificationEntry,
+      record_text: prettyJson({
+        ...p2ReviewVerification,
+        findings: [{ severity: 'IMPORTANT', finding: 'unresolved', evidence: [] }],
+      }),
+    },
+    p2ReviewerRun,
+    'reviewer',
+    'PASS',
+  )
+  const p2TesterFailureClassVerification = validateRunVerificationSnapshot(
+    {
+      ...p2TestVerificationEntry,
+      record_text: prettyJson({ ...p2TestVerification, failure_class: 'PRODUCT_FAILURE' }),
+    },
+    p2TesterRun,
+    'tester',
+    'PASS',
+  )
+  const p2V2ClosureUnaffected = nextClosureCoverageError(
+    { ...p2ClosureJob, execution_contract: 'V2_STABLE' },
+    [],
+    [],
+    [],
+  ) === null
 
   const checks = {
     uuidv7_shape: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(projectId),
@@ -6085,6 +6691,25 @@ app.get('/selftest', (c) => {
     p1_stale_job_sha_rejected: Boolean(p1StaleJobSha?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
     p1_v2_stable_dispatch_unchanged: p1V2StableUnaffected,
     p1_shared_harness_requires_exact_dispatch_state: BASE_AGENT_HARNESS.includes('exact current Job SHA and planning_revision'),
+    p2_ui_coder_required_skill_context_injected:
+      p2UiSkillResolution.error === null &&
+      p2UiSkillResolution.names.includes('ui-coder-frontend') &&
+      p2UiSkillResolution.contexts.some((item: any) => item.name === 'ui-coder-frontend' && item.skill_text.length > 0),
+    p2_ui_coder_dispatch_allowed_with_runtime_injection: p2UiDispatch === null,
+    p2_unknown_required_skill_rejected: Boolean(p2UnknownSkillResolution.error?.includes('NEXT_DISPATCH_REQUIRED_SKILL_UNKNOWN')),
+    p2_generic_coder_unaffected_by_ui_skill:
+      p2GenericSkillResolution.error === null &&
+      p2GenericSkillResolution.names.length === 0 &&
+      p2GenericCoderUnaffected === null,
+    p2_goal_recheck_full_criterion_coverage_passes: p2GoalCompleteCoverage === null,
+    p2_goal_recheck_missing_criterion_rejected: Boolean(p2GoalMissingCoverage?.includes('GOAL_RECHECK_COVERAGE_REJECTED')),
+    p2_reviewer_tester_closure_coverage_passes: p2ClosureCoveragePass === null,
+    p2_missing_durable_verification_blocks_closure: Boolean(p2ClosureMissingVerification?.includes('NEXT_CLOSURE_COVERAGE_REJECTED')),
+    p2_stale_review_verification_rejected: Boolean(p2StaleReviewVerification.error),
+    p2_empty_evidence_review_verification_rejected: Boolean(p2EmptyEvidenceReviewVerification.error),
+    p2_important_finding_review_verification_rejected: Boolean(p2ImportantFindingReviewVerification.error),
+    p2_tester_success_failure_class_rejected: Boolean(p2TesterFailureClassVerification.error),
+    p2_v2_stable_closure_unchanged: p2V2ClosureUnaffected,
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
@@ -6115,8 +6740,9 @@ app.get('/selftest', (c) => {
     cp7_next_no_checkpoint_dispatch_allowed: cp7NoCheckpointGate.allowed && cp7NoCheckpointGate.required_checkpoint_ids.length === 0,
     cp7_ui_coder_frontend_remains_opt_in: Boolean(RUNTIME_SKILLS['ui-coder-frontend']) && !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_ui_coder_frontend_handoff_requires_explicit_load:
-      cp7PlannerSkill.includes('handoff must explicitly name ui-coder-frontend') &&
-      cp7PlannerSkill.includes('load that skill before frontend source implementation') &&
+      cp7PlannerSkill.includes('required_skills=[ui-coder-frontend]') &&
+      cp7PlannerSkill.includes('explicitly name ui-coder-frontend in the handoff') &&
+      cp7PlannerSkill.includes('run_begin resolves and injects the full required skill context at dispatch') &&
       Boolean(RUNTIME_SKILLS['ui-coder-frontend']) &&
       !(ROLE_SKILLS.coder ?? []).includes('ui-coder-frontend'),
     cp7_product_failure_routes_to_repair_retest:

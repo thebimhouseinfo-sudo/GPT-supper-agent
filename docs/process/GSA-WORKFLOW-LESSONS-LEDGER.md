@@ -134,7 +134,7 @@ Missing owner, implementation surface, evidence target, or disposition is `PLAN_
 | CR-WL-026 | WL-026 + drift lesson | P0/P1/P2 | traceability matrix + Planner/Reviewer rules + owning runtime | invariant-to-runtime Reviewer comparison | IMPLEMENTED_P0_FOUNDATION |
 | CR-WL-027 | WL-027 + drift lesson | P0/P1/P2 | this matrix + owning Job plans | complete source/owner/surface/evidence/disposition coverage | IMPLEMENTED_P0_FOUNDATION |
 | CR-P1 | Correction Program P1 | P1 J-2EF7 | NEXT dispatch/topology runtime | wrong-role/prerequisite/stale-revision tests | IMPLEMENTED |
-| CR-P2 | Correction Program P2 | P2 J-AACD | Goal Recheck + durable Verification + UI specialization | closure/evidence/UI activation tests | PLANNED |
+| CR-P2 | Correction Program P2 | P2 J-AACD | Goal Recheck + durable REVIEW/TEST Verification + UI specialization dispatch gate | E34 + staging aggregate selftest + exact Tester/Reviewer evidence | IMPLEMENTED_P2 |
 | CR-WL-029 | WL-029 | P3 J-7793 + P5 J-4D20 | cutover inventory + namespace/runtime gates | KEEP/REPLACE/REMOVE coverage + unresolved-item rejection | PLANNED |
 | CR-WL-028 | WL-028 | P5 J-4D20 | public GSA control paths | real E2E evidence independent from /selftest | PLANNED |
 | CR-WL-030 | WL-030 + branch-sprawl lesson | P0 + P5 | branch policy + branch audit | exact absorption proof + no unique completed side-branch source | IMPLEMENTED_P0_POLICY |

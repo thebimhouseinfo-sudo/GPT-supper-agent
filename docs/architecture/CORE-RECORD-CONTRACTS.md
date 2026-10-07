@@ -98,6 +98,7 @@ handle?
 objective
 scope
 dependencies[]
+required_skills[]?
 completion_criteria[]
 lifecycle
 ```
@@ -119,6 +120,7 @@ target_ref?
 target_revision?
 scope_claim
 input_refs[]
+loaded_skills[]?
 lifecycle
 derived_condition?
 result?
@@ -435,6 +437,15 @@ route =
 ```
 
 A successful/observed Verification is persisted as `CANDIDATE`, never self-authoritative `APPLICABLE`. Applicability is derived only when the current terminal claim points to the same Verification/attempt/token, target identity and current planning revision. If terminal claim CAS loses, the candidate remains orphaned/non-applicable.
+
+### P2 closure integrity
+
+For NEXT source execution, Goal Recheck criteria are keyed by `task_id + exact completion_criterion` and must exactly cover every approved criterion in the Coder Run Task scope. Reviewer/Tester success is represented by append-preserving `REVIEW` / `TEST` Verification records bound to the exact Run, planning revision and target revision. NEXT Run completion consumes the durable Verification snapshot, not only a path string, and revalidates success semantics such as non-empty evidence, blocking Reviewer findings, and Tester failure classification.
+
+When the Job topology contains Reviewer or Tester Tasks, NEXT Job completion requires selected successful current-revision Run snapshots plus their exact matching `REVIEW` / `TEST` Verification snapshots. Historical `V2_STABLE` Jobs do not activate these P2 guards.
+
+Frontend/UI Coder Tasks declare `required_skills = [ui-coder-frontend]`. NEXT `run_begin` derives those requirements from the Task, resolves them against the runtime skill catalog, injects the full required skill context in the dispatch result, and records the derived `loaded_skills[]` in the Run. Callers cannot self-declare activation. Non-UI Coder Tasks keep `required_skills=[]` and receive no injected UI specialization.
+
 
 ### CP6 durable EvidenceBundle applicability
 
