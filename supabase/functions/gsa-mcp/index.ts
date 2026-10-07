@@ -45,7 +45,7 @@ const CUTOVER_INVENTORY = [
   { id: 'P3-C16', owner: 'correction governance / branch audit', disposition: 'REMOVE', retirement_evidence: 'Excluded alternate-line commit eb26729 is not imported; request-surface activation replaces its unconditional default-NEXT behavior.' },
 ] as const
 
-const GSA_SOURCE_BUILD_ID = 'P3-J-7793-R1'
+const GSA_SOURCE_BUILD_ID = 'P3-J-7793-R2'
 
 function resolveExecutionContract(value: unknown): ExecutionContract | null {
   if (value == null || value === '') return DEFAULT_EXECUTION_CONTRACT
@@ -813,6 +813,8 @@ function validateTesterEvidenceClaimSnapshot(
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
+  const nextMemoryNamespace = recordNextMemoryNamespace(job)
+  if (!nextMemoryNamespace) return false
   if (!sameNextMemoryNamespace(job, claim) || !sameNextMemoryNamespace(job, verification)) return false
   if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.mode !== checkpoint.mode || !['SATISFIED','OBSERVED'].includes(claim.state)) return false
@@ -835,7 +837,7 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
     if (
       !ref ||
       typeof ref.path !== 'string' ||
-      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT') + '/VERIFICATION/') ||
+      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT', nextMemoryNamespace) + '/VERIFICATION/') ||
       !/^[0-9a-f]{40}$/.test(String(ref.sha || '')) ||
       attestationPaths.has(ref.path)
     ) return false
@@ -6437,6 +6439,30 @@ app.get('/selftest', (c) => {
     ...nextGateJob,
     repository_context: { working_repository_url: 'https://github.com/example/source' },
   }
+  const cp6ProductionJobWithRepo = {
+    ...cp6JobWithRepo,
+    memory_namespace: 'PRODUCTION',
+  }
+  const cp6ProductionClaimWithBundle = {
+    ...cp6ClaimWithBundle,
+    memory_namespace: 'PRODUCTION',
+  }
+  const cp6ProductionAttestationRef = {
+    ...cp6AttestationRef,
+    path: verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION'),
+  }
+  const cp6ProductionVerificationWithBundle = {
+    ...cp6VerificationWithBundle,
+    memory_namespace: 'PRODUCTION',
+    evidence_bundle_attestation_refs: [cp6ProductionAttestationRef],
+  }
+  const cp6ProductionVerificationWithLabAttestation = {
+    ...cp6ProductionVerificationWithBundle,
+    evidence_bundle_attestation_refs: [{
+      ...cp6ProductionAttestationRef,
+      path: verificationPath(projectId, uuidv7(), 'NEXT', 'TEST_LAB'),
+    }],
+  }
 
   const cp6PrivateAttestationId = uuidv7()
   const cp6PrivateAttestation = {
@@ -7044,6 +7070,8 @@ app.get('/selftest', (c) => {
     cp6_repo_attestation_accepts_finalize_proof: validateEvidenceBundleAttestationSnapshot(cp6RepoAttestationSnapshot, cp6ExpectedBundleContext).error === null,
     cp6_repo_attestation_rejects_commit_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadRepoAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
     cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
+    p3_production_checkpoint_bundle_attestation_is_applicable: checkpointVerificationApplicable(cp6ProductionJobWithRepo, cp6ProductionJobWithRepo.test_checkpoints[0], cp6ProductionClaimWithBundle, cp6ProductionVerificationWithBundle),
+    p3_production_checkpoint_bundle_rejects_test_lab_attestation_path: !checkpointVerificationApplicable(cp6ProductionJobWithRepo, cp6ProductionJobWithRepo.test_checkpoints[0], cp6ProductionClaimWithBundle, cp6ProductionVerificationWithLabAttestation),
     cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
     cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
