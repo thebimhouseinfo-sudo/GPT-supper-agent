@@ -135,10 +135,10 @@ Missing owner, implementation surface, evidence target, or disposition is `PLAN_
 | CR-WL-027 | WL-027 + drift lesson | P0/P1/P2 | this matrix + owning Job plans | complete source/owner/surface/evidence/disposition coverage | IMPLEMENTED_P0_FOUNDATION |
 | CR-P1 | Correction Program P1 | P1 J-2EF7 | NEXT dispatch/topology runtime | wrong-role/prerequisite/stale-revision tests | IMPLEMENTED |
 | CR-P2 | Correction Program P2 | P2 J-AACD | Goal Recheck + durable REVIEW/TEST Verification + UI specialization dispatch gate | E34 + staging aggregate selftest + exact Tester/Reviewer evidence | IMPLEMENTED_P2 |
-| CR-WL-029 | WL-029 | P3 J-7793 + P5 J-4D20 | cutover inventory + namespace/runtime gates | KEEP/REPLACE/REMOVE coverage + unresolved-item rejection | PLANNED |
+| CR-WL-029 | WL-029 | P3 J-7793 + P5 J-4D20 | P3-C01..P3-C16 cutover inventory + memory_namespace/runtime gates | E35 + staging exact-source matrix + final P5 release proof | IMPLEMENTED_P3_PENDING_P5_RELEASE |
 | CR-WL-028 | WL-028 | P5 J-4D20 | public GSA control paths | real E2E evidence independent from /selftest | PLANNED |
 | CR-WL-030 | WL-030 + branch-sprawl lesson | P0 + P5 | branch policy + branch audit | exact absorption proof + no unique completed side-branch source | IMPLEMENTED_P0_POLICY |
-| CR-V2-COMPAT | compatibility fence | P0/P1/P2/P3/P5 | legacy execution-contract paths | phase smoke + final legacy E2E | IMPLEMENTED_P0_SMOKE |
+| CR-V2-COMPAT | compatibility fence | P0/P1/P2/P3/P5 | legacy execution-contract paths | P3 staging smoke + final legacy P5 E2E | IMPLEMENTED_P0_P3_SMOKE_PENDING_P5 |
 
 The newer fresh-chat Planner-default candidate that arrived with ID WL-026 is renumbered to WL-031, and the pre-existing failed-hotfix/full-scan candidate that arrived with ID WL-027 is renumbered to WL-032. Both remain CANDIDATE; Correction WL-026/WL-027 keep their program IDs.
 

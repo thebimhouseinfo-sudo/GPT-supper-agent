@@ -16,7 +16,36 @@ const BROWSER_BRIDGE_URL = Deno.env.get('GSA_BROWSER_BRIDGE_URL') ?? 'https://gp
 const EXECUTION_CONTRACT_VALUES = ['V2_STABLE', 'NEXT'] as const
 type ExecutionContract = typeof EXECUTION_CONTRACT_VALUES[number]
 const DEFAULT_EXECUTION_CONTRACT: ExecutionContract = 'V2_STABLE'
-const GSA_SOURCE_BUILD_ID = 'CP0-J-F177-R2'
+
+const NEXT_MEMORY_NAMESPACE_VALUES = ['TEST_LAB', 'PRODUCTION'] as const
+type NextMemoryNamespace = typeof NEXT_MEMORY_NAMESPACE_VALUES[number]
+const DEFAULT_NEXT_MEMORY_NAMESPACE: NextMemoryNamespace = 'TEST_LAB'
+
+const CUTOVER_INVENTORY_IDS = [
+  'P3-C01','P3-C02','P3-C03','P3-C04','P3-C05','P3-C06','P3-C07','P3-C08',
+  'P3-C09','P3-C10','P3-C11','P3-C12','P3-C13','P3-C14','P3-C15','P3-C16',
+] as const
+
+const CUTOVER_INVENTORY = [
+  { id: 'P3-C01', owner: 'runtime path contract', disposition: 'REPLACE', production_target: 'NEXT memory_namespace=PRODUCTION resolves to projects/<project-id>.' },
+  { id: 'P3-C02', owner: 'runtime path contract', disposition: 'REPLACE', production_target: 'Job/Run/Handoff/Attempt paths derive from the Job/Run memory_namespace.' },
+  { id: 'P3-C03', owner: 'runtime verification contract', disposition: 'REPLACE', production_target: 'Verification paths derive from the owning record memory_namespace.' },
+  { id: 'P3-C04', owner: 'checkpoint runtime', disposition: 'REPLACE', production_target: 'Checkpoint claim/attempt paths derive from the owning NEXT Job memory_namespace.' },
+  { id: 'P3-C05', owner: 'Edge Function staging runtime', disposition: 'KEEP' },
+  { id: 'P3-C06', owner: 'OAuth/resource routing', disposition: 'KEEP' },
+  { id: 'P3-C07', owner: 'production runtime', disposition: 'KEEP' },
+  { id: 'P3-C08', owner: 'execution-contract compatibility fence', disposition: 'KEEP' },
+  { id: 'P3-C09', owner: 'Planner / Job creation contract', disposition: 'REPLACE', production_target: 'Production gsa-mcp defaults new Jobs to NEXT after that source is Human-approved and deployed; gsa-mcp-next staging keeps V2_STABLE default unless NEXT is explicit.' },
+  { id: 'P3-C10', owner: 'runtime observability', disposition: 'REPLACE', production_target: 'Status/health report request surface, creation default, NEXT namespace and cutover readiness.' },
+  { id: 'P3-C11', owner: 'regression suite', disposition: 'REPLACE', production_target: 'Selftest covers TEST_LAB and PRODUCTION namespace routing plus unresolved-inventory rejection.' },
+  { id: 'P3-C12', owner: 'repository Test Lab', disposition: 'KEEP' },
+  { id: 'P3-C13', owner: 'Supabase staging runtime ops', disposition: 'KEEP' },
+  { id: 'P3-C14', owner: 'Memory Repo / Project control plane', disposition: 'KEEP' },
+  { id: 'P3-C15', owner: 'compatibility fence / Memory Repo', disposition: 'KEEP' },
+  { id: 'P3-C16', owner: 'correction governance / branch audit', disposition: 'REMOVE', retirement_evidence: 'Excluded alternate-line commit eb26729 is not imported; request-surface activation replaces its unconditional default-NEXT behavior.' },
+] as const
+
+const GSA_SOURCE_BUILD_ID = 'P3-J-7793-R2'
 
 function resolveExecutionContract(value: unknown): ExecutionContract | null {
   if (value == null || value === '') return DEFAULT_EXECUTION_CONTRACT
@@ -42,12 +71,55 @@ function invalidExecutionContract() {
   }
 }
 
-function edgeFunctionBase(req: Request) {
+function edgeFunctionSlug(req: Request) {
   const url = new URL(req.url)
   const parts = url.pathname.split('/').filter(Boolean)
   const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
-  const slug = candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
-  return `${url.origin}/functions/v1/${slug}`
+  return candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
+}
+
+function runtimeSurface(req: Request) {
+  return edgeFunctionSlug(req) === 'gsa-mcp-next' ? 'STAGING_NEXT' as const : 'PRODUCTION' as const
+}
+
+function jobCreationExecutionContractDefault(req: Request): ExecutionContract {
+  return runtimeSurface(req) === 'PRODUCTION' ? 'NEXT' : 'V2_STABLE'
+}
+
+function nextMemoryNamespaceForRequest(req: Request): NextMemoryNamespace {
+  return runtimeSurface(req) === 'PRODUCTION' ? 'PRODUCTION' : 'TEST_LAB'
+}
+
+function cutoverInventoryError(inventory: readonly any[] = CUTOVER_INVENTORY): string | null {
+  const expected = new Set<string>(CUTOVER_INVENTORY_IDS as readonly string[])
+  const seen = new Set<string>()
+  for (const item of inventory ?? []) {
+    if (!item || typeof item.id !== 'string' || !expected.has(item.id) || seen.has(item.id)) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: inventory ids must exactly match the reviewed P3 set with no duplicates.'
+    }
+    seen.add(item.id)
+    if (typeof item.owner !== 'string' || !item.owner.trim()) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: item ' + item.id + ' has unknown ownership.'
+    }
+    if (!['KEEP','REPLACE','REMOVE'].includes(item.disposition)) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: item ' + item.id + ' has unresolved disposition.'
+    }
+    if (item.disposition === 'REPLACE' && (typeof item.production_target !== 'string' || !item.production_target.trim())) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: REPLACE item ' + item.id + ' has no production target.'
+    }
+    if (item.disposition === 'REMOVE' && (typeof item.retirement_evidence !== 'string' || !item.retirement_evidence.trim())) {
+      return 'CUTOVER_INVENTORY_UNRESOLVED: REMOVE item ' + item.id + ' has no retirement evidence.'
+    }
+  }
+  if (seen.size !== expected.size || [...expected].some((id) => !seen.has(id))) {
+    return 'CUTOVER_INVENTORY_UNRESOLVED: one or more reviewed P3 inventory rows are missing.'
+  }
+  return null
+}
+
+function edgeFunctionBase(req: Request) {
+  const url = new URL(req.url)
+  return `${url.origin}/functions/v1/${edgeFunctionSlug(req)}`
 }
 
 function mcpResource(req: Request) {
@@ -138,27 +210,66 @@ function runHandle(runId: string) {
   return 'R-' + runId.replace(/-/g, '').slice(-4).toUpperCase()
 }
 
-function executionMemoryRoot(projectId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionContract === 'NEXT'
-    ? 'projects/' + projectId + '/TEST-LAB/NEXT'
-    : 'projects/' + projectId
+function resolveNextMemoryNamespace(value: unknown, executionContract: ExecutionContract | null = 'NEXT'): NextMemoryNamespace | null {
+  if (executionContract !== 'NEXT') return null
+  if (value == null || value === '') return DEFAULT_NEXT_MEMORY_NAMESPACE
+  return value === 'TEST_LAB' || value === 'PRODUCTION' ? value : null
 }
 
-function recordPath(projectId: string, family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS', recordId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionMemoryRoot(projectId, executionContract) + '/WORK/' + family + '/' + recordId + '.json'
+function recordNextMemoryNamespace(record: any): NextMemoryNamespace | null {
+  const executionContract = resolveExecutionContract(record?.execution_contract)
+  return resolveNextMemoryNamespace(record?.memory_namespace, executionContract)
 }
 
-function verificationPath(projectId: string, verificationId: string, executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT) {
-  return executionMemoryRoot(projectId, executionContract) + '/VERIFICATION/' + verificationId + '.json'
+function sameNextMemoryNamespace(a: any, b: any) {
+  const aContract = resolveExecutionContract(a?.execution_contract)
+  const bContract = resolveExecutionContract(b?.execution_contract)
+  if (aContract !== 'NEXT' || bContract !== 'NEXT') return aContract === bContract
+  return recordNextMemoryNamespace(a) === recordNextMemoryNamespace(b)
 }
 
-
-function checkpointClaimPath(projectId: string, jobId: string, planningRevision: number, checkpointId: string) {
-  return executionMemoryRoot(projectId, 'NEXT') + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+function executionMemoryRoot(
+  projectId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  if (executionContract !== 'NEXT') return 'projects/' + projectId
+  return nextMemoryNamespace === 'PRODUCTION'
+    ? 'projects/' + projectId
+    : 'projects/' + projectId + '/TEST-LAB/NEXT'
 }
 
-function checkpointAttemptPath(projectId: string, attemptId: string) {
-  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT')
+function recordPath(
+  projectId: string,
+  family: 'JOBS' | 'RUNS' | 'HANDOFFS' | 'CHECKPOINT_ATTEMPTS',
+  recordId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, executionContract, nextMemoryNamespace) + '/WORK/' + family + '/' + recordId + '.json'
+}
+
+function verificationPath(
+  projectId: string,
+  verificationId: string,
+  executionContract: ExecutionContract = DEFAULT_EXECUTION_CONTRACT,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, executionContract, nextMemoryNamespace) + '/VERIFICATION/' + verificationId + '.json'
+}
+
+function checkpointClaimPath(
+  projectId: string,
+  jobId: string,
+  planningRevision: number,
+  checkpointId: string,
+  nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE,
+) {
+  return executionMemoryRoot(projectId, 'NEXT', nextMemoryNamespace) + '/WORK/CHECKPOINT_CLAIMS/' + jobId + '/r' + planningRevision + '/' + encodeURIComponent(checkpointId) + '.json'
+}
+
+function checkpointAttemptPath(projectId: string, attemptId: string, nextMemoryNamespace: NextMemoryNamespace = DEFAULT_NEXT_MEMORY_NAMESPACE) {
+  return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT', nextMemoryNamespace)
 }
 
 function checkpointLeaseExpired(claim: any, nowMs = Date.now()) {
@@ -195,7 +306,9 @@ function validateClaimSnapshots(entries: any[], label: string) {
   for (const entry of entries) {
     const record = entry.record
     if (record?.kind !== 'CHECKPOINT_CLAIM' || record.execution_contract !== 'NEXT') return label + ' contains a non-NEXT checkpoint claim.'
-    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id)) {
+    const memoryNamespace = recordNextMemoryNamespace(record)
+    if (!memoryNamespace) return label + ' contains a NEXT checkpoint claim with invalid memory_namespace.'
+    if (entry.path !== checkpointClaimPath(record.project_id, record.job_id, record.planning_revision, record.checkpoint_id, memoryNamespace)) {
       return label + ' path does not match the deterministic checkpoint claim path.'
     }
   }
@@ -208,7 +321,9 @@ function validateVerificationSnapshots(entries: any[], label: string) {
     if (!['TEST','RETEST'].includes(record?.kind) || record.execution_contract !== 'NEXT' || typeof record.verification_id !== 'string') {
       return label + ' contains a non-NEXT TEST/RETEST Verification.'
     }
-    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT')) {
+    const memoryNamespace = recordNextMemoryNamespace(record)
+    if (!memoryNamespace) return label + ' contains a NEXT Verification with invalid memory_namespace.'
+    if (entry.path !== verificationPath(record.project_id, record.verification_id, 'NEXT', memoryNamespace)) {
       return label + ' path does not match the deterministic Verification path.'
     }
   }
@@ -217,10 +332,17 @@ function validateVerificationSnapshots(entries: any[], label: string) {
 
 function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
   const completed = new Set<string>()
+  const jobMemoryNamespace = recordNextMemoryNamespace(job)
+  if (jobExecutionContract(job) === 'NEXT' && !jobMemoryNamespace) {
+    return { completed, error: 'owning NEXT Job has invalid memory_namespace.' }
+  }
   for (const entry of entries) {
     const run = entry.record
+    const runMemoryNamespace = recordNextMemoryNamespace(run)
     if (
       resolveExecutionContract(run?.execution_contract) !== 'NEXT' ||
+      !jobMemoryNamespace ||
+      runMemoryNamespace !== jobMemoryNamespace ||
       run.project_id !== job.project_id ||
       run.job_id !== job.job_id ||
       run.planning_revision !== job.planning_revision ||
@@ -228,8 +350,8 @@ function validateCompletedTaskRunSnapshots(job: any, entries: any[]) {
       !['PASS','PASS_RETEST_REQUIRED'].includes(run.result) ||
       typeof run.run_id !== 'string' ||
       typeof run.primary_task_id !== 'string'
-    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision NEXT Task Run.' }
-    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT')) {
+    ) return { completed, error: 'completed_task_run_snapshots contains a Run that is not a successful current-revision same-namespace NEXT Task Run.' }
+    if (entry.path !== recordPath(job.project_id, 'RUNS', run.run_id, 'NEXT', jobMemoryNamespace)) {
       return { completed, error: 'completed_task_run_snapshots path does not match the NEXT Run path.' }
     }
     const task = (job.tasks ?? []).find((item: any) => item.task_id === run.primary_task_id)
@@ -350,9 +472,10 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
   const entry = parsed.entries[0]
   const record = entry.record
   const executionContract = resolveExecutionContract(run?.execution_contract)
+  const runMemoryNamespace = recordNextMemoryNamespace(run)
   const expectedKind = role === 'reviewer' ? 'REVIEW' : 'TEST'
   const expectedPath = typeof record?.verification_id === 'string'
-    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE')
+    ? verificationPath(run.project_id, record.verification_id, executionContract ?? 'V2_STABLE', runMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
     : ''
   const nextRevisionMatches =
     executionContract !== 'NEXT' ||
@@ -380,6 +503,7 @@ function validateRunVerificationSnapshot(snapshot: any, run: any, role: 'reviewe
     record?.task_id === (run.primary_task_id ?? null) &&
     record?.producer === role &&
     resolveExecutionContract(record?.execution_contract) === executionContract &&
+    (executionContract !== 'NEXT' || (runMemoryNamespace != null && recordNextMemoryNamespace(record) === runMemoryNamespace)) &&
     record?.target_ref === run.target_ref &&
     record?.target_revision === run.target_revision &&
     nextRevisionMatches &&
@@ -522,9 +646,10 @@ function validateEvidenceBundleAttestationSnapshot(
   }
   const entry = parsed.entries[0]
   const record = entry.record
+  const recordMemoryNamespace = recordNextMemoryNamespace(record)
   const expectedPath =
-    typeof record?.verification_id === 'string'
-      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+    typeof record?.verification_id === 'string' && recordMemoryNamespace
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT', recordMemoryNamespace)
       : ''
   const bundle = record?.evidence_bundle_ref
   const bundleError = evidenceBundleRefValidationError(bundle, expected)
@@ -556,6 +681,7 @@ function validateEvidenceBundleAttestationSnapshot(
     record?.project_id === expected.project_id &&
     record?.job_id === expected.job_id &&
     resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    recordMemoryNamespace != null &&
     record?.producer === 'tester' &&
     record?.result === 'PUBLISHED' &&
     record?.checkpoint_id === expected.checkpoint_id &&
@@ -590,14 +716,16 @@ function validateTesterEvidenceVerificationSnapshot(
   }
   const entry = parsed.entries[0]
   const record = entry.record
+  const recordMemoryNamespace = recordNextMemoryNamespace(record)
   const expectedPath =
-    typeof record?.verification_id === 'string'
-      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+    typeof record?.verification_id === 'string' && recordMemoryNamespace
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT', recordMemoryNamespace)
       : ''
   const valid =
     expectedPath === entry.path &&
     ['TEST','RETEST'].includes(record?.kind) &&
     resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    recordMemoryNamespace != null &&
     record?.producer === 'tester' &&
     record?.project_id === expected.project_id &&
     record?.job_id === expected.job_id &&
@@ -612,7 +740,7 @@ function validateTesterEvidenceVerificationSnapshot(
     record.evidence_bundle_attestation_refs.every((item: any) =>
       item &&
       typeof item.path === 'string' &&
-      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT') + '/VERIFICATION/') &&
+      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT', recordMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) + '/VERIFICATION/') &&
       /^[0-9a-f]{40}$/.test(String(item.sha || ''))
     )
   if (!valid) {
@@ -639,9 +767,10 @@ function validateTesterEvidenceClaimSnapshot(
   }
   const entry = parsed.entries[0]
   const claim = entry.record
+  const claimMemoryNamespace = recordNextMemoryNamespace(claim)
   const expectedPath =
-    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision))
-      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id)
+    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision)) && claimMemoryNamespace
+      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id, claimMemoryNamespace)
       : ''
   const requiredState =
     verification?.result === 'PASS' ? 'SATISFIED' :
@@ -651,6 +780,8 @@ function validateTesterEvidenceClaimSnapshot(
     expectedPath === entry.path &&
     claim?.kind === 'CHECKPOINT_CLAIM' &&
     claim?.execution_contract === 'NEXT' &&
+    claimMemoryNamespace != null &&
+    sameNextMemoryNamespace(claim, verification) &&
     claim?.project_id === expected.project_id &&
     claim?.job_id === expected.job_id &&
     claim?.planning_revision === expected.planning_revision &&
@@ -682,6 +813,9 @@ function validateTesterEvidenceClaimSnapshot(
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
+  const nextMemoryNamespace = recordNextMemoryNamespace(job)
+  if (!nextMemoryNamespace) return false
+  if (!sameNextMemoryNamespace(job, claim) || !sameNextMemoryNamespace(job, verification)) return false
   if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.mode !== checkpoint.mode || !['SATISFIED','OBSERVED'].includes(claim.state)) return false
   if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
@@ -703,7 +837,7 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
     if (
       !ref ||
       typeof ref.path !== 'string' ||
-      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT') + '/VERIFICATION/') ||
+      !ref.path.startsWith(executionMemoryRoot(job.project_id, 'NEXT', nextMemoryNamespace) + '/VERIFICATION/') ||
       !/^[0-9a-f]{40}$/.test(String(ref.sha || '')) ||
       attestationPaths.has(ref.path)
     ) return false
@@ -764,6 +898,8 @@ function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 
 function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   const executionContract = jobExecutionContract(job)
   if (executionContract !== 'NEXT') return { allowed: true, required_checkpoint_ids: [], blocking: [] as string[] }
+  const nextMemoryNamespace = recordNextMemoryNamespace(job)
+  if (!nextMemoryNamespace) return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT Job memory_namespace is invalid.'] }
   if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
     return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT planning revision is not Reviewer PASS.'] }
   }
@@ -796,7 +932,7 @@ function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationS
         item.job_id === job.job_id &&
         item.planning_revision === job.planning_revision &&
         item.checkpoint_id === checkpointId &&
-        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId)
+        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId, nextMemoryNamespace)
     })
     if (matchingClaims.length !== 1) {
       blocking.push('Expected exactly one current deterministic checkpoint claim: ' + checkpointId)
@@ -805,7 +941,7 @@ function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationS
     const claim = matchingClaims[0].record
     const matchingVerifications = verificationParsed.entries.filter((entry: any) =>
       entry.record?.verification_id === claim.last_verification_id &&
-      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT')
+      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT', nextMemoryNamespace)
     )
     if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0].record)) {
       blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
@@ -851,10 +987,11 @@ function productFailureRetestValidationError(
   try { goal = JSON.parse(goalRecordText) } catch {
     return 'invalid repair Goal Recheck JSON.'
   }
-  const expectedGoalRef = verificationPath(projectId, goal.verification_id, 'NEXT')
+  const expectedGoalRef = verificationPath(projectId, goal.verification_id, 'NEXT', recordNextMemoryNamespace(current) ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   const validGoal =
     goal.kind === 'GOAL_RECHECK' &&
     goal.execution_contract === 'NEXT' &&
+    sameNextMemoryNamespace(current, goal) &&
     goal.project_id === projectId &&
     goal.job_id === jobId &&
     goal.target_revision === targetRevision &&
@@ -873,10 +1010,12 @@ function nextPlanSupersessionMatches(
   projectId: string,
   jobId: string,
 ) {
-  const expectedVerificationRef = verificationPath(projectId, verification?.verification_id, 'NEXT')
+  const expectedVerificationRef = verificationPath(projectId, verification?.verification_id, 'NEXT', recordNextMemoryNamespace(current) ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   return (
     ['TEST','RETEST'].includes(verification?.kind) &&
     verification?.execution_contract === 'NEXT' &&
+    sameNextMemoryNamespace(current, verification) &&
+    sameNextMemoryNamespace(current, claim) &&
     verification?.project_id === projectId &&
     verification?.job_id === jobId &&
     verification?.planning_revision === current?.planning_revision &&
@@ -1896,7 +2035,11 @@ function createServer(req: Request) {
       title: 'Get GSA runtime status',
       description: 'Verify authenticated GSA runtime and Memory Repo configuration state.',
       inputSchema: {},
-      outputSchema: { phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string(), source_build_id: z.string(), execution_contract_default: z.string() },
+      outputSchema: {
+        phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string(),
+        source_build_id: z.string(), runtime_surface: z.string(), execution_contract_default: z.string(),
+        next_memory_namespace: z.string(), cutover_ready: z.boolean(),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -1911,7 +2054,10 @@ function createServer(req: Request) {
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
         source_build_id: GSA_SOURCE_BUILD_ID,
-        execution_contract_default: DEFAULT_EXECUTION_CONTRACT,
+        runtime_surface: runtimeSurface(req),
+        execution_contract_default: jobCreationExecutionContractDefault(req),
+        next_memory_namespace: nextMemoryNamespaceForRequest(req),
+        cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
     },
@@ -2196,6 +2342,7 @@ function createServer(req: Request) {
       project_id: string
       job_id: string
       execution_contract: ExecutionContract
+      memory_namespace?: NextMemoryNamespace | null
       repository_full_name: string
       target_ref: string
       target_revision: string
@@ -2209,9 +2356,10 @@ function createServer(req: Request) {
     }
     const entry = parsed.entries[0]
     const record = entry.record
+    const recordMemoryNamespace = recordNextMemoryNamespace(record)
     const expectedPath =
       typeof record?.verification_id === 'string'
-        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract)
+        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract, recordMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
         : ''
     const repoMatches =
       String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase()
@@ -2221,6 +2369,7 @@ function createServer(req: Request) {
       record?.project_id === expected.project_id &&
       record?.job_id === expected.job_id &&
       resolveExecutionContract(record?.execution_contract) === expected.execution_contract &&
+      (expected.execution_contract !== 'NEXT' || (recordMemoryNamespace != null && recordMemoryNamespace === expected.memory_namespace)) &&
       record?.producer === 'tester' &&
       record?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
       record?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
@@ -2309,6 +2458,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== project.project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2348,6 +2501,7 @@ function createServer(req: Request) {
           project_id: project.project_id,
           job_id,
           execution_contract: executionContract,
+          memory_namespace: nextMemoryNamespace,
           repository_full_name: requested.full_name,
           target_ref,
           target_revision,
@@ -2378,6 +2532,7 @@ function createServer(req: Request) {
         probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
         binding: {
           project_id: project.project_id,
+          memory_namespace: nextMemoryNamespace,
           repository: requested.full_name,
           job_id,
           checkpoint_id,
@@ -2498,6 +2653,10 @@ function createServer(req: Request) {
       if (executionContract !== 'NEXT') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: CP6 repository evidence publication is NEXT-only.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2509,7 +2668,8 @@ function createServer(req: Request) {
         testerRun.role !== 'tester' ||
         testerRun.lifecycle !== 'IN_PROGRESS' ||
         testerRun.target_ref !== args.target_ref ||
-        testerRun.target_revision !== args.target_revision
+        testerRun.target_revision !== args.target_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: publication must belong to the current target-bound NEXT Tester Run.' }], isError: true }
       }
@@ -2537,6 +2697,7 @@ function createServer(req: Request) {
           project_id: args.project_id,
           job_id: args.job_id,
           execution_contract: executionContract,
+          memory_namespace: nextMemoryNamespace,
           repository_full_name: args.repository_full_name,
           target_ref: args.target_ref,
           target_revision: args.target_revision,
@@ -2602,6 +2763,7 @@ function createServer(req: Request) {
         project_id: args.project_id,
         job_id: args.job_id,
         execution_contract: executionContract,
+        memory_namespace: nextMemoryNamespace,
         probe_id: 'PROBE-GIT-EVIDENCE-01',
         capability: 'REPOSITORY_BINARY_EVIDENCE',
         observed: true,
@@ -2623,7 +2785,7 @@ function createServer(req: Request) {
       } : null
       const attestationId = mode === 'PUBLISH' ? uuidv7() : null
       const attestationPath = attestationId
-        ? verificationPath(args.project_id, attestationId, 'NEXT')
+        ? verificationPath(args.project_id, attestationId, 'NEXT', nextMemoryNamespace)
         : null
       const attestation = mode === 'PUBLISH' ? {
         verification_id: attestationId,
@@ -2631,6 +2793,7 @@ function createServer(req: Request) {
         project_id: args.project_id,
         job_id: args.job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         producer: 'tester',
         result: 'PUBLISHED',
         planning_revision: job.planning_revision,
@@ -2713,6 +2876,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2726,6 +2893,7 @@ function createServer(req: Request) {
         observation?.project_id === project_id &&
         observation?.job_id === job_id &&
         resolveExecutionContract(observation?.execution_contract) === executionContract &&
+        (executionContract !== 'NEXT' || observation?.memory_namespace === nextMemoryNamespace) &&
         observation?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
         observation?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
         observation?.observed === true &&
@@ -2745,13 +2913,14 @@ function createServer(req: Request) {
       }
 
       const verificationId = uuidv7()
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'CAPABILITY_PROBE',
         project_id,
         job_id,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         producer: 'tester',
         probe_id: 'PROBE-GIT-EVIDENCE-01',
         capability: 'REPOSITORY_BINARY_EVIDENCE',
@@ -2833,6 +3002,10 @@ function createServer(req: Request) {
       ) {
         return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: owning Job must be the current IN_PROGRESS NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
 
       const runParsed = parseDurableSnapshots([tester_run_snapshot], 'tester_run_snapshot')
       if (runParsed.error || runParsed.entries.length !== 1) {
@@ -2841,13 +3014,14 @@ function createServer(req: Request) {
       const runEntry = runParsed.entries[0]
       const testerRun = runEntry.record
       if (
-        runEntry.path !== recordPath(project_id, 'RUNS', testerRun?.run_id, 'NEXT') ||
+        runEntry.path !== recordPath(project_id, 'RUNS', testerRun?.run_id, 'NEXT', nextMemoryNamespace) ||
         resolveExecutionContract(testerRun?.execution_contract) !== 'NEXT' ||
         testerRun?.project_id !== project_id ||
         testerRun?.job_id !== job_id ||
         testerRun?.role !== 'tester' ||
         testerRun?.lifecycle !== 'IN_PROGRESS' ||
         testerRun?.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace ||
         typeof testerRun?.target_ref !== 'string' ||
         !/^[0-9a-f]{40}$/.test(String(testerRun?.target_revision || ''))
       ) {
@@ -2950,13 +3124,14 @@ function createServer(req: Request) {
       }
 
       const verificationId = uuidv7()
-      const path = verificationPath(project_id, verificationId, 'NEXT')
+      const path = verificationPath(project_id, verificationId, 'NEXT', nextMemoryNamespace)
       const record = {
         verification_id: verificationId,
         kind: 'EVIDENCE_BUNDLE',
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         producer: 'tester',
         result: 'PUBLISHED',
         planning_revision: job.planning_revision,
@@ -3648,7 +3823,7 @@ function createServer(req: Request) {
         objective: z.string().min(1),
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
-        execution_contract: z.enum(['V2_STABLE','NEXT']).default('V2_STABLE'),
+        execution_contract: z.enum(['V2_STABLE','NEXT']).default(jobCreationExecutionContractDefault(req)),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -3742,6 +3917,11 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = executionContract === 'NEXT' ? nextMemoryNamespaceForRequest(req) : null
+      if (executionContract === 'NEXT' && nextMemoryNamespace === 'PRODUCTION') {
+        const cutoverError = cutoverInventoryError()
+        if (cutoverError) return { content: [{ type: 'text', text: cutoverError }], isError: true }
+      }
       const jobId = uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -3774,6 +3954,7 @@ function createServer(req: Request) {
         scope,
         non_goals,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         planning_context: {
           work_context,
           phase,
@@ -3824,7 +4005,7 @@ function createServer(req: Request) {
         created_at: now,
         updated_at: now,
       }
-      const path = recordPath(project_id, 'JOBS', jobId, executionContract)
+      const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
         'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
@@ -3887,6 +4068,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_JOB_NAMESPACE_INVALID: current Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -3960,7 +4145,7 @@ function createServer(req: Request) {
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
         'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
@@ -4069,6 +4254,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_JOB_NAMESPACE_INVALID: current Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
@@ -4165,7 +4354,7 @@ function createServer(req: Request) {
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
-      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const out = {
         memory_path: memoryPath,
         expected_job_sha: job_record_sha,
@@ -4229,6 +4418,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       const reviewableLifecycle = current.lifecycle === 'DRAFT' || (executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS')
       if (current.job_id !== job_id || current.project_id !== project_id || !reviewableLifecycle || current.planning_revision !== planning_revision) {
         return { content: [{ type: 'text', text: 'Planning review target does not match the current reviewable planning revision.' }], isError: true }
@@ -4261,7 +4454,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const verificationMemoryPath = verificationPath(project_id, verificationId, executionContract)
+      const verificationMemoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'PLANNING_REVIEW',
@@ -4270,6 +4463,7 @@ function createServer(req: Request) {
         planning_revision,
         producer: 'reviewer',
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         result,
         findings: findings ?? [],
         limitations: limitations ?? [],
@@ -4287,7 +4481,7 @@ function createServer(req: Request) {
         },
         updated_at: new Date().toISOString(),
       }
-      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract)
+      const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
       const steps = [
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
@@ -4446,6 +4640,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -4456,7 +4654,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'CRITIC_REVIEW',
@@ -4465,6 +4663,7 @@ function createServer(req: Request) {
         planning_revision: planning_revision ?? current.planning_revision ?? null,
         producer: 'critic_reviewer',
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         human_invoked: true,
         target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
         target_revision: target_revision ?? null,
@@ -4544,6 +4743,10 @@ function createServer(req: Request) {
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       let claimantRun: any
       try { claimantRun = JSON.parse(claimant_run_record_text) } catch {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: invalid claimant Tester Run JSON.' }], isError: true }
@@ -4557,6 +4760,7 @@ function createServer(req: Request) {
         claimantRun.role !== 'tester' ||
         claimantRun.lifecycle !== 'IN_PROGRESS' ||
         claimantRun.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(claimantRun) !== nextMemoryNamespace ||
         (claimantRun.target_ref && claimantRun.target_ref !== target_ref) ||
         (claimantRun.target_revision && claimantRun.target_revision !== target_revision)
       ) {
@@ -4599,13 +4803,13 @@ function createServer(req: Request) {
               item.job_id === job_id &&
               item.planning_revision === job.planning_revision &&
               item.checkpoint_id === prerequisiteId &&
-              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId)
+              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId, nextMemoryNamespace)
           })
           const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0].record : null
           const prerequisiteVerificationMatches = prerequisiteClaim
             ? prerequisiteVerifications.entries.filter((entry: any) =>
                 entry.record?.verification_id === prerequisiteClaim.last_verification_id &&
-                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT')
+                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT', nextMemoryNamespace)
               )
             : []
           const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0].record : null
@@ -4616,7 +4820,7 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite Task is not durably completed: ' + prerequisiteId }], isError: true }
         }
       }
-      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id, nextMemoryNamespace)
       let current: any = null
       if (current_claim_record_text) {
         if (!current_claim_record_sha) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim SHA is required with current claim text.' }], isError: true }
@@ -4634,7 +4838,7 @@ function createServer(req: Request) {
               claim_operation: 'NONE',
               expected_claim_sha: current_claim_record_sha,
               claim_record_text: null,
-              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id),
+              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id, nextMemoryNamespace),
               attempt_record_text: null,
               attempt_id: current.attempt_id,
               lease_token: current.lease_token,
@@ -4708,6 +4912,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         mode: checkpoint.mode,
@@ -4734,6 +4939,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         mode: checkpoint.mode,
@@ -4746,7 +4952,7 @@ function createServer(req: Request) {
         retest_of_verification_id: retest_of_verification_id ?? null,
         started_at: now.toISOString(),
       }
-      const attemptPath = checkpointAttemptPath(project_id, attemptId)
+      const attemptPath = checkpointAttemptPath(project_id, attemptId, nextMemoryNamespace)
       const claimOperation = current ? 'UPDATE' : 'CREATE'
       const externalSteps = [
         'Immediately read back the claimant Tester Run from NEXT memory and require blob SHA equals claimant_run_record_sha plus role=tester, lifecycle=IN_PROGRESS, same project/job/run/target before any claim mutation.',
@@ -4830,6 +5036,10 @@ function createServer(req: Request) {
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       let testerRun: any
       try { testerRun = JSON.parse(tester_run_record_text) } catch {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: invalid Tester Run JSON.' }], isError: true }
@@ -4841,7 +5051,8 @@ function createServer(req: Request) {
         testerRun.run_id !== claim.claimant_run_id ||
         testerRun.role !== 'tester' ||
         testerRun.lifecycle !== 'IN_PROGRESS' ||
-        testerRun.planning_revision !== job.planning_revision
+        testerRun.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: Verification must be produced by the current IN_PROGRESS NEXT Tester Run that owns the lease.' }], isError: true }
       }
@@ -4855,7 +5066,8 @@ function createServer(req: Request) {
         claim.checkpoint_id !== checkpoint_id ||
         claim.state !== 'ACTIVE' ||
         claim.attempt_id !== attempt_id ||
-        claim.lease_token !== lease_token
+        claim.lease_token !== lease_token ||
+        recordNextMemoryNamespace(claim) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: claim/attempt/token is no longer the active lease.' }], isError: true }
       }
@@ -4885,6 +5097,9 @@ function createServer(req: Request) {
         })
         if (attested.error) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + attested.error }], isError: true }
+        }
+        if (recordNextMemoryNamespace(attested.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: EvidenceBundle attestation memory_namespace mismatch.' }], isError: true }
         }
         const bundle = attested.bundle
         const key = bundle.backend === 'PRIVATE_SUPABASE'
@@ -4920,6 +5135,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         attempt_id,
@@ -4959,8 +5175,8 @@ function createServer(req: Request) {
         retest_required: retestRequired,
         updated_at: now,
       }
-      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT')
-      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT', nextMemoryNamespace)
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id, nextMemoryNamespace)
       const out = {
         verification_id: verificationId,
         verification_memory_path: verificationPathValue,
@@ -5083,6 +5299,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(owningJob)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(owningJob)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_RUN_NAMESPACE_INVALID: owning Job memory_namespace is invalid.' }], isError: true }
+      }
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -5180,7 +5400,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         primary_task_id: primary_task_id ?? null,
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
@@ -5199,7 +5419,7 @@ function createServer(req: Request) {
         started_at: now,
         ended_at: null,
       }
-      const path = recordPath(project_id, 'RUNS', runId, executionContract)
+      const path = recordPath(project_id, 'RUNS', runId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const result = {
         run_id: runId,
         handle: runHandle(runId),
@@ -5364,6 +5584,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(owningRun.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(owningRun)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: owning NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (executionContract === 'NEXT' && (!owningRun.target_revision || owningRun.target_revision !== target_revision || owningRun.target_ref !== target_ref)) {
         return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: NEXT Goal Recheck must bind the exact Run target ref/revision.' }], isError: true }
       }
@@ -5374,6 +5598,9 @@ function createServer(req: Request) {
         }
         try { owningJob = JSON.parse(job_record_text) } catch {
           return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: invalid owning Job JSON.' }], isError: true }
+        }
+        if (recordNextMemoryNamespace(owningJob) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: owning Job/Run NEXT memory_namespace mismatch.' }], isError: true }
         }
         const coverageError = goalRecheckCoverageError(owningJob, owningRun, criteria ?? [])
         if (coverageError) return { content: [{ type: 'text', text: coverageError }], isError: true }
@@ -5394,7 +5621,7 @@ function createServer(req: Request) {
         target_revision,
         producer: 'coder',
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: owningRun.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: owningRun.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         result: blocking.length ? 'CHANGES_REQUIRED' : (criteria.some((c: any) => c.result === 'PARTIAL' || c.result === 'UNVERIFIED') ? 'PASS_RETEST_REQUIRED' : 'PASS'),
         limitations: limitations ?? [],
         evidence_refs: criteria.flatMap((c: any) => c.evidence ?? []),
@@ -5402,9 +5629,9 @@ function createServer(req: Request) {
         scope_drift: scope_drift ?? [],
         created_at: new Date().toISOString(),
       }
-      const path = verificationPath(project_id, verificationId, executionContract)
-      const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract)
-      const owningJobPath = executionContract === 'NEXT' ? recordPath(project_id, 'JOBS', job_id, executionContract) : null
+      const path = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const owningJobPath = executionContract === 'NEXT' ? recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : null
       const result = {
         verification_id: verificationId,
         memory_path: path,
@@ -5487,6 +5714,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(run.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(run)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (executionContract === 'NEXT' && (!run.target_ref || !run.target_revision || !Number.isInteger(Number(run.planning_revision)))) {
         return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: NEXT Verification requires exact target ref/revision and current planning revision.' }], isError: true }
       }
@@ -5525,7 +5756,7 @@ function createServer(req: Request) {
         target_revision: run.target_revision ?? null,
         producer: run.role,
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: run.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: run.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         result,
         ...(run.role === 'reviewer' ? { findings: findings ?? [], coverage_summary: coverage_summary ?? null } : {}),
         ...(run.role === 'tester' ? { failure_class: failure_class ?? null } : {}),
@@ -5533,8 +5764,8 @@ function createServer(req: Request) {
         evidence_refs: evidence_refs ?? [],
         created_at: new Date().toISOString(),
       }
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
-      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const out = {
         verification_id: verificationId,
         memory_path: memoryPath,
@@ -5613,6 +5844,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(current.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
         let goalRef: string | null = null
@@ -5635,11 +5870,12 @@ function createServer(req: Request) {
             owningJob.project_id !== project_id ||
             owningJob.job_id !== job_id ||
             owningJob.planning_revision !== current.planning_revision ||
-            jobExecutionContract(owningJob) !== 'NEXT'
+            jobExecutionContract(owningJob) !== 'NEXT' ||
+            recordNextMemoryNamespace(owningJob) !== nextMemoryNamespace
           ) {
             return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: owning Job does not match the Run current NEXT planning revision.' }], isError: true }
           }
-          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT') : ''
+          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT', nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
           const coverageError = goalRecheckCoverageError(owningJob, current, goal?.criteria ?? [])
           if (entry.path !== expectedGoalPath || coverageError) {
             return { content: [{ type: 'text', text: coverageError ?? 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK snapshot path mismatch.' }], isError: true }
@@ -5659,10 +5895,11 @@ function createServer(req: Request) {
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
         const goalExecutionContract = resolveExecutionContract(goal.execution_contract)
-        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract) : ''
+        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
         const persistedRefMatches = expectedGoalPath === goalRef
         const planningRevisionMatches = executionContract !== 'NEXT' || goal.planning_revision === current.planning_revision
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches && planningRevisionMatches
+        const namespaceMatches = executionContract !== 'NEXT' || recordNextMemoryNamespace(goal) === nextMemoryNamespace
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && namespaceMatches && revisionMatches && persistedRefMatches && planningRevisionMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
@@ -5718,6 +5955,9 @@ function createServer(req: Request) {
         if (verified.error) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + verified.error }], isError: true }
         }
+        if (recordNextMemoryNamespace(verified.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: Tester evidence Verification memory_namespace mismatch.' }], isError: true }
+        }
         const claimed = validateTesterEvidenceClaimSnapshot(
           handoff.tester_evidence_claim_snapshot,
           verified.record,
@@ -5733,6 +5973,9 @@ function createServer(req: Request) {
         if (claimed.error) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + claimed.error }], isError: true }
         }
+        if (recordNextMemoryNamespace(claimed.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: terminal checkpoint claim memory_namespace mismatch.' }], isError: true }
+        }
         if (!(verification_refs ?? []).includes(verified.ref)) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact applicable TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
         }
@@ -5741,18 +5984,19 @@ function createServer(req: Request) {
         handoffEvidenceVerificationRef = { path: verified.ref, sha: verified.sha }
         handoffEvidenceClaimRef = { path: claimed.ref, sha: claimed.sha }
       }
-      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       let handoffId: string | null = null
       let handoffPath: string | null = null
       let handoffText: string | null = null
       if (handoff) {
         handoffId = uuidv7()
-        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId, executionContract)
+        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
         handoffText = prettyJson({
           handoff_id: handoffId,
           project_id,
           job_id,
           execution_contract: executionContract,
+          ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
           source_run_id: run_id,
           next_role: handoff.next_role,
           primary_task_id: handoff.primary_task_id ?? null,
@@ -5934,6 +6178,11 @@ const app = new Hono()
 app.get('/selftest', (c) => {
   const now = new Date().toISOString()
   const projectId = uuidv7()
+  const p3StagingRequest = new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/selftest')
+  const p3ProductionRequest = new Request('https://example.supabase.co/functions/v1/gsa-mcp/selftest')
+  const p3PendingInventory = CUTOVER_INVENTORY.map((item: any) =>
+    item.id === 'P3-C01' ? { ...item, disposition: 'PENDING' } : item
+  )
   const manifest = buildProjectManifest({
     projectId,
     name: 'Selftest Project',
@@ -6189,6 +6438,30 @@ app.get('/selftest', (c) => {
   const cp6JobWithRepo = {
     ...nextGateJob,
     repository_context: { working_repository_url: 'https://github.com/example/source' },
+  }
+  const cp6ProductionJobWithRepo = {
+    ...cp6JobWithRepo,
+    memory_namespace: 'PRODUCTION',
+  }
+  const cp6ProductionClaimWithBundle = {
+    ...cp6ClaimWithBundle,
+    memory_namespace: 'PRODUCTION',
+  }
+  const cp6ProductionAttestationRef = {
+    ...cp6AttestationRef,
+    path: verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION'),
+  }
+  const cp6ProductionVerificationWithBundle = {
+    ...cp6VerificationWithBundle,
+    memory_namespace: 'PRODUCTION',
+    evidence_bundle_attestation_refs: [cp6ProductionAttestationRef],
+  }
+  const cp6ProductionVerificationWithLabAttestation = {
+    ...cp6ProductionVerificationWithBundle,
+    evidence_bundle_attestation_refs: [{
+      ...cp6ProductionAttestationRef,
+      path: verificationPath(projectId, uuidv7(), 'NEXT', 'TEST_LAB'),
+    }],
   }
 
   const cp6PrivateAttestationId = uuidv7()
@@ -6710,6 +6983,24 @@ app.get('/selftest', (c) => {
     p2_important_finding_review_verification_rejected: Boolean(p2ImportantFindingReviewVerification.error),
     p2_tester_success_failure_class_rejected: Boolean(p2TesterFailureClassVerification.error),
     p2_v2_stable_closure_unchanged: p2V2ClosureUnaffected,
+    p3_cutover_inventory_resolved: cutoverInventoryError() === null,
+    p3_unresolved_cutover_inventory_rejected: Boolean(cutoverInventoryError(p3PendingInventory)?.includes('CUTOVER_INVENTORY_UNRESOLVED')),
+    p3_staging_surface_detected: runtimeSurface(p3StagingRequest) === 'STAGING_NEXT',
+    p3_production_surface_detected: runtimeSurface(p3ProductionRequest) === 'PRODUCTION',
+    p3_staging_new_job_default_remains_v2: jobCreationExecutionContractDefault(p3StagingRequest) === 'V2_STABLE',
+    p3_production_new_job_default_is_next: jobCreationExecutionContractDefault(p3ProductionRequest) === 'NEXT',
+    p3_staging_next_namespace_is_test_lab: nextMemoryNamespaceForRequest(p3StagingRequest) === 'TEST_LAB',
+    p3_production_next_namespace_is_production: nextMemoryNamespaceForRequest(p3ProductionRequest) === 'PRODUCTION',
+    p3_historical_next_missing_namespace_defaults_test_lab: resolveNextMemoryNamespace(undefined, 'NEXT') === 'TEST_LAB',
+    p3_production_next_job_path_outside_test_lab:
+      recordPath(projectId, 'JOBS', uuidv7(), 'NEXT', 'PRODUCTION').startsWith('projects/' + projectId + '/WORK/JOBS/') &&
+      !recordPath(projectId, 'JOBS', uuidv7(), 'NEXT', 'PRODUCTION').includes('/TEST-LAB/NEXT/'),
+    p3_production_next_verification_path_outside_test_lab:
+      verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION').startsWith('projects/' + projectId + '/VERIFICATION/') &&
+      !verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION').includes('/TEST-LAB/NEXT/'),
+    p3_staging_and_production_next_paths_are_separate:
+      recordPath(projectId, 'JOBS', nextJobId, 'NEXT', 'TEST_LAB') !== recordPath(projectId, 'JOBS', nextJobId, 'NEXT', 'PRODUCTION'),
+    p3_missing_execution_contract_still_v2_compatible: resolveExecutionContract(undefined) === 'V2_STABLE',
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
@@ -6779,6 +7070,8 @@ app.get('/selftest', (c) => {
     cp6_repo_attestation_accepts_finalize_proof: validateEvidenceBundleAttestationSnapshot(cp6RepoAttestationSnapshot, cp6ExpectedBundleContext).error === null,
     cp6_repo_attestation_rejects_commit_proof_mismatch: validateEvidenceBundleAttestationSnapshot(cp6BadRepoAttestationSnapshot, cp6ExpectedBundleContext).error !== null,
     cp6_checkpoint_bundle_is_applicable_when_exact: checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, cp6VerificationWithBundle),
+    p3_production_checkpoint_bundle_attestation_is_applicable: checkpointVerificationApplicable(cp6ProductionJobWithRepo, cp6ProductionJobWithRepo.test_checkpoints[0], cp6ProductionClaimWithBundle, cp6ProductionVerificationWithBundle),
+    p3_production_checkpoint_bundle_rejects_test_lab_attestation_path: !checkpointVerificationApplicable(cp6ProductionJobWithRepo, cp6ProductionJobWithRepo.test_checkpoints[0], cp6ProductionClaimWithBundle, cp6ProductionVerificationWithLabAttestation),
     cp6_checkpoint_bundle_rejects_missing_attestation_ref: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], cp6ClaimWithBundle, { ...cp6VerificationWithBundle, evidence_bundle_attestation_refs: [] }),
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
     cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
@@ -6806,7 +7099,17 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION', oauth: true, source_build_id: GSA_SOURCE_BUILD_ID, execution_contract_default: DEFAULT_EXECUTION_CONTRACT }),
+  c.json({
+    ok: true,
+    service: 'gpt-super-agent',
+    phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION',
+    oauth: true,
+    source_build_id: GSA_SOURCE_BUILD_ID,
+    runtime_surface: runtimeSurface(c.req.raw),
+    execution_contract_default: jobCreationExecutionContractDefault(c.req.raw),
+    next_memory_namespace: nextMemoryNamespaceForRequest(c.req.raw),
+    cutover_ready: cutoverInventoryError() === null,
+  }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
