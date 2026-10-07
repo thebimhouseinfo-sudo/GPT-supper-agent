@@ -4589,6 +4589,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -4599,7 +4603,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
       }
       const verificationId = uuidv7()
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'CRITIC_REVIEW',
@@ -4608,6 +4612,7 @@ function createServer(req: Request) {
         planning_revision: planning_revision ?? current.planning_revision ?? null,
         producer: 'critic_reviewer',
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         human_invoked: true,
         target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
         target_revision: target_revision ?? null,
@@ -5226,6 +5231,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(owningJob)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(owningJob)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'NEXT_RUN_NAMESPACE_INVALID: owning Job memory_namespace is invalid.' }], isError: true }
+      }
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -5323,7 +5332,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         primary_task_id: primary_task_id ?? null,
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
@@ -5342,7 +5351,7 @@ function createServer(req: Request) {
         started_at: now,
         ended_at: null,
       }
-      const path = recordPath(project_id, 'RUNS', runId, executionContract)
+      const path = recordPath(project_id, 'RUNS', runId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const result = {
         run_id: runId,
         handle: runHandle(runId),
@@ -5507,6 +5516,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(owningRun.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(owningRun)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: owning NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (executionContract === 'NEXT' && (!owningRun.target_revision || owningRun.target_revision !== target_revision || owningRun.target_ref !== target_ref)) {
         return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: NEXT Goal Recheck must bind the exact Run target ref/revision.' }], isError: true }
       }
@@ -5517,6 +5530,9 @@ function createServer(req: Request) {
         }
         try { owningJob = JSON.parse(job_record_text) } catch {
           return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: invalid owning Job JSON.' }], isError: true }
+        }
+        if (recordNextMemoryNamespace(owningJob) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'GOAL_RECHECK_REJECTED: owning Job/Run NEXT memory_namespace mismatch.' }], isError: true }
         }
         const coverageError = goalRecheckCoverageError(owningJob, owningRun, criteria ?? [])
         if (coverageError) return { content: [{ type: 'text', text: coverageError }], isError: true }
@@ -5537,7 +5553,7 @@ function createServer(req: Request) {
         target_revision,
         producer: 'coder',
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: owningRun.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: owningRun.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         result: blocking.length ? 'CHANGES_REQUIRED' : (criteria.some((c: any) => c.result === 'PARTIAL' || c.result === 'UNVERIFIED') ? 'PASS_RETEST_REQUIRED' : 'PASS'),
         limitations: limitations ?? [],
         evidence_refs: criteria.flatMap((c: any) => c.evidence ?? []),
@@ -5545,9 +5561,9 @@ function createServer(req: Request) {
         scope_drift: scope_drift ?? [],
         created_at: new Date().toISOString(),
       }
-      const path = verificationPath(project_id, verificationId, executionContract)
-      const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract)
-      const owningJobPath = executionContract === 'NEXT' ? recordPath(project_id, 'JOBS', job_id, executionContract) : null
+      const path = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const owningRunPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const owningJobPath = executionContract === 'NEXT' ? recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : null
       const result = {
         verification_id: verificationId,
         memory_path: path,
@@ -5630,6 +5646,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(run.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(run)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (executionContract === 'NEXT' && (!run.target_ref || !run.target_revision || !Number.isInteger(Number(run.planning_revision)))) {
         return { content: [{ type: 'text', text: 'RUN_VERIFICATION_REJECTED: NEXT Verification requires exact target ref/revision and current planning revision.' }], isError: true }
       }
@@ -5668,7 +5688,7 @@ function createServer(req: Request) {
         target_revision: run.target_revision ?? null,
         producer: run.role,
         execution_contract: executionContract,
-        ...(executionContract === 'NEXT' ? { planning_revision: run.planning_revision } : {}),
+        ...(executionContract === 'NEXT' ? { planning_revision: run.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         result,
         ...(run.role === 'reviewer' ? { findings: findings ?? [], coverage_summary: coverage_summary ?? null } : {}),
         ...(run.role === 'tester' ? { failure_class: failure_class ?? null } : {}),
@@ -5676,8 +5696,8 @@ function createServer(req: Request) {
         evidence_refs: evidence_refs ?? [],
         created_at: new Date().toISOString(),
       }
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
-      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const out = {
         verification_id: verificationId,
         memory_path: memoryPath,
@@ -5756,6 +5776,10 @@ function createServer(req: Request) {
       }
       const executionContract = resolveExecutionContract(current.execution_contract)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(current)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: NEXT Run memory_namespace is invalid.' }], isError: true }
+      }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
         let goalRef: string | null = null
@@ -5778,11 +5802,12 @@ function createServer(req: Request) {
             owningJob.project_id !== project_id ||
             owningJob.job_id !== job_id ||
             owningJob.planning_revision !== current.planning_revision ||
-            jobExecutionContract(owningJob) !== 'NEXT'
+            jobExecutionContract(owningJob) !== 'NEXT' ||
+            recordNextMemoryNamespace(owningJob) !== nextMemoryNamespace
           ) {
             return { content: [{ type: 'text', text: 'CODER_COMPLETION_BLOCKED: owning Job does not match the Run current NEXT planning revision.' }], isError: true }
           }
-          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT') : ''
+          const expectedGoalPath = typeof goal?.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, 'NEXT', nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
           const coverageError = goalRecheckCoverageError(owningJob, current, goal?.criteria ?? [])
           if (entry.path !== expectedGoalPath || coverageError) {
             return { content: [{ type: 'text', text: coverageError ?? 'CODER_COMPLETION_BLOCKED: GOAL_RECHECK snapshot path mismatch.' }], isError: true }
@@ -5802,10 +5827,11 @@ function createServer(req: Request) {
         }
         const revisionMatches = !current.target_revision || !goal.target_revision || current.target_revision === goal.target_revision
         const goalExecutionContract = resolveExecutionContract(goal.execution_contract)
-        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract) : ''
+        const expectedGoalPath = typeof goal.verification_id === 'string' ? verificationPath(project_id, goal.verification_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
         const persistedRefMatches = expectedGoalPath === goalRef
         const planningRevisionMatches = executionContract !== 'NEXT' || goal.planning_revision === current.planning_revision
-        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && revisionMatches && persistedRefMatches && planningRevisionMatches
+        const namespaceMatches = executionContract !== 'NEXT' || recordNextMemoryNamespace(goal) === nextMemoryNamespace
+        const goalMatches = goal.kind === 'GOAL_RECHECK' && goal.project_id === project_id && goal.job_id === job_id && goal.run_id === run_id && goalExecutionContract === executionContract && namespaceMatches && revisionMatches && persistedRefMatches && planningRevisionMatches
         const unresolvedNotMet = (goal.criteria ?? []).some((x: any) => x.result === 'NOT_MET')
         const unresolvedDrift = (goal.scope_drift ?? []).length > 0
         const acceptableResult = ['PASS','PASS_RETEST_REQUIRED'].includes(goal.result)
@@ -5884,18 +5910,19 @@ function createServer(req: Request) {
         handoffEvidenceVerificationRef = { path: verified.ref, sha: verified.sha }
         handoffEvidenceClaimRef = { path: claimed.ref, sha: claimed.sha }
       }
-      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract)
+      const runPath = recordPath(project_id, 'RUNS', run_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       let handoffId: string | null = null
       let handoffPath: string | null = null
       let handoffText: string | null = null
       if (handoff) {
         handoffId = uuidv7()
-        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId, executionContract)
+        handoffPath = recordPath(project_id, 'HANDOFFS', handoffId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
         handoffText = prettyJson({
           handoff_id: handoffId,
           project_id,
           job_id,
           execution_contract: executionContract,
+          ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
           source_run_id: run_id,
           next_role: handoff.next_role,
           primary_task_id: handoff.primary_task_id ?? null,
