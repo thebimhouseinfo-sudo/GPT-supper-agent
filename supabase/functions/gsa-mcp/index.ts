@@ -646,9 +646,10 @@ function validateEvidenceBundleAttestationSnapshot(
   }
   const entry = parsed.entries[0]
   const record = entry.record
+  const recordMemoryNamespace = recordNextMemoryNamespace(record)
   const expectedPath =
-    typeof record?.verification_id === 'string'
-      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+    typeof record?.verification_id === 'string' && recordMemoryNamespace
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT', recordMemoryNamespace)
       : ''
   const bundle = record?.evidence_bundle_ref
   const bundleError = evidenceBundleRefValidationError(bundle, expected)
@@ -680,6 +681,7 @@ function validateEvidenceBundleAttestationSnapshot(
     record?.project_id === expected.project_id &&
     record?.job_id === expected.job_id &&
     resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    recordMemoryNamespace != null &&
     record?.producer === 'tester' &&
     record?.result === 'PUBLISHED' &&
     record?.checkpoint_id === expected.checkpoint_id &&
@@ -714,14 +716,16 @@ function validateTesterEvidenceVerificationSnapshot(
   }
   const entry = parsed.entries[0]
   const record = entry.record
+  const recordMemoryNamespace = recordNextMemoryNamespace(record)
   const expectedPath =
-    typeof record?.verification_id === 'string'
-      ? verificationPath(expected.project_id, record.verification_id, 'NEXT')
+    typeof record?.verification_id === 'string' && recordMemoryNamespace
+      ? verificationPath(expected.project_id, record.verification_id, 'NEXT', recordMemoryNamespace)
       : ''
   const valid =
     expectedPath === entry.path &&
     ['TEST','RETEST'].includes(record?.kind) &&
     resolveExecutionContract(record?.execution_contract) === 'NEXT' &&
+    recordMemoryNamespace != null &&
     record?.producer === 'tester' &&
     record?.project_id === expected.project_id &&
     record?.job_id === expected.job_id &&
@@ -736,7 +740,7 @@ function validateTesterEvidenceVerificationSnapshot(
     record.evidence_bundle_attestation_refs.every((item: any) =>
       item &&
       typeof item.path === 'string' &&
-      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT') + '/VERIFICATION/') &&
+      item.path.startsWith(executionMemoryRoot(expected.project_id, 'NEXT', recordMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) + '/VERIFICATION/') &&
       /^[0-9a-f]{40}$/.test(String(item.sha || ''))
     )
   if (!valid) {
@@ -763,9 +767,10 @@ function validateTesterEvidenceClaimSnapshot(
   }
   const entry = parsed.entries[0]
   const claim = entry.record
+  const claimMemoryNamespace = recordNextMemoryNamespace(claim)
   const expectedPath =
-    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision))
-      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id)
+    typeof verification?.checkpoint_id === 'string' && Number.isInteger(Number(verification?.planning_revision)) && claimMemoryNamespace
+      ? checkpointClaimPath(expected.project_id, expected.job_id, Number(verification.planning_revision), verification.checkpoint_id, claimMemoryNamespace)
       : ''
   const requiredState =
     verification?.result === 'PASS' ? 'SATISFIED' :
@@ -775,6 +780,8 @@ function validateTesterEvidenceClaimSnapshot(
     expectedPath === entry.path &&
     claim?.kind === 'CHECKPOINT_CLAIM' &&
     claim?.execution_contract === 'NEXT' &&
+    claimMemoryNamespace != null &&
+    sameNextMemoryNamespace(claim, verification) &&
     claim?.project_id === expected.project_id &&
     claim?.job_id === expected.job_id &&
     claim?.planning_revision === expected.planning_revision &&
@@ -806,6 +813,7 @@ function validateTesterEvidenceClaimSnapshot(
 function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any, verification: any) {
   if (!claim || !verification) return false
   if (claim.kind !== 'CHECKPOINT_CLAIM' || claim.execution_contract !== 'NEXT') return false
+  if (!sameNextMemoryNamespace(job, claim) || !sameNextMemoryNamespace(job, verification)) return false
   if (claim.project_id !== job.project_id || claim.job_id !== job.job_id || claim.planning_revision !== job.planning_revision || claim.checkpoint_id !== checkpoint.checkpoint_id) return false
   if (claim.mode !== checkpoint.mode || !['SATISFIED','OBSERVED'].includes(claim.state)) return false
   if (claim.last_verification_id !== verification.verification_id || claim.lease_token !== verification.lease_token || claim.attempt_id !== verification.attempt_id) return false
@@ -888,6 +896,8 @@ function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 
 function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   const executionContract = jobExecutionContract(job)
   if (executionContract !== 'NEXT') return { allowed: true, required_checkpoint_ids: [], blocking: [] as string[] }
+  const nextMemoryNamespace = recordNextMemoryNamespace(job)
+  if (!nextMemoryNamespace) return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT Job memory_namespace is invalid.'] }
   if (job.planning_review?.status !== 'PASS' || job.planning_review?.reviewed_revision !== job.planning_revision) {
     return { allowed: false, required_checkpoint_ids: [], blocking: ['Current NEXT planning revision is not Reviewer PASS.'] }
   }
@@ -920,7 +930,7 @@ function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationS
         item.job_id === job.job_id &&
         item.planning_revision === job.planning_revision &&
         item.checkpoint_id === checkpointId &&
-        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId)
+        entry.path === checkpointClaimPath(job.project_id, job.job_id, job.planning_revision, checkpointId, nextMemoryNamespace)
     })
     if (matchingClaims.length !== 1) {
       blocking.push('Expected exactly one current deterministic checkpoint claim: ' + checkpointId)
@@ -929,7 +939,7 @@ function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationS
     const claim = matchingClaims[0].record
     const matchingVerifications = verificationParsed.entries.filter((entry: any) =>
       entry.record?.verification_id === claim.last_verification_id &&
-      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT')
+      entry.path === verificationPath(job.project_id, claim.last_verification_id, 'NEXT', nextMemoryNamespace)
     )
     if (matchingVerifications.length !== 1 || !checkpointVerificationApplicable(job, checkpoint, claim, matchingVerifications[0].record)) {
       blocking.push('Mandatory checkpoint evidence is not applicable: ' + checkpointId)
@@ -975,10 +985,11 @@ function productFailureRetestValidationError(
   try { goal = JSON.parse(goalRecordText) } catch {
     return 'invalid repair Goal Recheck JSON.'
   }
-  const expectedGoalRef = verificationPath(projectId, goal.verification_id, 'NEXT')
+  const expectedGoalRef = verificationPath(projectId, goal.verification_id, 'NEXT', recordNextMemoryNamespace(current) ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   const validGoal =
     goal.kind === 'GOAL_RECHECK' &&
     goal.execution_contract === 'NEXT' &&
+    sameNextMemoryNamespace(current, goal) &&
     goal.project_id === projectId &&
     goal.job_id === jobId &&
     goal.target_revision === targetRevision &&
@@ -997,10 +1008,12 @@ function nextPlanSupersessionMatches(
   projectId: string,
   jobId: string,
 ) {
-  const expectedVerificationRef = verificationPath(projectId, verification?.verification_id, 'NEXT')
+  const expectedVerificationRef = verificationPath(projectId, verification?.verification_id, 'NEXT', recordNextMemoryNamespace(current) ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   return (
     ['TEST','RETEST'].includes(verification?.kind) &&
     verification?.execution_contract === 'NEXT' &&
+    sameNextMemoryNamespace(current, verification) &&
+    sameNextMemoryNamespace(current, claim) &&
     verification?.project_id === projectId &&
     verification?.job_id === jobId &&
     verification?.planning_revision === current?.planning_revision &&
@@ -4692,6 +4705,10 @@ function createServer(req: Request) {
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: owning NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       let claimantRun: any
       try { claimantRun = JSON.parse(claimant_run_record_text) } catch {
         return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: invalid claimant Tester Run JSON.' }], isError: true }
@@ -4705,6 +4722,7 @@ function createServer(req: Request) {
         claimantRun.role !== 'tester' ||
         claimantRun.lifecycle !== 'IN_PROGRESS' ||
         claimantRun.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(claimantRun) !== nextMemoryNamespace ||
         (claimantRun.target_ref && claimantRun.target_ref !== target_ref) ||
         (claimantRun.target_revision && claimantRun.target_revision !== target_revision)
       ) {
@@ -4747,13 +4765,13 @@ function createServer(req: Request) {
               item.job_id === job_id &&
               item.planning_revision === job.planning_revision &&
               item.checkpoint_id === prerequisiteId &&
-              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId)
+              entry.path === checkpointClaimPath(project_id, job_id, job.planning_revision, prerequisiteId, nextMemoryNamespace)
           })
           const prerequisiteClaim = prerequisiteClaimMatches.length === 1 ? prerequisiteClaimMatches[0].record : null
           const prerequisiteVerificationMatches = prerequisiteClaim
             ? prerequisiteVerifications.entries.filter((entry: any) =>
                 entry.record?.verification_id === prerequisiteClaim.last_verification_id &&
-                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT')
+                entry.path === verificationPath(project_id, prerequisiteClaim.last_verification_id, 'NEXT', nextMemoryNamespace)
               )
             : []
           const prerequisiteVerification = prerequisiteVerificationMatches.length === 1 ? prerequisiteVerificationMatches[0].record : null
@@ -4764,7 +4782,7 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_PREREQUISITE_BLOCKED: prerequisite Task is not durably completed: ' + prerequisiteId }], isError: true }
         }
       }
-      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id, nextMemoryNamespace)
       let current: any = null
       if (current_claim_record_text) {
         if (!current_claim_record_sha) return { content: [{ type: 'text', text: 'CHECKPOINT_CLAIM_REJECTED: current claim SHA is required with current claim text.' }], isError: true }
@@ -4782,7 +4800,7 @@ function createServer(req: Request) {
               claim_operation: 'NONE',
               expected_claim_sha: current_claim_record_sha,
               claim_record_text: null,
-              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id),
+              attempt_memory_path: checkpointAttemptPath(project_id, current.attempt_id, nextMemoryNamespace),
               attempt_record_text: null,
               attempt_id: current.attempt_id,
               lease_token: current.lease_token,
@@ -4856,6 +4874,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         mode: checkpoint.mode,
@@ -4882,6 +4901,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         mode: checkpoint.mode,
@@ -4894,7 +4914,7 @@ function createServer(req: Request) {
         retest_of_verification_id: retest_of_verification_id ?? null,
         started_at: now.toISOString(),
       }
-      const attemptPath = checkpointAttemptPath(project_id, attemptId)
+      const attemptPath = checkpointAttemptPath(project_id, attemptId, nextMemoryNamespace)
       const claimOperation = current ? 'UPDATE' : 'CREATE'
       const externalSteps = [
         'Immediately read back the claimant Tester Run from NEXT memory and require blob SHA equals claimant_run_record_sha plus role=tester, lifecycle=IN_PROGRESS, same project/job/run/target before any claim mutation.',
@@ -4978,6 +4998,10 @@ function createServer(req: Request) {
       if (job.project_id !== project_id || job.job_id !== job_id || jobExecutionContract(job) !== 'NEXT') {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning Job must be the current NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: owning NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       let testerRun: any
       try { testerRun = JSON.parse(tester_run_record_text) } catch {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: invalid Tester Run JSON.' }], isError: true }
@@ -4989,7 +5013,8 @@ function createServer(req: Request) {
         testerRun.run_id !== claim.claimant_run_id ||
         testerRun.role !== 'tester' ||
         testerRun.lifecycle !== 'IN_PROGRESS' ||
-        testerRun.planning_revision !== job.planning_revision
+        testerRun.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: Verification must be produced by the current IN_PROGRESS NEXT Tester Run that owns the lease.' }], isError: true }
       }
@@ -5003,7 +5028,8 @@ function createServer(req: Request) {
         claim.checkpoint_id !== checkpoint_id ||
         claim.state !== 'ACTIVE' ||
         claim.attempt_id !== attempt_id ||
-        claim.lease_token !== lease_token
+        claim.lease_token !== lease_token ||
+        recordNextMemoryNamespace(claim) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'STALE_CHECKPOINT_LEASE: claim/attempt/token is no longer the active lease.' }], isError: true }
       }
@@ -5068,6 +5094,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         planning_revision: job.planning_revision,
         checkpoint_id,
         attempt_id,
@@ -5107,8 +5134,8 @@ function createServer(req: Request) {
         retest_required: retestRequired,
         updated_at: now,
       }
-      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT')
-      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id)
+      const verificationPathValue = verificationPath(project_id, verificationId, 'NEXT', nextMemoryNamespace)
+      const claimPath = checkpointClaimPath(project_id, job_id, job.planning_revision, checkpoint_id, nextMemoryNamespace)
       const out = {
         verification_id: verificationId,
         verification_memory_path: verificationPathValue,
