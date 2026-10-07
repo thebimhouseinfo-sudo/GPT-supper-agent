@@ -2,7 +2,7 @@
 
 Status: **TASK 32 RESOLVED — ZERO UNRESOLVED ITEMS**  
 Post-P2 baseline: `f13bc6e22b5321698e3b4a2986c5e43c658edf57`  
-P3 runtime candidate: `e9c3af7fe01a3dddee3fa1d585f9c0c5b759758a`  
+P3 runtime candidate: `289bb70c1995428eff364deed7e337b1ea19b943`  
 Owning Job: `J-7793`  
 Policy source: WL-029 / Correction P3.
 
@@ -56,7 +56,7 @@ Compatibility rules:
 
 ## Task 32 evidence
 
-Staging `gsa-mcp-next` v18 compiled and served the exact runtime candidate. Public staging `/selftest` observed `pass=true`, including:
+Staging `gsa-mcp-next` v19 compiled and served the exact repaired runtime candidate. Reviewer R-F021's production EvidenceBundle namespace finding is covered by positive PRODUCTION applicability and negative TEST_LAB-path regression. Public staging `/selftest` observed `pass=true`, including:
 - resolved-inventory positive case;
 - synthetic unresolved-inventory rejection;
 - production-new-Job default NEXT;
