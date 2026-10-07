@@ -2333,6 +2333,7 @@ function createServer(req: Request) {
       project_id: string
       job_id: string
       execution_contract: ExecutionContract
+      memory_namespace?: NextMemoryNamespace | null
       repository_full_name: string
       target_ref: string
       target_revision: string
@@ -2346,9 +2347,10 @@ function createServer(req: Request) {
     }
     const entry = parsed.entries[0]
     const record = entry.record
+    const recordMemoryNamespace = recordNextMemoryNamespace(record)
     const expectedPath =
       typeof record?.verification_id === 'string'
-        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract)
+        ? verificationPath(expected.project_id, record.verification_id, expected.execution_contract, recordMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
         : ''
     const repoMatches =
       String(record?.repository_full_name || '').toLowerCase() === expected.repository_full_name.toLowerCase()
@@ -2358,6 +2360,7 @@ function createServer(req: Request) {
       record?.project_id === expected.project_id &&
       record?.job_id === expected.job_id &&
       resolveExecutionContract(record?.execution_contract) === expected.execution_contract &&
+      (expected.execution_contract !== 'NEXT' || (recordMemoryNamespace != null && recordMemoryNamespace === expected.memory_namespace)) &&
       record?.producer === 'tester' &&
       record?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
       record?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
@@ -2446,6 +2449,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== project.project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_DENY: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2485,6 +2492,7 @@ function createServer(req: Request) {
           project_id: project.project_id,
           job_id,
           execution_contract: executionContract,
+          memory_namespace: nextMemoryNamespace,
           repository_full_name: requested.full_name,
           target_ref,
           target_revision,
@@ -2515,6 +2523,7 @@ function createServer(req: Request) {
         probe_id: mode === 'PROBE' ? 'PROBE-GIT-EVIDENCE-01' : null,
         binding: {
           project_id: project.project_id,
+          memory_namespace: nextMemoryNamespace,
           repository: requested.full_name,
           job_id,
           checkpoint_id,
@@ -2635,6 +2644,10 @@ function createServer(req: Request) {
       if (executionContract !== 'NEXT') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: CP6 repository evidence publication is NEXT-only.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== args.project_id || job.job_id !== args.job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2646,7 +2659,8 @@ function createServer(req: Request) {
         testerRun.role !== 'tester' ||
         testerRun.lifecycle !== 'IN_PROGRESS' ||
         testerRun.target_ref !== args.target_ref ||
-        testerRun.target_revision !== args.target_revision
+        testerRun.target_revision !== args.target_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace
       ) {
         return { content: [{ type: 'text', text: 'EVIDENCE_REPO_INVALID: publication must belong to the current target-bound NEXT Tester Run.' }], isError: true }
       }
@@ -2674,6 +2688,7 @@ function createServer(req: Request) {
           project_id: args.project_id,
           job_id: args.job_id,
           execution_contract: executionContract,
+          memory_namespace: nextMemoryNamespace,
           repository_full_name: args.repository_full_name,
           target_ref: args.target_ref,
           target_revision: args.target_revision,
@@ -2739,6 +2754,7 @@ function createServer(req: Request) {
         project_id: args.project_id,
         job_id: args.job_id,
         execution_contract: executionContract,
+        memory_namespace: nextMemoryNamespace,
         probe_id: 'PROBE-GIT-EVIDENCE-01',
         capability: 'REPOSITORY_BINARY_EVIDENCE',
         observed: true,
@@ -2760,7 +2776,7 @@ function createServer(req: Request) {
       } : null
       const attestationId = mode === 'PUBLISH' ? uuidv7() : null
       const attestationPath = attestationId
-        ? verificationPath(args.project_id, attestationId, 'NEXT')
+        ? verificationPath(args.project_id, attestationId, 'NEXT', nextMemoryNamespace)
         : null
       const attestation = mode === 'PUBLISH' ? {
         verification_id: attestationId,
@@ -2768,6 +2784,7 @@ function createServer(req: Request) {
         project_id: args.project_id,
         job_id: args.job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         producer: 'tester',
         result: 'PUBLISHED',
         planning_revision: job.planning_revision,
@@ -2850,6 +2867,10 @@ function createServer(req: Request) {
       }
       const executionContract = jobExecutionContract(job)
       if (!executionContract) return invalidExecutionContract()
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (executionContract === 'NEXT' && !nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
       if (job.project_id !== project_id || job.job_id !== job_id || job.lifecycle !== 'IN_PROGRESS') {
         return { content: [{ type: 'text', text: 'EVIDENCE_PROBE_VERIFICATION_REJECTED: Job identity/lifecycle mismatch.' }], isError: true }
       }
@@ -2863,6 +2884,7 @@ function createServer(req: Request) {
         observation?.project_id === project_id &&
         observation?.job_id === job_id &&
         resolveExecutionContract(observation?.execution_contract) === executionContract &&
+        (executionContract !== 'NEXT' || observation?.memory_namespace === nextMemoryNamespace) &&
         observation?.probe_id === 'PROBE-GIT-EVIDENCE-01' &&
         observation?.capability === 'REPOSITORY_BINARY_EVIDENCE' &&
         observation?.observed === true &&
@@ -2882,13 +2904,14 @@ function createServer(req: Request) {
       }
 
       const verificationId = uuidv7()
-      const memoryPath = verificationPath(project_id, verificationId, executionContract)
+      const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const verification = {
         verification_id: verificationId,
         kind: 'CAPABILITY_PROBE',
         project_id,
         job_id,
         execution_contract: executionContract,
+        ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
         producer: 'tester',
         probe_id: 'PROBE-GIT-EVIDENCE-01',
         capability: 'REPOSITORY_BINARY_EVIDENCE',
@@ -2970,6 +2993,10 @@ function createServer(req: Request) {
       ) {
         return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: owning Job must be the current IN_PROGRESS NEXT Job.' }], isError: true }
       }
+      const nextMemoryNamespace = recordNextMemoryNamespace(job)
+      if (!nextMemoryNamespace) {
+        return { content: [{ type: 'text', text: 'EVIDENCE_BUNDLE_ATTESTATION_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
+      }
 
       const runParsed = parseDurableSnapshots([tester_run_snapshot], 'tester_run_snapshot')
       if (runParsed.error || runParsed.entries.length !== 1) {
@@ -2978,13 +3005,14 @@ function createServer(req: Request) {
       const runEntry = runParsed.entries[0]
       const testerRun = runEntry.record
       if (
-        runEntry.path !== recordPath(project_id, 'RUNS', testerRun?.run_id, 'NEXT') ||
+        runEntry.path !== recordPath(project_id, 'RUNS', testerRun?.run_id, 'NEXT', nextMemoryNamespace) ||
         resolveExecutionContract(testerRun?.execution_contract) !== 'NEXT' ||
         testerRun?.project_id !== project_id ||
         testerRun?.job_id !== job_id ||
         testerRun?.role !== 'tester' ||
         testerRun?.lifecycle !== 'IN_PROGRESS' ||
         testerRun?.planning_revision !== job.planning_revision ||
+        recordNextMemoryNamespace(testerRun) !== nextMemoryNamespace ||
         typeof testerRun?.target_ref !== 'string' ||
         !/^[0-9a-f]{40}$/.test(String(testerRun?.target_revision || ''))
       ) {
@@ -3087,13 +3115,14 @@ function createServer(req: Request) {
       }
 
       const verificationId = uuidv7()
-      const path = verificationPath(project_id, verificationId, 'NEXT')
+      const path = verificationPath(project_id, verificationId, 'NEXT', nextMemoryNamespace)
       const record = {
         verification_id: verificationId,
         kind: 'EVIDENCE_BUNDLE',
         project_id,
         job_id,
         execution_contract: 'NEXT',
+        memory_namespace: nextMemoryNamespace,
         producer: 'tester',
         result: 'PUBLISHED',
         planning_revision: job.planning_revision,
@@ -5060,6 +5089,9 @@ function createServer(req: Request) {
         if (attested.error) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + attested.error }], isError: true }
         }
+        if (recordNextMemoryNamespace(attested.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: EvidenceBundle attestation memory_namespace mismatch.' }], isError: true }
+        }
         const bundle = attested.bundle
         const key = bundle.backend === 'PRIVATE_SUPABASE'
           ? 'PRIVATE:' + bundle.evidence_bundle_id
@@ -5914,6 +5946,9 @@ function createServer(req: Request) {
         if (verified.error) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + verified.error }], isError: true }
         }
+        if (recordNextMemoryNamespace(verified.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: Tester evidence Verification memory_namespace mismatch.' }], isError: true }
+        }
         const claimed = validateTesterEvidenceClaimSnapshot(
           handoff.tester_evidence_claim_snapshot,
           verified.record,
@@ -5928,6 +5963,9 @@ function createServer(req: Request) {
         )
         if (claimed.error) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: ' + claimed.error }], isError: true }
+        }
+        if (recordNextMemoryNamespace(claimed.record) !== nextMemoryNamespace) {
+          return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: terminal checkpoint claim memory_namespace mismatch.' }], isError: true }
         }
         if (!(verification_refs ?? []).includes(verified.ref)) {
           return { content: [{ type: 'text', text: 'HANDOFF_EVIDENCE_REJECTED: the exact applicable TEST/RETEST Verification ref must also be included in verification_refs.' }], isError: true }
