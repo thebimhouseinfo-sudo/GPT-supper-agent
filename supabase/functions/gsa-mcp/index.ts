@@ -45,7 +45,7 @@ const CUTOVER_INVENTORY = [
   { id: 'P3-C16', owner: 'correction governance / branch audit', disposition: 'REMOVE', retirement_evidence: 'Excluded alternate-line commit eb26729 is not imported; request-surface activation replaces its unconditional default-NEXT behavior.' },
 ] as const
 
-const GSA_SOURCE_BUILD_ID = 'CP0-J-F177-R2'
+const GSA_SOURCE_BUILD_ID = 'P3-J-7793-R1'
 
 function resolveExecutionContract(value: unknown): ExecutionContract | null {
   if (value == null || value === '') return DEFAULT_EXECUTION_CONTRACT
@@ -2033,7 +2033,11 @@ function createServer(req: Request) {
       title: 'Get GSA runtime status',
       description: 'Verify authenticated GSA runtime and Memory Repo configuration state.',
       inputSchema: {},
-      outputSchema: { phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string(), source_build_id: z.string(), execution_contract_default: z.string() },
+      outputSchema: {
+        phase: z.string(), mcp: z.string(), auth: z.string(), memory_repo: z.string(),
+        source_build_id: z.string(), runtime_surface: z.string(), execution_contract_default: z.string(),
+        next_memory_namespace: z.string(), cutover_ready: z.boolean(),
+      },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -2048,7 +2052,10 @@ function createServer(req: Request) {
         auth: 'AUTHENTICATED',
         memory_repo: data?.memory_repo_full_name ? 'CONFIGURED' : 'NOT_CONFIGURED',
         source_build_id: GSA_SOURCE_BUILD_ID,
-        execution_contract_default: DEFAULT_EXECUTION_CONTRACT,
+        runtime_surface: runtimeSurface(req),
+        execution_contract_default: jobCreationExecutionContractDefault(req),
+        next_memory_namespace: nextMemoryNamespaceForRequest(req),
+        cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
     },
@@ -6169,6 +6176,11 @@ const app = new Hono()
 app.get('/selftest', (c) => {
   const now = new Date().toISOString()
   const projectId = uuidv7()
+  const p3StagingRequest = new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/selftest')
+  const p3ProductionRequest = new Request('https://example.supabase.co/functions/v1/gsa-mcp/selftest')
+  const p3PendingInventory = CUTOVER_INVENTORY.map((item: any) =>
+    item.id === 'P3-C01' ? { ...item, disposition: 'PENDING' } : item
+  )
   const manifest = buildProjectManifest({
     projectId,
     name: 'Selftest Project',
@@ -6945,6 +6957,24 @@ app.get('/selftest', (c) => {
     p2_important_finding_review_verification_rejected: Boolean(p2ImportantFindingReviewVerification.error),
     p2_tester_success_failure_class_rejected: Boolean(p2TesterFailureClassVerification.error),
     p2_v2_stable_closure_unchanged: p2V2ClosureUnaffected,
+    p3_cutover_inventory_resolved: cutoverInventoryError() === null,
+    p3_unresolved_cutover_inventory_rejected: Boolean(cutoverInventoryError(p3PendingInventory)?.includes('CUTOVER_INVENTORY_UNRESOLVED')),
+    p3_staging_surface_detected: runtimeSurface(p3StagingRequest) === 'STAGING_NEXT',
+    p3_production_surface_detected: runtimeSurface(p3ProductionRequest) === 'PRODUCTION',
+    p3_staging_new_job_default_remains_v2: jobCreationExecutionContractDefault(p3StagingRequest) === 'V2_STABLE',
+    p3_production_new_job_default_is_next: jobCreationExecutionContractDefault(p3ProductionRequest) === 'NEXT',
+    p3_staging_next_namespace_is_test_lab: nextMemoryNamespaceForRequest(p3StagingRequest) === 'TEST_LAB',
+    p3_production_next_namespace_is_production: nextMemoryNamespaceForRequest(p3ProductionRequest) === 'PRODUCTION',
+    p3_historical_next_missing_namespace_defaults_test_lab: resolveNextMemoryNamespace(undefined, 'NEXT') === 'TEST_LAB',
+    p3_production_next_job_path_outside_test_lab:
+      recordPath(projectId, 'JOBS', uuidv7(), 'NEXT', 'PRODUCTION').startsWith('projects/' + projectId + '/WORK/JOBS/') &&
+      !recordPath(projectId, 'JOBS', uuidv7(), 'NEXT', 'PRODUCTION').includes('/TEST-LAB/NEXT/'),
+    p3_production_next_verification_path_outside_test_lab:
+      verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION').startsWith('projects/' + projectId + '/VERIFICATION/') &&
+      !verificationPath(projectId, uuidv7(), 'NEXT', 'PRODUCTION').includes('/TEST-LAB/NEXT/'),
+    p3_staging_and_production_next_paths_are_separate:
+      recordPath(projectId, 'JOBS', nextJobId, 'NEXT', 'TEST_LAB') !== recordPath(projectId, 'JOBS', nextJobId, 'NEXT', 'PRODUCTION'),
+    p3_missing_execution_contract_still_v2_compatible: resolveExecutionContract(undefined) === 'V2_STABLE',
     coder_harness_goal_recheck: Boolean(renderHarness('coder')?.includes('GOAL RECHECK')),
     base_harness_denial_boundary: BASE_AGENT_HARNESS.includes('denied or unauthorized action'),
     progressive_skill_catalog: Boolean(RUNTIME_SKILLS['coding-loop'] && RUNTIME_SKILLS['delegation']),
@@ -7041,7 +7071,17 @@ app.get('/selftest', (c) => {
 })
 
 app.get('/health', (c) =>
-  c.json({ ok: true, service: 'gpt-super-agent', phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION', oauth: true, source_build_id: GSA_SOURCE_BUILD_ID, execution_contract_default: DEFAULT_EXECUTION_CONTRACT }),
+  c.json({
+    ok: true,
+    service: 'gpt-super-agent',
+    phase: 'M2_AUTONOMOUS_SAME_TURN_ORCHESTRATION',
+    oauth: true,
+    source_build_id: GSA_SOURCE_BUILD_ID,
+    runtime_surface: runtimeSurface(c.req.raw),
+    execution_contract_default: jobCreationExecutionContractDefault(c.req.raw),
+    next_memory_namespace: nextMemoryNamespaceForRequest(c.req.raw),
+    cutover_ready: cutoverInventoryError() === null,
+  }),
 )
 
 app.get('/.well-known/oauth-protected-resource', (c) =>
