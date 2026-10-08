@@ -56,6 +56,8 @@ Job is a relatively stable planning/control record, not a Run write-back aggrega
 job_id
 handle?
 project_id
+execution_contract?
+memory_namespace?   # NEXT only: TEST_LAB | PRODUCTION
 type
 objective
 scope
@@ -98,6 +100,7 @@ handle?
 objective
 scope
 dependencies[]
+required_skills[]?
 completion_criteria[]
 lifecycle
 ```
@@ -111,6 +114,8 @@ run_id
 handle?
 project_id
 job_id
+execution_contract?
+memory_namespace?   # NEXT only; inherited from owning Job
 primary_task_id?
 affected_task_refs[]
 parent_run_id?
@@ -119,6 +124,7 @@ target_ref?
 target_revision?
 scope_claim
 input_refs[]
+loaded_skills[]?
 lifecycle
 derived_condition?
 result?
@@ -137,6 +143,8 @@ ended_at?
 handoff_id
 project_id
 job_id
+execution_contract?
+memory_namespace?   # NEXT only; inherited from source Run
 source_run_id
 next_role
 primary_task_id?
@@ -435,6 +443,37 @@ route =
 ```
 
 A successful/observed Verification is persisted as `CANDIDATE`, never self-authoritative `APPLICABLE`. Applicability is derived only when the current terminal claim points to the same Verification/attempt/token, target identity and current planning revision. If terminal claim CAS loses, the candidate remains orphaned/non-applicable.
+
+### P2 closure integrity
+
+For NEXT source execution, Goal Recheck criteria are keyed by `task_id + exact completion_criterion` and must exactly cover every approved criterion in the Coder Run Task scope. Reviewer/Tester success is represented by append-preserving `REVIEW` / `TEST` Verification records bound to the exact Run, planning revision and target revision. NEXT Run completion consumes the durable Verification snapshot, not only a path string, and revalidates success semantics such as non-empty evidence, blocking Reviewer findings, and Tester failure classification.
+
+When the Job topology contains Reviewer or Tester Tasks, NEXT Job completion requires selected successful current-revision Run snapshots plus their exact matching `REVIEW` / `TEST` Verification snapshots. Historical `V2_STABLE` Jobs do not activate these P2 guards.
+
+Frontend/UI Coder Tasks declare `required_skills = [ui-coder-frontend]`. NEXT `run_begin` derives those requirements from the Task, resolves them against the runtime skill catalog, injects the full required skill context in the dispatch result, and records the derived `loaded_skills[]` in the Run. Callers cannot self-declare activation. Non-UI Coder Tasks keep `required_skills=[]` and receive no injected UI specialization.
+
+### P3 NEXT cutover namespace
+
+NEXT records use a first-class `memory_namespace`:
+
+```text
+TEST_LAB
+→ projects/<project-id>/TEST-LAB/NEXT/**
+
+PRODUCTION
+→ projects/<project-id>/{WORK,VERIFICATION}/**
+```
+
+The owning NEXT Job chooses the namespace. Run, Handoff, Goal Recheck, REVIEW/TEST/RETEST, checkpoint claim/attempt and EvidenceBundle attestation records inherit it. Durable snapshot validation rejects cross-namespace evidence.
+
+Compatibility is asymmetric by design:
+- missing `execution_contract` continues to resolve to `V2_STABLE`;
+- missing `memory_namespace` on a NEXT record resolves to `TEST_LAB`, preserving all pre-P3 staging evidence;
+- V2_STABLE records do not interpret `memory_namespace`.
+
+New-Job activation is request-surface-bound rather than a global decoder default. `gsa-mcp-next` remains staging and does not silently create NEXT Jobs. The production `gsa-mcp` source is prepared to default new Jobs to NEXT only after that exact source is later Human-approved and deployed. This does not reinterpret historical records.
+
+P3 cutover readiness is fail-closed against the reviewed P3-C01..P3-C16 inventory. Every row must exist exactly once with an owner and KEEP/REPLACE/REMOVE disposition; REPLACE requires a production target and REMOVE requires retirement evidence.
 
 ### CP6 durable EvidenceBundle applicability
 

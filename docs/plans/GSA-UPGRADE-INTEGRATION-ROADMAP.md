@@ -24,7 +24,7 @@ upgrade/gsa-next
 
 final:
 upgrade/gsa-next fully passes
-→ sync latest main into upgrade/gsa-next
+→ reconcile reviewed production drift into upgrade/gsa-next
 → final compatibility + end-to-end validation
 → Human release decision
 → promote upgrade/gsa-next to main
@@ -89,7 +89,7 @@ After the checkpoint passes:
 checkpoint branch
 → Reviewer / Tester / eval gate
 → squash or bounded merge into upgrade/gsa-next
-→ delete checkpoint branch
+→ verify absorption; cleanup may occur later
 ~~~
 
 This keeps `upgrade/gsa-next` readable as a sequence of meaningful checkpoint merges rather than hundreds of unstructured commits.
@@ -102,7 +102,7 @@ During the upgrade:
 - upgrade code does not replace production `gsa-mcp`;
 - upgrade tests must not mutate active production Job records;
 - production hotfixes, if any, may still land on `main`;
-- before final promotion, latest `main` must be synchronized into `upgrade/gsa-next` and the final gates rerun.
+- before final promotion, classify current production drift and apply only accepted changes to `upgrade/gsa-next`, then rerun the final gates.
 
 No force-push or destructive history rewrite is part of the normal promotion path.
 
@@ -116,15 +116,16 @@ Before starting each new checkpoint:
 read current main SHA
 → compare with integration baseline SHA
 → if main advanced:
-   merge/rebase latest main into upgrade/gsa-next
-   resolve only on integration branch
-   rerun the V2_STABLE compatibility smoke gate
+   create a temporary child branch from latest upgrade/gsa-next
+   apply and resolve accepted drift only on that child branch
+   rerun the V2_STABLE compatibility smoke gate on that child branch
+   review and merge the child branch into upgrade/gsa-next
 → then branch/start the next checkpoint
 ~~~
 
 Any production hotfix therefore enters the integration branch incrementally rather than being discovered only at final release.
 
-The final promotion still requires one full latest-main synchronization followed by CP7 compatibility + E2E rerun.
+Final promotion repeats production-drift review and the full compatibility + E2E gates.
 
 
 ---
@@ -605,14 +606,14 @@ CP7 PASS
 
 This is the only checkpoint that changes production `main`.
 
-## Step F1 — synchronize production drift
+## Step F1 — review production drift
 
 Before release:
 
 ~~~text
 latest main
-→ merge/rebase into upgrade/gsa-next
-→ resolve only on upgrade/gsa-next
+→ apply accepted drift in a temporary child branch
+→ review/test that child branch, then merge it into upgrade/gsa-next
 → rerun CP7 compatibility + E2E gates
 ~~~
 
@@ -639,7 +640,7 @@ Human owns the promotion.
 Preferred Git operation:
 
 - fast-forward `main` if ancestry permits;
-- otherwise merge `upgrade/gsa-next` into `main` after final sync.
+- otherwise merge `upgrade/gsa-next` into `main` after final drift review.
 
 Do not force-reset or rewrite production history by default.
 
@@ -723,7 +724,7 @@ CURRENT MAIN / V2_STABLE-COMPATIBLE
                                                    │
                                  upgrade/gsa-next complete
                                                    │
-                           sync latest main into integration
+                           assess production drift before final gates
                                                    │
                                 final compatibility + E2E
                                                    │

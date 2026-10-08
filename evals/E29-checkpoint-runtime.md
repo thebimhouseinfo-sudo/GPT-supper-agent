@@ -216,7 +216,7 @@ Change only `verification.applicability.planning_revision` or `verification.appl
 Expected: evidence is non-applicable and the mandatory gate stays blocked.
 
 
-## E29-16 affected-task evidence-gate bypass
+## E29-23 affected-task evidence-gate bypass
 
 Create a NEXT Coder/Designer Run with:
 - an unblocked primary Task;
@@ -228,13 +228,13 @@ Also supply an affected_task_ref that is not a current Task.
 
 Expected: NEXT_TASK_BINDING_REJECTED.
 
-## E29-17 typed checkpoint dependency gate
+## E29-24 typed checkpoint dependency gate
 
 Create a Task node whose typed planning_topology directly depends on a TEST_CHECKPOINT or MILESTONE_GATE, but omit a duplicate EvidenceRequirement.
 
 Expected: Task dispatch is blocked until that checkpoint has one current applicable terminal claim + Verification.
 
-## E29-18 execution-topology coherence during supersession
+## E29-25 execution-topology coherence during supersession
 
 For a NEXT planning revision:
 - change tasks while omitting topology;

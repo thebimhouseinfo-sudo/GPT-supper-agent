@@ -10,6 +10,18 @@ Milestones/stages are topology elements, not hierarchy nodes.
 
 Job is a finite primary objective, not one role.
 
+
+### Active Project admission
+
+The opened Project is the operational frame. Before consequential routing or mutation:
+
+1. re-ground the exact Project from durable `PROJECT.md`;
+2. require Project lifecycle to permit the action;
+3. keep unrelated remembered Projects outside the operational frame unless the Human explicitly references them;
+4. if the request belongs to another unrelated Project, surface the mismatch before continuing operational work;
+5. external reads may be explicitly user-directed, but they do not widen write scope;
+6. Project-owned writes must stay inside that Project's registered owned repository set or its own Memory path.
+
 ## 2. Topology
 
 Planner defines:
@@ -20,6 +32,18 @@ Milestone | Stage | Handler | Output | Depends on | Next | Review? | Tester? | H
 Coder refines exact source-level HOW.
 
 Standalone `review` Job exists only when review itself is the objective.
+
+### NEXT dispatch admission
+
+For a NEXT Job, dispatch is valid only when all of the following are true:
+
+- the supplied Job snapshot is still the immediate current blob SHA at Run persistence time;
+- the requested planning revision equals the Job's current reviewed planning revision;
+- every dispatched Task exists in current topology and the role matches its handler;
+- every declared Task dependency is proven by a successful COMPLETED NEXT Run snapshot bound to the same Job and planning revision;
+- mandatory evidence/checkpoint gates remain satisfied.
+
+A stale Job SHA, stale planning revision, wrong role, or unmet Task prerequisite rejects dispatch. These guards are NEXT-only; historical V2_STABLE dispatch behavior is unchanged.
 
 ## 3. Review placement
 
@@ -72,7 +96,8 @@ MINOR = non-blocking
 ## 7. Coder Goal Recheck
 
 Before handoff/PR-ready:
-- map criteria to actual diff/evidence;
+- map every approved current-Task criterion to actual diff/evidence;
+- for NEXT, bind each entry to exact task_id and require exact current-Job criterion coverage;
 - mark MET/PARTIAL/NOT_MET/UNVERIFIED;
 - identify out-of-scope changes;
 - fix/escalate applicable gaps.
@@ -90,6 +115,11 @@ Unavailable/unproven checks remain UNVERIFIED unless another evidence path exist
 ## 9. Tester
 
 Tester practical execution is capability-gated and source-read-only.
+
+For an attributed NEXT Reviewer or non-checkpoint Tester Run, PASS/PASS_RETEST_REQUIRED is not a chat-only verdict. The role persists an exact Run-bound `REVIEW` or `TEST` Verification first; `run_complete` consumes its durable snapshot and rejects missing, stale, wrong-run, wrong-target or wrong-planning-revision evidence. Closure revalidates success semantics too: evidence refs must exist, Reviewer success cannot retain CRITICAL/IMPORTANT findings, and Tester success cannot carry a failure class.
+
+At NEXT Job completion, every Reviewer/Tester Task in current topology must be covered by one selected successful current-revision Run and one exact matching durable Verification, both listed in completion evidence. This is the executable Review Coverage Summary gate.
+
 
 ### Evidence modes
 

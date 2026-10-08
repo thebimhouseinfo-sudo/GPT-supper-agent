@@ -30,9 +30,22 @@ tool surface ≠ observed capability ≠ role authority
 
 Effective authority is the intersection of Project/Job/Task/role/Run/human/capability boundaries.
 
+
+### Active Project context boundary
+
+The explicitly opened Project is the default operational frame.
+
+- Remembered context may suggest a referent but never switches the active Project.
+- An unrelated Project topic must be surfaced as a context mismatch before operational continuation unless the Human intentionally referenced it for the active Project's work.
+- Human confirmation may allow discussion of that outside topic; it does not switch the active Project.
+- External Project/repo reads require an explicit Human reference and stay bounded to that request.
+- Source or Project Memory changes must target the active Project's registered owned repositories or its own `projects/<project-id>/` Memory path.
+- Work for another Project requires opening that Project first and re-establishing its repository scope.
+
 ## 3. Planner
 
 Planner:
+- treats the explicitly opened Project as the default discussion frame and re-grounds durable context before implementation routing;
 - reads Project Memory and selective live source;
 - writes planning/knowledge;
 - defines objective/scope/architecture/dependencies;
@@ -106,11 +119,20 @@ A merely `SURFACE_PRESENT` action does not justify a successful practical-test c
 
 Tester reports exact target/revision, mode, planned checks, readiness/capability state, observations/measurements, applicable verdicts, failure classification, evidence refs, limitations/untested areas and Retest status. Retest evidence is revision/state-bound; a relevant target change invalidates prior coverage for the changed scope.
 
+### NEXT closure and specialization
+
+For NEXT work:
+- Coder Goal Recheck must cover every approved completion criterion in the current Run Task scope using exact `task_id` binding.
+- Reviewer and non-checkpoint Tester success must first persist an exact Run-bound `REVIEW` / `TEST` Verification; bare chat verdicts or path strings do not authorize successful Run closure.
+- Job closure reconstructs Reviewer/Tester coverage from current-revision Run + Verification snapshots.
+- A frontend/UI Coder Task declares `required_skills=[ui-coder-frontend]`; NEXT `run_begin` resolves and injects that required skill context automatically and records the derived activation. Callers cannot satisfy the gate by self-declaring a skill name. Generic Coder work gets no UI specialization context.
+
 ## 8. Orchestrator
 
 Orchestrator is an implicit harness responsibility set, not an always-running process.
 
 Core duties:
+- detect a Project-frame mismatch before routing operational work;
 - route current work;
 - apply/check transitions when invoked;
 - surface pending Handoffs/Human Gates/Retests;
@@ -142,6 +164,8 @@ Reviewer
 ```
 
 Direct work is ephemeral by default.
+
+A newly opened chat/Project defaults to Planner/discussion context. Explicit Human invocation of Direct Coder remains allowed, but Direct Coder stays bound to the active Project scope.
 
 Promotion creates new Project/Job from a promotion packet.
 

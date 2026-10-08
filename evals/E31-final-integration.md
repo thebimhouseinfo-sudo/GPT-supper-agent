@@ -15,7 +15,7 @@ Prove the integrated CP0–CP6 NEXT line behaves coherently before final product
 | 5. PRODUCT_FAILURE → repair → RETEST | E29-07 | CP7 selftest executes failure routing plus positive repaired-revision Goal Recheck RETEST and negative same-revision rejection. |
 | 6. PLAN_GAP → Planner revision | E29-08 | CP7 selftest executes PLAN_GAP routing plus exact terminal claim/Verification supersession binding and mismatch rejection. |
 | 7. Crash/resume around checkpoint | E29-02, E29-03, E29-16 | One deterministic live claim survives replay/reclaim rules. |
-| 8. Multi-prerequisite checkpoint | E28-01, E29-13, E29-17 | Integration checkpoint waits for every semantic prerequisite. |
+| 8. Multi-prerequisite checkpoint | E28-01, E29-13, E29-24 | Integration checkpoint waits for every semantic prerequisite. |
 | 9. Legacy V2_STABLE read/resume/complete | E25, E29-11 | NEXT additions remain inert for legacy Jobs. |
 | 10. Lessons-learned closure | E26 + canonical ledger | Accepted lessons have canonical owners/evidence; unresolved candidates stay explicitly non-canonical. |
 
@@ -44,3 +44,7 @@ PASS when:
 5. production `main` and `gsa-mcp` remain unchanged;
 6. accepted workflow lessons are canonically owned;
 7. the known CP6 Memory persistence mismatch remains explicit until the authorized durable update succeeds.
+
+## Known post-merge live-test boundary
+
+CP7 public-path E2E (including real durable MCP persistence/recovery and V2_STABLE/NEXT compatibility) is an explicitly accepted **known issue for live testing through the existing GSA plugin after main promotion**. Fixture references and selftest checks provide static/helper regression coverage only; they are never equivalent to a recorded live E2E PASS. Report post-merge live outcomes separately with exact runtime build ID, target SHA, negative controls and rollback status.

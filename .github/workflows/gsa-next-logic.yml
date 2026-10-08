@@ -1,0 +1,34 @@
+name: GSA NEXT runtime logic gate
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/gsa-mcp/index.ts'
+      - 'test-lab/runtime-logic.test.cjs'
+      - '.github/workflows/gsa-next-logic.yml'
+  workflow_dispatch:
+
+jobs:
+  runtime-helper-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated TypeScript parser
+        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa-next-test typescript@5.9.3
+      - name: Run executable helper assertions and negative controls
+        env:
+          NODE_PATH: /tmp/gsa-next-test/node_modules
+        run: node --test test-lab/runtime-logic.test.cjs
+  deno-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Typecheck Supabase GSA MCP Edge Function
+        run: deno check supabase/functions/gsa-mcp/index.ts

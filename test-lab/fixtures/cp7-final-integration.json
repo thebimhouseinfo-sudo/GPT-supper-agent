@@ -69,7 +69,7 @@
       "coverage": [
         "E28-01",
         "E29-13",
-        "E29-17"
+        "E29-24"
       ]
     },
     {
@@ -91,6 +91,7 @@
   ],
   "limitations": [
     "Authenticated staging MCP redirect may remain capability-bound Retest in the current connected tool surface.",
-    "CP6 durable Job lifecycle update remains platform-blocked and must stay explicit."
+    "CP6 durable Job lifecycle update remains platform-blocked and must stay explicit.",
+    "CP7 public-path E2E remains a tracked known issue for post-merge live GSA testing; references to eval/selftest are not marked as end-to-end PASS."
   ]
 }
