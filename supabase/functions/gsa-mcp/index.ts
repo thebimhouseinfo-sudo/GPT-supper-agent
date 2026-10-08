@@ -127,12 +127,19 @@ function edgeFunctionBase(req: Request) {
   return `${origin}/functions/v1/${edgeFunctionSlug(req)}`
 }
 
+// OAuth is publicly addressed through Supabase HTTPS; `req.url` can contain
+// an internal HTTP origin behind the edge proxy. Do not derive OAuth resource
+// identities from request origin or untrusted forwarded-host headers.
+function oauthPublicBase(req: Request) {
+  return `https://${PROJECT_REF}.supabase.co/functions/v1/${edgeFunctionSlug(req)}`
+}
+
 function mcpResource(req: Request) {
-  return edgeFunctionBase(req) + '/mcp'
+  return oauthPublicBase(req) + '/mcp'
 }
 
 function resourceMetadata(req: Request) {
-  return edgeFunctionBase(req) + '/.well-known/oauth-protected-resource'
+  return oauthPublicBase(req) + '/.well-known/oauth-protected-resource'
 }
 
 function challenge(req: Request, error = 'invalid_token', description = 'Sign in to GPT Super Agent to continue') {
@@ -7118,6 +7125,9 @@ app.get('/selftest', (c) => {
     p5_inspector_remote_origin_denied: !inspectorCorsOriginAllowed('https://malicious.example') &&
       !inspectorCorsOriginAllowed('null'),
     p5_oauth_proxy_origin_forced_https: edgeFunctionBase(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next`,
+    p5_oauth_canonical_metadata_from_internal_request: resourceMetadata(new Request('http://localhost:8080/gsa-mcp-next/mcp')) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/.well-known/oauth-protected-resource`,
+    p5_oauth_canonical_resource_from_internal_request: mcpResource(new Request('http://localhost:8080/gsa-mcp-next/mcp')) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`,
+    p5_oauth_canonical_resource_prod_disjoint: mcpResource(new Request('http://localhost:8080/gsa-mcp/mcp')) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp/mcp`,
     p5_oauth_challenge_metadata_is_https: challenge(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)).includes(`resource_metadata="https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/.well-known/oauth-protected-resource"`),
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
