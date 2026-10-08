@@ -899,9 +899,9 @@ function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 
   }
   if (target.kind === 'MILESTONE') {
     const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === target.id)
-    return [...new Set(milestone?.gate_checkpoint_ids ?? [])]
+    return [...new Set<string>(milestone?.gate_checkpoint_ids ?? [])]
   }
-  return [...new Set((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
+  return [...new Set<string>((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
 }
 
 function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
@@ -5102,7 +5102,7 @@ function createServer(req: Request) {
           run_id: testerRun.run_id,
           target_ref,
           target_revision,
-          repository_full_name: workingRepo,
+          repository_full_name: workingRepo!,
         })
         if (attested.error) {
           return { content: [{ type: 'text', text: 'CHECKPOINT_VERIFICATION_REJECTED: ' + attested.error }], isError: true }
@@ -6203,7 +6203,7 @@ app.get('/selftest', (c) => {
   const legacyRunId = uuidv7()
   const nextJobId = uuidv7()
   const nextRunId = uuidv7()
-  const legacyCoderRun = { project_id: projectId, job_id: legacyJobId, run_id: legacyRunId, role: 'coder', lifecycle: 'IN_PROGRESS' }
+  const legacyCoderRun: { project_id: string; job_id: string; run_id: string; role: string; lifecycle: string; execution_contract?: ExecutionContract } = { project_id: projectId, job_id: legacyJobId, run_id: legacyRunId, role: 'coder', lifecycle: 'IN_PROGRESS' }
   const nextCoderRun = { project_id: projectId, job_id: nextJobId, run_id: nextRunId, role: 'coder', lifecycle: 'IN_PROGRESS', execution_contract: 'NEXT' }
   const checkpointId = 'CP-E29'
   const consumerTaskId = uuidv7()
@@ -7089,8 +7089,8 @@ app.get('/selftest', (c) => {
     cp6_checkpoint_bundle_rejects_retest_attempt_mismatch: !checkpointVerificationApplicable(cp6JobWithRepo, cp6JobWithRepo.test_checkpoints[0], { ...cp6ClaimWithBundle, attempt_id: uuidv7() }, cp6VerificationWithBundle),
     cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
     cp6_handoff_claim_rejects_orphan_verification: validateTesterEvidenceClaimSnapshot(cp6OrphanClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error !== null,
-    edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
-    edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
+    edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next`,
+    edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next`,
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
     execution_contract_next_is_next: resolveExecutionContract('NEXT') === 'NEXT',
