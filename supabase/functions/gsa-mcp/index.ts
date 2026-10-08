@@ -118,8 +118,9 @@ function cutoverInventoryError(inventory: readonly any[] = CUTOVER_INVENTORY): s
 }
 
 function edgeFunctionBase(req: Request) {
-  const url = new URL(req.url)
-  return `${url.origin}/functions/v1/${edgeFunctionSlug(req)}`
+  // Supabase's internal edge proxy can expose req.url with an http:// origin.
+  // OAuth metadata and WWW-Authenticate MUST advertise the public HTTPS origin.
+  return `https://${PROJECT_REF}.supabase.co/functions/v1/${edgeFunctionSlug(req)}`
 }
 
 function mcpResource(req: Request) {
