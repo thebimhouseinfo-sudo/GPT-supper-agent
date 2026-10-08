@@ -22,3 +22,13 @@ jobs:
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
         run: node --test test-lab/runtime-logic.test.cjs
+  deno-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Typecheck Supabase GSA MCP Edge Function
+        run: deno check supabase/functions/gsa-mcp/index.ts
