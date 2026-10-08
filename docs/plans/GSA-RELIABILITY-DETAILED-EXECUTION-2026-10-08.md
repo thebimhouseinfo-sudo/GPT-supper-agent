@@ -32,7 +32,7 @@ For each pack, use a separate bounded Job with one durable scope and accepted ev
 **Tasks:**
 - T00.1 L0 tree + L1 selective source discovery: inspect actual Job/Run/Verification write APIs, scope guards, auth/connector capability and code-host boundaries.
 - T00.2 Trace each lesson to canonical owner, code function, invariant, test and expected mutation. Flag ALREADY_OWNED/PARTIAL/NEW and unknown facts.
-- T00.3 Audit current persisted Run/Job schema and whether cursor can be reconstructed without new record fields. Reject redundant lifecycle design.
+- T00.3 Audit current persisted Run/Job/Verification/CONTROL fields and reproduce cursor reconstruction using isolated completed/in-progress fixtures. Document the minimal missing-state counterexample before proposing ANY new persistent record; derive from existing records by default. Reject redundant lifecycle design.
 - T00.4 Lock one integration branch, hard compatibility boundaries, rollback baseline and evidence selection for later Jobs.
 **Exit:** requirement-to-source/test matrix with no orphan, architecture diff sketch, explicit schema decision; Reviewer PASS; no runtime writes.
 **Human gate:** any new durable record type or irreversible persistence contract requires explicit approval rather than presumed rollout.
@@ -40,12 +40,12 @@ For each pack, use a separate bounded Job with one durable scope and accepted ev
 ### M1 / JP-10 — Durable resume cursor and mutation reconciliation (MEDIUM; Coder)
 **Dependencies:** JP-00 PASS.
 **Tasks:**
-- T10.1 Introduce one narrow *Job execution cursor* contract **only if** the M0 proof shows existing durable Job/Run/CONTROL fields cannot reconstruct enough information. Preferred representation is a small derived/resumable Job-owned record or extension, not a second lifecycle.
+- T10.1 First implement a *derived execution cursor* using existing authoritative Job/Run/Verification/CONTROL information. Introduce one narrow new persisted cursor contract **only if** the M0 recovery-source decision record proves existing fields cannot reconstruct enough information and Reviewer accepts the minimal schema delta. Preferred representation is a small derived/resumable Job-owned record or extension, not a second lifecycle.
 - T10.2 Minimum cursor: `job_id`, `planning_revision`, `branch`, `expected_head_sha`, `last_good_sha`, `last_completed_checkpoint`, `pending_action`, `last_operation_id`, `retry_count`, `progress_fingerprint`. Record a durable checkpoint **after** source/Git record readback, never after prepare alone.
 - T10.3 Resume: read persisted cursor and Git/Memory SHA → compare canonical head → enumerate intervening changes → classify applied/conflicting/unapplied → invalidate stale Verification/Tester evidence → choose one next legal step. Never blindly recode or repeat a mutation.
 - T10.4 Stable operation ID, write-ahead intent where needed, authoritative refetch before retry, at most 2 reconciled retries of consequential writes.
 - T10.5 Define boundary when Git mutation succeeded but reply was lost: head/tree/readback proves success; otherwise stop with UNKNOWN_PENDING, never second commit by guess.
-**Tests:** simulated interrupted response before/after durable commit; competing SHA CAS; advanced branch; stale exact-SHA review; permission-denied persistence; V2 legacy parsing/behavior; non-NEXT writes unaffected.
+**Tests:** simulated interrupted response before/after durable commit; competing SHA CAS; advanced branch; stale exact-SHA review; permission-denied persistence; V2 legacy parsing/behavior; non-NEXT writes unaffected. Distinguish lost Git write reply (prove applied/absent by independent HEAD/blob readback) from denied Memory Repo lifecycle update (prepared is NOT persisted); no green from stub-only CAS. Real repo-write experiments require an explicitly authorized isolated Project/Job; otherwise their result is UNVERIFIED.
 **Gate CP-M1:** Reviewer of source, negative test and schema + Tester boundary gate; merge JP-10 to integration only.
 
 ### M2 / JP-11 — No-progress and terminal guard (SMALL–MEDIUM; Coder)
@@ -92,4 +92,20 @@ Only the final Human gate authorizes merge/deploy. Evidence thresholds and tool 
 - **Rollback:** record source blob SHA and Supabase version before any deployment, confirm exact deployed file bytes and auth behavior afterward; reject runtime source identity mismatch.
 
 ## 5. Review log / loop
-**Round 0 — Planner:** initial complete decomposition above. Pending Reviewer verification of M0 architecture-read coverage, cursor contract minimality, test trust and branch policy.
+**Round 0 — Planner:** initial decomposition committed at `634c1a9b`.
+
+**Round 1 — Reviewer (plan-document audit; CHANGES_REQUIRED):**
+1. **IMPORTANT: unproven schema necessity.** JP-10 risked creating a cursor record before proving existing `WORK/RUNS`, deterministic claim, and optional rebuildable `CONTROL.json` insufficient. Require an M0 reconstruction experiment and a no-new-schema fallback.
+2. **IMPORTANT: insufficiently explicit durable recovery boundary.** A lost Git write response and a denied Memory Repo lifecycle write require separate oracles; code must never mark completion from tool prepare.
+3. **IMPORTANT: incomplete scoped evidence gates.** A synthetic in-memory CAS collision and helper-only tests cannot claim real CAS, restart or repository readback; specify which exact authorized test Job and what unavailability means.
+4. **MINOR: acceptance order and impact.** Multiple reviewers on every trivial change would slow workflow. Review only at meaningful CPs; ensure M5 cannot promote if active V2 behavior diverges.
+
+**Planner revision in response (Round 1 repair):**
+- JP-00 now has a **mandatory recovery-source decision record**: actual available persisted Job/Run/Verification/CONTROL fields; sampled completed/in-progress synthetic fixtures; missing state proven with minimal counterexample. Preferred outcome is **derive cursor from existing durable records**, with new persisted fields permitted only if the counterexample demonstrates necessity and Reviewer approves the schema change.
+- JP-10's write protocol distinguishes: (A) Git commit succeeded but reply lost → independent HEAD/tree/blob readback detects applied action; (B) Memory lifecycle prepare succeeded but update denied → authoritative state stays old and action remains unresolved; never move lifecycle forward.
+- At CP-10, repository CAS/restart tests run only in an **explicitly authorized isolated test Project/Job**; when unavailable, label `UNVERIFIED`, retain the blocker and avoid reporting the relevant gate PASS. No synthetic UUID write to production.
+- Review cadence is limited to significant CP boundaries, with unchanged proven tests rerun rather than re-reviewed.
+
+**Round 2 — Reviewer (plan-document review after repair): PASS_WITH_LIMITATIONS.** Scope is finite, major risk boundaries have fail-closed evidence, tests target both test validity and real behavior, Job Packs are meaningful and integration branch policy preserves production. Remaining pre-implementation obligation: P0 must inspect actual served harness/skills and current durable Memory Repo before deciding any persisted state shape. This is a documented plan-review assessment, **not an official persisted `PLAN_REVIEW` Verification** (no authorized durable Project Job/record SHA has been supplied/created by this docs-only planning task).
+
+**Plan review disposition:** `PASS_WITH_LIMITATIONS` for the execution proposal only; implementation, Job creation, branch creation, main merge and production deploy remain unstarted. Next gate is approved JP-00/M0 evidence before source implementation.
