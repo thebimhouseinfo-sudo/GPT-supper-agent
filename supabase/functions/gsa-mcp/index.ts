@@ -7112,9 +7112,13 @@ app.get('/health', (c) =>
   }),
 )
 
-app.get('/.well-known/oauth-protected-resource', (c) =>
-  c.json({ resource: mcpResource(c.req.raw), authorization_servers: [AUTH_ISSUER], scopes_supported: AUTH_SCOPES }),
-)
+function protectedResourceMetadata(req: Request) {
+  return { resource: mcpResource(req), authorization_servers: [AUTH_ISSUER], scopes_supported: AUTH_SCOPES }
+}
+
+app.get('/.well-known/oauth-protected-resource', (c) => c.json(protectedResourceMetadata(c.req.raw)))
+app.get('/.well-known/oauth-protected-resource/mcp', (c) => c.json(protectedResourceMetadata(c.req.raw)))
+app.get('/mcp/.well-known/oauth-protected-resource', (c) => c.json(protectedResourceMetadata(c.req.raw)))
 
 app.all('/mcp', async (c) => {
   const authHeader = c.req.raw.headers.get('Authorization') ?? ''
