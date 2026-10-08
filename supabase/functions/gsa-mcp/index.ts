@@ -71,6 +71,14 @@ function invalidExecutionContract() {
   }
 }
 
+function uxFirstTemporaryUiGateRequired(job: any, role: string): boolean {
+  return role === 'coder' &&
+    job?.product_workflow === 'UX_FIRST' &&
+    Array.isArray(job?.ui_strategy?.temporary_ui) &&
+    job.ui_strategy.temporary_ui.length > 0 &&
+    job.ui_strategy?.temporary_ui_human_approval === 'REQUIRED_PENDING'
+}
+
 function edgeFunctionSlug(req: Request) {
   const url = new URL(req.url)
   const parts = url.pathname.split('/').filter(Boolean)
@@ -118,8 +126,9 @@ function cutoverInventoryError(inventory: readonly any[] = CUTOVER_INVENTORY): s
 }
 
 function edgeFunctionBase(req: Request) {
-  const url = new URL(req.url)
-  return `${url.origin}/functions/v1/${edgeFunctionSlug(req)}`
+  // Resource identity is public HTTPS even when the edge gateway forwards an internal HTTP URL.
+  // Never derive an OAuth protected resource origin from untrusted proxy/request origin.
+  return `https://${PROJECT_REF}.supabase.co/functions/v1/${edgeFunctionSlug(req)}`
 }
 
 function mcpResource(req: Request) {
@@ -5378,12 +5387,7 @@ function createServer(req: Request) {
       ) {
         return { content: [{ type: 'text', text: 'Coder target repository does not match the Job working repository.' }], isError: true }
       }
-      if (
-        role === 'coder' &&
-        owningJob.product_workflow === 'UX_FIRST' &&
-        (owningJob.ui_strategy?.temporary_ui ?? []).length > 0 &&
-        owningJob.ui_strategy?.temporary_ui_human_approval === 'REQUIRED_PENDING'
-      ) {
+      if (uxFirstTemporaryUiGateRequired(owningJob, role)) {
         return {
           content: [{
             type: 'text',
@@ -7016,8 +7020,17 @@ app.get('/selftest', (c) => {
     critic_skill_suggested: (ROLE_SKILLS.critic_reviewer ?? []).includes('critic-review'),
     critic_is_human_only: Boolean(renderHarness('critic_reviewer')?.includes('Human-invoked independent peer review only')),
     critic_stateless_contract: Boolean(renderHarness('critic_reviewer')?.includes('Conversation history is non-authoritative')),
-    ux_first_temp_ui_defaults_to_gate: true,
-    run_begin_requires_job_snapshot: true,
+    ux_first_temp_ui_defaults_to_gate:
+      uxFirstTemporaryUiGateRequired({ product_workflow: 'UX_FIRST', ui_strategy: { temporary_ui: [{ kind: 'temporary' }], temporary_ui_human_approval: 'REQUIRED_PENDING' } }, 'coder') &&
+      !uxFirstTemporaryUiGateRequired({ product_workflow: 'UX_FIRST', ui_strategy: { temporary_ui: [{ kind: 'temporary' }], temporary_ui_human_approval: 'APPROVED' } }, 'coder') &&
+      !uxFirstTemporaryUiGateRequired({ product_workflow: 'UX_FIRST', ui_strategy: { temporary_ui: [{ kind: 'temporary' }], temporary_ui_human_approval: 'REQUIRED_PENDING' } }, 'tester'),
+    run_begin_requires_job_snapshot:
+      p1DispatchValid === null &&
+      Boolean(nextDispatchPreflightError(p1DispatchJob, 'tester', [p1TaskB], 7, null, null, [p1CompletedEntry])?.includes('NEXT_DISPATCH_STALE_JOB_SHA')),
+    oauth_public_resource_canonical_on_internal_http:
+      mcpResource(new Request('http://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp-next/mcp')) ===
+      'https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp-next/mcp' &&
+      resourceMetadata(new Request('http://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp/mcp')).startsWith('https://'),
     job_record_path_shape: recordPath(projectId, 'JOBS', uuidv7()).startsWith('projects/' + projectId + '/WORK/JOBS/'),
     next_job_path_isolated: recordPath(projectId, 'JOBS', uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/WORK/JOBS/'),
     next_verification_path_isolated: verificationPath(projectId, uuidv7(), 'NEXT').startsWith('projects/' + projectId + '/TEST-LAB/NEXT/VERIFICATION/'),
