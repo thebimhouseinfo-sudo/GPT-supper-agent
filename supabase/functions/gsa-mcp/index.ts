@@ -6180,6 +6180,37 @@ function createServer(req: Request) {
 const root = new Hono()
 const app = new Hono()
 
+// Inspector's web client runs on loopback and must be able to read the
+// protected-resource challenge without weakening the Bearer-token gate.
+function inspectorCorsOriginAllowed(origin: string) {
+  try {
+    const url = new URL(origin)
+    return (url.protocol === 'http:' || url.protocol === 'https:') &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) &&
+      url.pathname === '/' && !url.search && !url.hash
+  } catch {
+    return false
+  }
+}
+
+app.use('*', async (c, next) => {
+  const origin = c.req.raw.headers.get('Origin') ?? ''
+  if (!inspectorCorsOriginAllowed(origin)) return next()
+  const headers = new Headers({
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': c.req.raw.headers.get('Access-Control-Request-Headers') ??
+      'Authorization, Content-Type, Accept, MCP-Protocol-Version, MCP-Session-Id, Last-Event-ID',
+    'Access-Control-Expose-Headers': 'WWW-Authenticate, MCP-Session-Id, MCP-Protocol-Version',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '600',
+    'Vary': 'Origin',
+  })
+  if (c.req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
+  await next()
+  for (const [name, value] of headers) c.header(name, value)
+})
+
 app.get('/selftest', (c) => {
   const now = new Date().toISOString()
   const projectId = uuidv7()
@@ -7082,6 +7113,10 @@ app.get('/selftest', (c) => {
     cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
     cp6_handoff_claim_rejects_orphan_verification: validateTesterEvidenceClaimSnapshot(cp6OrphanClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error !== null,
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
+    p5_inspector_localhost_cors_allowed: inspectorCorsOriginAllowed('http://localhost:6274') &&
+      inspectorCorsOriginAllowed('http://127.0.0.1:6274'),
+    p5_inspector_remote_origin_denied: !inspectorCorsOriginAllowed('https://malicious.example') &&
+      !inspectorCorsOriginAllowed('null'),
     p5_oauth_proxy_origin_forced_https: edgeFunctionBase(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next`,
     p5_oauth_challenge_metadata_is_https: challenge(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)).includes(`resource_metadata="https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/.well-known/oauth-protected-resource"`),
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
