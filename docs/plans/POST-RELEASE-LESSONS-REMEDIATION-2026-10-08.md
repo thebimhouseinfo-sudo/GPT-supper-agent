@@ -148,3 +148,8 @@ An item moves from CANDIDATE/PLANNED to IMPLEMENTED only when its canonical owne
 - **P4:** existing fresh-chat Planner safety verified; full source/lesson coverage, main drift reconciliation and release gate; only code for proven missing behavior.
 
 **Status:** PLANNER REVIEW PROPOSAL. No implementation branch created, runtime modified or deployment performed by this audit. Reviewer approval and Human instruction are required before starting source implementation.
+
+
+## Detailed execution and review handoff
+
+The reviewed Job Pack decomposition, acceptance checkpoints, risks and documented Planner → Reviewer → Planner repair → Reviewer recheck loop are in [`GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md`](GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md). Status: plan-level PASS_WITH_LIMITATIONS; no official durable PLAN_REVIEW Verification, no implementation branch or runtime changes. Begin with JP-00 and re-ground actual persisted state before selecting any new schema.
