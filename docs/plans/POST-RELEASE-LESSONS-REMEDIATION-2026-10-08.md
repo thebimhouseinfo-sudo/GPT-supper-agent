@@ -88,3 +88,63 @@ An item moves from CANDIDATE/PLANNED to IMPLEMENTED only when its canonical owne
 - `docs/process/lessons/BRANCH-COMMIT-SPRAWL-2026-10-04.md`
 - `docs/process/lessons/UPGRADE-IMPLEMENTATION-DRIFT-2026-10-04.md`
 - GitHub PR #17 and production `gsa-mcp` v44 deployment/read-back.
+
+
+---
+
+## Planner architecture-overlap audit and release strategy — 2026-10-08
+
+**Decision:** incremental, reviewed upgrade on **one new integration branch** after P0 plan approval; do **not** merge unfinished Job/Run/checkpoint changes into production main. Do **not** freeze main against critical production hotfixes. Source of truth during development: integration branch for upgrade, main for production; reconcile approved main-only hotfixes into integration before each next checkpoint and prior to promotion. The branch name is chosen at implementation start, not created by this document.
+
+### Existing architecture versus real delta
+
+| Lesson / cluster | Already in source/architecture | Remaining delta | Classification |
+|---|---|---|---|
+| WL-023/024 cross-project isolation | AGENT-HARNESSES + EXECUTION-AND-REVIEW + runtime scope guards; correction matrix marks implemented | regression/host enforcement validation, not redo | **ALREADY OWNED; test only** |
+| WL-031 fresh-chat Planner default | AGENT-HARNESSES already explicitly states a newly opened chat/Project defaults to Planner/discussion, and allows explicitly invoked Direct Coder | prove router/admission behavior across fresh sessions; tighten only if observed mismatch | **ALREADY DESIGNED; verify before patch** |
+| WL-025 prepared record vs persisted lifecycle | JOB-LIFECYCLE + CORE-RECORD-CONTRACTS already distinguish Run/Verification and exact-SHA authoritative read-back | interrupted post-write-before-reply recovery, explicit finalization evidence, denied-write route | **PARTIAL** |
+| 2026-10-08 interruption / livelock | Deterministic checkpoint lease, claim and revision-bound evidence already exist; STATE-MACHINE has terminal/superseded non-reactivation | general-purpose lightweight Job execution cursor; no-progress fingerprint, bounded retries, lost-response idempotency; no extra parallel lifecycle | **MATERIAL NEW DELTA** |
+| WL-028 / false-green tests | Reviewer is source read-only, meaningful checkpoint review; bounded helper tests + Deno CI exist | targeted test-script validity contract, mutation oracle, durable snapshot/integration tests and explicit UNVERIFIED labeling | **PARTIAL; test-quality delta** |
+| WL-032/033 root-cause debugger | Coder self-review, Goal Recheck and coding-loop behaviors exist; planning relationships already present | opt-in Coder debugging skill/branch with failure-surface graph and call-chain simulation after CI | **PARTIAL; new skill behavior** |
+| WL-026/027/029/030 drift / branches | correction requirement matrix, approved plan review, cutover inventory and one-branch upgrade policy are already canonical | operational release/checkpoint traceability and continuous reconciliation (avoid re-implementing completed correction program) | **MOSTLY OWNED; procedural verification** |
+
+**Repository observation:** canonical documentation already describes the existing behaviors. The source repository currently has only a small `skills/` stub for `gsa-job-runtime`; operational Planner/Coder/Reviewer skills may be served by the runtime harness rather than mirrored in standalone repository skill files. Therefore inspect `supabase/functions/gsa-mcp/index.ts` and relevant runtime skill text before specifying a file path for implementation. Do not presume a nonexistent `skills/debugging` already exists.
+
+### Practical scope reductions from the overlap audit
+
+- P0 must enumerate exact **implemented-vs-missing** runtime branches before any code task; only missing deltas become tasks.
+- WL-023/024 and WL-031 are **not** invitations to redesign the admission/authorization layer. First exercise its actual cold-chat and wrong-project paths.
+- Reuse existing checkpoint claim and Job/Run schemas for resume state if possible. Add small durable cursor fields or artifact only when reconstruction from existing records is demonstrably insufficient.
+- Prefer a **Coder-specific debugging skill/subflow**, not a new persistent agent.
+- Limit Reviewer test-code review to changed/high-risk tests, escaped regression and release/critical checkpoint gates. Trusted unchanged tests get rerun only.
+- Distinguish mock-only CAS from real GitHub CAS and avoid treating UI/tool discovery as successful end-to-end Job completion.
+
+### Main vs integration impact assessment
+
+| Change group | Runtime risk | Safe direct-main? | Why |
+|---|---|---|---|
+| README, ledger, plan, documentation-only corrections | LOW | **Yes**, with review | no running Job semantics changed |
+| New independent test fixtures / non-invasive CI checks | LOW–MEDIUM | **Conditional** | CI trigger/cost and false gate risk; keep checks honest |
+| Debugging skill and targeted Reviewer test-validity harness | MEDIUM | **Prefer integration** | shifts agent decision behavior; regression against normal Coder flow required |
+| Fresh-chat admission / routing | MEDIUM–HIGH | **Integration required** | can change what role/Project executes user requests |
+| Cursor, CAS recovery, retry/livelock, terminal-state guards | HIGH | **Integration required** | touches persistence, lifecycle and live Job convergence |
+
+**Recommended workflow:**
+1. Keep `main` as live v44 baseline. Short docs-only changes may merge directly after review; permit emergency hotfixes only with exact SHA and explicit rollback.
+2. Complete P0 on main (this review) and obtain Reviewer plan verdict. Then create **one** integration branch from latest main, e.g. `upgrade/gsa-reliability`. This is the only canonical upgrade line; optional small child branches are immediately integrated/deleted after review.
+3. Implement minimal high-risk P1 first, then P2/P3; treat P4 primarily as verification unless an actual admission gap is reproduced. At each meaningful checkpoint: test → Coder self-review → selective Reviewer code/test review → merge into the integration branch → record SHA/evidence. Do not accumulate unmerged side branches.
+4. If production main advances for a hotfix, classify semantic impact and reconcile to integration at the **next checkpoint**, not only at release. Never force-push main or silently overwrite production.
+5. Once all approved checkpoint gates PASS, verify production/main delta, existing V2 Jobs, active NEXT Jobs, restart/lost-response conditions and source/runtime tool exposure; seek Human approval to merge integration into main.
+6. **Deploy separately**, with versioned rollback point, exact source read-back, smoke and honest external-host/E2E coverage. Production main merge is not automatic deploy.
+
+**Why not lock main:** a strict freeze prevents urgent fixes for active production Jobs and creates a second drift problem. Why not merge each runtime checkpoint directly to main: unproven cursor/authorization changes could change durable operations of live NEXT Jobs. The integration branch is the safety boundary, while short-lived reviewed hotfixes may still enter main.
+
+### Updated checkpoint gates
+
+- **P0:** evidence-grounded overlap/ownership inventory, exact missing contracts, no duplicate work, Reviewer plan PASS.
+- **P1:** interrupted response, CAS conflict, real persistence-readback or clearly labeled simulated substitute, stalled progress, terminal state, V2 legacy regression. No new redundant lifecycle.
+- **P2:** known old bug makes test RED; changed test scripts reviewed at relevant checkpoint; no misleading PASS from stubs/skips.
+- **P3:** debugging opt-in activation, root-cause map, executable caller-chain simulation, unchanged normal Coder Job.
+- **P4:** existing fresh-chat Planner safety verified; full source/lesson coverage, main drift reconciliation and release gate; only code for proven missing behavior.
+
+**Status:** PLANNER REVIEW PROPOSAL. No implementation branch created, runtime modified or deployment performed by this audit. Reviewer approval and Human instruction are required before starting source implementation.
