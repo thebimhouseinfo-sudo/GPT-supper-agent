@@ -118,9 +118,13 @@ function cutoverInventoryError(inventory: readonly any[] = CUTOVER_INVENTORY): s
 }
 
 function edgeFunctionBase(req: Request) {
-  // Supabase's internal edge proxy can expose req.url with an http:// origin.
-  // OAuth metadata and WWW-Authenticate MUST advertise the public HTTPS origin.
-  return `https://${PROJECT_REF}.supabase.co/functions/v1/${edgeFunctionSlug(req)}`
+  const url = new URL(req.url)
+  // The Supabase edge proxy sometimes supplies http:// for the public hostname.
+  // Upgrade that single trusted public origin, preserving non-proxied test URLs.
+  const origin = url.protocol === 'http:' && url.hostname === `${PROJECT_REF}.supabase.co`
+    ? `https://${PROJECT_REF}.supabase.co`
+    : url.origin
+  return `${origin}/functions/v1/${edgeFunctionSlug(req)}`
 }
 
 function mcpResource(req: Request) {
@@ -7078,6 +7082,8 @@ app.get('/selftest', (c) => {
     cp6_handoff_claim_accepts_current_terminal_verification: validateTesterEvidenceClaimSnapshot(cp6TerminalClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error === null,
     cp6_handoff_claim_rejects_orphan_verification: validateTesterEvidenceClaimSnapshot(cp6OrphanClaimSnapshot, cp6VerificationWithBundle, cp6HandoffClaimExpected).error !== null,
     edge_function_external_path: edgeFunctionBase(new Request('https://example.supabase.co/functions/v1/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
+    p5_oauth_proxy_origin_forced_https: edgeFunctionBase(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)) === `https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next`,
+    p5_oauth_challenge_metadata_is_https: challenge(new Request(`http://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/mcp`)).includes(`resource_metadata="https://${PROJECT_REF}.supabase.co/functions/v1/gsa-mcp-next/.well-known/oauth-protected-resource"`),
     edge_function_runtime_path: edgeFunctionBase(new Request('https://example.supabase.co/gsa-mcp-next/mcp')) === 'https://example.supabase.co/functions/v1/gsa-mcp-next',
     execution_contract_missing_is_stable: resolveExecutionContract(undefined) === 'V2_STABLE',
     execution_contract_stable_is_stable: resolveExecutionContract('V2_STABLE') === 'V2_STABLE',
