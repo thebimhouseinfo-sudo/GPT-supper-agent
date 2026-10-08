@@ -1,150 +1,82 @@
-# GPT Super Agent
+# GPT Super Agent (GSA Online)
 
-GPT Super Agent is a thin ChatGPT orchestration/harness system for durable project work.
+ChatGPT-native orchestration for durable, reviewable project work. A chat is the interface; **GitHub source repositories** and the configured private **GitHub Memory Repo** are the authoritative state. A successful tool response or chat message alone is not a persisted completion.
 
-## Status
+## Current release (2026-10-08)
 
-```text
-PHASE 1 = GOVERNED BASELINE
-M0      = PASS
-PHASE 2 = STARTED
-CURRENT = M2 / REVIEWED JOB PILOT
-RUNTIME = GSA MCP v32
-```
+| Component | State |
+|---|---|
+| Canonical source | [`main`](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/tree/main) at release merge `0b079583cb55b11a8cceb535dc15a483bbafe870` |
+| Supabase production MCP | `gsa-mcp` **v44 ACTIVE** |
+| Source verification | deployed `index.ts` read back and byte-equal to release source |
+| Authenticated smoke | PASS: authenticated, Memory Repo configured, NEXT production cutover reported ready |
+| MCP checkpoint public-path probes | three tools callable; negative/fail-closed cases observed |
+| CI on promoted source | Deno typecheck and bounded helper regression PASS |
+| Full CP7 / 14 scenario durable E2E | **NOT EXECUTED / NOT VERIFIED**; Human accepted release without requiring this gate first |
+| Rollback reference | production `gsa-mcp` v43 source (capture a verified prior source before any rollback) |
 
-## Core model
+**Evidence status matters:** release approval is a Human decision; it does not turn unexecuted E2E, concurrency, crash recovery, or host/platform checks into PASS. Source build ID `P3-J-7793-R2` is a build marker, **not** an exact Git SHA.
 
-```text
-Conversation = UI
-Supabase Auth = GSA user identity
-Supabase = per-user Memory Repo configuration only
-GitHub Memory Repo = durable Project memory/control plane
-GitHub source repos = source-code truth
-Harness / Skills / Loops = operational behavior
-```
+## Execution model
 
 ```text
-Project → Job → Task → Run
+Project → Job → Task → Run → durable Verification / Handoff
 ```
 
-## Memory Repo
+- New Jobs created on production default to `execution_contract=NEXT`, with `memory_namespace=PRODUCTION`.
+- Historical Jobs with absent `execution_contract` remain **V2_STABLE**. Do not bulk-migrate or implicitly rewrite them.
+- Staging surface `gsa-mcp-next` is separate and defaults to V2_STABLE unless NEXT is explicitly selected; NEXT test memory is isolated in `TEST_LAB`.
+- Planner captures first-class evidence needs, checkpoints, milestones, dependencies and planning revision.
+- Tester supports `VERIFY`, `MEASURE`, `PROBE`. Required NEXT evidence/checkpoint gates fail closed; `PASS_RETEST_REQUIRED` is not a gate bypass.
+- Checkpoint claim/lease uses deterministic paths and exact GitHub blob SHA compare-and-swap; Verification is applicable only when the terminal claim references matching attempt/token/revision and verification.
+- Failed checkpoints route to Coder repair + Goal Recheck + RETEST, or a reviewed Planner supersession for PLAN_GAP/SPEC_GAP.
+- Reviewer assesses relevant code and evidence at checkpoints. **Critic Reviewer (CR)** is optional and Human-invoked only, and must reconstruct independent evidence.
 
-Each user configures one private GitHub repository as GSA Memory Repo.
+## Architecture and authority
 
 ```text
-Supabase auth.uid()
-→ user_memory_config
-→ memory_repo_id / owner/name / default branch
-→ projects/<project-id>/...
+Conversation / ChatGPT plugin = UI and tool orchestration
+Supabase Auth              = authenticated GSA identity
+Supabase                   = per-user Memory Repo configuration and authorized evidence support
+GitHub Memory Repo         = durable project/control-plane records
+GitHub source repositories = source-code truth
+Harness + Skills + Loops   = agent operational contracts
 ```
 
-GSA Project Memory is written only to the configured repository and only below `projects/<project-id>/`.
+One configured private GitHub Memory Repo holds records below `projects/<project-id>/` (`PROJECT.md`, `WORK/`, `VERIFICATION/`, `KNOWLEDGE/`, optional rebuildable `CONTROL.json`). External GitHub source repositories stay separate. Mutations require active Project/repository scope, authorization, exact current SHA, and post-write read-back. Cross-project source writes are prohibited.
 
-Project source repositories remain separate.
+## Workflow and quality rules
 
-## Concurrency
+1. **Re-ground** the active Project, canonical source, Job planning revision and last durable checkpoint before execution. Fresh chat starts in planning/discussion mode, not implicit coding.
+2. **Bound the work** by meaningful Task/Job context and one canonical integration line; use checkpoint-based review and merge promptly.
+3. **Do not infer PASS** from a prepared record, green CI, tool presence, or simulated helpers alone. Distinguish `PASS`, `FAIL`, `BLOCKED`, `UNAVAILABLE`, `UNVERIFIED`.
+4. **Test the assertion itself** on high-risk gates: verify negative control, exact source revision and real call path. Reviewer inspects test scripts selectively when tests/harnesses change or a release depends on them.
+5. **Debug end-to-end** when a bug is non-trivial: observed symptom → entrypoint/call-chain + root-cause map → minimal patch → CI → behavioral simulation → live host acceptance when required.
+6. **Resume from durable truth** after interruption; never blind retry an unknown write. Avoid livelock through bounded retries and no-progress detection.
+7. Production deploy and final merge require separate Human authorization. Keep rollback points and report untested acceptance scenarios honestly.
 
-Updates/deletes use current GitHub blob SHA as the optimistic write precondition.
+These are workflow directions, not a claim that all new lessons have already been implemented in runtime. See the improvement plan below.
 
-```text
-fetch current file + SHA
-→ update/delete with exact SHA
-→ stale SHA fails
-→ refetch/reconcile
-```
+## Runtime and verification
 
-CONTROL is optional/rebuildable; durable records remain authoritative.
+Primary implementation: `supabase/functions/gsa-mcp/index.ts`.
 
-## Review
+- Production `gsa-mcp`: deployed v44.
+- Staging `gsa-mcp-next`: isolated surface; **do not assume** its version matches production.
+- Auth and status: `get_runtime_status` confirms surface, identity, cutover default and Memory Repo binding.
+- Checkpoint public tools: `checkpoint_claim_prepare`, `checkpoint_verification_prepare`, `checkpoint_gate_evaluate`.
+- CI: `.github/workflows/gsa-next-logic.yml` invokes `deno check supabase/functions/gsa-mcp/index.ts` and `node --test test-lab/runtime-logic.test.cjs` (isolated TypeScript parser install).
+- CI helper tests use some stubs and a model-only CAS collision; they do **not** constitute live concurrent GitHub writes or crash/resume proof.
 
-Normal review is topology-driven. Sensitive changes trigger context-isolated review from actual changed-file/operation evidence.
+Do not execute real checkpoint mutations against existing Projects merely to demonstrate readiness. Use a dedicated authorized test Job and exact persisted SHA for any future full durable E2E.
 
-An optional Human-only **Critic Reviewer (CR)** provides a second independent peer review. CR is stateless-by-contract: it ignores conversation history as evidence, reconstructs from durable records/source truth, forms its own verdict before reading the prior Reviewer verdict, and persists only `CRITIC_REVIEW` evidence. It never auto-runs or mutates Job lifecycle.
+## Canonical documents
 
-Merge requires Review Coverage Summary + explicit human authorization.
+- [Architecture index](docs/architecture/DOCUMENT-INDEX.md)
+- [Execution and review](docs/architecture/EXECUTION-AND-REVIEW.md)
+- [Workflow lessons ledger](docs/process/GSA-WORKFLOW-LESSONS-LEDGER.md)
+- [Post-release lessons remediation plan](docs/plans/POST-RELEASE-LESSONS-REMEDIATION-2026-10-08.md)
+- [Upgrade integration roadmap](docs/plans/GSA-UPGRADE-INTEGRATION-ROADMAP.md) — historical CP0–CP7 upgrade/release plan, not the current runtime status
+- [Test Lab](test-lab/README.md)
 
-## Capability evidence
-
-```text
-OBSERVED
-SURFACE_PRESENT
-UNAVAILABLE
-UNKNOWN
-```
-
-## Project Memory
-
-```text
-projects/<project-id>/
-├── PROJECT.md
-├── CONTROL.json
-├── WORK/
-├── KNOWLEDGE/
-└── VERIFICATION/
-```
-
-Git directories are lazy; no empty-folder placeholders are required.
-
-## Canonical architecture
-
-See `docs/architecture/DOCUMENT-INDEX.md`.
-
-Phase-2 implementation source of truth:
-
-`docs/plans/PHASE2-IMPLEMENTATION.md`
-
-
-## Minimal Job runtime
-
-The first durable Job vertical slice is now available with layered role harnesses and progressive task skills:
-
-```text
-Planner harness
-→ job_prepare
-→ run_begin
-→ specialist harness loop
-→ Verification / Goal Recheck
-→ optional Handoff
-→ run_complete
-```
-
-Runtime role contracts are loaded through `get_agent_harness`; task skills are discovered with `get_skill_catalog` and loaded on demand with `load_skill`.
-See `skills/gsa-job-runtime/SKILL.md`, `evals/E17-minimal-job-runtime.md`, and `evals/E18-real-job-pilot.md`.
-
-
-## Product workflow planning
-
-For UI/UX-bearing application Jobs, Planner classifies both repository maturity and product workflow:
-
-```text
-GREENFIELD | BROWNFIELD
-UI_FIRST   | UX_FIRST
-```
-
-UI_FIRST derives a stable shell from the UX execution contract before UI implementation.
-UX_FIRST may use Human-approved provisional UI to execute UX, while durable UI needs accumulate into larger UI Update Packs.
-See `docs/architecture/PRODUCT-WORKFLOW-CLASSIFICATION.md`.
-
-## Real Job pilot
-
-A new durable objective enters through Planner. For UX_FIRST temporary UI, material user-facing choices must be explicitly approved before a Coder Run can begin. `run_begin` requires the current owning Job snapshot and fails closed when the temporary-UI Human Gate is pending.
-
-Use E18 for the first bounded real Project test. Merge and deployment remain explicit Human actions.
-
-Job lifecycle is serialized with `job_transition`: READY→IN_PROGRESS when execution begins, and IN_PROGRESS→COMPLETED only with durable completion evidence.
-
-
-## Brownfield planning floor
-
-Existing repositories use structure-first discovery:
-
-```text
-L0 repository tree + filenames
-→ L1 selective content reads
-→ Job DRAFT
-→ automatic context-isolated planning review
-→ Planner repair/re-review loop
-→ READY
-```
-
-Planner may not treat README/TASKS/roadmaps as sufficient source truth. See `evals/E19-planning-review-loop.md`.
+Release evidence: [PR #17](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/pull/17), including CI, v44 deploy read-back, authenticated smoke and checkpoint-tool fail-closed probes.
