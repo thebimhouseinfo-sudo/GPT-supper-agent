@@ -393,3 +393,25 @@ Routing:
 A superseding NEXT planning revision stays `IN_PROGRESS` but becomes non-dispatchable while `planning_review=PENDING/CHANGES_REQUIRED`. Old revision claims and Verifications are non-applicable automatically because runtime gates bind to the current `planning_revision`.
 
 `PASS_RETEST_REQUIRED` is only non-blocking coverage. It never satisfies a mandatory `EvidenceRequirement`, checkpoint, Milestone gate or Job completion prerequisite.
+
+## Reliability upgrade candidate — current serving boundaries
+
+- **Orchestrator:** on new/resumed chat, refetch active Project/Job/Run plus expected Git head/blob before retrying pending work; preserve exactly one canonical branch and last verified checkpoint. `execution_recovery_evaluate` is advisory; external Git writes remain subject to fresh authorization and post-write exact SHA readback. In a running turn, `orchestration_progress_evaluate` detects no-progress and ends the turn after three unchanged durable states. It cannot schedule work when no chat request is executing.
+- **Planner:** before adding a new cursor record, demonstrate a concrete missing-state counterexample from existing Job/Run/Verification/CONTROL. No second lifecycle. Existing claim/lease remains the only NEXT Tester checkpoint serialization point.
+- **Coder:** only for a reproduced nontrivial defect or failed hotfix retest, load `debugging` from `get_skill_catalog` → `load_skill` and construct the real entrypoint-to-host failure map before editing. The default Coder skill list remains `coding-loop` + `delegation`; frontend specialization is unaffected.
+- **Reviewer:** review changed/high-risk test assertions, critical mocks, failure propagation and known-bad RED evidence at meaningful boundaries; rerun but do not repeatedly re-review unchanged trusted tests.
+- **Tester:** keep helper/MODEL_ONLY tests distinct from real Git CAS, stage readback, and live E2E. An unavailable runner, inaccessible host or absent tool is `UNVERIFIED` rather than PASS.
+
+These are additive operating rules on the integration branch; final verification requires CI, stage exact-source readback and source-bound Reviewer/Tester evidence before a Human-authorized main promotion.
+
+### Minimal durable cursor adoption (upgrade candidate)
+
+After an explicit NEXT Job opens, create one cursor lazily at the first consequential source mutation by calling `execution_cursor_prepare(BEGIN_MUTATION)` with the exact Job snapshot, namespace, branch, current HEAD, target path/blob and stable operation ID. Persist and independently read back the cursor **before** changing source. After the atomic source commit, verify HEAD, commit parent and intended target blob, then complete the cursor once; do not add writes to every command. At meaningful Task/Tester/Reviewer milestones, optionally SAVE_CHECKPOINT with exact source head; no write for unchanged checkpoint.
+
+On a new conversation or interrupted turn, resolve Job, cursor record and Git head, then call `execution_cursor_resume_evaluate` only when recovery information is needed. PENDING must be reconciled; success text or missing callback is not evidence. A terminal Run may route a new attributed Run, but terminal Job must not resume.
+
+If project scope is not authorized or durable cursor write/read-back is unavailable, fail closed at the risky source-mutation boundary; do not silently create an in-chat-only cursor. The caller handles exact GitHub CAS and evidence. **No background worker or extra tool calls on normal chat/read paths.**
+
+
+Use `mutation_kind=TREE` for a reviewed atomic multi-file Git tree commit, rather than opening one cursor per changed file; read the intended Git tree SHA before beginning, then independently verify the committed HEAD, parent and tree. For FILE commits use the target blob SHA. A failed/lost response resumes from the one durable PENDING record. Retry counters are recorded only for reconciled failed writes; no extra work is added to ordinary tool calls.
+

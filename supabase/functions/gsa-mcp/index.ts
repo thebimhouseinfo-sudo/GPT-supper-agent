@@ -1253,6 +1253,279 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
   return null
 }
 
+// One small mutable source-of-progress record per NEXT Job. Not a Job/Run
+// lifecycle and not the Tester CHECKPOINT_CLAIM serialization record.
+function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
+  return executionMemoryRoot(projectId, 'NEXT', namespace) +
+    '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
+}
+
+// Pure preflight. GitHub blob SHA compare-and-swap and independent readback are
+// performed by the calling orchestrator, NOT by this request/response MCP.
+function prepareExecutionCursorDecision(input: any) {
+  const validSha = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+  const block = (reason: string) => ({ allowed: false, reason, operation: 'NONE', record: null })
+  let job: any, old: any = null
+  try { job = JSON.parse(input.job_record_text) } catch { return block('INVALID_JOB_RECORD') }
+  if (job?.kind !== 'JOB' || job.project_id !== input.project_id || job.job_id !== input.job_id ||
+      job.execution_contract !== 'NEXT' || !Number.isInteger(job.planning_revision) || job.planning_revision < 1 ||
+      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_IDENTITY_OR_LIFECYCLE_MISMATCH')
+  const namespace = recordNextMemoryNamespace(job)
+  if (!namespace || namespace !== input.memory_namespace) return block('CURSOR_NAMESPACE_MISMATCH')
+  if (typeof input.work_branch !== 'string' || !input.work_branch.trim() ||
+      !validSha(input.observed_head_sha)) return block('INVALID_BRANCH_OR_GIT_READBACK')
+  if ((input.cursor_record_text == null) !== (input.cursor_record_sha == null)) return block('INCOMPLETE_CURSOR_SNAPSHOT')
+  if (input.cursor_record_text != null) {
+    if (!validSha(input.cursor_record_sha)) return block('INVALID_CURSOR_SHA')
+    try { old = JSON.parse(input.cursor_record_text) } catch { return block('INVALID_CURSOR_JSON') }
+    if (old?.kind !== 'EXECUTION_CURSOR' || old.version !== 1 ||
+        old.project_id !== input.project_id || old.job_id !== input.job_id ||
+        old.execution_contract !== 'NEXT' || old.memory_namespace !== namespace ||
+        old.planning_revision !== job.planning_revision ||
+        old.work_branch !== input.work_branch || !validSha(old.last_good_sha) ||
+        !['STABLE','PENDING'].includes(old.state)) return block('STALE_OR_INVALID_CURSOR')
+  }
+  let next: any
+  const event = input.event
+  if ((event === 'BEGIN_MUTATION' || event === 'COMPLETE_MUTATION') &&
+      job.lifecycle !== 'IN_PROGRESS') return block('JOB_NOT_IN_PROGRESS')
+  if (event === 'INITIALIZE') {
+    if (old) return block('CURSOR_ALREADY_EXISTS')
+    if (!input.checkpoint_id?.trim()) return block('CHECKPOINT_ID_REQUIRED')
+    next = {
+      kind: 'EXECUTION_CURSOR', version: 1,
+      project_id: input.project_id, job_id: input.job_id,
+      execution_contract: 'NEXT', memory_namespace: namespace,
+      planning_revision: job.planning_revision, work_branch: input.work_branch,
+      state: 'STABLE', last_good_sha: input.observed_head_sha,
+      last_completed_checkpoint: input.checkpoint_id,
+      pending_action: null, last_operation_id: null, retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
+    }
+  } else if (event === 'BEGIN_MUTATION') {
+    // First consequential mutation initializes PENDING in a single Memory write:
+    // no separate INITIALIZE round trip or Job lifecycle transition required.
+    if (old && old.state !== 'STABLE') return block('PENDING_MUTATION_REQUIRES_RECONCILIATION')
+    if (old && input.observed_head_sha !== old.last_good_sha) return block('SOURCE_HEAD_ADVANCED_RECONCILE')
+    if (!old && !input.checkpoint_id?.trim()) return block('INITIAL_CHECKPOINT_REQUIRED')
+    const kind = input.mutation_kind ?? 'FILE'
+    const fileIntentValid = kind === 'FILE' && input.target_path?.trim() &&
+      !input.target_path.startsWith('/') && !input.target_path.split('/').includes('..') &&
+      validSha(input.intended_blob_sha) &&
+      (input.previous_blob_sha === null || validSha(input.previous_blob_sha)) &&
+      input.intended_blob_sha !== input.previous_blob_sha
+    const treeIntentValid = kind === 'TREE' && validSha(input.previous_tree_sha) &&
+      validSha(input.intended_tree_sha) && input.previous_tree_sha !== input.intended_tree_sha
+    if (!input.operation_id?.trim() || !(fileIntentValid || treeIntentValid))
+      return block('INVALID_WRITE_INTENT')
+    next = {
+      ...(old ?? {
+        kind: 'EXECUTION_CURSOR', version: 1,
+        project_id: input.project_id, job_id: input.job_id,
+        execution_contract: 'NEXT', memory_namespace: namespace,
+        planning_revision: job.planning_revision, work_branch: input.work_branch,
+        last_good_sha: input.observed_head_sha,
+        last_completed_checkpoint: input.checkpoint_id,
+        last_operation_id: null,
+        progress_fingerprint: input.observed_head_sha,
+      }),
+      state: 'PENDING',
+      pending_action: {
+        operation_id: input.operation_id, mutation_kind: kind,
+        expected_head_sha: old?.last_good_sha ?? input.observed_head_sha,
+        ...(kind === 'TREE'
+          ? { previous_tree_sha: input.previous_tree_sha, intended_tree_sha: input.intended_tree_sha }
+          : { target_path: input.target_path, previous_blob_sha: input.previous_blob_sha,
+              intended_blob_sha: input.intended_blob_sha }),
+      }, retry_count: 0, stalled_cycles: 0,
+    }
+  } else if (!old) return block('CURSOR_NOT_PERSISTED')
+  else if (event === 'COMPLETE_MUTATION') {
+    const pending = old.pending_action
+    if (old.state !== 'PENDING' || !pending ||
+        !input.operation_id || input.operation_id !== pending.operation_id ||
+        !input.checkpoint_id?.trim() ||
+        input.observed_head_sha === pending.expected_head_sha ||
+        !validSha(input.observed_parent_sha) ||
+        input.observed_parent_sha !== pending.expected_head_sha ||
+        (pending.mutation_kind === 'TREE'
+          ? !validSha(input.observed_tree_sha) ||
+            input.observed_tree_sha !== pending.intended_tree_sha
+          : !validSha(input.observed_blob_sha) ||
+            input.observed_blob_sha !== pending.intended_blob_sha))
+      return block('PENDING_MUTATION_NOT_PROVEN')
+    next = {
+      ...old, state: 'STABLE', pending_action: null,
+      last_operation_id: pending.operation_id,
+      last_good_sha: input.observed_head_sha, last_completed_checkpoint: input.checkpoint_id,
+      retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
+    }
+  } else if (event === 'RECORD_RETRY') {
+    const p = old.pending_action
+    const unchangedTarget = p?.mutation_kind === 'TREE'
+      ? validSha(input.observed_tree_sha) && input.observed_tree_sha === p.previous_tree_sha
+      : (input.observed_blob_sha === null || validSha(input.observed_blob_sha)) &&
+        input.observed_blob_sha !== undefined && input.observed_blob_sha === p?.previous_blob_sha
+    if (old.state !== 'PENDING' || !p ||
+        input.operation_id !== p.operation_id ||
+        input.observed_head_sha !== p.expected_head_sha ||
+        !unchangedTarget ||
+        !Number.isInteger(old.retry_count) || old.retry_count >= 2)
+      return block('RETRY_BLOCKED_OR_EXHAUSTED')
+    // Only after an independent NOT_APPLIED readback, and before a real
+    // source retry. Extra durability cost occurs solely on failure recovery.
+    next = { ...old, retry_count: old.retry_count + 1 }
+  } else if (event === 'SAVE_CHECKPOINT') {
+    if (old.state !== 'STABLE' || input.observed_head_sha !== old.last_good_sha ||
+        !input.checkpoint_id?.trim() || input.checkpoint_id === old.last_completed_checkpoint)
+      return block('CHECKPOINT_NOT_PROVEN_OR_UNCHANGED')
+    next = { ...old, last_completed_checkpoint: input.checkpoint_id, stalled_cycles: 0 }
+  } else if (event === 'RECORD_PAUSE') {
+    if (!Number.isInteger(input.stalled_cycles) || input.stalled_cycles < 3 ||
+        input.observed_head_sha !== old.last_good_sha) return block('PAUSE_NOT_PROVEN')
+    if (old.stalled_cycles >= input.stalled_cycles) return block('PAUSE_ALREADY_RECORDED')
+    next = { ...old, stalled_cycles: input.stalled_cycles }
+  } else return block('UNKNOWN_CURSOR_EVENT')
+  return { allowed: true, reason: 'PREPARED_NOT_PERSISTED',
+    operation: old ? 'UPDATE' : 'CREATE', record: next }
+}
+
+// Restart consumes ONE immutable cursor snapshot plus fresh source readback;
+// only pending intent needs target-blob inspection. No extra per-tool queries.
+function resumeExecutionCursorDecision(input: any) {
+  const validSha = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+  const stop = (reason: string) => ({ disposition: 'STOP_AND_RECONCILE', reason, source_write_authorized: false })
+  let job: any, cursor: any
+  try { job = JSON.parse(input.job_record_text); cursor = JSON.parse(input.cursor_record_text) }
+  catch { return stop('INVALID_DURABLE_RECORD') }
+  if (!validSha(input.cursor_record_sha) || !validSha(input.current_head_sha) ||
+      job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+      job.job_id !== input.job_id || job.execution_contract !== 'NEXT' ||
+      cursor?.kind !== 'EXECUTION_CURSOR' || cursor.version !== 1 ||
+      cursor.project_id !== job.project_id || cursor.job_id !== job.job_id ||
+      cursor.execution_contract !== 'NEXT' ||
+      cursor.memory_namespace !== recordNextMemoryNamespace(job) ||
+      cursor.planning_revision !== job.planning_revision ||
+      cursor.work_branch !== input.work_branch || !validSha(cursor.last_good_sha) ||
+      !['STABLE','PENDING'].includes(cursor.state) ||
+      input.cursor_memory_path !== executionCursorPath(job.project_id, job.job_id, cursor.memory_namespace))
+    return stop('CURSOR_IDENTITY_OR_REVISION_MISMATCH')
+  if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)) return stop('TERMINAL_JOB')
+  if (cursor.state === 'STABLE') {
+    if (cursor.pending_action != null || input.current_head_sha !== cursor.last_good_sha)
+      return stop('SOURCE_ADVANCED_WITHOUT_DURABLE_INTENT')
+    return { disposition: 'RESUME_FROM_CHECKPOINT', reason: cursor.last_completed_checkpoint,
+      source_write_authorized: false }
+  }
+  const p = cursor.pending_action
+  if (!p || !p.operation_id || !validSha(p.expected_head_sha) ||
+      p.expected_head_sha !== cursor.last_good_sha ||
+      !['FILE','TREE'].includes(p.mutation_kind ?? 'FILE'))
+    return stop('INCOMPLETE_PENDING_INTENT_OR_READBACK')
+  let decision: any
+  if (p.mutation_kind === 'TREE') {
+    if (!validSha(p.previous_tree_sha) || !validSha(p.intended_tree_sha) ||
+        !validSha(input.current_tree_sha)) return stop('TREE_READBACK_REQUIRED')
+    if (input.current_head_sha === p.expected_head_sha) {
+      decision = input.current_tree_sha === p.previous_tree_sha
+        ? { disposition: 'NOT_APPLIED', reason: 'UNCHANGED_AUTHORITATIVE_TREE', next_action: 'REAUTHORIZE_FROM_CURRENT_HEAD' }
+        : { disposition: 'UNKNOWN_CONFLICT', reason: 'INCONSISTENT_HEAD_AND_TREE', next_action: 'STOP_AND_RECONCILE' }
+    } else {
+      decision = input.current_tree_sha === p.intended_tree_sha
+        ? { disposition: 'TARGET_STATE_PRESENT', reason: 'EXPECTED_TREE_OBSERVED', next_action: 'RECONCILE_INTERVENING_COMMITS' }
+        : { disposition: 'UNKNOWN_CONFLICT', reason: 'SOURCE_HEAD_OR_TREE_DIVERGED', next_action: 'STOP_AND_RECONCILE' }
+    }
+  } else {
+    if (!p.target_path || !validSha(p.intended_blob_sha) ||
+        !(p.previous_blob_sha === null || validSha(p.previous_blob_sha)) ||
+        !(input.current_blob_sha === null || validSha(input.current_blob_sha)))
+      return stop('FILE_READBACK_REQUIRED')
+    decision = sourceMutationRecoveryDecision({
+      operation_id: p.operation_id, expected_head_sha: p.expected_head_sha,
+      current_head_sha: input.current_head_sha, previous_blob_sha: p.previous_blob_sha,
+      intended_blob_sha: p.intended_blob_sha, current_blob_sha: input.current_blob_sha,
+    })
+  }
+  // An unchanged target is not permission to write; reauthorize and read back first.
+  return { disposition: decision.disposition, reason: decision.reason,
+    next_action: decision.next_action, operation_id: p.operation_id,
+    last_completed_checkpoint: cursor.last_completed_checkpoint, source_write_authorized: false }
+}
+
+// GSA Reliability: pure, read-only reconstruction helpers.
+// Callers MUST obtain each input from independent authoritative Git readback.
+// These decisions are NOT mutation authorization and are not a second lifecycle.
+function sourceMutationRecoveryDecision(input: {
+  operation_id: string
+  expected_head_sha: string
+  current_head_sha: string
+  previous_blob_sha: string | null
+  intended_blob_sha: string
+  current_blob_sha: string | null
+}) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const validPrevious = input.previous_blob_sha === null || sha(input.previous_blob_sha)
+  const validCurrent = input.current_blob_sha === null || sha(input.current_blob_sha)
+  if (!input.operation_id?.trim() || !sha(input.expected_head_sha) || !sha(input.current_head_sha) ||
+      !validPrevious || !validCurrent || !sha(input.intended_blob_sha)) {
+    return { disposition: 'UNKNOWN_CONFLICT', next_action: 'STOP_AND_RECONCILE', reason: 'INVALID_OR_UNPROVEN_READBACK', mutation_authorized: false }
+  }
+  // A Git commit SHA identifies a tree. A target blob cannot change while
+  // the current commit SHA remains equal to the expected pre-write commit.
+  if (input.current_head_sha === input.expected_head_sha) {
+    if (input.current_blob_sha !== input.previous_blob_sha) {
+      return { disposition: 'UNKNOWN_CONFLICT', next_action: 'STOP_AND_RECONCILE', reason: 'INCONSISTENT_HEAD_AND_BLOB_READBACK', mutation_authorized: false }
+    }
+    if (input.current_blob_sha === input.intended_blob_sha) {
+      return { disposition: 'ALREADY_SATISFIED', next_action: 'RECHECK_DEPENDENCIES', reason: 'NO_CONTENT_CHANGE', mutation_authorized: false }
+    }
+    return { disposition: 'NOT_APPLIED', next_action: 'REAUTHORIZE_FROM_CURRENT_HEAD', reason: 'UNCHANGED_AUTHORITATIVE_TARGET', mutation_authorized: false }
+  }
+  if (input.current_blob_sha === input.intended_blob_sha) {
+    // Desired bytes are present, but authorship/ancestry is not yet proven.
+    return { disposition: 'TARGET_STATE_PRESENT', next_action: 'RECONCILE_INTERVENING_COMMITS', reason: 'EXPECTED_TARGET_BLOB_OBSERVED', mutation_authorized: false }
+  }
+  return { disposition: 'UNKNOWN_CONFLICT', next_action: 'STOP_AND_RECONCILE', reason: 'SOURCE_HEAD_OR_BLOB_DIVERGED', mutation_authorized: false }
+}
+
+// Counts only caller-observed durable state changes. A completed MCP request is
+// not progress. PAUSED_NO_PROGRESS is an orchestration result, not Job/Run state.
+function orchestrationProgressDecision(input: {
+  job_lifecycle: string
+  run_lifecycle: string | null
+  previous_fingerprint: string | null
+  current_fingerprint: string
+  stalled_cycles: number
+  mutation_retry_count: number
+}) {
+  const jobTerminals = ['COMPLETED','CANCELLED','SUPERSEDED']
+  const runTerminals = ['COMPLETED','FAILED','CANCELLED','SUPERSEDED']
+  const jobStates = ['DRAFT','READY','IN_PROGRESS',...jobTerminals]
+  const runStates = ['IN_PROGRESS',...runTerminals]
+  if (!jobStates.includes(input.job_lifecycle) ||
+      (input.run_lifecycle !== null && !runStates.includes(input.run_lifecycle)) ||
+      !input.current_fingerprint || !Number.isInteger(input.stalled_cycles) ||
+      input.stalled_cycles < 0 || !Number.isInteger(input.mutation_retry_count) || input.mutation_retry_count < 0) {
+    return { disposition: 'BLOCKED', stalled_cycles: 0, reason: 'INVALID_DURABLE_STATE' }
+  }
+  if (jobTerminals.includes(input.job_lifecycle)) {
+    return { disposition: 'JOB_TERMINAL', stalled_cycles: input.stalled_cycles, reason: 'DO_NOT_REOPEN_TERMINAL_JOB' }
+  }
+  if (input.run_lifecycle !== null && runTerminals.includes(input.run_lifecycle)) {
+    // Do not retry this Run. Its nonterminal parent Job may dispatch a new
+    // correctly attributed Run after checking durable topology and evidence.
+    return { disposition: 'RUN_TERMINAL', stalled_cycles: input.stalled_cycles, reason: 'ROUTE_NEXT_FROM_DURABLE_JOB_TOPOLOGY' }
+  }
+  const stalled = input.previous_fingerprint === input.current_fingerprint
+    ? input.stalled_cycles + 1 : 0
+  if (input.mutation_retry_count > 2) {
+    return { disposition: 'PAUSED_RETRY_EXHAUSTED', stalled_cycles: stalled, reason: 'BOUNDED_MUTATION_RETRY' }
+  }
+  if (stalled >= 3) {
+    return { disposition: 'PAUSED_NO_PROGRESS', stalled_cycles: stalled, reason: 'THREE_DURABLE_NO_PROGRESS_CYCLES' }
+  }
+  return { disposition: 'CONTINUE', stalled_cycles: stalled, reason: stalled === 0 ? 'FINGERPRINT_CHANGED' : 'AWAIT_DURABLE_PROGRESS' }
+}
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
@@ -1263,6 +1536,12 @@ const BASE_AGENT_HARNESS = [
   '- Read the current target before writing. If a file changed since an earlier read, re-read it before editing.',
   '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
   '- A denied or unauthorized action is a boundary, not a puzzle: never route around it through another tool, shell indirection, generated scripts, alternate APIs or configuration changes.',
+  '- On a resumed chat/Job, reconcile current Git HEAD + target blob + immutable Job/Run/Verification records before new coding or retrying any uncertain write. A tool prepare or successful call is not durable progress.',
+  '- NEXT source work: lazily persist one Job execution cursor on the first consequential atomic Git mutation via execution_cursor_prepare(BEGIN_MUTATION); verify its Memory Repo blob readback before source write. Complete it once after source commit HEAD/parent/target blob readback. No cursor write or probe on routine reads/tool calls.',
+  '- On restart, read the single durable cursor only for an active/pending NEXT Job and call execution_cursor_resume_evaluate before resuming source edits; PENDING means reconcile, not automatic retry. Missing/unauthorized cursor persistence blocks risky writes.',
+
+  '- On unknown Git write outcome, reread authoritative head/blob and call execution_recovery_evaluate; never interpret that advisory as write authorization. Stop on UNKNOWN_CONFLICT.',
+  '- Track no-progress cycles against durable source/evidence fingerprints within the running turn; after three unchanged cycles stop with derived PAUSED_NO_PROGRESS. Never promise background resume without a separately approved worker.',
   '- Prefer dedicated tools over shell-equivalent work when both exist and the dedicated tool gives clearer evidence or safer boundaries.',
   '- Run independent read/check operations in parallel only when the host supports it; dependent actions remain sequential.',
   '- When an action fails, inspect the error and revise the diagnosis before retrying. Never blind-retry the same action.',
@@ -1301,6 +1580,9 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
+      'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims. Before each reconciled source retry, persist RECORD_RETRY and stop after 2 retries.',
+      'At source commit boundaries, request execution_cursor_prepare once before and once after the atomic mutation batch, with exact Memory Repo CAS/readback. No cursor round trips for ordinary tools, reads or repeated review.',
+
     ],
     outputs: ['routing decision', 'Run dispatch', 'current status view'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'DISPATCH-AND-HANDOFF.md', 'STATE-MACHINE.md'],
@@ -1362,7 +1644,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
       'IMPLEMENT: make only scope-traceable source changes.',
       'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files, secret leakage and affected recorded relationships.',
-      'VERIFY: run available repository-specific objective checks when capability is OBSERVED.',
+      'VERIFY: run available repository-specific objective checks when capability is OBSERVED; at high-risk checkpoints prove test oracles detect a known broken state, not merely that CI is green.',
       'SELF-REVIEW CLOSURE: re-read the original Job objective and active Task criteria, inspect the actual diff and affected relationships, and identify ordinary correctness/coverage findings before handoff.',
       'REPAIR: fix ordinary within-scope findings autonomously, then repeat INSPECT → VERIFY. Material scope/contract/authority changes route instead of being invented away; downstream work is recorded without drifting into another Job.',
       'GOAL RECHECK: only after repair, map every approved completion criterion in the current Run Task scope, with its exact task_id, to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NEXT Goal Recheck must consume the current Job snapshot; missing/extra criteria are rejected.',
@@ -1381,7 +1663,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     loop: [
       'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
       'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
-      'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
+      'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. When changed tests, escaped regression or release gates apply, selectively inspect the test script and mock boundary once at the checkpoint; never require re-review of unchanged trusted tests on every run. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
       'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
@@ -1450,6 +1732,21 @@ const ROLE_SKILLS: Record<string, string[]> = {
 }
 
 const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
+  'debugging': {
+    description: 'Optional Coder root-cause and call-chain debugging protocol for nontrivial bugs and failed hotfix retests. Not a separate role.',
+    body: [
+      '# Debugging — conditional Coder skill',
+      'Load only for a reproducible nontrivial defect or failed hotfix retest; do not run for ordinary feature work.',
+      '1. Record the exact user-visible failure, reproduction inputs, host/runtime revision, and deterministic versus intermittent behavior.',
+      '2. Map the real path: user action → public tool/entrypoint → caller/router → target → downstream state/config/storage → process/connector/host → observed output.',
+      '3. Inspect credible sibling/legacy paths and generated/cached registrations; classify plausible root causes with evidence, not guesses.',
+      '4. Before editing, identify the smallest shared cause. If a prior hotfix retest still failed, stop incremental patches and expand the full failure-surface map first.',
+      '5. Add a behavior oracle that detects the original fault: known-bad turns RED; intended behavior GREEN. Do not substitute mocks for the critical boundary.',
+      '6. Patch within the active Job scope. Run relevant CI, executable call-chain simulation and lifecycle restart simulation where applicable.',
+      '7. If a real host/connector is required, live acceptance remains UNVERIFIED until executed; a registered but unexposed tool is not passing behavior.',
+      '8. Reviewer checks changed test validity at high-risk checkpoints, not every ordinary test run. Preserve exact SHA, limitations and follow-up.',
+    ].join('\n'),
+  },
   'critic-review': {
     description: 'Run a Human-invoked stateless second review using durable evidence/source truth, then compare with the prior Reviewer only after forming an independent verdict.',
     body: [
@@ -1499,12 +1796,15 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'A code Run is not “edit once then report”. Use an evidence-driven loop.',
       '',
       'OBSERVE',
+      '- For a reproducible nontrivial bug or failed hotfix retest, discover debugging in get_skill_catalog and load_skill only for this affected Coder Run. Ordinary feature Coder work keeps its default skills.',
       '- Load L2 execution context: exact target, direct callers/consumers, relevant tests/contracts and recorded relationships. Expand to L3 only when findings/failures reveal a need.',
       '- Read the exact target and nearby conventions before editing.',
       '- Identify project-specific verification commands from repository evidence.',
       '',
       'ACT',
       '- Make the smallest scope-traceable change.',
+      '- For NEXT consequential source commits, agree on one atomic batch with a stable operation ID and prepare/persist a Job cursor PENDING before writing; inspect Git HEAD, parent and target blob and finalize the same cursor after the commit. Never mutate when the intent was only prepared but not read back. After a genuine NOT_APPLIED recovery, persist RECORD_RETRY (maximum two attempts) before retrying.',
+
       '- Preserve unrelated changes and avoid opportunistic cleanup.',
       '',
       'INSPECT',
@@ -1512,6 +1812,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Check accidental scope growth, weakened tests, commented-out logic, generated junk and secrets.',
       '',
       'VERIFY',
+      '- Important regression tests must assert behavior, not merely no exceptions. For high-risk changes prove known-bad mutation RED, positive control GREEN, and disclose critical mocks/stubs and exact source revision.',
       '- Run applicable build/test/lint/type checks that are actually available.',
       '- A failed check is evidence to diagnose, not something to hide or route around.',
       '',
@@ -1583,6 +1884,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Trace cross-file and cross-repo read-only context when a local hunk cannot establish correctness.',
       '- Findings need a concrete claim, evidence/failure scenario, severity and routing.',
       '- Prefer no finding over a speculative low-confidence warning.',
+      '- For new/changed high-risk tests, escaped false-green regressions, altered harness/fixtures/CI or release gates, review test assertions, mock boundaries, failure propagation and mutation RED evidence at the checkpoint. Do not re-review unchanged trusted test logic on every routine rerun.',
       '- Never repair source in Reviewer role.',
       '- A new target revision invalidates the old review result for merge coverage.',
     ].join('\n'),
@@ -2069,6 +2371,154 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_cursor_prepare',
+    {
+      title: 'Prepare a lightweight durable NEXT Job checkpoint cursor',
+      description: 'Prepare one CREATE/UPDATE of a Job-owned GitHub Memory Repo cursor only at significant checkpoints or before consequential source mutation. No storage write occurs in MCP; caller must use exact GitHub CAS and readback.',
+      inputSchema: {
+        project_id: z.string().uuid(), job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        memory_namespace: z.enum(['PRODUCTION','TEST_LAB']),
+        work_branch: z.string().min(1),
+        observed_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        event: z.enum(['INITIALIZE','BEGIN_MUTATION','COMPLETE_MUTATION','RECORD_RETRY','SAVE_CHECKPOINT','RECORD_PAUSE']),
+        checkpoint_id: z.string().optional(),
+        operation_id: z.string().optional(), mutation_kind: z.enum(['FILE','TREE']).optional(),
+        target_path: z.string().optional(),
+        previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        previous_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        intended_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_parent_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        stalled_cycles: z.number().int().min(0).optional(),
+        cursor_record_text: z.string().optional(),
+        cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        cursor_memory_path: z.string(), operation: z.enum(['CREATE','UPDATE','NONE']),
+        expected_cursor_sha: z.string().nullable(),
+        cursor_record_text: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Job cursor preparation.')
+      const decision = prepareExecutionCursorDecision(input)
+      const path = executionCursorPath(input.project_id, input.job_id, input.memory_namespace)
+      const result = {
+        allowed: decision.allowed, reason: decision.reason,
+        cursor_memory_path: path,
+        operation: decision.operation,
+        expected_cursor_sha: decision.allowed ? (input.cursor_record_sha ?? null) : null,
+        cursor_record_text: decision.allowed ? JSON.stringify(decision.record, null, 2) + '\n' : null,
+        external_steps: decision.allowed
+          ? [
+            'Authorize the exact current PROJECT.md and target Memory Repo path.',
+            'Use GitHub CREATE when expected_cursor_sha=null, else UPDATE with exact current cursor blob SHA.',
+            'Read back exact cursor path, bytes and blob SHA before acting on the prepared result.',
+            'For BEGIN_MUTATION, persist intent before an atomic FILE or multi-file TREE commit. For COMPLETE_MUTATION, independently verify Git HEAD, parent and intended blob/tree, then persist the checkpoint.',
+            'For RECORD_RETRY, only after a fresh NOT_APPLIED snapshot; persist the retry counter with exact SHA before retrying. Maximum 2 retries.',
+          ] : [],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_cursor_resume_evaluate',
+    {
+      title: 'Recover a NEXT Job from one durable cursor snapshot',
+      description: 'Read-only fresh-session cursor validation and lost-response recovery; no additional Job lifecycle, no write authorization, and no background worker.',
+      inputSchema: {
+        project_id: z.string().uuid(), job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        work_branch: z.string().min(1),
+        cursor_memory_path: z.string().min(1),
+        cursor_record_text: z.string().min(2),
+        cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        current_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+      },
+      outputSchema: {
+        disposition: z.string(), reason: z.string(), source_write_authorized: z.boolean(),
+        next_action: z.string().optional(), operation_id: z.string().optional(),
+        last_completed_checkpoint: z.string().optional(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Job cursor recovery.')
+      const decision = resumeExecutionCursorDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_recovery_evaluate',
+    {
+      title: 'Evaluate a lost-response source mutation from authoritative Git readback',
+      description: 'Read-only advisory for ChatGPT orchestration. Compare one pending source write with independently reread Git head/blob SHAs. Does not write, authorize a retry, or infer background progress.',
+      inputSchema: {
+        operation_id: z.string().min(1),
+        expected_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+        intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+      },
+      outputSchema: {
+        disposition: z.string(), next_action: z.string(), reason: z.string(), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for recovery evaluation.')
+      const decision = sourceMutationRecoveryDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
+    },
+  )
+
+  server.registerTool(
+    'orchestration_progress_evaluate',
+    {
+      title: 'Bound same-turn orchestration progress',
+      description: 'Read-only bounded-livelock evaluator. Caller supplies a fingerprint grounded in current durable Git/Job/Run evidence. No scheduler, Job lifecycle writes or autonomous continuation.',
+      inputSchema: {
+        job_lifecycle: z.enum(['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
+        run_lifecycle: z.enum(['IN_PROGRESS','COMPLETED','FAILED','CANCELLED','SUPERSEDED']).nullable(),
+        previous_fingerprint: z.string().nullable(),
+        current_fingerprint: z.string().min(1),
+        stalled_cycles: z.number().int().min(0),
+        mutation_retry_count: z.number().int().min(0),
+      },
+      outputSchema: { disposition: z.string(), stalled_cycles: z.number(), reason: z.string() },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for progress evaluation.')
+      const decision = orchestrationProgressDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
 
@@ -3800,7 +4250,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
+        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
       },
       outputSchema: {
         name: z.string(),

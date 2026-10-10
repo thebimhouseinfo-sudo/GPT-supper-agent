@@ -483,3 +483,54 @@ For a Task target, required checkpoint IDs are the union of:
 This prevents a Task after a TEST_CHECKPOINT/MILESTONE_GATE from bypassing that checkpoint merely because no duplicate EvidenceRequirement was declared.
 
 NEXT execution topology is mechanically validated alongside the CP4 typed planning graph. Every current Task must appear exactly once with a valid handler; Task dependencies and topology `depends_on` must agree; topology stage/task IDs must be unique. If a NEXT plan revision changes `tasks`, it must resupply coherent execution `topology`; planning review cannot PASS a stale mapping.
+
+## GSA Reliability — request-driven recovery and test validity (integration candidate)
+
+This section describes the **branch candidate** for the next release. It does not change V2_STABLE Job semantics or imply a background worker.
+
+### Lost-response write reconciliation
+
+Before repeating a consequential source write after interruption:
+1. Reopen the active Project and exact Job/Run from authorized Memory Repo paths; read current Job planning revision and source branch HEAD.
+2. Independently fetch the target Git blob SHA. Compare it against the prior expected head/blob and intended target blob. Do **not** infer success from chat history, a missing tool response, or a commit SHA seen only in a chat.
+3. Invoke `execution_recovery_evaluate` with that readback. This read-only helper returns `NOT_APPLIED`, `TARGET_STATE_PRESENT`, `ALREADY_SATISFIED`, or `UNKNOWN_CONFLICT`. It never grants mutation permission.
+4. `TARGET_STATE_PRESENT` means intended target bytes were observed, **not** proof that this attempt authored the commit; reconcile ancestry/unrelated changes. `NOT_APPLIED` still needs a fresh project-scope check and authorized write. `UNKNOWN_CONFLICT` stops retries and routes to reconciliation.
+5. Distinguish Git source writes from Memory Repo lifecycle writes. A prepared `job_transition` or `run_complete` is not persisted until exact-authoritative Git readback proves it. Never bypass host denial through another mutation path.
+
+No action is triggered while a ChatGPT conversation is closed. Recovery starts on the **next authenticated invocation**, never asynchronously without a separately approved worker.
+
+### Same-turn no-progress guard
+
+Use `orchestration_progress_evaluate` only with fingerprints derived from *real* changed Job/Run/Verification status and source/Git SHA. Consecutive identical fingerprints count as stalled cycles even if tool calls return success. Three stalled cycles yield `PAUSED_NO_PROGRESS` as a **derived orchestration disposition**; mutation retries above two yield `PAUSED_RETRY_EXHAUSTED`. Neither is a new stored Job/Run lifecycle value. A terminal Run stops *that Run* and returns to durable Job topology for new attributed Runs; a terminal Job never reopens.
+
+### Test validity at meaningful checkpoints
+
+At a boundary involving lifecycle, persistence, recovery, a new test harness/fixture, escaped bug, or release:
+- Reviewer inspects whether changed tests assert the claimed real behavior, whether a known-bad variant turns RED, and whether stubs bypass the target boundary.
+- A mock-only two-writer CAS test is `MODEL_ONLY`, not real Git concurrency evidence; a helper-only workflow is not actual host E2E.
+- Bind every verdict to exact source/review SHA. Skipped/unavailable stage or test infrastructure yields UNVERIFIED, never PASS.
+- Do not repeat deep test-script review for unchanged previously reviewed tests after ordinary reruns.
+
+Debugging is an **opt-in Coder skill** via the runtime catalog and `load_skill`, used for nontrivial reproduced bugs and failed hotfix retests. Normal feature Coder Runs keep their existing default skills; do not create a separate permanent Bug Fixer role.
+
+### Job-owned execution cursor (reliability v1, NEXT only)
+
+One small deterministic record lives in GitHub Memory Repo at `projects/<id>/WORK/EXECUTION_CURSORS/<job-id>.json` (or `projects/<id>/TEST-LAB/NEXT/WORK/EXECUTION_CURSORS/<job-id>.json` for staging NEXT). **It is not another Job/Run state machine** and does not replace deterministic Tester CHECKPOINT_CLAIM/Verification.
+
+Contents: `kind=EXECUTION_CURSOR`, `version=1`, project/Job/revision/namespace, canonical branch, `last_good_sha`, `last_completed_checkpoint`, `state=STABLE|PENDING`, optional `pending_action={operation_id,target_path,expected_head_sha,previous_blob_sha,intended_blob_sha}`, bounded retry/stall state and progress fingerprint. No full chat history, logs, per-tool event stream, or per-commit document proliferation.
+
+**Latency policy:** no cursor fetch/write on ordinary read, discussion, source inspection or small tool calls. For the *first consequential atomic Git write of a Job*, `BEGIN_MUTATION` creates the PENDING cursor in **one** Memory Repo write (no preceding INITIALIZE required). The call returns a *prepared* JSON record, not persistence. The Orchestrator authorizes the Memory Repo path, writes it with exact GitHub CREATE or blob-SHA UPDATE, and reads back the actual bytes/SHA before the source commit. Group related source changes into one reviewed atomic Git commit when safe. `COMPLETE_MUTATION` follows one confirmed source commit (verified HEAD, parent and target blob) and updates the same cursor to STABLE after readback. No additional checkpoint write for routine steps. `SAVE_CHECKPOINT` occurs only at a meaningful reviewed milestone; `RECORD_PAUSE` only on an actual no-progress stop. Never call after every MCP tool response.
+
+New sessions read one cursor + current Job/Run and Git branch HEAD, then call `execution_cursor_resume_evaluate` only if there is a pending/uncertain mutation or to determine last checkpoint. If the cursor is STABLE and head unchanged, restart from the checkpoint. If PENDING, independently read target Git blob and classify NOT_APPLIED/TARGET_STATE_PRESENT/UNKNOWN_CONFLICT, always without write permission. Reauthorize any subsequent mutation; never blind retry, invent missing intent, re-enter terminal Jobs or treat successful prepare as completed source work.
+
+The record is produced by `execution_cursor_prepare`; external GitHub persistence/CA​S stays explicit. Schema is additive only for NEXT; V2_STABLE Jobs do not require the cursor. An unavailable Memory Repo or failed read-back blocks critical writes rather than allowing ephemeral fallback.
+
+**Limits:** extra GitHub Memory Repo round trips occur *only* at safety-critical write boundaries. They cannot be eliminated without losing crash-recovery evidence. Runtime helper computation is pure; latency of network reads/writes must be measured in live Project Jobs, and no fixed sub-second guarantee is claimed.
+
+
+#### Single-file versus atomic multi-file source commit
+
+A `BEGIN_MUTATION` cursor may carry `mutation_kind=FILE` with prior/intended target blob SHAs, or `mutation_kind=TREE` with prior/intended **Git tree SHA** produced when preparing one atomic commit for several source files. Multi-file work **must not** trigger a cursor write per file. After an atomic tree commit, `COMPLETE_MUTATION` requires independently read-back `observed_head_sha`, exact `observed_parent_sha=expected_head_sha` and `observed_tree_sha=intended_tree_sha`. When Git HEAD changed but the expected tree is present, resume reports `TARGET_STATE_PRESENT`, not proof of commit authorship; reconcile ancestry before completion.
+
+`RECORD_RETRY` is the only additional rare update, required only after independently proving `NOT_APPLIED`; the retry count is retained in the same record and capped at two. A successful `COMPLETE_MUTATION` stores `last_operation_id` and resets the retry/stall counters. The normal no-failure path costs zero cursor calls on ordinary reads and **one CREATE/UPDATE of intent plus one UPDATE of completion per atomic batch**, with security readback required for each. Measure network latency on actual Jobs; do not quote unmeasured millisecond claims.
+

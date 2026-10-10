@@ -601,3 +601,44 @@ For NEXT:
 - revising `tasks` requires resupplying execution `topology`.
 
 Planning review validates this mechanically before a NEXT revision can dispatch.
+
+## NEXT Job Execution Cursor v1 — reliability candidate
+
+One deterministic JSON record per **active NEXT Job**, in its existing configured Project Memory Repo:
+
+```text
+production: projects/<project_id>/WORK/EXECUTION_CURSORS/<job_id>.json
+test lab:   projects/<project_id>/TEST-LAB/NEXT/WORK/EXECUTION_CURSORS/<job_id>.json
+```
+
+This cursor is **progress metadata**, not a new Job/Run lifecycle and not a replacement for the NEXT checkpoint claim/attempt/Verification source of truth. It is optional for historical V2_STABLE Jobs.
+
+```text
+kind = EXECUTION_CURSOR
+version = 1
+project_id, job_id, execution_contract = NEXT, memory_namespace
+planning_revision, work_branch
+state = STABLE | PENDING
+last_good_sha (verified source commit)
+last_completed_checkpoint (informational; never substitutes required Verification)
+last_operation_id (last fully read-back source operation)
+pending_action = null | {
+  operation_id, mutation_kind = FILE | TREE, expected_head_sha,
+  FILE: target_path, previous_blob_sha (nullable), intended_blob_sha
+  TREE: previous_tree_sha, intended_tree_sha
+}
+retry_count (bounded 0..2), stalled_cycles, progress_fingerprint
+```
+
+**Write protocol:** `execution_cursor_prepare` produces a prepared CREATE/UPDATE and expected current cursor blob SHA. Caller validates exact active `PROJECT.md`, `authorize_project_scope(MUTATE_MEMORY)` and `authorize_memory_mutation`, then GitHub CREATE or exact-SHA UPDATE, followed by independent full record/sha readback. No successful tool prepare counts as durability. Normal tool/read/think paths do **not** call this protocol.
+
+**First source mutation:** `BEGIN_MUTATION` may lazily CREATE `PENDING` without a separate INIT write. Persist intent **before** the approved atomic Git commit. Prefer `TREE` for one commit containing multiple source files to avoid per-file cursor overhead; `FILE` is for an individual source blob.
+
+**Completion:** independently verify source HEAD, immediate commit parent equals expected prior HEAD, and target blob or tree equals intended SHA; `COMPLETE_MUTATION` updates this same cursor to STABLE and remembers operation ID / last-good HEAD. If response is lost, read the cursor and Git state and evaluate `execution_cursor_resume_evaluate` before any replay. `TARGET_STATE_PRESENT` is not authorship proof; resolve ancestry before advancing the cursor.
+
+**Retry:** only when refreshed source HEAD **and target blob/tree** prove NOT_APPLIED. Persist `RECORD_RETRY` under cursor CAS before actual source retry; no more than 2 retries. Never retry a PENDING operation by blind repetition. Unknown branch changes, stale revision or invalid namespace block rather than falling back to chat context.
+
+**Milestones and no-progress:** `SAVE_CHECKPOINT` only at real reviewed milestones, and `RECORD_PAUSE` only after no-progress stop; neither changes Job/Run lifecycle or satisfies the real NEXT checkpoint claim / Verification evidence gate by itself.
+
+**Performance contract:** zero new cursor network operations for normal chat, code inspection, test execution and routine tool calls. For a meaningful atomic source batch, one pre-write intent + one completion persistence, each with required read-back. Real GitHub network latency must be measured on actual Projects and may not be described as free or known in advance. A separate background worker or per-step bookkeeping loop is out of scope.
+
