@@ -195,6 +195,25 @@ test('LLC58: concurrent change to predecessor SHA blocks resume, unrelated super
   assert.equal(observed(i,[{...old,lifecycle:'SUPERSEDED'}]).reason,
     'PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT');
 });
+test('LLC58 test-validity: removing predecessor-SHA guard changes the negative result',()=>{
+  const dec=sf.statements.find(x=>ts.isFunctionDeclaration(x) && x.name?.text==='validatePlanChangeSupersession');
+  const real=dec.getText(sf);
+  const needle='a.predecessor_job_sha !== input.predecessor_job_sha';
+  assert.ok(real.includes(needle),'Mutation must target executed source guard, not an irrelevant string');
+  const broken=real.replace(needle,'false');
+  const js=ts.transpileModule(broken,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const mutant=vm.runInNewContext(js+'\nvalidatePlanChangeSupersession',deps);
+  const prepared=started();
+  const input={
+    project_id:uid,intent_record_text:prepared.intent_record_text,intent_record_sha:sha,
+    intent_memory_path:prepared.intent_memory_path,
+    predecessor_job:old,predecessor_job_sha:'b'.repeat(40),
+    cursor_state:'ABSENT',active_run_state:'NONE',
+  };
+  assert.equal(validateSupersession(input).allowed,false);
+  assert.equal(mutant(input).allowed,true,
+    'Deliberately broken predicate would accept the stale Job; correct test must catch it');
+});
 test('LLC58: tool surface includes prepare, resume and governed replacement Job creation',()=>{
   for(const name of ['job_plan_change_assess','job_plan_change_prepare','job_plan_change_resume_evaluate'])
     assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
