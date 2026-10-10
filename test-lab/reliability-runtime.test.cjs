@@ -72,3 +72,12 @@ test('registered recovery tools and auth guard are present on the served source'
   assert.match(source,/Authentication required for recovery evaluation/);
   assert.match(source,/Authentication required for progress evaluation/);
 });
+
+test('debugging skill is opt-in and exposed by catalog/loader schema (static contract)', () => {
+  assert.match(source,/['"]debugging['"]:\s*\{/);
+  assert.match(source,/name:\s*z\.enum\(\['job-planning','coding-loop','debugging'/);
+  assert.match(source,/For a reproducible nontrivial bug or failed hotfix retest, discover debugging/);
+  const rolePart = source.slice(source.indexOf('const ROLE_SKILLS'), source.indexOf('const RUNTIME_SKILLS'));
+  assert.match(rolePart,/coder:\s*\['coding-loop', 'delegation'\]/);
+  assert.doesNotMatch(rolePart,/coder:\s*\[[^\]]*debugging/);
+});
