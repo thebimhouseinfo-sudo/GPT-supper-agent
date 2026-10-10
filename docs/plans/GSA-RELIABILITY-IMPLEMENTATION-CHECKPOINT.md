@@ -32,3 +32,22 @@
 
 ## Human approval and status
 Human authorized **implementation on one integration branch; merge into main only after everything is complete**. No further branch may become a competing source of truth. No production release approval is implied by creating this checkpoint.
+
+## 2026-10-10 — Independent sandbox CI-equivalent execution
+
+**Why:** GitHub Actions workflow runs for PR #18 show runner_id=0 / runner_name empty / zero steps; both deno-typecheck and runtime-helper-check terminated before execution. This is **RUNNER_NOT_ALLOCATED**; GitHub hosted CI has not been repaired and no root cause (billing/policy/quota) is asserted without platform evidence. Reference failed run: [38023019041](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/38023019041).
+
+**Executed in isolated Vercel Sandbox**, no app deployment, GitHub branch source transferred directly from the private repo through authenticated connectors:
+
+- Environment: Node v24.21.0, Deno **2.5.6**, TypeScript **5.9.3**, Linux sandbox.
+- `npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa-next-test typescript@5.9.3` → exit 0.
+- `NODE_PATH=/tmp/gsa-next-test/node_modules node --test test-lab/runtime-logic.test.cjs test-lab/reliability-runtime.test.cjs` → **15 tests passed, 0 failed, 0 skipped, exit 0**.
+- `npx --yes deno@2.5.6 check supabase/functions/gsa-mcp/index.ts` → **PASS, exit 0**, module dependencies resolved over network (peer-dependency advisory for openai/zod; not a Deno typecheck failure).
+- Source `git hash-object supabase/functions/gsa-mcp/index.ts` = **`4182a36a29812725e3a3f4031d893e66fb4b6ebc`** (matches GitHub source blob at tested head).
+- Tests `git hash-object test-lab/reliability-runtime.test.cjs` = **`46de759d5b5babe4171b6adec8cca4d4fc448467`**.
+- Existing tests `git hash-object test-lab/runtime-logic.test.cjs` = **`a27185a6969879d6a621160a005aaf3ea088ff65`**.
+- Workflow `git hash-object .github/workflows/gsa-next-logic.yml` = **`1123dbbdd0e9778235486693eaaf29513440293a`**.
+
+**Scope:** Equivalent exact-file TypeScript + Node gates PASS using independently executed commands; they are **not GitHub-hosted CI PASS** and **not** real Git CAS, crashed chat recovery, connector E2E, authorized TEST_LAB writes, stage exact-source verification, or Reviewer/Tester durable closure. Keep PR #18 DRAFT.
+
+**Next:** Investigate GitHub Actions runner allocation from repository Actions run UI/account-level Actions usage/billing/settings; only mark hosted CI available when real step logs/run success exist. Continue independent Reviewer/Tester and staging isolated NEXT/TEST_LAB gating with separate evidence. Do not merge to main until full planned upgrade is complete and Human approves.
