@@ -5024,6 +5024,7 @@ function createServer(req: Request) {
         memory_path: z.string(),
         job_record_text: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5199,7 +5200,7 @@ function createServer(req: Request) {
         externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
       }
       externalSteps.push(
-        'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
+        'After DRAFT persistence and exact readback, follow continuation.next_action_after_readback=REVIEW_CURRENT_REVISION in this SAME USER TURN. Switch to the role-isolated planning Reviewer (no new Human chat). Do not report planning completion to the user yet.',
         'Do not modify source during Planner Job persistence.',
       )
       const result = {
@@ -5208,6 +5209,7 @@ function createServer(req: Request) {
         memory_path: path,
         job_record_text: prettyJson(record),
         external_steps: externalSteps,
+        continuation: planningLoopContinuationDecision('JOB_PREPARED', 'DRAFT', 1),
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -5244,6 +5246,7 @@ function createServer(req: Request) {
         expected_job_sha: z.string(),
         next_job_record_text: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA.optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5381,12 +5384,14 @@ function createServer(req: Request) {
         'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
         'GitHub Memory Repo: update the Job file with next_job_record_text using expected_job_sha exactly.',
         'Read back the Job and verify the target lifecycle/result before reporting the Job transition complete.',
+        ...(target_lifecycle === 'READY' ? ['After exact READY readback, follow continuation.next_action_after_readback=CONTINUE_JOB_TOPOLOGY in the same user turn; do not ask Human to say continue.'] : []),
       )
       const out = {
         memory_path: memoryPath,
         expected_job_sha: job_record_sha,
         next_job_record_text: prettyJson(next),
         external_steps: externalSteps,
+        ...(target_lifecycle === 'READY' ? { continuation: planningLoopContinuationDecision('READY_TRANSITION', 'READY', next.planning_revision) } : {}),
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
@@ -5456,6 +5461,7 @@ function createServer(req: Request) {
         next_job_record_text: z.string(),
         planning_revision: z.number(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5579,6 +5585,7 @@ function createServer(req: Request) {
         expected_job_sha: job_record_sha,
         next_job_record_text: prettyJson(next),
         planning_revision: nextRevision,
+        continuation: planningLoopContinuationDecision('PLAN_REVISED', next.lifecycle, nextRevision),
         external_steps: [
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
@@ -5587,7 +5594,7 @@ function createServer(req: Request) {
           inProgressNextRevision
             ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision. For first runtime supersession, read back the originating Verification and terminal claim (exact claim SHA) before updating the Job.'
             : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
-          'Immediately continue in this SAME USER TURN with a new Reviewer planning review for this exact revision before any user-facing planning-complete report.',
+          'After the new plan revision is persisted and read back by exact SHA, follow continuation.next_action_after_readback=REVIEW_CURRENT_REVISION; load the role-isolated planning Reviewer in this SAME USER TURN (no Human request to continue).',
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -5623,6 +5630,7 @@ function createServer(req: Request) {
         reviewed_job_record_text: z.string(),
         next_role: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5701,11 +5709,14 @@ function createServer(req: Request) {
         updated_at: new Date().toISOString(),
       }
       const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
-      const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
+      const continuation = planningLoopContinuationDecision('REVIEW_RECORDED', current.lifecycle, planning_revision, result)
+      const nextRole = continuation.next_role
       const steps = [
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
         'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',
+        'Read back persisted planning-review Verification by exact path/SHA and require project, Job, planning_revision and result match before changing Job.',
         'Update Job planning_review with reviewed_job_record_text using expected_job_sha exactly.',
+        'Read back the updated Job and Verification; only then follow continuation.next_action_after_readback in the SAME USER TURN. A prepared or failed write does not activate next_role.',
       ]
       if (result === 'PASS') {
         steps.push(
@@ -5737,6 +5748,7 @@ function createServer(req: Request) {
         reviewed_job_record_text: prettyJson(reviewedJob),
         next_role: nextRole,
         external_steps: steps,
+        continuation,
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
