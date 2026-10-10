@@ -83,6 +83,15 @@ test('LLC58: repeated intent prepare reconciles durable path and does not mint n
     existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha}).reason,
     'PLAN_CHANGE_EXISTING_INTENT_CONFLICT');
 });
+test('LLC58: already-persisted intent is reused after predecessor becomes SUPERSEDED',()=>{
+  const p=started();
+  const closed={...old,lifecycle:'SUPERSEDED'};
+  const x=prepare({...input,job_snapshots:[{...impacted,job_record_text:JSON.stringify(closed)}],
+    existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha});
+  assert.equal(x.allowed,true);
+  assert.equal(x.operation,'NONE');
+  assert.equal(x.intent_record_text,p.intent_record_text);
+});
 test('LLC58: interrupt before predecessor closure; settle cursor/Run rather than replace blindly',()=>{
   const i=JSON.parse(started().intent_record_text);
   const run=observed(i,[old],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'NONE'}]);
