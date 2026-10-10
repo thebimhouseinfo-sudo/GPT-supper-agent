@@ -1316,6 +1316,130 @@ function assessHumanPlanChangeJobs(input: any) {
   }
 }
 
+// LLC58: immutable, deterministic-by-reviewed-Plan-revision reconciliation
+// intent. Preparation is not durable: the caller must CREATE at the one
+// expected Memory Repo path, then read back the full blob before ANY Job
+// transition. No normal tool call or legacy Job requires this record.
+function prepareHumanPlanChangeIntent(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const deny = (reason: string) => ({
+    allowed: false, reason, operation: 'NONE', intent_memory_path: '',
+    intent_record_text: null, mutation_authorized: false, external_steps: [],
+  })
+  const impact = assessHumanPlanChangeJobs(input)
+  if (!impact.allowed) return deny(impact.reason)
+  let planJob: any, verification: any
+  try {
+    planJob = JSON.parse(input.plan_job_record_text)
+    verification = JSON.parse(input.plan_review_record_text)
+  } catch { return deny('PLAN_CHANGE_PLAN_REVIEW_RECORD_INVALID') }
+  if (planJob?.kind !== 'JOB' || planJob.type !== 'plan' ||
+      planJob.project_id !== input.project_id ||
+      !planJob.job_id || !sha(input.plan_job_record_sha) ||
+      !Number.isInteger(planJob.planning_revision) || planJob.planning_revision < 1 ||
+      !['READY','IN_PROGRESS','COMPLETED'].includes(planJob.lifecycle))
+    return deny('PLAN_CHANGE_PLAN_JOB_INVALID')
+  if (planJob.planning_review?.status !== 'PASS' ||
+      planJob.planning_review?.reviewed_revision !== planJob.planning_revision)
+    return deny('PLAN_CHANGE_REVIEW_NOT_PASSED')
+  const contract = jobExecutionContract(planJob)
+  if (!contract) return deny('PLAN_CHANGE_PLAN_CONTRACT_INVALID')
+  const ns = recordNextMemoryNamespace(planJob)
+  if (contract === 'NEXT' && !ns) return deny('PLAN_CHANGE_NAMESPACE_INVALID')
+  const expectedRef = verificationPath(input.project_id, verification?.verification_id,
+    contract, ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+  if (verification?.kind !== 'PLANNING_REVIEW' ||
+      verification.project_id !== input.project_id ||
+      verification.job_id !== planJob.job_id ||
+      verification.planning_revision !== planJob.planning_revision ||
+      verification.result !== 'PASS' || verification.producer !== 'reviewer' ||
+      verification.execution_contract !== contract ||
+      (contract === 'NEXT' && verification.memory_namespace !== ns) ||
+      planJob.planning_review?.verification_ref !== expectedRef ||
+      !sha(input.plan_review_record_sha) ||
+      input.plan_review_memory_path !== expectedRef)
+    return deny('PLAN_CHANGE_REVIEW_IDENTITY_OR_REF_MISMATCH')
+  if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
+    return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
+  if (typeof input.work_branch !== 'string' || !input.work_branch.trim())
+    return deny('PLAN_CHANGE_WORK_BRANCH_REQUIRED')
+  // Path is stable across lost responses and independent of randomness;
+  // duplicate CREATE is a collision to read/reconcile, never an overwrite.
+  const changeId = planJob.job_id + '-r' + planJob.planning_revision
+  const path = executionMemoryRoot(input.project_id, contract,
+    ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + changeId + '.json'
+  if (input.existing_intent_record_text != null) {
+    let old: any
+    try { old = JSON.parse(input.existing_intent_record_text) }
+    catch { return deny('PLAN_CHANGE_EXISTING_INTENT_INVALID') }
+    if (!sha(input.existing_intent_record_sha) ||
+        old?.kind !== 'PLAN_RECONCILIATION_INTENT' || old.version !== 1 ||
+        old.project_id !== input.project_id || old.change_id !== changeId ||
+        old.reviewed_plan_sha !== input.reviewed_plan_sha ||
+        old.plan_review_ref !== expectedRef ||
+        old.work_branch !== input.work_branch ||
+        !Array.isArray(old.actions))
+      return deny('PLAN_CHANGE_EXISTING_INTENT_CONFLICT')
+    return {
+      allowed: true, reason: 'EXISTING_INTENT_REUSE_REQUIRES_FRESH_READBACK',
+      operation: 'NONE', intent_memory_path: path,
+      intent_record_text: input.existing_intent_record_text,
+      mutation_authorized: false,
+      external_steps: ['Independently reread existing intent blob and all affected Job/Run/cursor state before resuming.'],
+    }
+  }
+  const known = new Set(impact.decisions.map((row: any) => row.job_id))
+  const actions = impact.decisions.map((row: any) => {
+    let replacement: any = null
+    if (row.decision === 'REPLACE') {
+      let id = uuidv7()
+      for (let k = 0; known.has(id) && k < 4; k++) id = uuidv7()
+      if (known.has(id)) return null
+      known.add(id)
+      replacement = { job_id: id, handle: jobHandle(id) }
+    }
+    return {
+      action_key: row.job_id + ':' + row.decision,
+      predecessor_job_id: row.job_id, predecessor_job_sha: row.job_sha,
+      predecessor_lifecycle: row.lifecycle,
+      predecessor_planning_revision: row.planning_revision,
+      predecessor_execution_contract: row.execution_contract,
+      decision: row.decision, reason: row.reason,
+      initial_next_action: row.next_action,
+      replacement,
+      old_evidence_applicable_to_new_job: false,
+    }
+  })
+  if (actions.some((x: any) => x === null)) return deny('PLAN_CHANGE_RESERVED_ID_COLLISION')
+  const intent = {
+    kind: 'PLAN_RECONCILIATION_INTENT', version: 1,
+    project_id: input.project_id, change_id: changeId,
+    plan_job_id: planJob.job_id, plan_job_revision: planJob.planning_revision,
+    plan_job_sha: input.plan_job_record_sha,
+    reviewed_plan_ref: input.change_ref, reviewed_plan_sha: input.reviewed_plan_sha,
+    plan_review_ref: expectedRef, plan_review_blob_sha: input.plan_review_record_sha,
+    execution_contract: contract,
+    ...(contract === 'NEXT' ? { memory_namespace: ns } : {}),
+    work_branch: input.work_branch,
+    actions, created_at: new Date().toISOString(),
+  }
+  return {
+    allowed: true, reason: 'INTENT_PREPARED_NOT_PERSISTED',
+    operation: 'CREATE', intent_memory_path: path,
+    intent_record_text: JSON.stringify(intent, null, 2) + '\n',
+    mutation_authorized: false,
+    external_steps: [
+      'Independently re-read Project, plan Job, PASS planning-review Verification, approved Plan target and every affected Job at exact blob SHAs.',
+      'Authorize exact active Project and target Memory Repo path for CREATE.',
+      'GitHub CREATE intent at deterministic path; on collision READ existing path and reconcile, NEVER overwrite.',
+      'Independently read back exact intent bytes/blob SHA before any Run/Job lifecycle or replacement writes.',
+      'Before SUPERSEDED, settle active Run and cursor PENDING with authoritative Git readback; use exact Job SHA CAS.',
+      'Before creating reserved replacement Job, use job_prepare with this same immutable intent and exact readback; never mint another ID.',
+    ],
+  }
+}
+
 function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
   return executionMemoryRoot(projectId, 'NEXT', namespace) +
     '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
@@ -2440,6 +2564,50 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_prepare',
+    {
+      title: 'Prepare immutable Human Plan Change reconciliation intent',
+      description: 'LLC58: prepare one deterministic CREATE per reviewed Plan revision. Reserve unique replacement Job IDs; requires PASS planning-review evidence. Only external authorized GitHub CREATE/readback makes it durable; no Job mutation is performed.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        change_ref: z.string().min(1),
+        reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_job_record_text: z.string().min(2),
+        plan_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_review_record_text: z.string().min(2),
+        plan_review_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_review_memory_path: z.string().min(1),
+        work_branch: z.string().min(1),
+        job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          reason: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
+        })).min(1),
+        existing_intent_record_text: z.string().min(2).optional(),
+        existing_intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        operation: z.enum(['CREATE','NONE']), intent_memory_path: z.string(),
+        intent_record_text: z.string().nullable(),
+        mutation_authorized: z.boolean(), external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change intent.')
+      const decision = prepareHumanPlanChangeIntent(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
 
