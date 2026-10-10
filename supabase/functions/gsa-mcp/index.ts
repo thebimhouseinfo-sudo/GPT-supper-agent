@@ -1253,6 +1253,73 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
   return null
 }
 
+// GSA Reliability: pure, read-only reconstruction helpers.
+// Callers MUST obtain each input from independent authoritative Git readback.
+// These decisions are NOT mutation authorization and are not a second lifecycle.
+function sourceMutationRecoveryDecision(input: {
+  operation_id: string
+  expected_head_sha: string
+  current_head_sha: string
+  previous_blob_sha: string | null
+  intended_blob_sha: string
+  current_blob_sha: string | null
+}) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const validPrevious = input.previous_blob_sha === null || sha(input.previous_blob_sha)
+  const validCurrent = input.current_blob_sha === null || sha(input.current_blob_sha)
+  if (!input.operation_id?.trim() || !sha(input.expected_head_sha) || !sha(input.current_head_sha) ||
+      !validPrevious || !validCurrent || !sha(input.intended_blob_sha)) {
+    return { disposition: 'UNKNOWN_CONFLICT', next_action: 'STOP_AND_RECONCILE', reason: 'INVALID_OR_UNPROVEN_READBACK', mutation_authorized: false }
+  }
+  if (input.previous_blob_sha === input.intended_blob_sha) {
+    return { disposition: 'ALREADY_SATISFIED', next_action: 'RECHECK_DEPENDENCIES', reason: 'NO_CONTENT_CHANGE', mutation_authorized: false }
+  }
+  if (input.current_blob_sha === input.intended_blob_sha) {
+    return { disposition: 'TARGET_STATE_PRESENT', next_action: input.current_head_sha === input.expected_head_sha
+      ? 'VERIFY_INDEPENDENT_READBACK' : 'RECONCILE_INTERVENING_COMMITS',
+      reason: 'EXPECTED_TARGET_BLOB_OBSERVED', mutation_authorized: false }
+  }
+  if (input.current_head_sha === input.expected_head_sha && input.current_blob_sha === input.previous_blob_sha) {
+    return { disposition: 'NOT_APPLIED', next_action: 'REAUTHORIZE_FROM_CURRENT_HEAD', reason: 'UNCHANGED_AUTHORITATIVE_TARGET', mutation_authorized: false }
+  }
+  return { disposition: 'UNKNOWN_CONFLICT', next_action: 'STOP_AND_RECONCILE', reason: 'SOURCE_HEAD_OR_BLOB_DIVERGED', mutation_authorized: false }
+}
+
+// Counts only caller-observed durable state changes. A completed MCP request is
+// not progress. PAUSED_NO_PROGRESS is an orchestration result, not Job/Run state.
+function orchestrationProgressDecision(input: {
+  job_lifecycle: string
+  run_lifecycle: string | null
+  previous_fingerprint: string | null
+  current_fingerprint: string
+  stalled_cycles: number
+  mutation_retry_count: number
+}) {
+  const jobTerminals = ['COMPLETED','CANCELLED','SUPERSEDED']
+  const runTerminals = ['COMPLETED','FAILED','CANCELLED','SUPERSEDED']
+  const jobStates = ['DRAFT','READY','IN_PROGRESS',...jobTerminals]
+  const runStates = ['IN_PROGRESS',...runTerminals]
+  if (!jobStates.includes(input.job_lifecycle) ||
+      (input.run_lifecycle !== null && !runStates.includes(input.run_lifecycle)) ||
+      !input.current_fingerprint || !Number.isInteger(input.stalled_cycles) ||
+      input.stalled_cycles < 0 || !Number.isInteger(input.mutation_retry_count) || input.mutation_retry_count < 0) {
+    return { disposition: 'BLOCKED', stalled_cycles: 0, reason: 'INVALID_DURABLE_STATE' }
+  }
+  if (jobTerminals.includes(input.job_lifecycle) ||
+      (input.run_lifecycle !== null && runTerminals.includes(input.run_lifecycle))) {
+    return { disposition: 'TERMINAL', stalled_cycles: input.stalled_cycles, reason: 'DO_NOT_REENTER_TERMINAL_RUN_OR_JOB' }
+  }
+  const stalled = input.previous_fingerprint === input.current_fingerprint
+    ? input.stalled_cycles + 1 : 0
+  if (input.mutation_retry_count > 2) {
+    return { disposition: 'PAUSED_RETRY_EXHAUSTED', stalled_cycles: stalled, reason: 'BOUNDED_MUTATION_RETRY' }
+  }
+  if (stalled >= 3) {
+    return { disposition: 'PAUSED_NO_PROGRESS', stalled_cycles: stalled, reason: 'THREE_DURABLE_NO_PROGRESS_CYCLES' }
+  }
+  return { disposition: 'CONTINUE', stalled_cycles: stalled, reason: stalled === 0 ? 'FINGERPRINT_CHANGED' : 'AWAIT_DURABLE_PROGRESS' }
+}
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
@@ -1263,6 +1330,9 @@ const BASE_AGENT_HARNESS = [
   '- Read the current target before writing. If a file changed since an earlier read, re-read it before editing.',
   '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
   '- A denied or unauthorized action is a boundary, not a puzzle: never route around it through another tool, shell indirection, generated scripts, alternate APIs or configuration changes.',
+  '- On a resumed chat/Job, reconcile current Git HEAD + target blob + immutable Job/Run/Verification records before new coding or retrying any uncertain write. A tool prepare or successful call is not durable progress.',
+  '- On unknown Git write outcome, reread authoritative head/blob and call execution_recovery_evaluate; never interpret that advisory as write authorization. Stop on UNKNOWN_CONFLICT.',
+  '- Track no-progress cycles against durable source/evidence fingerprints within the running turn; after three unchanged cycles stop with derived PAUSED_NO_PROGRESS. Never promise background resume without a separately approved worker.',
   '- Prefer dedicated tools over shell-equivalent work when both exist and the dedicated tool gives clearer evidence or safer boundaries.',
   '- Run independent read/check operations in parallel only when the host supports it; dependent actions remain sequential.',
   '- When an action fails, inspect the error and revise the diagnosis before retrying. Never blind-retry the same action.',
@@ -2069,6 +2139,60 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_recovery_evaluate',
+    {
+      title: 'Evaluate a lost-response source mutation from authoritative Git readback',
+      description: 'Read-only advisory for ChatGPT orchestration. Compare one pending source write with independently reread Git head/blob SHAs. Does not write, authorize a retry, or infer background progress.',
+      inputSchema: {
+        operation_id: z.string().min(1),
+        expected_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+        intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+      },
+      outputSchema: {
+        disposition: z.string(), next_action: z.string(), reason: z.string(), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for recovery evaluation.')
+      const decision = sourceMutationRecoveryDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
+    },
+  )
+
+  server.registerTool(
+    'orchestration_progress_evaluate',
+    {
+      title: 'Bound same-turn orchestration progress',
+      description: 'Read-only bounded-livelock evaluator. Caller supplies a fingerprint grounded in current durable Git/Job/Run evidence. No scheduler, Job lifecycle writes or autonomous continuation.',
+      inputSchema: {
+        job_lifecycle: z.enum(['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
+        run_lifecycle: z.enum(['IN_PROGRESS','COMPLETED','FAILED','CANCELLED','SUPERSEDED']).nullable(),
+        previous_fingerprint: z.string().nullable(),
+        current_fingerprint: z.string().min(1),
+        stalled_cycles: z.number().int().min(0),
+        mutation_retry_count: z.number().int().min(0),
+      },
+      outputSchema: { disposition: z.string(), stalled_cycles: z.number(), reason: z.string() },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for progress evaluation.')
+      const decision = orchestrationProgressDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
 
