@@ -51,9 +51,15 @@ L0 orientation
 → place review/test/human gates
 → define completion/evidence requirements
 → consistency + sizing review
-→ job_prepare
-→ planning review / repair loop
-→ READY
+→ job_prepare → authorized DRAFT CREATE + SHA readback
+→ role-isolated planning Reviewer in SAME USER TURN (no new Human chat)
+→ PLANNING_REVIEW Verification CREATE/readback, reviewed Job UPDATE/readback
+   ├─ CHANGES_REQUIRED → Planner job_revise_plan → SHA readback → Reviewer again
+   ├─ PASS DRAFT → job_transition READY + SHA readback
+   ├─ PASS NEXT IN_PROGRESS → resume dispatch, never force READY
+   ├─ HUMAN_REVIEW_REQUIRED → specific Human Gate
+   └─ BLOCKED → exact blocker
+→ READY (or reviewed NEXT resume)
 ```
 
 Phase, Job Pack and Milestone are planning concepts expressed with the existing Job/Task topology unless later evidence proves a new persistent entity is necessary.
@@ -67,6 +73,12 @@ Job boundary = context boundary.
 For brownfield work, existing code is evidence rather than automatic authority. Planner must inspect enough relevant logic and relationships to distinguish canonical behavior from legacy, accidental, incorrect or unknown behavior.
 
 Planner is source read-only.
+
+### LLC60 — Continuation owner and persistence fence
+
+Orchestrator owns the entire Planner ↔ planning Reviewer loop, not the individual role or the Human. The existing `job_prepare`, `plan_review_record`, `job_revise_plan`, and `job_transition(READY)` return a typed `continuation` specifying the next role/action **after** the instructed authorized GitHub Memory Repo persistence and exact SHA/record readback. `AWAITING_DURABLE_READBACK` is not completion. The caller continues immediately in the current turn; it must not stop and ask Human to type “continue” after a review, plan repair, or READY proposal.
+
+A stale SHA, failed/denied write, unreconciled duplicate Verification or unsupported record is a real blocker; never bypass authorization or pretend the next action happened. Do not run a repeat Reviewer on an unchanged reviewed revision without evidence; use existing no-progress protections. The only routine Human handoff is a substantive `HUMAN_REVIEW_REQUIRED` finding.
 
 ## Coder loop
 
@@ -96,7 +108,7 @@ For a successful Coder Run, `run_complete` validates the exact GOAL_RECHECK reco
 
 ## Reviewer loop
 
-Reviewer must be context-isolated in a fresh chat when independent review is required.
+For mandatory independent source/code review, Reviewer retains fresh-context isolation. **Job planning-review is different:** a role-isolated Reviewer reconstructs exact Job/revision and source facts in the SAME USER TURN and does not require a separate Human chat. Do not inherit Planner reasoning; do not ask the user to invoke Reviewer manually.
 
 ```text
 exact requirements + exact target revision + evidence
