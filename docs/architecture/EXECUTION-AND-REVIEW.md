@@ -534,3 +534,19 @@ A `BEGIN_MUTATION` cursor may carry `mutation_kind=FILE` with prior/intended tar
 
 `RECORD_RETRY` is the only additional rare update, required only after independently proving `NOT_APPLIED`; the retry count is retained in the same record and capped at two. A successful `COMPLETE_MUTATION` stores `last_operation_id` and resets the retry/stall counters. The normal no-failure path costs zero cursor calls on ordinary reads and **one CREATE/UPDATE of intent plus one UPDATE of completion per atomic batch**, with security readback required for each. Measure network latency on actual Jobs; do not quote unmeasured millisecond claims.
 
+## LLC58 — Human Plan Change reconciliation (additive; not a new Job lifecycle)
+
+When Human changes an approved multi-Job Plan while READY or IN_PROGRESS Jobs exist:
+
+1. Planner reads the current Project, Plan, Job set, Run/Verification references, branch HEAD and dependencies; identifies the exact changed objectives, non-goals, acceptance criteria and consumers. `planning_revision` belongs to each Job, not globally to the Project.
+2. Planner produces an explicit Job impact matrix: `KEEP`, `REVALIDATE`, `REPLACE`, or `HUMAN_DECISION`. Missing dependency evidence must not be guessed; downstream Job evidence is not inherited automatically.
+3. The changed plan's `type=plan` Job receives an exact-revision `PLANNING_REVIEW` Verification. Reviewer must PASS before preparing the durable reconciliation intent. A failed review returns to Planner; no Job closure yet.
+4. `job_plan_change_assess` can evaluate classification before write. `job_plan_change_prepare` prepares an immutable deterministic CREATE, including preallocated IDs for replacements. Authenticate, authorize Memory path, independently reread reviewed Plan/Verification and every Job SHA, CREATE and read back. An existing intent is reused, not overwritten.
+5. Before each affected Job transition, reconcile pending cursor and Run state from real Git/Memory; issue existing `job_transition(SUPERSEDED)` with fresh exact predecessor Job SHA only after activity settles. Preserve historical evidence and source history.
+6. For REPLACE, call `job_prepare(replacement_context)` using the **same durable intent** and reserved Job ID. New Job is DRAFT and must PASS its own planning review before READY. Never generate another ID on resume.
+7. Validate all impacted dependent Job references/acceptance criteria before dispatch. The existing `run_begin` current Job and revision gate remains mandatory; an affected Job pending review/reconciliation cannot be resumed based on stale chat alone.
+8. After interruption, use `job_plan_change_resume_evaluate` with the immutable intent and current Job snapshots to decide the first unfinished step; no blind duplicate CREATE, no terminal Job reactivation, no old PASS reused as replacement PASS.
+
+These tools make decisions/prepared records, **not writes or automatic coordination**. Cross-Job GitHub writes have no transaction; the safe transition is explicit CAS/readback with finite retries and honest UNKNOWN_CONFLICT. The orchestrator must stop when a legitimate active Run cannot be safely settled, or a dependent Job cannot be proven current.
+
+**Acceptance:** tests must include legacy Job diagnosis, READY/IN_PROGRESS/COMPLETED matrices, cursor PENDING, idempotent interrupted replacement and descendant dependency revalidation; a real authorized GSA Local Job check is required before claiming field closure. Helper CI PASS is not field acceptance.
