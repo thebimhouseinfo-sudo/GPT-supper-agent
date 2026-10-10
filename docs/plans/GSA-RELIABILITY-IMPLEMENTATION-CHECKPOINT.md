@@ -51,3 +51,14 @@ Human authorized **implementation on one integration branch; merge into main onl
 **Scope:** Equivalent exact-file TypeScript + Node gates PASS using independently executed commands; they are **not GitHub-hosted CI PASS** and **not** real Git CAS, crashed chat recovery, connector E2E, authorized TEST_LAB writes, stage exact-source verification, or Reviewer/Tester durable closure. Keep PR #18 DRAFT.
 
 **Next:** Investigate GitHub Actions runner allocation from repository Actions run UI/account-level Actions usage/billing/settings; only mark hosted CI available when real step logs/run success exist. Continue independent Reviewer/Tester and staging isolated NEXT/TEST_LAB gating with separate evidence. Do not merge to main until full planned upgrade is complete and Human approves.
+
+## Reliability cursor upgrade — approved low-overhead candidate (2026-10-10)
+
+Human approved one minimal durable per-Job checkpoint on the condition of no meaningful latency impact. **Not yet released.** Source now implements lazy `execution_cursor_prepare`/ `execution_cursor_resume_evaluate` with deterministic NEXT Memory Repo path, strict Job/revision/namespace identity, exact-SHA pre-write intent, no blind replay and bounded persisted `RECORD_RETRY`. The first consequential mutation also creates the cursor; no separate INIT call. `TREE` intent covers multiple files in **one atomic Git commit**, protecting latency for multi-file Job Packs; `FILE` covers individual source commits.
+
+Memory Repo path authorization was probed using a valid active GSA Project manifest for `projects/<project-id>/TEST-LAB/NEXT/WORK/EXECUTION_CURSORS/<job-id>.json`: both `authorize_project_scope(MUTATE_MEMORY)` and `authorize_memory_mutation(create)` returned allowed. No test cursor was written into a real Job without a proper Job-bound execution.
+
+**Verification currently unproven for new code revision:** old CI 15/15 and Deno PASS belong to earlier source `df81108c`, not the upgraded cursor source. New GitHub workflow runs end before runner allocation; a Vercel sandbox test execution attempt was blocked by tool safety, so no test PASS can be reported for current cursor commit. Do not merge main or deploy production based on older green CI. Require current-SHA typecheck, cursor tests, targeted review and field-based source-to-GitHub persistence test.
+
+Latency model: no additional cursor network calls for read/think/normal tool traffic; one cursor intent + one completion per meaningful *atomic* Git batch, plus an occasional reviewed checkpoint/pause. Runtime latency in seconds is **not yet measured**, and a live Project Job should report it before generalizing any performance claim.
+
