@@ -527,3 +527,10 @@ The record is produced by `execution_cursor_prepare`; external GitHub persistenc
 
 **Limits:** extra GitHub Memory Repo round trips occur *only* at safety-critical write boundaries. They cannot be eliminated without losing crash-recovery evidence. Runtime helper computation is pure; latency of network reads/writes must be measured in live Project Jobs, and no fixed sub-second guarantee is claimed.
 
+
+#### Single-file versus atomic multi-file source commit
+
+A `BEGIN_MUTATION` cursor may carry `mutation_kind=FILE` with prior/intended target blob SHAs, or `mutation_kind=TREE` with prior/intended **Git tree SHA** produced when preparing one atomic commit for several source files. Multi-file work **must not** trigger a cursor write per file. After an atomic tree commit, `COMPLETE_MUTATION` requires independently read-back `observed_head_sha`, exact `observed_parent_sha=expected_head_sha` and `observed_tree_sha=intended_tree_sha`. When Git HEAD changed but the expected tree is present, resume reports `TARGET_STATE_PRESENT`, not proof of commit authorship; reconcile ancestry before completion.
+
+`RECORD_RETRY` is the only additional rare update, required only after independently proving `NOT_APPLIED`; the retry count is retained in the same record and capped at two. A successful `COMPLETE_MUTATION` stores `last_operation_id` and resets the retry/stall counters. The normal no-failure path costs zero cursor calls on ordinary reads and **one CREATE/UPDATE of intent plus one UPDATE of completion per atomic batch**, with security readback required for each. Measure network latency on actual Jobs; do not quote unmeasured millisecond claims.
+
