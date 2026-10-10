@@ -1360,9 +1360,15 @@ function prepareExecutionCursorDecision(input: any) {
       retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
     }
   } else if (event === 'RECORD_RETRY') {
-    if (old.state !== 'PENDING' || !old.pending_action ||
-        input.operation_id !== old.pending_action.operation_id ||
-        input.observed_head_sha !== old.pending_action.expected_head_sha ||
+    const p = old.pending_action
+    const unchangedTarget = p?.mutation_kind === 'TREE'
+      ? validSha(input.observed_tree_sha) && input.observed_tree_sha === p.previous_tree_sha
+      : (input.observed_blob_sha === null || validSha(input.observed_blob_sha)) &&
+        input.observed_blob_sha !== undefined && input.observed_blob_sha === p?.previous_blob_sha
+    if (old.state !== 'PENDING' || !p ||
+        input.operation_id !== p.operation_id ||
+        input.observed_head_sha !== p.expected_head_sha ||
+        !unchangedTarget ||
         !Number.isInteger(old.retry_count) || old.retry_count >= 2)
       return block('RETRY_BLOCKED_OR_EXHAUSTED')
     // Only after an independent NOT_APPLIED readback, and before a real
@@ -1412,7 +1418,8 @@ function resumeExecutionCursorDecision(input: any) {
   }
   const p = cursor.pending_action
   if (!p || !p.operation_id || !validSha(p.expected_head_sha) ||
-      p.expected_head_sha !== cursor.last_good_sha)
+      p.expected_head_sha !== cursor.last_good_sha ||
+      !['FILE','TREE'].includes(p.mutation_kind ?? 'FILE'))
     return stop('INCOMPLETE_PENDING_INTENT_OR_READBACK')
   let decision: any
   if (p.mutation_kind === 'TREE') {
