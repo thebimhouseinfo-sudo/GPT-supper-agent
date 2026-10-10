@@ -1440,6 +1440,82 @@ function prepareHumanPlanChangeIntent(input: any) {
   }
 }
 
+// LLC58 recovery: decision comes from immutable Plan intent + *fresh* exact
+// Job readbacks. Returning a next action is NEVER memory/source authorization.
+function resumeHumanPlanChangeIntent(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const stop = (reason: string) => ({
+    allowed: false, reason, actions: [], mutation_authorized: false,
+  })
+  let intent: any
+  try { intent = JSON.parse(input.intent_record_text) }
+  catch { return stop('PLAN_CHANGE_INTENT_JSON_INVALID') }
+  if (!sha(input.intent_record_sha) || intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !Array.isArray(intent.actions) || !intent.actions.length ||
+      !sha(intent.reviewed_plan_sha) || !sha(intent.plan_review_blob_sha))
+    return stop('PLAN_CHANGE_INTENT_IDENTITY_OR_SHA_INVALID')
+  const expected = executionMemoryRoot(input.project_id,
+    intent.execution_contract, intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + intent.change_id + '.json'
+  if (input.intent_memory_path !== expected) return stop('PLAN_CHANGE_INTENT_PATH_MISMATCH')
+  if (!Array.isArray(input.current_job_snapshots)) return stop('PLAN_CHANGE_CURRENT_JOBS_REQUIRED')
+  const jobs = new Map<string,any>()
+  for (const s of input.current_job_snapshots) {
+    let job: any
+    try { job = JSON.parse(s.job_record_text) }
+    catch { return stop('PLAN_CHANGE_CURRENT_JOB_JSON_INVALID') }
+    if (job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+        !job.job_id || !sha(s.job_record_sha) || jobs.has(job.job_id))
+      return stop('PLAN_CHANGE_CURRENT_JOB_INVALID_OR_DUPLICATE')
+    jobs.set(job.job_id, job)
+  }
+  const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
+  for (const a of intent.actions) {
+    if (!a?.predecessor_job_id || seenOld.has(a.predecessor_job_id) ||
+        !['KEEP','REVALIDATE','REPLACE'].includes(a.decision))
+      return stop('PLAN_CHANGE_ACTION_INVALID_OR_DUPLICATE')
+    seenOld.add(a.predecessor_job_id)
+    const old = jobs.get(a.predecessor_job_id)
+    if (!old) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
+    let next = a.decision === 'KEEP' ? 'KEEP_UNCHANGED' :
+      a.decision === 'REVALIDATE' ? 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE' : ''
+    if (a.decision === 'REPLACE') {
+      const id = a.replacement?.job_id
+      if (!id || id === a.predecessor_job_id || seenNew.has(id))
+        return stop('PLAN_CHANGE_REPLACEMENT_ID_INVALID_OR_DUPLICATE')
+      seenNew.add(id)
+      const replacement = jobs.get(id)
+      if (old.lifecycle === 'SUPERSEDED') {
+        if (!replacement) next = 'CREATE_RESERVED_REPLACEMENT'
+        else if (replacement.replacement_of_job_id !== old.job_id ||
+                 replacement.plan_change_id !== intent.change_id)
+          return stop('PLAN_CHANGE_REPLACEMENT_LINEAGE_CONFLICT')
+        else if (replacement.lifecycle === 'DRAFT') next = 'REVIEW_REPLACEMENT'
+        else if (['READY','IN_PROGRESS','COMPLETED'].includes(replacement.lifecycle))
+          next = 'REVALIDATE_DEPENDENCIES_BEFORE_DISPATCH'
+        else return stop('PLAN_CHANGE_REPLACEMENT_TERMINAL_CONFLICT')
+      } else if (['COMPLETED','CANCELLED'].includes(old.lifecycle)) {
+        return stop('PLAN_CHANGE_PREDECESSOR_TERMINAL_CONFLICT')
+      } else {
+        const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
+        if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
+            !['NONE','TERMINAL','ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'REFETCH_ACTIVE_RUN_AND_CURSOR'
+        else if (['PENDING','UNKNOWN'].includes(live.cursor_state))
+          next = 'RECONCILE_PENDING_SOURCE_CURSOR'
+        else if (['ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'SETTLE_ACTIVE_RUN'
+        else next = 'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA'
+      }
+    }
+    actions.push({ action_key: a.action_key, job_id: old.job_id, decision: a.decision,
+      replacement_job_id: a.replacement?.job_id ?? null, next_action: next })
+  }
+  return { allowed: true, reason: 'FRESH_READBACK_RECONCILIATION_ONLY',
+    actions, mutation_authorized: false }
+}
+
 function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
   return executionMemoryRoot(projectId, 'NEXT', namespace) +
     '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
@@ -2564,6 +2640,42 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_resume_evaluate',
+    {
+      title: 'Resume a reviewed multi-Job Plan Change from durable readback',
+      description: 'LLC58 recovery evaluator; identifies the next safe action after interrupted Job supersession/replacement. Never authorizes mutation or transfers old PASS evidence.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        intent_memory_path: z.string().min(1),
+        intent_record_text: z.string().min(2),
+        intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        })),
+        activity: z.array(z.object({
+          job_id: z.string().uuid(),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']),
+        })).default([]),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        actions: z.array(z.any()), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change recovery.')
+      const decision = resumeHumanPlanChangeIntent(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
 
