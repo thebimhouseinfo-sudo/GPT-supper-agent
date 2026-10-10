@@ -412,3 +412,6 @@ On a new conversation or interrupted turn, resolve Job, cursor record and Git he
 
 If project scope is not authorized or durable cursor write/read-back is unavailable, fail closed at the risky source-mutation boundary; do not silently create an in-chat-only cursor. The caller handles exact GitHub CAS and evidence. **No background worker or extra tool calls on normal chat/read paths.**
 
+
+Use `mutation_kind=TREE` for a reviewed atomic multi-file Git tree commit, rather than opening one cursor per changed file; read the intended Git tree SHA before beginning, then independently verify the committed HEAD, parent and tree. For FILE commits use the target blob SHA. A failed/lost response resumes from the one durable PENDING record. Retry counters are recorded only for reconciled failed writes; no extra work is added to ordinary tool calls.
+
