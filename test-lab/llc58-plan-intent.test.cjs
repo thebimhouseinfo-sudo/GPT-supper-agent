@@ -17,7 +17,7 @@ const sha='a'.repeat(40);
 const contract=j=>j.execution_contract==null?'V2_STABLE':(['NEXT','V2_STABLE'].includes(j.execution_contract)?j.execution_contract:null);
 const ns=j=>j.memory_namespace==='TEST_LAB'?'TEST_LAB':j.memory_namespace==='PRODUCTION'?'PRODUCTION':null;
 const root=(id,c,n)=>'projects/'+id+(c==='NEXT'&&n==='TEST_LAB'?'/TEST-LAB/NEXT':'');
-const verifyPath=(id,vid,c,n)=>root(id,c,n)+'/VERIFICATIONS/'+vid+'.json';
+const verifyPath=(id,vid,c,n)=>root(id,c,n)+'/VERIFICATION/'+vid+'.json';
 const getHandle=id=>'J-'+id.replace(/-/g,'').slice(-4).toUpperCase();
 const deps={JSON,Number,String,Date,Set,Map,uuidv7:()=>newId,jobHandle:getHandle,
   jobExecutionContract:contract,recordNextMemoryNamespace:ns,
