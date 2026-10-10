@@ -1267,9 +1267,17 @@ function prepareExecutionCursorDecision(input: any) {
   const block = (reason: string) => ({ allowed: false, reason, operation: 'NONE', record: null })
   let job: any, old: any = null
   try { job = JSON.parse(input.job_record_text) } catch { return block('INVALID_JOB_RECORD') }
-  if (job?.kind !== 'JOB' || job.project_id !== input.project_id || job.job_id !== input.job_id ||
-      job.execution_contract !== 'NEXT' || !Number.isInteger(job.planning_revision) || job.planning_revision < 1 ||
-      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_IDENTITY_OR_LIFECYCLE_MISMATCH')
+  // LLC58: distinguish historical Job contract incompatibility from wrong identity
+  // or terminal lifecycle. A V2_STABLE Job cannot acquire a NEXT cursor merely
+  // because the production *creation default* is NEXT.
+  if (job?.kind !== 'JOB') return block('JOB_RECORD_KIND_INVALID')
+  if (job.project_id !== input.project_id) return block('PROJECT_ID_MISMATCH')
+  if (job.job_id !== input.job_id) return block('JOB_ID_MISMATCH')
+  if (jobExecutionContract(job) === 'V2_STABLE') return block('LEGACY_JOB_CURSOR_NOT_APPLICABLE')
+  if (job.execution_contract !== 'NEXT') return block('JOB_EXECUTION_CONTRACT_INCOMPATIBLE')
+  if (!Number.isInteger(job.planning_revision) || job.planning_revision < 1)
+    return block('JOB_PLAN_REVISION_INVALID')
+  if (!['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_LIFECYCLE_INVALID')
   const namespace = recordNextMemoryNamespace(job)
   if (!namespace || namespace !== input.memory_namespace) return block('CURSOR_NAMESPACE_MISMATCH')
   if (typeof input.work_branch !== 'string' || !input.work_branch.trim() ||
