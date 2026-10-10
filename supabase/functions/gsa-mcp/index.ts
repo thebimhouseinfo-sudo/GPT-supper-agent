@@ -4947,7 +4947,7 @@ function createServer(req: Request) {
     'job_prepare',
     {
       title: 'Prepare a durable GSA Job',
-      description: 'Planner finalization tool. Builds one finite Job record after the Planner harness has produced an approved plan. NEXT plans may include revision-bound EvidenceNeed, TestCheckpointSpec, EvidenceRequirement, milestones and typed planning_topology; V2_STABLE keeps these collections empty.',
+      description: 'PREPARE ONLY: create a DRAFT Job record, NOT planning completion. Caller must persist/read back the Job and follow continuation to planning Reviewer in the SAME USER TURN. NEXT supports revision-bound planning evidence; V2_STABLE keeps these collections empty.',
       inputSchema: {
         project_id: z.string().uuid(),
         type: z.enum(['plan','code','design','review']),
@@ -5224,7 +5224,7 @@ function createServer(req: Request) {
     'job_transition',
     {
       title: 'Transition a durable GSA Job',
-      description: 'Serialized Job lifecycle update using the exact current Job record and blob SHA. Supports DRAFT→READY only after PASS planning review, READY→IN_PROGRESS when execution starts, and IN_PROGRESS→COMPLETED only after completion evidence exists.',
+      description: 'PREPARE ONLY: authorized exact-SHA Job lifecycle transition. DRAFT→READY requires persisted current-revision PASS planning review. After READY update/readback, follow continuation to current Job topology rather than asking Human to say continue.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -5406,7 +5406,7 @@ function createServer(req: Request) {
     'job_revise_plan',
     {
       title: 'Revise a GSA Job plan',
-      description: 'Planner-only exact-SHA planning revision update. DRAFT revisions follow the normal planning loop; NEXT IN_PROGRESS revisions are allowed only from persisted PLAN_GAP/SPEC_GAP Tester evidence and supersede the old planning topology.',
+      description: 'PREPARE ONLY: exact-SHA Planner plan revision. Persist/read back revised Job, then immediately re-run role-isolated planning Reviewer in SAME USER TURN. NEXT IN_PROGRESS supersession still requires originating Tester evidence.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -5610,7 +5610,7 @@ function createServer(req: Request) {
     'plan_review_record',
     {
       title: 'Record planning review for one exact Job revision',
-      description: 'Reviewer-only planning Verification. PASS unlocks DRAFT→READY or resumes a superseding NEXT IN_PROGRESS planning revision; CHANGES_REQUIRED routes automatically back to Planner.',
+      description: 'PREPARE ONLY: Reviewer planning Verification plus reviewed Job update. Persist/read back both; then in SAME USER TURN follow continuation: CHANGES_REQUIRED→Planner revise→Reviewer, PASS DRAFT→READY, PASS NEXT IN_PROGRESS→resume. Do not end after a review result.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
