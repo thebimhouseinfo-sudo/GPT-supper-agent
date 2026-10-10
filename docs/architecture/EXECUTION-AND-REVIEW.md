@@ -483,3 +483,32 @@ For a Task target, required checkpoint IDs are the union of:
 This prevents a Task after a TEST_CHECKPOINT/MILESTONE_GATE from bypassing that checkpoint merely because no duplicate EvidenceRequirement was declared.
 
 NEXT execution topology is mechanically validated alongside the CP4 typed planning graph. Every current Task must appear exactly once with a valid handler; Task dependencies and topology `depends_on` must agree; topology stage/task IDs must be unique. If a NEXT plan revision changes `tasks`, it must resupply coherent execution `topology`; planning review cannot PASS a stale mapping.
+
+## GSA Reliability — request-driven recovery and test validity (integration candidate)
+
+This section describes the **branch candidate** for the next release. It does not change V2_STABLE Job semantics or imply a background worker.
+
+### Lost-response write reconciliation
+
+Before repeating a consequential source write after interruption:
+1. Reopen the active Project and exact Job/Run from authorized Memory Repo paths; read current Job planning revision and source branch HEAD.
+2. Independently fetch the target Git blob SHA. Compare it against the prior expected head/blob and intended target blob. Do **not** infer success from chat history, a missing tool response, or a commit SHA seen only in a chat.
+3. Invoke `execution_recovery_evaluate` with that readback. This read-only helper returns `NOT_APPLIED`, `TARGET_STATE_PRESENT`, `ALREADY_SATISFIED`, or `UNKNOWN_CONFLICT`. It never grants mutation permission.
+4. `TARGET_STATE_PRESENT` means intended target bytes were observed, **not** proof that this attempt authored the commit; reconcile ancestry/unrelated changes. `NOT_APPLIED` still needs a fresh project-scope check and authorized write. `UNKNOWN_CONFLICT` stops retries and routes to reconciliation.
+5. Distinguish Git source writes from Memory Repo lifecycle writes. A prepared `job_transition` or `run_complete` is not persisted until exact-authoritative Git readback proves it. Never bypass host denial through another mutation path.
+
+No action is triggered while a ChatGPT conversation is closed. Recovery starts on the **next authenticated invocation**, never asynchronously without a separately approved worker.
+
+### Same-turn no-progress guard
+
+Use `orchestration_progress_evaluate` only with fingerprints derived from *real* changed Job/Run/Verification status and source/Git SHA. Consecutive identical fingerprints count as stalled cycles even if tool calls return success. Three stalled cycles yield `PAUSED_NO_PROGRESS` as a **derived orchestration disposition**; mutation retries above two yield `PAUSED_RETRY_EXHAUSTED`. Neither is a new stored Job/Run lifecycle value. A terminal Run stops *that Run* and returns to durable Job topology for new attributed Runs; a terminal Job never reopens.
+
+### Test validity at meaningful checkpoints
+
+At a boundary involving lifecycle, persistence, recovery, a new test harness/fixture, escaped bug, or release:
+- Reviewer inspects whether changed tests assert the claimed real behavior, whether a known-bad variant turns RED, and whether stubs bypass the target boundary.
+- A mock-only two-writer CAS test is `MODEL_ONLY`, not real Git concurrency evidence; a helper-only workflow is not actual host E2E.
+- Bind every verdict to exact source/review SHA. Skipped/unavailable stage or test infrastructure yields UNVERIFIED, never PASS.
+- Do not repeat deep test-script review for unchanged previously reviewed tests after ordinary reruns.
+
+Debugging is an **opt-in Coder skill** via the runtime catalog and `load_skill`, used for nontrivial reproduced bugs and failed hotfix retests. Normal feature Coder Runs keep their existing default skills; do not create a separate permanent Bug Fixer role.
