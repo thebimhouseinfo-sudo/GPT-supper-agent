@@ -52,3 +52,15 @@
 Use **one branch**, no concurrent main edits. Build/check/refetch exact head; review source and tests; open PR. Do not claim hosted CI GREEN when jobs never started. After approval/merge and deploying new GSA MCP (if required), verify the served `get_agent_harness` and skill bodies have the new rules, then exercise at least one real scoped Project coding Job with a failing test and another runner-unavailable scenario. Only then mark issue RESOLVED.
 
 **Success measure:** autonomous diagnostic reads and bounded repairs complete in the active turn; unnecessary requests for Human to paste CI logs = 0 for agent-readable logs; automatic tool discovery of available test surfaces; no source scope/security regression; no material normal-path latency increase (checks are failure-triggered).
+
+## Implementation checkpoint — 2026-10-10
+
+**CP0 evidence:** Historical hosted CI run #38030799863 had a real runner, 15/15 tests passing and retrievable logs. Latest PR #21 run #38057960914 again reported CI failures **without runners** (`runner_id=0`, `steps=[]` for both jobs); classified as ENVIRONMENT_FAILURE/hosted CI UNVERIFIED, not source RED, no Human log request.
+
+**CP1/CP2 source changes:** `supabase/functions/gsa-mcp/index.ts` now supplies autonomous-first CI diagnostics, Coder-owned TEST_FAILURE repair and safe Tester capability probing in served base/role harnesses, skills and GSA entry instructions. Canonical AGENT-HARNESSES, EXECUTION-AND-REVIEW, CAPABILITY-CATALOG and Job runtime skill have corresponding contract updates.
+
+**CP3 exact-source verification:** In Vercel Sandbox running Node 22, the workflow's six Node test files returned **56 PASS / 0 FAIL / 0 SKIPPED**, including LLC59 source-derived harness/skill positive and negative-mutation controls and updated LLC58 pre-fence fixture tests. `npx deno@2.5.6 check supabase/functions/gsa-mcp/index.ts` returned exit 0. Runtime source blob SHA: `3c2b807b717d9c993179c1af5dc5179b4220599c`. Hosted GitHub run #38057960914 remained runner-unallocated; alternate executor result is not hosted CI green.
+
+**Self-diff audit:** Exactly 9 paths changed under this one branch (runtime harness/skill, documentation, workflow test list, source-derived LLC59 test, inherited LLC58 test fixtures). No new lifecycle or automatic remote mutation capability, no read-only Tester source write, no reduction in explicit Human merge/release authority. These checks are implementation/self-review, not independent Reviewer or real Project behavioral acceptance.
+
+**CP4 remains:** independent Reviewer gate, Human merge decision, deployed MCP exact-source readback, and at least one real scoped Project Job showing automatically acquired CI evidence and Coder red→green repair. **LLC59 stays open**, no claim that prompts alone prove user-visible autonomy.
