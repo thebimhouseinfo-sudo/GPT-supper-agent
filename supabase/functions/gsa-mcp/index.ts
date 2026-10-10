@@ -1287,6 +1287,8 @@ function prepareExecutionCursorDecision(input: any) {
   }
   let next: any
   const event = input.event
+  if ((event === 'BEGIN_MUTATION' || event === 'COMPLETE_MUTATION') &&
+      job.lifecycle !== 'IN_PROGRESS') return block('JOB_NOT_IN_PROGRESS')
   if (event === 'INITIALIZE') {
     if (old) return block('CURSOR_ALREADY_EXISTS')
     if (!input.checkpoint_id?.trim()) return block('CHECKPOINT_ID_REQUIRED')
@@ -1490,6 +1492,9 @@ const BASE_AGENT_HARNESS = [
   '- Stay inside approved Job/Task/Run scope. Do not add opportunistic features, refactors or abstractions.',
   '- A denied or unauthorized action is a boundary, not a puzzle: never route around it through another tool, shell indirection, generated scripts, alternate APIs or configuration changes.',
   '- On a resumed chat/Job, reconcile current Git HEAD + target blob + immutable Job/Run/Verification records before new coding or retrying any uncertain write. A tool prepare or successful call is not durable progress.',
+  '- NEXT source work: lazily persist one Job execution cursor on the first consequential atomic Git mutation via execution_cursor_prepare(BEGIN_MUTATION); verify its Memory Repo blob readback before source write. Complete it once after source commit HEAD/parent/target blob readback. No cursor write or probe on routine reads/tool calls.',
+  '- On restart, read the single durable cursor only for an active/pending NEXT Job and call execution_cursor_resume_evaluate before resuming source edits; PENDING means reconcile, not automatic retry. Missing/unauthorized cursor persistence blocks risky writes.',
+
   '- On unknown Git write outcome, reread authoritative head/blob and call execution_recovery_evaluate; never interpret that advisory as write authorization. Stop on UNKNOWN_CONFLICT.',
   '- Track no-progress cycles against durable source/evidence fingerprints within the running turn; after three unchanged cycles stop with derived PAUSED_NO_PROGRESS. Never promise background resume without a separately approved worker.',
   '- Prefer dedicated tools over shell-equivalent work when both exist and the dedicated tool gives clearer evidence or safer boundaries.',
@@ -1530,6 +1535,9 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
+      'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims.',
+      'At source commit boundaries, request execution_cursor_prepare once before and once after the atomic mutation batch, with exact Memory Repo CAS/readback. No cursor round trips for ordinary tools, reads or repeated review.',
+
     ],
     outputs: ['routing decision', 'Run dispatch', 'current status view'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'DISPATCH-AND-HANDOFF.md', 'STATE-MACHINE.md'],
@@ -1750,6 +1758,8 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'ACT',
       '- Make the smallest scope-traceable change.',
+      '- For NEXT consequential source commits, agree on one atomic batch with a stable operation ID and prepare/persist a Job cursor PENDING before writing; inspect Git HEAD, parent and target blob and finalize the same cursor after the commit. Never mutate when the intent was only prepared but not read back.',
+
       '- Preserve unrelated changes and avoid opportunistic cleanup.',
       '',
       'INSPECT',
