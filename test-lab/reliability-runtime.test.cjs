@@ -58,7 +58,7 @@ test('Run FAILED terminal, Job cannot use FAILED; no lifecycle reactivation', ()
 });
 test('negative mutation control: wrong APPLIED predicate must turn test RED', () => {
   const broken = runtimeFunction('sourceMutationRecoveryDecision', body =>
-    body.replace('input.current_blob_sha === input.intended_blob_sha',
+    body.replaceAll('input.current_blob_sha === input.intended_blob_sha',
                  'input.current_blob_sha !== input.intended_blob_sha'));
   assert.throws(() => assert.equal(broken({...base,current_head_sha:d,current_blob_sha:c}).disposition,'TARGET_STATE_PRESENT'),assert.AssertionError);
 });
