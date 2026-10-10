@@ -91,6 +91,23 @@ test('rare retries are persisted before source retry and capped at two',()=>{
   assert.equal(prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'other'}).allowed,false);
   assert.equal(prepare({...base,...snapshot(original),observed_head_sha:d,event:'RECORD_RETRY',operation_id:'write-1'}).allowed,false);
 });
+test('one TREE intent covers a multi-file atomic commit without per-file cursor writes',()=>{
+  const tree=start();
+  assert.equal(tree.allowed,true);
+  const original=prepare({...base,event:'BEGIN_MUTATION',mutation_kind:'TREE',checkpoint_id:'PLAN_LOCKED',operation_id:'batch-2files',previous_tree_sha:b,intended_tree_sha:c});
+  assert.equal(original.allowed,true);assert.equal(original.record.pending_action.mutation_kind,'TREE');
+  assert.equal(original.record.pending_action.target_path,undefined);
+  const input={...base,...snapshot(original.record),cursor_memory_path:cursorPath(project,jobId,'TEST_LAB'),current_head_sha:a,current_tree_sha:b};
+  assert.equal(resume(input).disposition,'NOT_APPLIED');
+  assert.equal(resume({...input,current_head_sha:d,current_tree_sha:c}).disposition,'TARGET_STATE_PRESENT');
+  assert.equal(resume({...input,current_head_sha:d,current_tree_sha:b}).disposition,'UNKNOWN_CONFLICT');
+  assert.equal(resume({...input,current_tree_sha:d}).disposition,'STOP_AND_RECONCILE');
+  assert.equal(prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:b}).reason,'PENDING_MUTATION_NOT_PROVEN');
+  const success=prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:c});
+  assert.equal(success.allowed,true);
+  assert.equal(success.record.last_operation_id,'batch-2files');
+  assert.equal(success.record.state,'STABLE');
+});
 test('new cursor tools are authenticated, read-only and not in the always-loaded default skills',()=>{
   for (const name of ['execution_cursor_prepare','execution_cursor_resume_evaluate']) {
     assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
