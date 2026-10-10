@@ -1939,6 +1939,75 @@ function orchestrationProgressDecision(input: {
   return { disposition: 'CONTINUE', stalled_cycles: stalled, reason: stalled === 0 ? 'FINGERPRINT_CHANGED' : 'AWAIT_DURABLE_PROGRESS' }
 }
 
+// LLC60: one typed, readback-gated *advisory* continuation after a planning
+// tool's external GitHub Memory Repo writes. This is not a scheduler, a source
+// mutation authorization, a substitute for a fresh Job SHA, or persisted state.
+function planningLoopContinuationDecision(
+  stage: 'JOB_PREPARED' | 'PLAN_REVISED' | 'REVIEW_RECORDED' | 'READY_TRANSITION',
+  lifecycle: string,
+  planningRevision: number,
+  reviewResult?: string,
+) {
+  const invalid = () => ({
+    state: 'NOT_APPLICABLE' as const, next_action_after_readback: 'NONE' as const,
+    next_role: 'none' as const, resume_same_turn: false,
+    requires_readback: false, planning_revision: planningRevision,
+    human_action_required: false, mutation_authorized: false as const,
+  })
+  if (!Number.isInteger(planningRevision) || planningRevision < 1) return invalid()
+  let action: string = 'NONE'
+  let role: string = 'none'
+  if ((stage === 'JOB_PREPARED' || stage === 'PLAN_REVISED') &&
+      (lifecycle === 'DRAFT' || (stage === 'PLAN_REVISED' && lifecycle === 'IN_PROGRESS'))) {
+    action = 'REVIEW_CURRENT_REVISION'
+    role = 'reviewer'
+  } else if (stage === 'REVIEW_RECORDED' &&
+      (lifecycle === 'DRAFT' || lifecycle === 'IN_PROGRESS')) {
+    if (reviewResult === 'CHANGES_REQUIRED') {
+      action = 'REVISE_PLAN'
+      role = 'planner'
+    } else if (reviewResult === 'PASS') {
+      action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'RESUME_DISPATCH'
+      role = 'orchestrator'
+    } else if (reviewResult === 'HUMAN_REVIEW_REQUIRED') {
+      action = 'STOP_HUMAN_DECISION'
+      role = 'human'
+    } else if (reviewResult === 'BLOCKED') {
+      action = 'STOP_BLOCKED'
+      role = 'orchestrator'
+    }
+  } else if (stage === 'READY_TRANSITION' && lifecycle === 'READY') {
+    action = 'CONTINUE_JOB_TOPOLOGY'
+    role = 'orchestrator'
+  }
+  if (action === 'NONE') return invalid()
+  const stopped = action === 'STOP_HUMAN_DECISION' || action === 'STOP_BLOCKED'
+  return {
+    state: 'AWAITING_DURABLE_READBACK' as const,
+    next_action_after_readback: action,
+    next_role: role,
+    resume_same_turn: !stopped,
+    requires_readback: true,
+    planning_revision: planningRevision,
+    human_action_required: action === 'STOP_HUMAN_DECISION',
+    mutation_authorized: false as const,
+  }
+}
+
+const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
+  state: z.enum(['AWAITING_DURABLE_READBACK', 'NOT_APPLICABLE']),
+  next_action_after_readback: z.enum([
+    'REVIEW_CURRENT_REVISION','REVISE_PLAN','PROMOTE_READY','RESUME_DISPATCH',
+    'CONTINUE_JOB_TOPOLOGY','STOP_HUMAN_DECISION','STOP_BLOCKED','NONE',
+  ]),
+  next_role: z.enum(['reviewer','planner','orchestrator','human','none']),
+  resume_same_turn: z.boolean(),
+  requires_readback: z.boolean(),
+  planning_revision: z.number().int().positive(),
+  human_action_required: z.boolean(),
+  mutation_authorized: z.literal(false),
+})
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
