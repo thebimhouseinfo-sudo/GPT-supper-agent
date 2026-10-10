@@ -10,10 +10,16 @@ const sf = ts.createSourceFile('index.ts', src, ts.ScriptTarget.Latest, true, ts
 const decl = sf.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'assessHumanPlanChangeJobs');
 assert.ok(decl, 'Runtime helper exists');
 const js = ts.transpileModule(decl.getText(sf), {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-const assess = vm.runInNewContext(js + '\nassessHumanPlanChangeJobs', {
-  JSON, Number, String, Set,
-  jobExecutionContract: job => job.execution_contract == null ? 'V2_STABLE' :
-    (['NEXT','V2_STABLE'].includes(job.execution_contract) ? job.execution_contract : null),
+const jobExecutionContract = job => job.execution_contract == null ? 'V2_STABLE' :
+  (['NEXT','V2_STABLE'].includes(job.execution_contract) ? job.execution_contract : null);
+const shapeDecl=sf.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'isRecognizedJobRecordShape');
+assert.ok(shapeDecl,'Runtime recognizes legacy Job record shape');
+const shapeJS=ts.transpileModule(shapeDecl.getText(sf),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+const isRecognizedJobRecordShape=vm.runInNewContext(shapeJS+'\nisRecognizedJobRecordShape',{
+  Number,Array,jobExecutionContract
+});
+const assess=vm.runInNewContext(js+'\nassessHumanPlanChangeJobs',{
+  JSON,Number,String,Set,jobExecutionContract,isRecognizedJobRecordShape
 });
 const pid='0fa72d63-17b4-4e28-84d9-231a17f5fe70';
 const idA='0ab83640-9e7f-4e59-9b92-a06f1b789013';
@@ -29,6 +35,21 @@ const row=(id,lifecycle,decision,extra={})=>({
   reason:'Human reviewed Plan changes the Job scope',...extra,
 });
 function one(x){return assess({...head,job_snapshots:[x]});}
+test('LLC58 actual legacy J-9067 shape: missing kind/contract remains a valid active V2 Job',()=>{
+  const historical={
+    job_id:idA,project_id:pid,type:'plan',
+    planning_revision:2,lifecycle:'IN_PROGRESS',
+    planning_review:{status:'PASS',reviewed_revision:2},
+  };
+  const impact=one({...row(idA,'IN_PROGRESS','REPLACE'),
+    job_record_text:JSON.stringify(historical),
+    cursor_state:'ABSENT',active_run_state:'NONE'});
+  assert.equal(impact.allowed,true);
+  assert.equal(impact.decisions[0].execution_contract,'V2_STABLE');
+  assert.equal(impact.decisions[0].next_action,'SUPERSEDE_AND_CREATE_NEW_UNIQUE_JOB');
+  assert.equal(one({...row(idA,'IN_PROGRESS','KEEP'),
+    job_record_text:JSON.stringify({...historical,kind:'RUN'})}).allowed,false);
+});
 test('LLC58: untouched READY and IN_PROGRESS Jobs remain KEEP',()=>{
   const out=assess({...head,job_snapshots:[row(idA,'READY','KEEP'),row(idB,'IN_PROGRESS','KEEP')]});
   assert.equal(out.allowed,true);assert.equal(out.mutation_authorized,false);
