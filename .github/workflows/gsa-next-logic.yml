@@ -6,6 +6,7 @@ on:
       - 'test-lab/runtime-logic.test.cjs'
       - 'test-lab/reliability-runtime.test.cjs'
       - 'test-lab/reliability-cursor.test.cjs'
+      - 'test-lab/llc58-plan-change.test.cjs'
       - '.github/workflows/gsa-next-logic.yml'
   workflow_dispatch:
 
@@ -23,7 +24,7 @@ jobs:
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
-        run: node --test test-lab/runtime-logic.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs
+        run: node --test test-lab/runtime-logic.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs
   deno-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
