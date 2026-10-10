@@ -1502,7 +1502,7 @@ function prepareHumanPlanChangeFenceDecision(input: any) {
   }
   if (job.plan_change_pending) {
     const existing=job.plan_change_pending
-    if (Object.keys(expectedFence).some((k: string) => existing[k] !== expectedFence[k]))
+    if (Object.entries(expectedFence).some(([key, value]) => existing[key] !== value))
       return reject('PLAN_CHANGE_DIFFERENT_FENCE_ALREADY_PRESENT')
     return { allowed:true, reason:'EXISTING_PLAN_FENCE_REUSE_REQUIRES_READBACK',
       operation:'NONE', record:job, expected_job_sha:input.job_record_sha,
