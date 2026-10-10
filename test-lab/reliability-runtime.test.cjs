@@ -60,7 +60,7 @@ test('negative mutation control: wrong APPLIED predicate must turn test RED', ()
   const broken = runtimeFunction('sourceMutationRecoveryDecision', body =>
     body.replace('input.current_blob_sha === input.intended_blob_sha',
                  'input.current_blob_sha !== input.intended_blob_sha'));
-  assert.throws(() => assert.equal(broken(base).disposition,'NOT_APPLIED'),assert.AssertionError);
+  assert.throws(() => assert.equal(broken({...base,current_head_sha:d,current_blob_sha:c}).disposition,'TARGET_STATE_PRESENT'),assert.AssertionError);
 });
 test('negative mutation control: changing no-progress threshold must turn test RED', () => {
   const broken = runtimeFunction('orchestrationProgressDecision', body =>
