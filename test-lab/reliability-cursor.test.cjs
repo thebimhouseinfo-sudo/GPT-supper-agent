@@ -145,6 +145,27 @@ test('LLC58: cursor admission diagnoses identity, terminal, revision and legacy 
   assert.equal(probe({}).allowed,true);
   assert.equal(probe({memory_namespace:'PRODUCTION'}).reason,'CURSOR_NAMESPACE_MISMATCH');
 });
+test('LLC58: kind-less authentic V2 Job gets explicit legacy route, not opaque identity rejection',()=>{
+  const historical={
+    project_id:project,job_id:jobId,type:'plan',
+    planning_revision:2,lifecycle:'IN_PROGRESS'
+  };
+  const denied=prepare({...base,job_record_text:JSON.stringify(historical),
+    event:'BEGIN_MUTATION',checkpoint_id:'P',operation_id:'no-fake-cursor',
+    target_path:'src/x',previous_blob_sha:b,intended_blob_sha:c});
+  assert.equal(denied.allowed,false);
+  assert.equal(denied.reason,'LEGACY_JOB_CURSOR_NOT_APPLICABLE');
+  assert.equal(denied.operation,'NONE');
+  // NEXT can have a historical missing kind, but must explicitly opt in.
+  const earlyNext={...historical,execution_contract:'NEXT',memory_namespace:'TEST_LAB'};
+  const allowed=prepare({...base,job_record_text:JSON.stringify(earlyNext),
+    event:'INITIALIZE',checkpoint_id:'P'});
+  assert.equal(allowed.allowed,true);
+  assert.equal(allowed.operation,'CREATE');
+  assert.equal(resume({...base,job_record_text:JSON.stringify(earlyNext),
+    ...snapshot(allowed.record),cursor_memory_path:cursorPath(project,jobId,'TEST_LAB'),
+    current_head_sha:a}).disposition,'RESUME_FROM_CHECKPOINT');
+});
 test('LLC58 negative control: historical default does not convert legacy Job into NEXT',()=>{
   const legacy=JSON.stringify({...job,execution_contract:'V2_STABLE',lifecycle:'IN_PROGRESS'});
   const denied=prepare({...base,job_record_text:legacy,event:'BEGIN_MUTATION',
