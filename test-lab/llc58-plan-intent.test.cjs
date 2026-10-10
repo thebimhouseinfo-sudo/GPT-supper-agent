@@ -29,6 +29,9 @@ function load(name,extra={}){
   const js=ts.transpileModule(dec.getText(sf),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
   return vm.runInNewContext(js+'\n'+name,{...deps,...extra});
 }
+// Historical Job records have no kind discriminator; inject the real source
+// compatibility predicate rather than a test-only approximation.
+deps.isRecognizedJobRecordShape=load('isRecognizedJobRecordShape');
 const assess=load('assessHumanPlanChangeJobs');
 const prepare=load('prepareHumanPlanChangeIntent',{assessHumanPlanChangeJobs:assess});
 const resume=load('resumeHumanPlanChangeIntent');
@@ -54,6 +57,35 @@ const observed=(record,jobs,activity=[])=>resume({
   project_id:uid,intent_memory_path:started().intent_memory_path,
   intent_record_text:JSON.stringify(record),intent_record_sha:sha,
   current_job_snapshots:jobs.map(snap),activity,
+});
+test('LLC58: original GSA Local Job and Planning Review legacy schema can start reviewed reconciliation',()=>{
+  // Reproduces J-9067 structural facts without copying private Job contents:
+  // missing kind, execution_contract and namespace on both historical records.
+  const historicalPlan={...planJob};
+  delete historicalPlan.kind;
+  delete historicalPlan.execution_contract;
+  delete historicalPlan.memory_namespace;
+  const oldReview={...review};
+  delete oldReview.execution_contract;
+  delete oldReview.memory_namespace;
+  const historicalJob={...old};
+  delete historicalJob.kind;
+  delete historicalJob.execution_contract;
+  historicalJob.type='plan';
+  const historicalRef=verifyPath(uid,reviewId,'V2_STABLE','PRODUCTION');
+  historicalPlan.planning_review={...planJob.planning_review,verification_ref:historicalRef};
+  const legacy=prepare({
+    ...input,
+    plan_job_record_text:JSON.stringify(historicalPlan),
+    plan_review_record_text:JSON.stringify(oldReview),
+    plan_review_memory_path:historicalRef,
+    job_snapshots:[{...impacted,job_record_text:JSON.stringify(historicalJob)}],
+  });
+  assert.equal(legacy.allowed,true);
+  const intent=JSON.parse(legacy.intent_record_text);
+  assert.equal(intent.execution_contract,'V2_STABLE');
+  assert.equal(intent.plan_review_ref,historicalRef);
+  assert.equal(intent.actions[0].predecessor_execution_contract,'V2_STABLE');
 });
 test('LLC58: reviewed Plan reserves one unique replacement in append-only deterministic intent',()=>{
   const r=started();
