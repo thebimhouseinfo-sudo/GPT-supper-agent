@@ -1364,7 +1364,7 @@ function prepareHumanPlanChangeIntent(input: any) {
       verification.job_id !== planJob.job_id ||
       verification.planning_revision !== planJob.planning_revision ||
       verification.result !== 'PASS' || verification.producer !== 'reviewer' ||
-      verification.execution_contract !== contract ||
+      jobExecutionContract(verification) !== contract ||
       (contract === 'NEXT' && verification.memory_namespace !== ns) ||
       planJob.planning_review?.verification_ref !== expectedRef ||
       !sha(input.plan_review_record_sha) ||
