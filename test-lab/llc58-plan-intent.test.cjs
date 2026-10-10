@@ -1,0 +1,222 @@
+// LLC58: real runtime helper smoke for durable multi-Job Plan Change intent.
+// Pure helper execution is NOT GitHub CAS, REVIEW Verification persistence or
+// actual Gsa-local acceptance. Those are separate release gates.
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
+const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const sf = ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+const uid='0fa72d63-17b4-4e28-84d9-231a17f5fe70';
+const planId='79a7c63d-9b84-4b4e-a290-6cd049513ec2';
+const oldId='7cd8a327-3a87-4baf-981c-4a5f28b207d1';
+const newId='1f7d0cc6-5f95-48f7-8a36-35cd330693a4';
+const reviewId='b996d1f7-c1d1-42d3-bf40-389e3306d4ae';
+const sha='a'.repeat(40);
+const contract=j=>j.execution_contract==null?'V2_STABLE':(['NEXT','V2_STABLE'].includes(j.execution_contract)?j.execution_contract:null);
+const ns=j=>j.memory_namespace==='TEST_LAB'?'TEST_LAB':j.memory_namespace==='PRODUCTION'?'PRODUCTION':null;
+const root=(id,c,n)=>'projects/'+id+(c==='NEXT'&&n==='TEST_LAB'?'/TEST-LAB/NEXT':'');
+const verifyPath=(id,vid,c,n)=>root(id,c,n)+'/VERIFICATION/'+vid+'.json';
+const getHandle=id=>'J-'+id.replace(/-/g,'').slice(-4).toUpperCase();
+const deps={JSON,Number,String,Date,Set,Map,uuidv7:()=>newId,jobHandle:getHandle,
+  jobExecutionContract:contract,recordNextMemoryNamespace:ns,
+  executionMemoryRoot:root,verificationPath:verifyPath,
+  DEFAULT_NEXT_MEMORY_NAMESPACE:'PRODUCTION'};
+function load(name,extra={}){
+  const dec=sf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
+  assert.ok(dec,'Find exact runtime helper '+name);
+  const js=ts.transpileModule(dec.getText(sf),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  return vm.runInNewContext(js+'\n'+name,{...deps,...extra});
+}
+// Historical Job records have no kind discriminator; inject the real source
+// compatibility predicate rather than a test-only approximation.
+deps.isRecognizedJobRecordShape=load('isRecognizedJobRecordShape');
+const assess=load('assessHumanPlanChangeJobs');
+const prepare=load('prepareHumanPlanChangeIntent',{assessHumanPlanChangeJobs:assess});
+const resume=load('resumeHumanPlanChangeIntent');
+const validateSupersession=load('validatePlanChangeSupersession');
+const ref=verifyPath(uid,reviewId,'NEXT','PRODUCTION');
+const planJob={kind:'JOB',project_id:uid,job_id:planId,type:'plan',
+  execution_contract:'NEXT',memory_namespace:'PRODUCTION',lifecycle:'IN_PROGRESS',
+  planning_revision:2,planning_review:{status:'PASS',reviewed_revision:2,verification_ref:ref}};
+const review={kind:'PLANNING_REVIEW',verification_id:reviewId,project_id:uid,
+  job_id:planId,execution_contract:'NEXT',memory_namespace:'PRODUCTION',
+  planning_revision:2,result:'PASS',producer:'reviewer'};
+const old={kind:'JOB',project_id:uid,job_id:oldId,execution_contract:'V2_STABLE',lifecycle:'READY',planning_revision:2};
+const impacted={job_record_text:JSON.stringify(old),job_record_sha:sha,decision:'REPLACE',
+  reason:'Human Plan R3 changes acceptance criteria',cursor_state:'ABSENT',active_run_state:'NONE'};
+const input={project_id:uid,change_ref:'docs/plans/UAR-R3.md',reviewed_plan_sha:sha,
+  plan_job_record_text:JSON.stringify(planJob),plan_job_record_sha:sha,
+  plan_review_record_text:JSON.stringify(review),plan_review_record_sha:sha,
+  plan_review_memory_path:ref,work_branch:'main',job_snapshots:[impacted]};
+function started(){return prepare(input);}
+const closedJob=intent=>({...old,lifecycle:'SUPERSEDED',superseded_by_plan_change_id:intent.change_id,superseded_by_replacement_job_id:newId});
+const snap=j=>({job_record_text:JSON.stringify(j),job_record_sha:sha});
+const observed=(record,jobs,activity=[])=>resume({
+  project_id:uid,intent_memory_path:started().intent_memory_path,
+  intent_record_text:JSON.stringify(record),intent_record_sha:sha,
+  current_job_snapshots:jobs.map(snap),activity,
+});
+test('LLC58: original GSA Local Job and Planning Review legacy schema can start reviewed reconciliation',()=>{
+  // Reproduces J-9067 structural facts without copying private Job contents:
+  // missing kind, execution_contract and namespace on both historical records.
+  const historicalPlan={...planJob};
+  delete historicalPlan.kind;
+  delete historicalPlan.execution_contract;
+  delete historicalPlan.memory_namespace;
+  const oldReview={...review};
+  delete oldReview.execution_contract;
+  delete oldReview.memory_namespace;
+  const historicalJob={...old};
+  delete historicalJob.kind;
+  delete historicalJob.execution_contract;
+  historicalJob.type='plan';
+  const historicalRef=verifyPath(uid,reviewId,'V2_STABLE','PRODUCTION');
+  historicalPlan.planning_review={...planJob.planning_review,verification_ref:historicalRef};
+  const legacy=prepare({
+    ...input,
+    plan_job_record_text:JSON.stringify(historicalPlan),
+    plan_review_record_text:JSON.stringify(oldReview),
+    plan_review_memory_path:historicalRef,
+    job_snapshots:[{...impacted,job_record_text:JSON.stringify(historicalJob)}],
+  });
+  assert.equal(legacy.allowed,true);
+  const intent=JSON.parse(legacy.intent_record_text);
+  assert.equal(intent.execution_contract,'V2_STABLE');
+  assert.equal(intent.plan_review_ref,historicalRef);
+  assert.equal(intent.actions[0].predecessor_execution_contract,'V2_STABLE');
+});
+test('LLC58: reviewed Plan reserves one unique replacement in append-only deterministic intent',()=>{
+  const r=started();
+  assert.equal(r.allowed,true);
+  assert.equal(r.operation,'CREATE');
+  assert.equal(r.mutation_authorized,false);
+  assert.equal(r.intent_memory_path,`projects/${uid}/WORK/PLAN_RECONCILIATIONS/${planId}-r2.json`);
+  const intent=JSON.parse(r.intent_record_text);
+  assert.equal(intent.kind,'PLAN_RECONCILIATION_INTENT');
+  assert.equal(intent.plan_review_ref,ref);
+  assert.equal(intent.plan_job_sha,sha);
+  assert.equal(intent.actions[0].predecessor_job_id,oldId);
+  assert.equal(intent.actions[0].replacement.job_id,newId);
+  assert.equal(intent.actions[0].replacement.handle,getHandle(newId));
+  assert.equal(intent.actions[0].old_evidence_applicable_to_new_job,false);
+});
+test('LLC58: malformed or non-PASS Reviewer evidence cannot mint replacement intent',()=>{
+  assert.equal(prepare({...input,plan_review_record_text:JSON.stringify({...review,result:'CHANGES_REQUIRED'})}).allowed,false);
+  assert.equal(prepare({...input,plan_job_record_text:JSON.stringify({...planJob,planning_review:{status:'PENDING'}})}).allowed,false);
+  assert.equal(prepare({...input,plan_review_memory_path:'projects/other/VERIFICATIONS/'+reviewId+'.json'}).allowed,false);
+  assert.equal(prepare({...input,plan_job_record_text:JSON.stringify({...planJob,project_id:'bad'})}).allowed,false);
+});
+test('LLC58: repeated intent prepare reconciles durable path and does not mint new ID',()=>{
+  const p=started();
+  const r=prepare({...input,existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha});
+  assert.equal(r.allowed,true);assert.equal(r.operation,'NONE');
+  assert.equal(r.intent_record_text,p.intent_record_text);
+  assert.equal(prepare({...input,reviewed_plan_sha:'b'.repeat(40),
+    existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha}).reason,
+    'PLAN_CHANGE_EXISTING_INTENT_CONFLICT');
+});
+test('LLC58: already-persisted intent is reused after predecessor becomes SUPERSEDED',()=>{
+  const p=started();
+  const closed=closedJob(JSON.parse(p.intent_record_text));
+  const x=prepare({...input,job_snapshots:[{...impacted,job_record_text:JSON.stringify(closed)}],
+    existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha});
+  assert.equal(x.allowed,true);
+  assert.equal(x.operation,'NONE');
+  assert.equal(x.intent_record_text,p.intent_record_text);
+});
+test('LLC58: interrupt before predecessor closure; settle cursor/Run rather than replace blindly',()=>{
+  const i=JSON.parse(started().intent_record_text);
+  const run=observed(i,[old],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'NONE'}]);
+  assert.equal(run.actions[0].next_action,'RECONCILE_PENDING_SOURCE_CURSOR');
+  const running=observed(i,[old],[{job_id:oldId,cursor_state:'STABLE',active_run_state:'ACTIVE'}]);
+  assert.equal(running.actions[0].next_action,'SETTLE_ACTIVE_RUN');
+  const ready=observed(i,[old],[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}]);
+  assert.equal(ready.actions[0].next_action,'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA');
+  assert.equal(ready.mutation_authorized,false);
+});
+test('LLC58: interrupt after supersession; deterministic reserved ID prevents duplicate Job',()=>{
+  const i=JSON.parse(started().intent_record_text);
+  const closed=closedJob(i);
+  const none=observed(i,[closed]);
+  assert.equal(none.actions[0].next_action,'CREATE_RESERVED_REPLACEMENT');
+  assert.equal(none.actions[0].replacement_job_id,newId);
+  const fresh={...old,job_id:newId,lifecycle:'DRAFT',replacement_of_job_id:oldId,plan_change_id:i.change_id};
+  assert.equal(observed(i,[closed,fresh]).actions[0].next_action,'REVIEW_REPLACEMENT');
+  assert.equal(observed(i,[closed,{...fresh,lifecycle:'READY'}]).actions[0].next_action,'REVALIDATE_DEPENDENCIES_BEFORE_DISPATCH');
+});
+test('LLC58: reject foreign replacement Job and terminal predecessor conflict',()=>{
+  const i=JSON.parse(started().intent_record_text);
+  const closed=closedJob(i);
+  assert.equal(observed(i,[closed,{...old,job_id:newId,lifecycle:'DRAFT'}]).allowed,false);
+  assert.equal(observed(i,[{...old,lifecycle:'COMPLETED'}]).allowed,false);
+  assert.equal(resume({project_id:uid,intent_memory_path:'bad',intent_record_text:JSON.stringify(i),
+    intent_record_sha:sha,current_job_snapshots:[snap(old)]}).allowed,false);
+});
+
+test('LLC58: exact reviewed Plan intent binds SUPERSEDED transition to source Job snapshot',()=>{
+  const prepared=started();
+  const intent=JSON.parse(prepared.intent_record_text);
+  const baseline={
+    project_id:uid,intent_record_text:prepared.intent_record_text,
+    intent_record_sha:sha,intent_memory_path:prepared.intent_memory_path,
+    predecessor_job:old,predecessor_job_sha:sha,
+    cursor_state:'ABSENT',active_run_state:'NONE',
+  };
+  const pass=validateSupersession(baseline);
+  assert.equal(pass.allowed,true);
+  assert.equal(pass.action.predecessor_job_id,oldId);
+  assert.equal(pass.action.replacement.job_id,newId);
+  assert.equal(pass.mutation_authorized,false);
+  for (const bad of [
+    {...baseline,predecessor_job_sha:'b'.repeat(40)},
+    {...baseline,predecessor_job:{...old,planning_revision:3}},
+    {...baseline,predecessor_job:{...old,lifecycle:'COMPLETED'}},
+    {...baseline,predecessor_job:{...old,job_id:newId}},
+    {...baseline,intent_memory_path:'projects/other/WORK/PLAN_RECONCILIATIONS/x.json'},
+    {...baseline,cursor_state:'PENDING'},
+    {...baseline,cursor_state:'UNKNOWN'},
+    {...baseline,active_run_state:'ACTIVE'},
+    {...baseline,active_run_state:'UNKNOWN'},
+  ]) assert.equal(validateSupersession(bad).allowed,false);
+  assert.equal(intent.actions[0].decision,'REPLACE');
+});
+test('LLC58: concurrent change to predecessor SHA blocks resume, unrelated supersession cannot masquerade as this Plan',()=>{
+  const i=JSON.parse(started().intent_record_text);
+  const changed={job_record_text:JSON.stringify(old),job_record_sha:'b'.repeat(40)};
+  const stale=resume({
+    project_id:uid,intent_memory_path:started().intent_memory_path,intent_record_text:JSON.stringify(i),
+    intent_record_sha:sha,current_job_snapshots:[changed],
+    activity:[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}],
+  });
+  assert.equal(stale.allowed,false);
+  assert.equal(stale.reason,'PLAN_CHANGE_PREDECESSOR_SHA_DRIFT');
+  assert.equal(observed(i,[{...old,lifecycle:'SUPERSEDED'}]).reason,
+    'PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT');
+});
+test('LLC58 test-validity: removing predecessor-SHA guard changes the negative result',()=>{
+  const dec=sf.statements.find(x=>ts.isFunctionDeclaration(x) && x.name?.text==='validatePlanChangeSupersession');
+  const real=dec.getText(sf);
+  const needle='a.predecessor_job_sha !== input.predecessor_job_sha';
+  assert.ok(real.includes(needle),'Mutation must target executed source guard, not an irrelevant string');
+  const broken=real.replace(needle,'false');
+  const js=ts.transpileModule(broken,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const mutant=vm.runInNewContext(js+'\nvalidatePlanChangeSupersession',deps);
+  const prepared=started();
+  const input={
+    project_id:uid,intent_record_text:prepared.intent_record_text,intent_record_sha:sha,
+    intent_memory_path:prepared.intent_memory_path,
+    predecessor_job:old,predecessor_job_sha:'b'.repeat(40),
+    cursor_state:'ABSENT',active_run_state:'NONE',
+  };
+  assert.equal(validateSupersession(input).allowed,false);
+  assert.equal(mutant(input).allowed,true,
+    'Deliberately broken predicate would accept the stale Job; correct test must catch it');
+});
+test('LLC58: tool surface includes prepare, resume and governed replacement Job creation',()=>{
+  for(const name of ['job_plan_change_assess','job_plan_change_prepare','job_plan_change_resume_evaluate'])
+    assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
+  assert.match(source,/replacement_context: z\.object\(/);
+  assert.match(source,/replacement_of_job_id: replacement\.predecessor\.job_id/);
+});

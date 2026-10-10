@@ -17,7 +17,8 @@ const namespace=job=>job?.memory_namespace==='TEST_LAB'?'TEST_LAB':job?.memory_n
 const root=(project,contract,ns)=>'projects/'+project+(ns==='TEST_LAB'?'/TEST-LAB/NEXT':'');
 const cursorPath=load('executionCursorPath',{executionMemoryRoot:root});
 const recovery=load('sourceMutationRecoveryDecision');
-const prepare=load('prepareExecutionCursorDecision',{recordNextMemoryNamespace:namespace});
+const contract=job=>job?.execution_contract==null?'V2_STABLE':(['NEXT','V2_STABLE'].includes(job.execution_contract)?job.execution_contract:null);
+const prepare=load('prepareExecutionCursorDecision',{recordNextMemoryNamespace:namespace,jobExecutionContract:contract});
 const resume=load('resumeExecutionCursorDecision',{recordNextMemoryNamespace:namespace,executionCursorPath:cursorPath,sourceMutationRecoveryDecision:recovery});
 const project='0fa72d63-17b4-4e28-84d9-231a17f5fe70';
 const jobId='0ab83640-9e7f-4e59-9b92-a06f1b789013';
@@ -102,7 +103,13 @@ test('one TREE intent covers a multi-file atomic commit without per-file cursor 
   assert.equal(resume(input).disposition,'NOT_APPLIED');
   assert.equal(resume({...input,current_head_sha:d,current_tree_sha:c}).disposition,'TARGET_STATE_PRESENT');
   assert.equal(resume({...input,current_head_sha:d,current_tree_sha:b}).disposition,'UNKNOWN_CONFLICT');
-  assert.equal(resume({...input,current_tree_sha:d}).disposition,'STOP_AND_RECONCILE');
+  // Same HEAD cannot yield a different tree: runtime reports UNKNOWN_CONFLICT,
+  // which is fail-closed and explicitly routes to STOP_AND_RECONCILE.
+  const inconsistent=resume({...input,current_tree_sha:d});
+  assert.equal(inconsistent.disposition,'UNKNOWN_CONFLICT');
+  assert.equal(inconsistent.reason,'INCONSISTENT_HEAD_AND_TREE');
+  assert.equal(inconsistent.next_action,'STOP_AND_RECONCILE');
+  assert.equal(inconsistent.source_write_authorized,false);
   assert.equal(prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:b}).reason,'PENDING_MUTATION_NOT_PROVEN');
   const success=prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:c});
   assert.equal(success.allowed,true);
@@ -120,4 +127,51 @@ test('new cursor tools are authenticated, read-only and not in the always-loaded
   assert.match(source,/No cursor round trips for ordinary tools/);
   const skills=source.slice(source.indexOf('const ROLE_SKILLS'),source.indexOf('const RUNTIME_SKILLS'));
   assert.match(skills,/coder:\s*\['coding-loop', 'delegation'\]/);
+});
+
+test('LLC58: cursor admission diagnoses identity, terminal, revision and legacy contract separately',()=>{
+  const probe=(overrides, ids={})=>prepare({...base,...ids,job_record_text:JSON.stringify({...job,...overrides}),event:'INITIALIZE',checkpoint_id:'P'});
+  assert.equal(probe({kind:'RUN'}).reason,'JOB_RECORD_KIND_INVALID');
+  assert.equal(probe({project_id:'wrong-project'}).reason,'PROJECT_ID_MISMATCH');
+  assert.equal(probe({job_id:'wrong-job'}).reason,'JOB_ID_MISMATCH');
+  assert.equal(probe({execution_contract:'V2_STABLE'}).reason,'LEGACY_JOB_CURSOR_NOT_APPLICABLE');
+  assert.equal(probe({execution_contract:null}).reason,'LEGACY_JOB_CURSOR_NOT_APPLICABLE');
+  assert.equal(probe({execution_contract:'UNKNOWN'}).reason,'JOB_EXECUTION_CONTRACT_INCOMPATIBLE');
+  assert.equal(probe({planning_revision:0}).reason,'JOB_PLAN_REVISION_INVALID');
+  assert.equal(probe({planning_revision:'2'}).reason,'JOB_PLAN_REVISION_INVALID');
+  for (const lifecycle of ['COMPLETED','CANCELLED','SUPERSEDED']) {
+    assert.equal(probe({lifecycle}).reason,'JOB_LIFECYCLE_INVALID');
+  }
+  assert.equal(probe({}).allowed,true);
+  assert.equal(probe({memory_namespace:'PRODUCTION'}).reason,'CURSOR_NAMESPACE_MISMATCH');
+});
+test('LLC58: kind-less authentic V2 Job gets explicit legacy route, not opaque identity rejection',()=>{
+  const historical={
+    project_id:project,job_id:jobId,type:'plan',
+    planning_revision:2,lifecycle:'IN_PROGRESS'
+  };
+  const denied=prepare({...base,job_record_text:JSON.stringify(historical),
+    event:'BEGIN_MUTATION',checkpoint_id:'P',operation_id:'no-fake-cursor',
+    target_path:'src/x',previous_blob_sha:b,intended_blob_sha:c});
+  assert.equal(denied.allowed,false);
+  assert.equal(denied.reason,'LEGACY_JOB_CURSOR_NOT_APPLICABLE');
+  assert.equal(denied.operation,'NONE');
+  // NEXT can have a historical missing kind, but must explicitly opt in.
+  const earlyNext={...historical,execution_contract:'NEXT',memory_namespace:'TEST_LAB'};
+  const allowed=prepare({...base,job_record_text:JSON.stringify(earlyNext),
+    event:'INITIALIZE',checkpoint_id:'P'});
+  assert.equal(allowed.allowed,true);
+  assert.equal(allowed.operation,'CREATE');
+  assert.equal(resume({...base,job_record_text:JSON.stringify(earlyNext),
+    ...snapshot(allowed.record),cursor_memory_path:cursorPath(project,jobId,'TEST_LAB'),
+    current_head_sha:a}).disposition,'RESUME_FROM_CHECKPOINT');
+});
+test('LLC58 negative control: historical default does not convert legacy Job into NEXT',()=>{
+  const legacy=JSON.stringify({...job,execution_contract:'V2_STABLE',lifecycle:'IN_PROGRESS'});
+  const denied=prepare({...base,job_record_text:legacy,event:'BEGIN_MUTATION',
+    checkpoint_id:'P',operation_id:'do-not-write',target_path:'src/x',previous_blob_sha:b,intended_blob_sha:c});
+  assert.equal(denied.allowed,false);
+  assert.equal(denied.operation,'NONE');
+  assert.equal(denied.reason,'LEGACY_JOB_CURSOR_NOT_APPLICABLE');
+  assert.equal(denied.record,null);
 });

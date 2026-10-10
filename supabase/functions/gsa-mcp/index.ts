@@ -1255,6 +1255,408 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 
 // One small mutable source-of-progress record per NEXT Job. Not a Job/Run
 // lifecycle and not the Tester CHECKPOINT_CLAIM serialization record.
+// LLC58: read-only Planner classification of an explicit Human Plan Change.
+// Job planning_revision is local to each Job; this assessment must never
+// silently mutate historical records or grant source/memory write permission.
+// A Job has not historically been required to serialize kind='JOB'.
+// Legacy GSA V2 and some early NEXT records omit it. An explicit foreign
+// kind remains invalid; contract and exact Project/Job identity remain the
+// real durable admission boundary.
+function isRecognizedJobRecordShape(job: any): boolean {
+  return job != null && typeof job === 'object' && !Array.isArray(job) &&
+    (job.kind == null || job.kind === 'JOB') &&
+    typeof job.project_id === 'string' && typeof job.job_id === 'string' &&
+    jobExecutionContract(job) !== null &&
+    Number.isInteger(job.planning_revision) && job.planning_revision >= 1 &&
+    ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)
+}
+
+function assessHumanPlanChangeJobs(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
+  if (!input?.project_id || !input?.change_ref || !sha(input?.reviewed_plan_sha))
+    return reject('PLAN_CHANGE_REVIEWED_TARGET_REQUIRED')
+  if (!Array.isArray(input.job_snapshots) || input.job_snapshots.length === 0)
+    return reject('PLAN_CHANGE_JOB_SNAPSHOTS_REQUIRED')
+  const ids = new Set<string>()
+  const rows: any[] = []
+  for (const item of input.job_snapshots) {
+    let job: any
+    try { job = JSON.parse(item.job_record_text) }
+    catch { return reject('PLAN_CHANGE_JOB_JSON_INVALID') }
+    if (!isRecognizedJobRecordShape(job) || job.project_id !== input.project_id || !job.job_id ||
+        !sha(item.job_record_sha)) return reject('PLAN_CHANGE_JOB_IDENTITY_OR_SHA_INVALID')
+    if (ids.has(job.job_id)) return reject('PLAN_CHANGE_DUPLICATE_JOB')
+    ids.add(job.job_id)
+    if (!['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION'].includes(item.decision) ||
+        typeof item.reason !== 'string' || !item.reason.trim())
+      return reject('PLAN_CHANGE_DECISION_AND_REASON_REQUIRED')
+    const lifecycle = job.lifecycle
+    if (!['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle))
+      return reject('PLAN_CHANGE_JOB_LIFECYCLE_INVALID')
+    const oldContract = jobExecutionContract(job)
+    if (!oldContract) return reject('PLAN_CHANGE_JOB_CONTRACT_INVALID')
+    // Historical finished work is immutable. New follow-up work must use
+    // a new Job, not reactivation or retrospective PASS reassignment.
+    if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle) &&
+        !['KEEP','REVALIDATE'].includes(item.decision))
+      return reject('PLAN_CHANGE_TERMINAL_JOB_CANNOT_BE_REPLACED')
+    let nextAction = 'KEEP_UNCHANGED'
+    if (item.decision === 'HUMAN_DECISION') nextAction = 'STOP_FOR_HUMAN_DECISION'
+    else if (item.decision === 'REVALIDATE') nextAction = 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE'
+    else if (item.decision === 'REPLACE') {
+      // A cursor/Run state is a readback claim, not an authorization. Any
+      // unfinished or unknown activity blocks replacement until reconciled.
+      if (lifecycle === 'IN_PROGRESS' &&
+          (item.cursor_state !== 'STABLE' && item.cursor_state !== 'ABSENT'))
+        nextAction = 'RECONCILE_PENDING_CURSOR_BEFORE_SUPERSEDE'
+      else if (lifecycle === 'IN_PROGRESS' &&
+          !['NONE','TERMINAL'].includes(item.active_run_state))
+        nextAction = 'SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE'
+      else nextAction = 'SUPERSEDE_AND_CREATE_NEW_UNIQUE_JOB'
+    }
+    rows.push({
+      job_id: job.job_id, job_sha: item.job_record_sha,
+      planning_revision: job.planning_revision, lifecycle,
+      execution_contract: oldContract, decision: item.decision,
+      reason: item.reason, next_action: nextAction,
+      old_evidence_applicable_to_new_job: false,
+    })
+  }
+  return {
+    allowed: true, reason: 'ASSESSMENT_ONLY_REQUIRES_REVIEWED_PLAN_AND_FRESH_MEMORY_READBACK',
+    decisions: rows, mutation_authorized: false,
+  }
+}
+
+// LLC58: immutable, deterministic-by-reviewed-Plan-revision reconciliation
+// intent. Preparation is not durable: the caller must CREATE at the one
+// expected Memory Repo path, then read back the full blob before ANY Job
+// transition. No normal tool call or legacy Job requires this record.
+function prepareHumanPlanChangeIntent(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const deny = (reason: string) => ({
+    allowed: false, reason, operation: 'NONE', intent_memory_path: '',
+    intent_record_text: null, mutation_authorized: false, external_steps: [],
+  })
+  let planJob: any, verification: any
+  try {
+    planJob = JSON.parse(input.plan_job_record_text)
+    verification = JSON.parse(input.plan_review_record_text)
+  } catch { return deny('PLAN_CHANGE_PLAN_REVIEW_RECORD_INVALID') }
+  if (!isRecognizedJobRecordShape(planJob) || planJob.type !== 'plan' ||
+      planJob.project_id !== input.project_id ||
+      !planJob.job_id || !sha(input.plan_job_record_sha) ||
+      !Number.isInteger(planJob.planning_revision) || planJob.planning_revision < 1 ||
+      !['READY','IN_PROGRESS','COMPLETED'].includes(planJob.lifecycle))
+    return deny('PLAN_CHANGE_PLAN_JOB_INVALID')
+  if (planJob.planning_review?.status !== 'PASS' ||
+      planJob.planning_review?.reviewed_revision !== planJob.planning_revision)
+    return deny('PLAN_CHANGE_REVIEW_NOT_PASSED')
+  const contract = jobExecutionContract(planJob)
+  if (!contract) return deny('PLAN_CHANGE_PLAN_CONTRACT_INVALID')
+  const ns = recordNextMemoryNamespace(planJob)
+  if (contract === 'NEXT' && !ns) return deny('PLAN_CHANGE_NAMESPACE_INVALID')
+  const expectedRef = verificationPath(input.project_id, verification?.verification_id,
+    contract, ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+  if (verification?.kind !== 'PLANNING_REVIEW' ||
+      verification.project_id !== input.project_id ||
+      verification.job_id !== planJob.job_id ||
+      verification.planning_revision !== planJob.planning_revision ||
+      verification.result !== 'PASS' || verification.producer !== 'reviewer' ||
+      jobExecutionContract(verification) !== contract ||
+      (contract === 'NEXT' && verification.memory_namespace !== ns) ||
+      planJob.planning_review?.verification_ref !== expectedRef ||
+      !sha(input.plan_review_record_sha) ||
+      input.plan_review_memory_path !== expectedRef)
+    return deny('PLAN_CHANGE_REVIEW_IDENTITY_OR_REF_MISMATCH')
+  if (typeof input.work_branch !== 'string' || !input.work_branch.trim())
+    return deny('PLAN_CHANGE_WORK_BRANCH_REQUIRED')
+  // Path is stable across lost responses and independent of randomness;
+  // duplicate CREATE is a collision to read/reconcile, never an overwrite.
+  const changeId = planJob.job_id + '-r' + planJob.planning_revision
+  const path = executionMemoryRoot(input.project_id, contract,
+    ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + changeId + '.json'
+  if (input.existing_intent_record_text != null) {
+    let old: any
+    try { old = JSON.parse(input.existing_intent_record_text) }
+    catch { return deny('PLAN_CHANGE_EXISTING_INTENT_INVALID') }
+    if (!sha(input.existing_intent_record_sha) ||
+        old?.kind !== 'PLAN_RECONCILIATION_INTENT' || old.version !== 1 ||
+        old.project_id !== input.project_id || old.change_id !== changeId ||
+        old.reviewed_plan_sha !== input.reviewed_plan_sha ||
+        old.plan_review_ref !== expectedRef ||
+        old.work_branch !== input.work_branch ||
+        !Array.isArray(old.actions))
+      return deny('PLAN_CHANGE_EXISTING_INTENT_CONFLICT')
+    return {
+      allowed: true, reason: 'EXISTING_INTENT_REUSE_REQUIRES_FRESH_READBACK',
+      operation: 'NONE', intent_memory_path: path,
+      intent_record_text: input.existing_intent_record_text,
+      mutation_authorized: false,
+      external_steps: ['Independently reread existing intent blob and all affected Job/Run/cursor state before resuming.'],
+    }
+  }
+  // Existing durable intent wins over a freshly reclassified predecessor:
+  // terminal SUPERSEDED Jobs are expected during interrupted resume.
+  const impact = assessHumanPlanChangeJobs(input)
+  if (!impact.allowed) return deny(impact.reason)
+  if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
+    return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
+  const known = new Set(impact.decisions.map((row: any) => row.job_id))
+  const actions = impact.decisions.map((row: any) => {
+    let replacement: any = null
+    if (row.decision === 'REPLACE') {
+      let id = uuidv7()
+      for (let k = 0; known.has(id) && k < 4; k++) id = uuidv7()
+      if (known.has(id)) return null
+      known.add(id)
+      replacement = { job_id: id, handle: jobHandle(id) }
+    }
+    return {
+      action_key: row.job_id + ':' + row.decision,
+      predecessor_job_id: row.job_id, predecessor_job_sha: row.job_sha,
+      predecessor_lifecycle: row.lifecycle,
+      predecessor_planning_revision: row.planning_revision,
+      predecessor_execution_contract: row.execution_contract,
+      decision: row.decision, reason: row.reason,
+      initial_next_action: row.next_action,
+      replacement,
+      old_evidence_applicable_to_new_job: false,
+    }
+  })
+  if (actions.some((x: any) => x === null)) return deny('PLAN_CHANGE_RESERVED_ID_COLLISION')
+  const intent = {
+    kind: 'PLAN_RECONCILIATION_INTENT', version: 1,
+    project_id: input.project_id, change_id: changeId,
+    plan_job_id: planJob.job_id, plan_job_revision: planJob.planning_revision,
+    plan_job_sha: input.plan_job_record_sha,
+    reviewed_plan_ref: input.change_ref, reviewed_plan_sha: input.reviewed_plan_sha,
+    plan_review_ref: expectedRef, plan_review_blob_sha: input.plan_review_record_sha,
+    execution_contract: contract,
+    ...(contract === 'NEXT' ? { memory_namespace: ns } : {}),
+    work_branch: input.work_branch,
+    actions, created_at: new Date().toISOString(),
+  }
+  return {
+    allowed: true, reason: 'INTENT_PREPARED_NOT_PERSISTED',
+    operation: 'CREATE', intent_memory_path: path,
+    intent_record_text: JSON.stringify(intent, null, 2) + '\n',
+    mutation_authorized: false,
+    external_steps: [
+      'Independently re-read Project, plan Job, PASS planning-review Verification, approved Plan target and every affected Job at exact blob SHAs.',
+      'Authorize exact active Project and target Memory Repo path for CREATE.',
+      'GitHub CREATE intent at deterministic path; on collision READ existing path and reconcile, NEVER overwrite.',
+      'Independently read back exact intent bytes/blob SHA before any Run/Job lifecycle or replacement writes.',
+      'Before SUPERSEDED, settle active Run and cursor PENDING with authoritative Git readback; use exact Job SHA CAS.',
+      'Before creating reserved replacement Job, use job_prepare with this same immutable intent and exact readback; never mint another ID.',
+    ],
+  }
+}
+
+// LLC58 recovery: decision comes from immutable Plan intent + *fresh* exact
+// Job readbacks. Returning a next action is NEVER memory/source authorization.
+// LLC58: safe supersession is an explicit, intent-bound Job transition,
+// never an inferred consequence of a cursor rejection or default NEXT mode.
+// Pure preflight only; memory path SHA/readback and absence of active Runs
+// remain external authorization checks, not accepted as model assertions.
+// LLC58: serialize an affected Job's reviewed Plan fence before settling
+// its active Run/cursor and before terminal supersession. Only a real Job
+// exact-SHA GitHub update + readback makes this effective across chats.
+function prepareHumanPlanChangeFenceDecision(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const reject = (reason: string) => ({ allowed: false, reason, operation: 'NONE',
+    record: null, expected_job_sha: null, mutation_authorized: false })
+  let intent: any, job: any
+  try { intent=JSON.parse(input.intent_record_text); job=JSON.parse(input.job_record_text) }
+  catch { return reject('PLAN_CHANGE_FENCE_RECORD_JSON_INVALID') }
+  if (!sha(input.intent_record_sha) || !sha(input.job_record_sha) ||
+      !isRecognizedJobRecordShape(job) || job.project_id !== input.project_id ||
+      job.job_id !== input.job_id || intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !intent.change_id || !Array.isArray(intent.actions))
+    return reject('PLAN_CHANGE_FENCE_IDENTITY_INVALID')
+  const root=executionMemoryRoot(input.project_id,intent.execution_contract,
+    intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+  if (input.intent_memory_path !== root+'/WORK/PLAN_RECONCILIATIONS/'+intent.change_id+'.json')
+    return reject('PLAN_CHANGE_FENCE_INTENT_PATH_MISMATCH')
+  const matching=intent.actions.filter((a: any) => a.decision === 'REPLACE' &&
+    a.predecessor_job_id === job.job_id)
+  if (matching.length !== 1) return reject('PLAN_CHANGE_FENCE_ACTION_NOT_UNIQUE')
+  const action=matching[0]
+  if (action.predecessor_planning_revision !== job.planning_revision ||
+      action.predecessor_lifecycle !== job.lifecycle ||
+      action.predecessor_execution_contract !== jobExecutionContract(job) ||
+      !action.replacement?.job_id ||
+      action.replacement.job_id === job.job_id ||
+      action.replacement.handle !== jobHandle(action.replacement.job_id) ||
+      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle))
+    return reject('PLAN_CHANGE_FENCE_JOB_OR_REPLACEMENT_DRIFT')
+  const expectedFence={
+    change_id:intent.change_id,
+    intent_memory_path:input.intent_memory_path,
+    intent_record_sha:input.intent_record_sha,
+    original_job_sha:action.predecessor_job_sha,
+    replacement_job_id:action.replacement.job_id,
+  }
+  if (job.plan_change_pending) {
+    const existing=job.plan_change_pending
+    if (Object.entries(expectedFence).some(([key, value]) => existing[key] !== value))
+      return reject('PLAN_CHANGE_DIFFERENT_FENCE_ALREADY_PRESENT')
+    return { allowed:true, reason:'EXISTING_PLAN_FENCE_REUSE_REQUIRES_READBACK',
+      operation:'NONE', record:job, expected_job_sha:input.job_record_sha,
+      mutation_authorized:false }
+  }
+  if (action.predecessor_job_sha !== input.job_record_sha)
+    return reject('PLAN_CHANGE_FENCE_PREDECESSOR_SHA_DRIFT')
+  return { allowed:true, reason:'PLAN_FENCE_PREPARED_NOT_PERSISTED',
+    operation:'UPDATE', record:{ ...job, plan_change_pending: expectedFence,
+      updated_at:new Date().toISOString() },
+    expected_job_sha:input.job_record_sha, mutation_authorized:false }
+}
+
+function validatePlanChangeSupersession(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const invalid = (reason: string) => ({ allowed: false, reason, action: null })
+  let intent: any
+  try { intent = JSON.parse(input.intent_record_text) }
+  catch { return invalid('PLAN_CHANGE_INTENT_JSON_INVALID') }
+  const old = input.predecessor_job
+  if (!sha(input.intent_record_sha) || !sha(input.predecessor_job_sha) ||
+      intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !intent.change_id || !Array.isArray(intent.actions) ||
+      !isRecognizedJobRecordShape(old) || old.project_id !== input.project_id)
+    return invalid('PLAN_CHANGE_SUPERSESSION_IDENTITY_INVALID')
+  const expected = executionMemoryRoot(input.project_id, intent.execution_contract,
+    intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + intent.change_id + '.json'
+  if (input.intent_memory_path !== expected)
+    return invalid('PLAN_CHANGE_SUPERSESSION_INTENT_PATH_INVALID')
+  const matching = intent.actions.filter((a: any) =>
+    a.decision === 'REPLACE' && a.predecessor_job_id === old.job_id)
+  if (matching.length !== 1) return invalid('PLAN_CHANGE_REPLACE_ACTION_NOT_UNIQUE')
+  const a = matching[0]
+  const fence=old.plan_change_pending
+  if (!fence || fence.change_id !== intent.change_id ||
+      fence.intent_memory_path !== input.intent_memory_path ||
+      fence.intent_record_sha !== input.intent_record_sha ||
+      fence.original_job_sha !== a.predecessor_job_sha ||
+      fence.replacement_job_id !== a.replacement?.job_id)
+    return invalid('PLAN_CHANGE_REQUIRED_FENCE_MISSING_OR_CONFLICTED')
+  if (a.predecessor_lifecycle !== old.lifecycle ||
+      a.predecessor_planning_revision !== old.planning_revision ||
+      a.predecessor_execution_contract !== jobExecutionContract(old) ||
+      !a.replacement?.job_id || a.replacement.job_id === old.job_id ||
+      a.replacement?.handle !== jobHandle(a.replacement.job_id))
+    return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
+  if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
+    return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
+  // UNKNOWN is as unsafe as ACTIVE/PENDING. Caller must independently
+  // enumerate Runs and cursor and revalidate Git source HEAD before writing.
+  if (!['ABSENT','STABLE'].includes(input.cursor_state))
+    return invalid('PLAN_CHANGE_CURSOR_RECONCILIATION_REQUIRED')
+  if (!['NONE','TERMINAL'].includes(input.active_run_state))
+    return invalid('PLAN_CHANGE_ACTIVE_RUN_RECONCILIATION_REQUIRED')
+  return { allowed: true, reason: 'EXACT_PREDECESSOR_ACTION_MATCH',
+    action: a, mutation_authorized: false }
+}
+
+function resumeHumanPlanChangeIntent(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const stop = (reason: string) => ({
+    allowed: false, reason, actions: [], mutation_authorized: false,
+  })
+  let intent: any
+  try { intent = JSON.parse(input.intent_record_text) }
+  catch { return stop('PLAN_CHANGE_INTENT_JSON_INVALID') }
+  if (!sha(input.intent_record_sha) || intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !Array.isArray(intent.actions) || !intent.actions.length ||
+      !sha(intent.reviewed_plan_sha) || !sha(intent.plan_review_blob_sha))
+    return stop('PLAN_CHANGE_INTENT_IDENTITY_OR_SHA_INVALID')
+  const expected = executionMemoryRoot(input.project_id,
+    intent.execution_contract, intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + intent.change_id + '.json'
+  if (input.intent_memory_path !== expected) return stop('PLAN_CHANGE_INTENT_PATH_MISMATCH')
+  if (!Array.isArray(input.current_job_snapshots)) return stop('PLAN_CHANGE_CURRENT_JOBS_REQUIRED')
+  const jobs = new Map<string,any>()
+  for (const s of input.current_job_snapshots) {
+    let job: any
+    try { job = JSON.parse(s.job_record_text) }
+    catch { return stop('PLAN_CHANGE_CURRENT_JOB_JSON_INVALID') }
+    if (!isRecognizedJobRecordShape(job) || job.project_id !== input.project_id ||
+        !job.job_id || !sha(s.job_record_sha) || jobs.has(job.job_id))
+      return stop('PLAN_CHANGE_CURRENT_JOB_INVALID_OR_DUPLICATE')
+    jobs.set(job.job_id, { job, sha: s.job_record_sha })
+  }
+  const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
+  for (const a of intent.actions) {
+    if (!a?.predecessor_job_id || seenOld.has(a.predecessor_job_id) ||
+        !['KEEP','REVALIDATE','REPLACE'].includes(a.decision))
+      return stop('PLAN_CHANGE_ACTION_INVALID_OR_DUPLICATE')
+    seenOld.add(a.predecessor_job_id)
+    const oldSnapshot = jobs.get(a.predecessor_job_id)
+    if (!oldSnapshot) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
+    const old = oldSnapshot.job
+    if (old.planning_revision !== a.predecessor_planning_revision ||
+        jobExecutionContract(old) !== a.predecessor_execution_contract)
+      return stop('PLAN_CHANGE_PREDECESSOR_REVISION_OR_CONTRACT_DRIFT')
+    let next = a.decision === 'KEEP' ? 'KEEP_UNCHANGED' :
+      a.decision === 'REVALIDATE' ? 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE' : ''
+    if (a.decision === 'REPLACE') {
+      const id = a.replacement?.job_id
+      if (!id || id === a.predecessor_job_id || seenNew.has(id))
+        return stop('PLAN_CHANGE_REPLACEMENT_ID_INVALID_OR_DUPLICATE')
+      seenNew.add(id)
+      const replacement = jobs.get(id)?.job
+      if (old.lifecycle === 'SUPERSEDED') {
+        if (old.superseded_by_plan_change_id !== intent.change_id ||
+            old.superseded_by_replacement_job_id !== id)
+          return stop('PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT')
+        if (!replacement) next = 'CREATE_RESERVED_REPLACEMENT'
+        else if (replacement.replacement_of_job_id !== old.job_id ||
+                 replacement.plan_change_id !== intent.change_id)
+          return stop('PLAN_CHANGE_REPLACEMENT_LINEAGE_CONFLICT')
+        else if (replacement.lifecycle === 'DRAFT') next = 'REVIEW_REPLACEMENT'
+        else if (['READY','IN_PROGRESS','COMPLETED'].includes(replacement.lifecycle))
+          next = 'REVALIDATE_DEPENDENCIES_BEFORE_DISPATCH'
+        else return stop('PLAN_CHANGE_REPLACEMENT_TERMINAL_CONFLICT')
+      } else if (['COMPLETED','CANCELLED'].includes(old.lifecycle)) {
+        return stop('PLAN_CHANGE_PREDECESSOR_TERMINAL_CONFLICT')
+      } else {
+        const fence=old.plan_change_pending
+        if (!fence) {
+          if (oldSnapshot.sha !== a.predecessor_job_sha)
+            return stop('PLAN_CHANGE_PREDECESSOR_SHA_DRIFT')
+          next='FENCE_PREDECESSOR_BY_EXACT_SHA'
+        } else {
+          if (fence.change_id !== intent.change_id ||
+              fence.intent_memory_path !== input.intent_memory_path ||
+              fence.intent_record_sha !== input.intent_record_sha ||
+              fence.original_job_sha !== a.predecessor_job_sha ||
+              fence.replacement_job_id !== id)
+            return stop('PLAN_CHANGE_PREDECESSOR_FENCE_CONFLICT')
+          const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
+        if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
+            !['NONE','TERMINAL','ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'REFETCH_ACTIVE_RUN_AND_CURSOR'
+        else if (['PENDING','UNKNOWN'].includes(live.cursor_state))
+          next = 'RECONCILE_PENDING_SOURCE_CURSOR'
+        else if (['ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'SETTLE_ACTIVE_RUN'
+        else next = 'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA'
+        }
+      }
+    }
+    actions.push({ action_key: a.action_key, job_id: old.job_id, decision: a.decision,
+      replacement_job_id: a.replacement?.job_id ?? null, next_action: next })
+  }
+  return { allowed: true, reason: 'FRESH_READBACK_RECONCILIATION_ONLY',
+    actions, mutation_authorized: false }
+}
+
 function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
   return executionMemoryRoot(projectId, 'NEXT', namespace) +
     '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
@@ -1267,9 +1669,20 @@ function prepareExecutionCursorDecision(input: any) {
   const block = (reason: string) => ({ allowed: false, reason, operation: 'NONE', record: null })
   let job: any, old: any = null
   try { job = JSON.parse(input.job_record_text) } catch { return block('INVALID_JOB_RECORD') }
-  if (job?.kind !== 'JOB' || job.project_id !== input.project_id || job.job_id !== input.job_id ||
-      job.execution_contract !== 'NEXT' || !Number.isInteger(job.planning_revision) || job.planning_revision < 1 ||
-      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_IDENTITY_OR_LIFECYCLE_MISMATCH')
+  // LLC58: distinguish historical Job contract incompatibility from wrong identity
+  // or terminal lifecycle. A V2_STABLE Job cannot acquire a NEXT cursor merely
+  // because the production *creation default* is NEXT.
+  if (!job || typeof job !== 'object' || Array.isArray(job) ||
+      (job.kind != null && job.kind !== 'JOB'))
+    return block('JOB_RECORD_KIND_INVALID')
+  if (job.project_id !== input.project_id) return block('PROJECT_ID_MISMATCH')
+  if (job.job_id !== input.job_id) return block('JOB_ID_MISMATCH')
+  if (jobExecutionContract(job) === 'V2_STABLE') return block('LEGACY_JOB_CURSOR_NOT_APPLICABLE')
+  if (job.execution_contract !== 'NEXT') return block('JOB_EXECUTION_CONTRACT_INCOMPATIBLE')
+  if (!Number.isInteger(job.planning_revision) || job.planning_revision < 1)
+    return block('JOB_PLAN_REVISION_INVALID')
+  if (!['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_LIFECYCLE_INVALID')
+  if (job.plan_change_pending) return block('PLAN_CHANGE_PENDING_FENCE')
   const namespace = recordNextMemoryNamespace(job)
   if (!namespace || namespace !== input.memory_namespace) return block('CURSOR_NAMESPACE_MISMATCH')
   if (typeof input.work_branch !== 'string' || !input.work_branch.trim() ||
@@ -1398,7 +1811,7 @@ function resumeExecutionCursorDecision(input: any) {
   try { job = JSON.parse(input.job_record_text); cursor = JSON.parse(input.cursor_record_text) }
   catch { return stop('INVALID_DURABLE_RECORD') }
   if (!validSha(input.cursor_record_sha) || !validSha(input.current_head_sha) ||
-      job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+      (job?.kind != null && job.kind !== 'JOB') || job.project_id !== input.project_id ||
       job.job_id !== input.job_id || job.execution_contract !== 'NEXT' ||
       cursor?.kind !== 'EXECUTION_CURSOR' || cursor.version !== 1 ||
       cursor.project_id !== job.project_id || cursor.job_id !== job.job_id ||
@@ -1550,6 +1963,7 @@ const BASE_AGENT_HARNESS = [
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
+  '- LLC58 HUMAN PLAN CHANGE: a new Human request affecting READY/IN_PROGRESS Jobs starts Planner impact analysis and exact-revision review; do not keep coding stale Job scope. Use job_plan_change_assess, then reviewed immutable intent CREATE/readback, settle pending Runs/cursors, SUPERSEDE only obsolete Jobs, create replacement through reserved intent IDs. No cross-Project writes or implicit legacy-to-NEXT cursor conversion.',
   '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, required Task skills, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
   '- NEXT success closure requires exact current-revision Goal Recheck / REVIEW / TEST Verification snapshots; bare refs or stale target evidence never satisfy closure.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
@@ -1581,6 +1995,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
       'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims. Before each reconciled source retry, persist RECORD_RETRY and stop after 2 retries.',
+      'On Human Plan revision affecting multiple Jobs, run Planner impact matrix and review before Job mutation; after PASS persist one deterministic Plan Reconciliation Intent. On interruption call job_plan_change_resume_evaluate with fresh Job/cursor/Run readback, then continue one legal action. KEEP unaffected Jobs, settle unsafe mutations, never reenter terminal Jobs and never allocate a new replacement ID on retry.',
       'At source commit boundaries, request execution_cursor_prepare once before and once after the atomic mutation batch, with exact Memory Repo CAS/readback. No cursor round trips for ordinary tools, reads or repeated review.',
 
     ],
@@ -2371,6 +2786,174 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_fence_prepare',
+    {
+      title: 'Prepare exact-SHA affected Job Plan fence',
+      description: 'LLC58: stop new Run/cursor writes before superseding a replaced READY or IN_PROGRESS Job. Prepared UPDATE only; external GitHub CAS/readback required.',
+      inputSchema: {
+        project_id:z.string().uuid(),job_id:z.string().uuid(),
+        job_record_text:z.string().min(2),
+        job_record_sha:z.string().regex(/^[0-9a-f]{40}$/),
+        intent_record_text:z.string().min(2),
+        intent_record_sha:z.string().regex(/^[0-9a-f]{40}$/),
+        intent_memory_path:z.string().min(1),
+      },
+      outputSchema:{
+        allowed:z.boolean(),reason:z.string(),
+        operation:z.enum(['UPDATE','NONE']),
+        job_memory_path:z.string(),
+        expected_job_sha:z.string().nullable(),
+        next_job_record_text:z.string().nullable(),
+        mutation_authorized:z.boolean(),
+        external_steps:z.array(z.string()),
+      },
+      securitySchemes:[{type:'oauth2',scopes:AUTH_SCOPES}],
+      _meta:{securitySchemes:[{type:'oauth2',scopes:AUTH_SCOPES}]},
+      annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+    } as any,
+    async (input: any) => {
+      const auth=await authContext(req)
+      if (!auth) return authError(req,'Authentication required for Job Plan fence.')
+      const decision=prepareHumanPlanChangeFenceDecision(input)
+      let job:any
+      try { job=JSON.parse(input.job_record_text) } catch { job={} }
+      const contract=jobExecutionContract(job)
+      const ns=recordNextMemoryNamespace(job)
+      const path=contract ? recordPath(input.project_id,'JOBS',input.job_id,contract,
+        ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
+      const result={
+        allowed:decision.allowed,reason:decision.reason,
+        operation:decision.operation,
+        job_memory_path:path,
+        expected_job_sha:decision.allowed ? decision.expected_job_sha : null,
+        next_job_record_text:decision.allowed ? prettyJson(decision.record) : null,
+        mutation_authorized:false,
+        external_steps:decision.allowed ? [
+          'Read back exact immutable reviewed Plan intent and current Job SHA; authorize both paths under current PROJECT.md.',
+          'If UPDATE, authorize_memory_mutation and write Job fence using the exact expected_job_sha; independently read back bytes/SHA.',
+          'Only after fence readback, reconcile pending cursor, Run, Git HEAD/tree; then use intent-bound job_transition(SUPERSEDED).',
+          'Do not dispatch or write source under a fenced Job in any chat; no background stop is implied.',
+        ]:[],
+      }
+      return {structuredContent:result,content:[{type:'text',text:JSON.stringify(result)}]}
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_resume_evaluate',
+    {
+      title: 'Resume a reviewed multi-Job Plan Change from durable readback',
+      description: 'LLC58 recovery evaluator; identifies the next safe action after interrupted Job supersession/replacement. Never authorizes mutation or transfers old PASS evidence.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        intent_memory_path: z.string().min(1),
+        intent_record_text: z.string().min(2),
+        intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        })),
+        activity: z.array(z.object({
+          job_id: z.string().uuid(),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']),
+        })).default([]),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        actions: z.array(z.any()), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change recovery.')
+      const decision = resumeHumanPlanChangeIntent(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_prepare',
+    {
+      title: 'Prepare immutable Human Plan Change reconciliation intent',
+      description: 'LLC58: prepare one deterministic CREATE per reviewed Plan revision. Reserve unique replacement Job IDs; requires PASS planning-review evidence. Only external authorized GitHub CREATE/readback makes it durable; no Job mutation is performed.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        change_ref: z.string().min(1),
+        reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_job_record_text: z.string().min(2),
+        plan_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_review_record_text: z.string().min(2),
+        plan_review_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        plan_review_memory_path: z.string().min(1),
+        work_branch: z.string().min(1),
+        job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          reason: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
+        })).min(1),
+        existing_intent_record_text: z.string().min(2).optional(),
+        existing_intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        operation: z.enum(['CREATE','NONE']), intent_memory_path: z.string(),
+        intent_record_text: z.string().nullable(),
+        mutation_authorized: z.boolean(), external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change intent.')
+      const decision = prepareHumanPlanChangeIntent(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_assess',
+    {
+      title: 'Assess Jobs affected by a Human-reviewed Plan change',
+      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        change_ref: z.string().min(1),
+        reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          reason: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
+        })).min(1),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        decisions: z.array(z.any()), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change assessment.')
+      const assessment = assessHumanPlanChangeJobs(input)
+      return { structuredContent: assessment, content: [{ type: 'text', text: JSON.stringify(assessment) }] }
     },
   )
 
@@ -4341,6 +4924,15 @@ function createServer(req: Request) {
         completion_requirements: z.array(z.string()).min(1),
         verification_requirements: z.array(z.string()).default([]),
         review_triggers: z.array(z.string()).default([]),
+        // Optional LLC58 replacement: only a durable reviewed Plan intent may
+        // reserve a preallocated replacement Job ID.
+        replacement_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          predecessor_job_record_text: z.string().min(2),
+          predecessor_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        }).optional(),
       },
       outputSchema: {
         job_id: z.string(),
@@ -4353,7 +4945,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -4381,7 +4973,39 @@ function createServer(req: Request) {
         const cutoverError = cutoverInventoryError()
         if (cutoverError) return { content: [{ type: 'text', text: cutoverError }], isError: true }
       }
-      const jobId = uuidv7()
+      let replacement: any = null
+      if (replacement_context) {
+        let intent: any, predecessor: any
+        try {
+          intent = JSON.parse(replacement_context.intent_record_text)
+          predecessor = JSON.parse(replacement_context.predecessor_job_record_text)
+        } catch {
+          return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_INVALID_RECORD: intent and predecessor must be valid JSON.' }], isError: true }
+        }
+        const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+        const expectedPath = executionMemoryRoot(project_id, intent?.execution_contract,
+          intent?.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+          '/WORK/PLAN_RECONCILIATIONS/' + intent?.change_id + '.json'
+        const matches = intent?.kind === 'PLAN_RECONCILIATION_INTENT' && intent.version === 1 &&
+          intent.project_id === project_id &&
+          intent.work_branch && intent.plan_job_id &&
+          sha(replacement_context.intent_record_sha) &&
+          replacement_context.intent_memory_path === expectedPath &&
+          predecessor?.kind === 'JOB' && predecessor.project_id === project_id &&
+          predecessor.lifecycle === 'SUPERSEDED' &&
+          sha(replacement_context.predecessor_job_record_sha)
+        const item = matches && Array.isArray(intent.actions) ? intent.actions.find((a: any) =>
+          a.decision === 'REPLACE' && a.predecessor_job_id === predecessor.job_id &&
+          a.replacement?.job_id && a.replacement?.handle === jobHandle(a.replacement.job_id)
+        ) : null
+        if (!item || item.predecessor_execution_contract !== jobExecutionContract(predecessor) ||
+            predecessor.superseded_by_plan_change_id !== intent.change_id ||
+            predecessor.superseded_by_replacement_job_id !== item.replacement.job_id) {
+          return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_NOT_AUTHORIZED: requires exact reviewed intent and SUPERSEDED predecessor readback.' }], isError: true }
+        }
+        replacement = { intent, predecessor, item }
+      }
+      const jobId = replacement?.item?.replacement?.job_id ?? uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
         task_id: task.task_id || uuidv7(),
@@ -4405,8 +5029,17 @@ function createServer(req: Request) {
       const nextPlanningError = validateNextPlanningModel(executionContract, normalizedTasks, nextPlanning, 1)
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const record = {
+        kind: 'JOB',
         job_id: jobId,
         handle: jobHandle(jobId),
+        ...(replacement ? {
+          // Include full immutable ID in the displayed name: a four-char
+          // handle alone is not globally collision-free.
+          display_name: objective + ' / Plan ' + replacement.intent.change_id +
+            ' / ' + jobHandle(jobId) + ' [' + jobId + ']',
+          replacement_of_job_id: replacement.predecessor.job_id,
+          plan_change_id: replacement.intent.change_id,
+        } : {}),
         project_id,
         type,
         objective,
@@ -4460,7 +5093,7 @@ function createServer(req: Request) {
         },
         lifecycle: 'DRAFT',
         result: null,
-        linked_job_ids: [],
+        linked_job_ids: replacement ? [replacement.predecessor.job_id] : [],
         created_at: now,
         updated_at: now,
       }
@@ -4471,6 +5104,13 @@ function createServer(req: Request) {
         'GitHub Memory Repo: create_file at memory_path with job_record_text.',
         'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
       ]
+      if (replacement) {
+        externalSteps.unshift(
+          'Read back exact immutable Plan Change intent path + blob SHA and the SUPERSEDED predecessor Job path + blob SHA. Never trust caller-provided JSON alone.',
+          'Before CREATE, check target replacement Job path is absent. If it already exists, read/reconcile matching identity; never create a second replacement ID.',
+          'Preserve historical predecessor Run/Verification evidence. Do not copy historical PASS to this replacement Job.',
+        )
+      }
       if ((relationship_assessment ?? []).length) {
         externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
       }
@@ -4507,6 +5147,13 @@ function createServer(req: Request) {
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         closure_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        plan_change_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']),
+        }).optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -4518,7 +5165,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots, plan_change_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -4540,6 +5187,9 @@ function createServer(req: Request) {
         (current.lifecycle === 'IN_PROGRESS' && ['COMPLETED','CANCELLED','SUPERSEDED'].includes(target_lifecycle))
       if (!allowed) {
         return { content: [{ type: 'text', text: 'Invalid Job lifecycle transition: ' + current.lifecycle + ' → ' + target_lifecycle }], isError: true }
+      }
+      if (current.plan_change_pending && !(target_lifecycle === 'SUPERSEDED' && plan_change_context)) {
+        return { content:[{ type:'text',text:'PLAN_CHANGE_PENDING_FENCE: only intent-bound SUPERSEDED is allowed.' }],isError:true }
       }
       if (target_lifecycle === 'READY') {
         if (!planning_review_verification_ref) {
@@ -4597,8 +5247,23 @@ function createServer(req: Request) {
           }
         }
       }
+      if (plan_change_context && target_lifecycle !== 'SUPERSEDED') {
+        return { content: [{ type: 'text', text: 'PLAN_CHANGE_CONTEXT_ONLY_FOR_SUPERSEDED.' }], isError: true }
+      }
+      const planSupersession = plan_change_context ? validatePlanChangeSupersession({
+        ...plan_change_context,
+        project_id, predecessor_job: current,
+        predecessor_job_sha: job_record_sha,
+      }) : null
+      if (planSupersession && !planSupersession.allowed) {
+        return { content: [{ type: 'text', text: planSupersession.reason }], isError: true }
+      }
       const next = {
         ...current,
+        ...(planSupersession?.allowed ? {
+          superseded_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+          superseded_by_replacement_job_id: planSupersession.action.replacement.job_id,
+        } : {}),
         lifecycle: target_lifecycle,
         result: result ?? current.result ?? null,
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
@@ -4609,6 +5274,14 @@ function createServer(req: Request) {
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
         'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
       ]
+      if (planSupersession?.allowed) {
+        externalSteps.push(
+          'Independently read exact persisted Plan Change intent, require its blob SHA equals plan_change_context.intent_record_sha and bytes match before ANY Job transition.',
+          'Independently enumerate active Runs and Job cursor; require no ACTIVE/UNKNOWN Runs and no PENDING/UNKNOWN source mutation.',
+          'Independently confirm current source HEAD/tree and dependencies are consistent with the reviewed Plan; do not trust cursor_state/active_run_state caller assertions.',
+          'After SUPERSEDED transition, read back both Job lifecycle and superseded_by_plan_change_id/superseded_by_replacement_job_id.',
+        )
+      }
       if (target_lifecycle === 'COMPLETED') {
         externalSteps.push('Verify every completion_evidence_ref already exists and applies to the current accepted target revision before Job completion.')
         if (executionContract === 'NEXT') {
@@ -4710,6 +5383,9 @@ function createServer(req: Request) {
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.plan_change_pending) {
+        return { content:[{type:'text',text:'PLAN_CHANGE_PENDING_FENCE: revise the successor Plan, not a fenced Job.'}],isError:true }
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
@@ -5764,6 +6440,9 @@ function createServer(req: Request) {
       }
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (owningJob.plan_change_pending) {
+        return { content: [{ type:'text', text:'PLAN_CHANGE_PENDING_FENCE: Job is being reconciled with a newer reviewed Plan; do not start another Run.' }], isError:true }
       }
       const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
       if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {

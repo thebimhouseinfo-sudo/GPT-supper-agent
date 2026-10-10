@@ -642,3 +642,45 @@ retry_count (bounded 0..2), stalled_cycles, progress_fingerprint
 
 **Performance contract:** zero new cursor network operations for normal chat, code inspection, test execution and routine tool calls. For a meaningful atomic source batch, one pre-write intent + one completion persistence, each with required read-back. Real GitHub network latency must be measured on actual Projects and may not be described as free or known in advance. A separate background worker or per-step bookkeeping loop is out of scope.
 
+## LLC58 — Immutable multi-Job Plan reconciliation intent (implementation candidate)
+
+This contract is additive and is **not** a new Project/Job/Run lifecycle.
+
+A Job's `planning_revision` is **local to that Job**. When Human changes a larger approved Plan, Planner must inspect each affected Job and perform an impact classification. Do not treat a production NEXT default as an upgrade of old V2_STABLE records.
+
+For a reviewed `type=plan` Job at `planning_revision=N`, the reconciliation CREATE target is deterministic:
+
+```text
+projects/<project_id>/WORK/PLAN_RECONCILIATIONS/<plan_job_id>-r<N>.json
+```
+
+For a NEXT TEST_LAB plan Job, use its existing `TEST-LAB/NEXT` memory root instead. There is only one immutable intent per reviewed Plan Job revision.
+
+```text
+kind = PLAN_RECONCILIATION_INTENT
+version = 1
+project_id, change_id
+plan_job_id, plan_job_revision, plan_job_sha
+reviewed_plan_ref, reviewed_plan_sha
+plan_review_ref, plan_review_blob_sha
+execution_contract, memory_namespace?   # namespace only for NEXT
+work_branch
+actions[] {
+  action_key
+  predecessor_job_id, predecessor_job_sha, predecessor_lifecycle
+  predecessor_planning_revision, predecessor_execution_contract
+  decision = KEEP | REVALIDATE | REPLACE
+  reason, initial_next_action
+  replacement? { job_id, handle }   # minted once at intent CREATE
+  old_evidence_applicable_to_new_job = false
+}
+created_at
+```
+
+The `job_plan_change_assess` tool is read-only. `job_plan_change_prepare` requires an exact PASS `PLANNING_REVIEW` Verification bound to the reviewing plan Job revision and prepares an immutable CREATE. The external orchestrator must authorize the actual Memory Repo path, confirm exact current Plan/Job/Verification blob SHAs, CREATE with collision detection, and independently read back the intent. If the CREATE already exists, read/reconcile it; never overwrite it or mint another replacement ID.
+
+`job_plan_change_resume_evaluate` derives the next action from the immutable intent and freshly read Job snapshots; tool output **never authorizes a mutation**. A pending source cursor must be reconciled and active Runs settled before a predecessor transitions to `SUPERSEDED`. The replacement is created using `job_prepare(replacement_context)` only with the existing reserved ID and verified `SUPERSEDED` predecessor; on collision read the existing Job rather than creating another ID.
+
+Replacement Jobs get `replacement_of_job_id`, `plan_change_id`, `linked_job_ids=[predecessor_id]` and `display_name` containing their **full canonical UUID**, so names do not collide even if short handles do. They begin `DRAFT` and require ordinary planning review. Prior PASS/Review/TEST/Retest evidence stays attached to the predecessor, not silently transferred.
+
+**Partial transaction reality:** independent GitHub record writes are not atomic across Jobs. Intent-first, exact-SHA CAS, readback and idempotent resume are required. There is no background controller, no global freeze of every already-running chat, and no claim that a plan is fully applied until dependencies are rebound and field validation passes. Existing Job transition/dispatch auth and scope remain mandatory. Reconciliation helper PASS is *not* evidence of completed replacement.

@@ -415,3 +415,14 @@ If project scope is not authorized or durable cursor write/read-back is unavaila
 
 Use `mutation_kind=TREE` for a reviewed atomic multi-file Git tree commit, rather than opening one cursor per changed file; read the intended Git tree SHA before beginning, then independently verify the committed HEAD, parent and tree. For FILE commits use the target blob SHA. A failed/lost response resumes from the one durable PENDING record. Retry counters are recorded only for reconciled failed writes; no extra work is added to ordinary tool calls.
 
+## LLC58 — Human Plan Change runtime responsibility
+
+**Orchestrator:** A Human change request affecting READY/IN_PROGRESS Jobs triggers Planner impact assessment, not immediate Job cancellation. After exact-revision Reviewer PASS for the revised `type=plan` Job, prepare an immutable Plan Change intent and persist/read back it before closing an impacted Job. All affected Run/cursor source writes must be reconciled before SUPERSEDED; replaced Jobs require the original reserved ID and new planning review, not copied PASS evidence.
+
+**Planner:** Classify each affected Job as KEEP, REVALIDATE, REPLACE or HUMAN_DECISION, with evidence, dependency effects and an explicit separate CREATE item for brand-new objectives. Plan revision inside a Job is local and must not be confused with a wider multi-Job Plan change. Uncertain relationships require a Human decision.
+
+**Reviewer:** Compare revised Plan, actual Job set, existing implementation/Run/Verification evidence and proposed impacts. Reject unjustified blanket supersession, stale dependencies, wrong scope and unbounded mutation plans. Reviewed Plan Job Verification must be persisted/read back before the intent CREATE.
+
+**Resume:** Reread the immutable intent, current old/new Job blobs, Runs, cursors and source branch HEAD; call `job_plan_change_resume_evaluate`. Continue the first unfinished legal operation only. Do not create replacement IDs anew after a lost response or treat helper readiness as write authority.
+
+No background process or per-tool reconciliation scan is implied. Real project acceptance remains separate from source/CI tests.

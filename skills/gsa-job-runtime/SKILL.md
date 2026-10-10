@@ -155,3 +155,11 @@ If an `IN_PROGRESS` Run has lost its execution context, treat it as derived ABAN
 
 Agent text is never human approval.
 Merge/release and material product/architecture/governance decisions remain explicit human decisions.
+
+## LLC58 — Changing the plan while Jobs are active
+
+For an explicit Human Plan change, suspend affected forward progress at the next safe boundary, while leaving unaffected Jobs available. Planner builds the impact matrix (`job_plan_change_assess`), Reviewer approves the exact changed Plan Job revision, then orchestrator calls `job_plan_change_prepare`. Persist the immutable intent with authorized GitHub CREATE and independent readback. Never use a failed Job cursor prepare as a pretext for raw source writes.
+
+For a REPLACE row, reconcile running Runs and any PENDING cursor first, transition obsolete Job to SUPERSEDED using its current blob SHA, then create new DRAFT Job using `job_prepare(replacement_context)` with the exact intent SHA/readback and the reserved replacement Job ID. The predecessor is historical and cannot be reopened; its PASS remains historical evidence. New Job planning review and downstream dependency revalidation are mandatory.
+
+If interrupted, reread the intent and current old/new Job records and use `job_plan_change_resume_evaluate` to select the next step. An existing replacement path is a reason to **read**, not to allocate another ID. Normal Project, Run, Reviewer/Tester and scope rules remain in force. No new tool call loop is needed for ordinary reads and unchanged Jobs.
