@@ -46,7 +46,7 @@ function autonomousContract(text) {
     'LLC59 CI FAILURE ROUTING:',
     'self-fetch exact GitHub checks',
     'runner-not-started/log-unavailable',
-    'instead of ending the user turn',
+    'Continue bounded diagnosis',
   ]);
 }
 
@@ -80,7 +80,7 @@ test('LLC59: Coder self-obtains logs, repairs in scope, re-runs and does not inv
   includesAll(coder, [
     'CI RED/GREEN SELF-REPAIR:',
     'fetch GitHub run/job/step/log evidence yourself',
-    'TEST_FAILURE is repairable',
+    'TEST_FAILURE is repairable by owning Coder',
     'diff',
     'full affected call chain',
     'Never label alternate checks as hosted CI PASS',
@@ -93,7 +93,7 @@ test('LLC59: Tester may PROBE before OBSERVED but cannot mutate source or fake P
   includesAll(tester, [
     'DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET',
     'safe authorized PROBE',
-    'execute practical VERIFY only after evidence-backed OBSERVED',
+    'Execute practical VERIFY only after evidence-backed OBSERVED',
     'runner_id=0/steps=[]',
     'TEST_FAILURE within scope → owning Coder repairs test/config',
     'Host',
@@ -106,7 +106,7 @@ test('LLC59: actual served Coder skill has autonomous fail→diagnose→fix→re
   includesAll(skill, [
     'AUTONOMOUS CI RED/GREEN',
     'First self-inspect exact GitHub branch/commit',
-    'No runner or steps executed',
+    'no runner or steps executed',
     'TEST_FAILURE is repairable by owning Coder',
     'internal execution surface',
     'not a fake CI GREEN',
@@ -120,7 +120,7 @@ test('LLC59: actual served Tester skill does not hand off before discovery/probe
     'Capability discovery and a safe non-destructive PROBE are allowed before OBSERVED',
     'self-fetch job/steps/logs',
     'TEST_FAILURE routes to owning Coder',
-    'only if no agent-operable path exists',
+    'no agent-operable execution exists',
     'Do not use Human as a courier',
     'UNVERIFIED',
   ]);
@@ -138,6 +138,7 @@ test('LLC59: entry instruction has same-turn repair routing and no background pr
 test('LLC59 negative control: deleting Orchestrator CI routing turns harness contract RED', () => {
   const intact = harness('orchestrator');
   // Keep other protections, mutate precisely the routing rule the model sees.
+  autonomousContract(intact);
   const broken = intact.replace(
     /^.*LLC59 CI FAILURE ROUTING:.*$/m, ''
   );
@@ -157,5 +158,5 @@ test('LLC59 regression floor preserves Human authority and independent Reviewer/
   ]);
   includesAll(harness('orchestrator'), ['NEXT EVIDENCE GATE:', 'NEXT FAILURE ROUTING:']);
   includesAll(harness('coder'), ['GOAL RECHECK:', 'HANDOFF/COMPLETE:']);
-  includesAll(harness('tester'), ['For planned NEXT', 'GATE:']);
+  includesAll(harness('tester'), ['For a planned NEXT', 'GATE:']);
 });
