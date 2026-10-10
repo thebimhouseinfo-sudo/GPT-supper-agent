@@ -71,4 +71,6 @@ The contract is **advisory and pending persistence** by design: `state=AWAITING_
 - **Vercel Sandbox exact-source evidence:** `node --test` on seven workflow test files: **66 PASS / 0 FAIL / 0 skipped**; `npx deno@2.5.6 check supabase/functions/gsa-mcp/index.ts`: **PASS**. Exact source blob `be63374d0d279958d432afa82f7f94327c1f4c2e`.
 - **Remaining:** independent review (including test-script behavior rather than only string assertions), source-bound PR checks where hosted runner is available, explicit Human merge/deploy authorization, exact served runtime readback and real GSA Project Job acceptance. The source/tests **cannot guarantee** ChatGPT itself will make multiple tool calls in one turn on all host contexts; only field execution can establish that.
 
+**Final source recheck:** after updating existing MCP tool descriptions to identify these tool responses as PREPARE ONLY/nonterminal, reran the same 7-file Node suite **66 PASS/0 FAIL/0 skipped**, and Deno typecheck **PASS** on the final source blob `f9880ed988537e1a8bdebed41b8a855f3976ef22`. Hosted CI runner allocation remains independent of these source checks.
+
 Current disposition: **IMPLEMENTED_IN_BRANCH / NOT YET REAL-PROJECT VERIFIED**.
