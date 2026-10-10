@@ -1444,6 +1444,51 @@ function prepareHumanPlanChangeIntent(input: any) {
 
 // LLC58 recovery: decision comes from immutable Plan intent + *fresh* exact
 // Job readbacks. Returning a next action is NEVER memory/source authorization.
+// LLC58: safe supersession is an explicit, intent-bound Job transition,
+// never an inferred consequence of a cursor rejection or default NEXT mode.
+// Pure preflight only; memory path SHA/readback and absence of active Runs
+// remain external authorization checks, not accepted as model assertions.
+function validatePlanChangeSupersession(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const invalid = (reason: string) => ({ allowed: false, reason, action: null })
+  let intent: any
+  try { intent = JSON.parse(input.intent_record_text) }
+  catch { return invalid('PLAN_CHANGE_INTENT_JSON_INVALID') }
+  const old = input.predecessor_job
+  if (!sha(input.intent_record_sha) || !sha(input.predecessor_job_sha) ||
+      intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !intent.change_id || !Array.isArray(intent.actions) ||
+      old?.kind !== 'JOB' || old.project_id !== input.project_id)
+    return invalid('PLAN_CHANGE_SUPERSESSION_IDENTITY_INVALID')
+  const expected = executionMemoryRoot(input.project_id, intent.execution_contract,
+    intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+    '/WORK/PLAN_RECONCILIATIONS/' + intent.change_id + '.json'
+  if (input.intent_memory_path !== expected)
+    return invalid('PLAN_CHANGE_SUPERSESSION_INTENT_PATH_INVALID')
+  const matching = intent.actions.filter((a: any) =>
+    a.decision === 'REPLACE' && a.predecessor_job_id === old.job_id)
+  if (matching.length !== 1) return invalid('PLAN_CHANGE_REPLACE_ACTION_NOT_UNIQUE')
+  const a = matching[0]
+  if (a.predecessor_job_sha !== input.predecessor_job_sha ||
+      a.predecessor_lifecycle !== old.lifecycle ||
+      a.predecessor_planning_revision !== old.planning_revision ||
+      a.predecessor_execution_contract !== jobExecutionContract(old) ||
+      !a.replacement?.job_id || a.replacement.job_id === old.job_id ||
+      a.replacement?.handle !== jobHandle(a.replacement.job_id))
+    return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
+  if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
+    return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
+  // UNKNOWN is as unsafe as ACTIVE/PENDING. Caller must independently
+  // enumerate Runs and cursor and revalidate Git source HEAD before writing.
+  if (!['ABSENT','STABLE'].includes(input.cursor_state))
+    return invalid('PLAN_CHANGE_CURSOR_RECONCILIATION_REQUIRED')
+  if (!['NONE','TERMINAL'].includes(input.active_run_state))
+    return invalid('PLAN_CHANGE_ACTIVE_RUN_RECONCILIATION_REQUIRED')
+  return { allowed: true, reason: 'EXACT_PREDECESSOR_ACTION_MATCH',
+    action: a, mutation_authorized: false }
+}
+
 function resumeHumanPlanChangeIntent(input: any) {
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   const stop = (reason: string) => ({
@@ -4948,6 +4993,13 @@ function createServer(req: Request) {
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         closure_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        plan_change_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']),
+        }).optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -4959,7 +5011,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, target_lifecycle, result, completion_evidence_refs, planning_review_verification_ref, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, closure_verification_snapshots, plan_change_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to transition a Job.')
       let current: any
@@ -5038,8 +5090,23 @@ function createServer(req: Request) {
           }
         }
       }
+      if (plan_change_context && target_lifecycle !== 'SUPERSEDED') {
+        return { content: [{ type: 'text', text: 'PLAN_CHANGE_CONTEXT_ONLY_FOR_SUPERSEDED.' }], isError: true }
+      }
+      const planSupersession = plan_change_context ? validatePlanChangeSupersession({
+        ...plan_change_context,
+        project_id, predecessor_job: current,
+        predecessor_job_sha: job_record_sha,
+      }) : null
+      if (planSupersession && !planSupersession.allowed) {
+        return { content: [{ type: 'text', text: planSupersession.reason }], isError: true }
+      }
       const next = {
         ...current,
+        ...(planSupersession?.allowed ? {
+          superseded_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+          superseded_by_replacement_job_id: planSupersession.action.replacement.job_id,
+        } : {}),
         lifecycle: target_lifecycle,
         result: result ?? current.result ?? null,
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
@@ -5050,6 +5117,14 @@ function createServer(req: Request) {
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before a consequential Job transition.',
         'Verify the current Job file blob SHA still equals expected_job_sha. On mismatch, refetch/reconcile; never force overwrite.',
       ]
+      if (planSupersession?.allowed) {
+        externalSteps.push(
+          'Independently read exact persisted Plan Change intent, require its blob SHA equals plan_change_context.intent_record_sha and bytes match before ANY Job transition.',
+          'Independently enumerate active Runs and Job cursor; require no ACTIVE/UNKNOWN Runs and no PENDING/UNKNOWN source mutation.',
+          'Independently confirm current source HEAD/tree and dependencies are consistent with the reviewed Plan; do not trust cursor_state/active_run_state caller assertions.',
+          'After SUPERSEDED transition, read back both Job lifecycle and superseded_by_plan_change_id/superseded_by_replacement_job_id.',
+        )
+      }
       if (target_lifecycle === 'COMPLETED') {
         externalSteps.push('Verify every completion_evidence_ref already exists and applies to the current accepted target revision before Job completion.')
         if (executionContract === 'NEXT') {
