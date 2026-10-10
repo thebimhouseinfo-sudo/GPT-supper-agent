@@ -150,6 +150,18 @@ An item moves from CANDIDATE/PLANNED to IMPLEMENTED only when its canonical owne
 **Status:** PLANNER REVIEW PROPOSAL. No implementation branch created, runtime modified or deployment performed by this audit. Reviewer approval and Human instruction are required before starting source implementation.
 
 
+## 2026-10-10 Planner revision after independent CR findings
+
+**Status: CR_REVIEW_PENDING (not PASS; not implementation authorization).** The detailed plan was revised against CR-01..CR-05 in [`GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md`](GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md).
+
+- **P0 / JP-00 now owns an early test validity gate:** positive/negative behavioral oracle (known-bad must be RED), exact SHA and mock disclosure **before** high-risk P1 source work. P2 still owns later generalization/selective Reviewer test-script standards.
+- **No background resume is promised:** request-driven ChatGPT Orchestrator plus MCP handlers own the supported boundaries; retry/reconstruction happens only in a running or renewed chat invocation from durable Git/Project Memory. External GitHub connector writes are not globally intercepted by MCP.
+- **Staging is explicit:** `gsa-mcp-next` at `https://fbyqktduoqlpbbtkghkf.supabase.co/functions/v1/gsa-mcp-next/mcp` defaults to V2_STABLE, so NEXT tests must set `execution_contract=NEXT` and `memory_namespace=TEST_LAB`, with exact deployed-source read-back and scoped Job identity.
+- **Lifecycle is unchanged:** Job and Run terminal states are distinct (`FAILED` belongs to Run); `PAUSED_NO_PROGRESS` is a derived orchestration disposition, not a new stored lifecycle enum.
+- **Debugging skill is opt-in:** register with runtime catalog and `load_skill` schema, conditionally load from Coder debugging workflow; do not add to default Coder skills or introduce a new role.
+
+This section supersedes any earlier sequencing sentence that appears to put *all* test-quality work after P1. A dedicated authorized Job, persisted plan review and Human implementation approval have not yet been recorded. Production remains at v44; `main` continues to accept docs-only changes/hotfixes, with a single new integration branch planned only after the plan gate.
+
 ## Detailed execution and review handoff
 
 The reviewed Job Pack decomposition, acceptance checkpoints, risks and documented Planner → Reviewer → Planner repair → Reviewer recheck loop are in [`GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md`](GSA-RELIABILITY-DETAILED-EXECUTION-2026-10-08.md). Status: plan-level PASS_WITH_LIMITATIONS; no official durable PLAN_REVIEW Verification, no implementation branch or runtime changes. Begin with JP-00 and re-ground actual persisted state before selecting any new schema.
