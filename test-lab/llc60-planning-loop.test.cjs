@@ -1,0 +1,196 @@
+// LLC60: exact source-derived, model-only routing checks. This suite does
+// NOT execute external GitHub CAS/readback, live ChatGPT tool dispatch, or
+// authenticated GSA Job workflows; those require real Project acceptance.
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
+
+const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const sf = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+assert.equal(sf.parseDiagnostics.length, 0, 'Exact GSA runtime source parses');
+const functionDecl = sf.statements.find(s => ts.isFunctionDeclaration(s) &&
+  s.name?.text === 'planningLoopContinuationDecision');
+assert.ok(functionDecl, 'LLC60 runtime source declares a deterministic planning continuation decision');
+
+function loadDecision(sourceFunction = functionDecl.getText(sf)) {
+  const js = ts.transpileModule(sourceFunction, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText;
+  return vm.runInNewContext(js + '\nplanningLoopContinuationDecision', { Number });
+}
+const decide = loadDecision();
+
+function assertRoute(input, wantAction, wantRole, wantContinue = true) {
+  const d = decide(...input);
+  assert.equal(d.next_action_after_readback, wantAction, JSON.stringify(input));
+  assert.equal(d.next_role, wantRole);
+  assert.equal(d.resume_same_turn, wantContinue);
+  assert.equal(d.human_action_required, wantAction === 'STOP_HUMAN_DECISION');
+  assert.equal(d.state, 'AWAITING_DURABLE_READBACK');
+  assert.equal(d.requires_readback, true);
+  assert.equal(d.mutation_authorized, false);
+  assert.equal(d.planning_revision, input[2]);
+  return d;
+}
+function toolBody(name) {
+  const start = source.indexOf("  server.registerTool(\n    '" + name + "'");
+  assert.ok(start >= 0, 'Live tool registered: ' + name);
+  const end = source.indexOf('\n  server.registerTool(', start + 10);
+  assert.ok(end > start, 'Next tool boundary for ' + name);
+  return source.slice(start, end);
+}
+function constantBody(name) {
+  const decls = sf.statements.filter(ts.isVariableStatement)
+    .flatMap(x => [...x.declarationList.declarations])
+    .filter(x => ts.isIdentifier(x.name) && x.name.text === name);
+  assert.equal(decls.length, 1, name + ' source definition must be unique');
+  const compiled = ts.transpileModule(
+    'const ' + name + ' = ' + decls[0].initializer.getText(sf) + ';\n' + name,
+    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }
+  ).outputText;
+  return vm.runInNewContext(compiled, {});
+}
+const shared = constantBody('BASE_AGENT_HARNESS');
+const roles = constantBody('ROLE_HARNESSES');
+const skills = constantBody('RUNTIME_SKILLS');
+
+test('LLC60 initial DRAFT and successive reviewed Plan revisions automatically route to Reviewer', () => {
+  assertRoute(['JOB_PREPARED','DRAFT',1], 'REVIEW_CURRENT_REVISION','reviewer');
+  assertRoute(['PLAN_REVISED','DRAFT',2], 'REVIEW_CURRENT_REVISION','reviewer');
+  assertRoute(['PLAN_REVISED','DRAFT',3], 'REVIEW_CURRENT_REVISION','reviewer');
+  assertRoute(['PLAN_REVISED','IN_PROGRESS',4], 'REVIEW_CURRENT_REVISION','reviewer');
+});
+
+test('LLC60 CHANGES_REQUIRED always returns to Planner within same turn and new revision', () => {
+  for (const state of ['DRAFT','IN_PROGRESS']) {
+    assertRoute(['REVIEW_RECORDED',state,1,'CHANGES_REQUIRED'],'REVISE_PLAN','planner');
+    assertRoute(['REVIEW_RECORDED',state,2,'CHANGES_REQUIRED'],'REVISE_PLAN','planner');
+  }
+});
+
+test('LLC60 PASS DRAFT promotes READY; reviewed NEXT IN_PROGRESS only resumes dispatch', () => {
+  assertRoute(['REVIEW_RECORDED','DRAFT',3,'PASS'],'PROMOTE_READY','orchestrator');
+  assertRoute(['READY_TRANSITION','READY',3],'CONTINUE_JOB_TOPOLOGY','orchestrator');
+  assertRoute(['REVIEW_RECORDED','IN_PROGRESS',3,'PASS'],'RESUME_DISPATCH','orchestrator');
+});
+
+test('LLC60 Human gate and concrete blocker stop loop rather than repeat attempts', () => {
+  assertRoute(['REVIEW_RECORDED','DRAFT',2,'HUMAN_REVIEW_REQUIRED'],
+    'STOP_HUMAN_DECISION','human',false);
+  assertRoute(['REVIEW_RECORDED','DRAFT',2,'BLOCKED'],
+    'STOP_BLOCKED','orchestrator',false);
+});
+
+test('LLC60 invalid/terminal stages cannot authorize a continuation or mutation', () => {
+  for (const input of [
+    ['JOB_PREPARED','READY',1],
+    ['PLAN_REVISED','COMPLETED',2],
+    ['REVIEW_RECORDED','COMPLETED',3,'PASS'],
+    ['REVIEW_RECORDED','DRAFT',2,'UNDEFINED'],
+    ['READY_TRANSITION','DRAFT',2],
+    ['READY_TRANSITION','READY',0],
+  ]) {
+    const d = decide(...input);
+    assert.equal(d.state, 'NOT_APPLICABLE', JSON.stringify(input));
+    assert.equal(d.next_action_after_readback, 'NONE');
+    assert.equal(d.resume_same_turn, false);
+    assert.equal(d.requires_readback, false);
+    assert.equal(d.mutation_authorized, false);
+  }
+});
+
+test('LLC60 tool outputs expose typed continuation only after external persistence', () => {
+  const cases = [
+    ['job_prepare', 'JOB_PREPARED'],
+    ['job_revise_plan','PLAN_REVISED'],
+    ['plan_review_record','REVIEW_RECORDED'],
+    ['job_transition','READY_TRANSITION'],
+  ];
+  for (const [name,stage] of cases) {
+    const body = toolBody(name);
+    assert.ok(body.includes('PLANNING_LOOP_CONTINUATION_SCHEMA'),
+      name + ' must register structured continuation output');
+    assert.ok(body.includes("planningLoopContinuationDecision('" + stage + "'"),
+      name + ' must use real runtime router, not prose-only instructions');
+    assert.ok(body.includes('external_steps:') || body.includes('external_steps: '),
+      name + ' still requires external steps');
+    assert.ok(body.includes('readback') || body.includes('Read back'),
+      name + ' must demand persistent readback');
+  }
+  const review = toolBody('plan_review_record');
+  assert.ok(review.includes('next_role: nextRole'));
+  assert.ok(review.includes('const nextRole = continuation.next_role'));
+  assert.ok(review.indexOf('Persist verification_record_text first') <
+    review.indexOf('Update Job planning_review with reviewed_job_record_text'),
+    'Review evidence must be persisted before reviewed Job update');
+});
+
+test('LLC60 role-isolated planning Reviewer same turn does not become a new Human chat', () => {
+  const orchestrator = roles.orchestrator.loop.join('\n');
+  const planner = roles.planner.loop.join('\n');
+  const reviewer = roles.reviewer.loop.join('\n');
+  const planSkill = skills['job-planning'].body;
+  const reviewSkill = skills['planning-review'].body;
+  for (const text of [shared,orchestrator,planner,reviewer,planSkill,reviewSkill]) {
+    assert.match(text,/SAME USER TURN|SAME USER TURN|same Human chat\/turn|same Human chat/);
+  }
+  assert.match(orchestrator,/next_action_after_readback/);
+  assert.match(planner,/job_revise_plan/);
+  assert.match(reviewer,/Planning-review is role-isolated/);
+  assert.match(reviewSkill,/fresh Human chat is NOT required/);
+  const canonical = fs.readFileSync('docs/architecture/AGENT-HARNESSES.md','utf8');
+  const jobRuntime = fs.readFileSync('skills/gsa-job-runtime/SKILL.md','utf8');
+  assert.match(canonical,/planning review.*SAME USER TURN/i);
+  assert.match(canonical,/fresh review context\/chat for mandatory independent source\/code reviews/);
+  assert.match(jobRuntime,/independent source\/code review.*fresh-context isolation/);
+  assert.match(jobRuntime,/Job planning-review is different/);
+});
+
+test('LLC60 model-only: 2 fixable reviews reach READY without any Human continue', () => {
+  let revision = 1;
+  const trace = [];
+  for (const verdict of ['CHANGES_REQUIRED','CHANGES_REQUIRED','PASS']) {
+    const prepared = decide(revision === 1 ? 'JOB_PREPARED' : 'PLAN_REVISED','DRAFT',revision);
+    trace.push(prepared.next_action_after_readback);
+    assert.equal(prepared.resume_same_turn,true);
+    // MODEL ONLY: the external persistence/readback must be completed before
+    // proceeding. We assert the safety contract, not fabricate GitHub proof.
+    assert.equal(prepared.requires_readback,true);
+    const reviewed = decide('REVIEW_RECORDED','DRAFT',revision,verdict);
+    trace.push(reviewed.next_action_after_readback);
+    if (verdict === 'CHANGES_REQUIRED') {
+      assert.equal(reviewed.next_role,'planner');
+      revision++;
+    } else {
+      assert.equal(reviewed.next_action_after_readback,'PROMOTE_READY');
+      trace.push(decide('READY_TRANSITION','READY',revision).next_action_after_readback);
+    }
+  }
+  assert.equal(trace.join(' -> '),[
+    'REVIEW_CURRENT_REVISION','REVISE_PLAN',
+    'REVIEW_CURRENT_REVISION','REVISE_PLAN',
+    'REVIEW_CURRENT_REVISION','PROMOTE_READY','CONTINUE_JOB_TOPOLOGY',
+  ].join(' -> '));
+});
+
+test('LLC60 negative control: removing CHANGES_REQUIRED routing makes known-bad RED', () => {
+  const original = functionDecl.getText(sf);
+  const needle = "if (reviewResult === 'CHANGES_REQUIRED')";
+  assert.ok(original.includes(needle),'Mutation must target executed source branch');
+  const mutant = loadDecision(original.replace(needle, "if (reviewResult === 'UNREACHABLE_MUTANT')"));
+  const good = decide('REVIEW_RECORDED','DRAFT',2,'CHANGES_REQUIRED');
+  const bad = mutant('REVIEW_RECORDED','DRAFT',2,'CHANGES_REQUIRED');
+  assert.equal(good.next_action_after_readback,'REVISE_PLAN');
+  assert.notEqual(bad.next_action_after_readback,'REVISE_PLAN');
+});
+
+test('LLC60 negative control: removing PASS→READY route fails the oracle', () => {
+  const original = functionDecl.getText(sf);
+  const needle = "action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'RESUME_DISPATCH'";
+  assert.ok(original.includes(needle),'Mutation targets live PASS branch');
+  const mutant = loadDecision(original.replace(needle,"action = 'RESUME_DISPATCH'"));
+  assert.equal(decide('REVIEW_RECORDED','DRAFT',3,'PASS').next_action_after_readback,'PROMOTE_READY');
+  assert.notEqual(mutant('REVIEW_RECORDED','DRAFT',3,'PASS').next_action_after_readback,'PROMOTE_READY');
+});
