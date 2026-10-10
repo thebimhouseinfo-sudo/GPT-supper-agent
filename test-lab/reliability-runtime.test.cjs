@@ -26,11 +26,12 @@ const pbase = {job_lifecycle:'IN_PROGRESS',run_lifecycle:'IN_PROGRESS',previous_
 test('lost-response recovery only reports current target state, never mutation authorization', () => {
   assert.equal(call().disposition, 'NOT_APPLIED');
   assert.equal(call().mutation_authorized, false);
-  assert.equal(call({current_blob_sha:c}).disposition, 'TARGET_STATE_PRESENT');
+  assert.equal(call({current_blob_sha:c}).disposition, 'UNKNOWN_CONFLICT'); // same head cannot have changed target blob
   assert.equal(call({current_blob_sha:c,current_head_sha:d}).next_action, 'RECONCILE_INTERVENING_COMMITS');
   assert.equal(call({current_blob_sha:b,current_head_sha:d}).disposition, 'UNKNOWN_CONFLICT');
   assert.equal(call({current_blob_sha:d}).disposition, 'UNKNOWN_CONFLICT');
-  assert.equal(call({previous_blob_sha:c}).disposition, 'ALREADY_SATISFIED');
+  assert.equal(call({previous_blob_sha:c,current_blob_sha:c}).disposition, 'ALREADY_SATISFIED');
+  assert.equal(call({previous_blob_sha:c}).disposition, 'UNKNOWN_CONFLICT');
   assert.equal(call({operation_id:'  '}).disposition, 'UNKNOWN_CONFLICT');
 });
 test('deleted target uses null blob and still needs authoritative head', () => {
@@ -48,11 +49,12 @@ test('same-turn no-progress pause is derived after third repeated fingerprint', 
   assert.equal(progress({...pbase,mutation_retry_count:3}).disposition,'PAUSED_RETRY_EXHAUSTED');
 });
 test('Run FAILED terminal, Job cannot use FAILED; no lifecycle reactivation', () => {
-  assert.equal(progress({...pbase,run_lifecycle:'FAILED'}).disposition,'TERMINAL');
+  assert.equal(progress({...pbase,run_lifecycle:'FAILED'}).disposition,'RUN_TERMINAL');
   assert.equal(progress({...pbase,job_lifecycle:'FAILED'}).disposition,'BLOCKED');
-  assert.equal(progress({...pbase,job_lifecycle:'COMPLETED'}).disposition,'TERMINAL');
-  assert.equal(progress({...pbase,job_lifecycle:'SUPERSEDED'}).disposition,'TERMINAL');
-  assert.equal(progress({...pbase,run_lifecycle:'CANCELLED'}).disposition,'TERMINAL');
+  assert.equal(progress({...pbase,job_lifecycle:'COMPLETED'}).disposition,'JOB_TERMINAL');
+  assert.equal(progress({...pbase,job_lifecycle:'SUPERSEDED'}).disposition,'JOB_TERMINAL');
+  assert.equal(progress({...pbase,run_lifecycle:'CANCELLED'}).disposition,'RUN_TERMINAL');
+  assert.equal(progress({...pbase,run_lifecycle:'COMPLETED'}).reason,'ROUTE_NEXT_FROM_DURABLE_JOB_TOPOLOGY');
 });
 test('negative mutation control: wrong APPLIED predicate must turn test RED', () => {
   const broken = runtimeFunction('sourceMutationRecoveryDecision', body =>
