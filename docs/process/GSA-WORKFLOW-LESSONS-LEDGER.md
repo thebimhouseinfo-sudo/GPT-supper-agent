@@ -173,3 +173,16 @@ At CP7, this ledger is reread to prove no accepted lesson remains only in a work
 **Important distinctions:** a Plan revision *within one Job* is not necessarily a Project-level plan replacement affecting multiple Jobs; replacing a Job is not the same as revising its in-Job `planning_revision`; superseding a Run is not superseding its Job. Do not infer that LLC58's cursor denial was caused by Plan drift without the original Job JSON and served-runtime validation.
 
 **Completion:** retain CANDIDATE until exact-source implementation, negative controls, independent Reviewer and real GSA Local J-9067 acceptance establish the contract and migration/replacement behavior. No blanket legacy-to-NEXT conversion, no fake PASS and no raw Git bypass after a GSA admission denial.
+
+## LLC59 — GSA autonomy regression during CI/internal test repair (2026-10-10)
+
+**Source:** [LLC59 original](lessons/LLC-059-AUTONOMY-REGRESSION-CI-REPAIR-2026-10-10.md); [GitHub issue #20](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/issues/20). **Status: CANDIDATE / ROOT_CAUSE_UNVERIFIED / FIELD_ACCEPTANCE_PENDING.** Human reports that GSA now requests manual CI/log collection and other work it previously automated; this is a user-observed behavioral regression, not a proven source-level regression from any particular recent commit.
+
+| Lesson | Required future behavior | Candidate owner | Evidence/acceptance |
+|---|---|---|---|
+| LLC-059-A | **Autonomous-first CI diagnostics:** On RED inspect exact workflow run, failed jobs, steps and available logs through connected tools; never request the Human to copy diagnostics already agent-accessible. | Orchestrator + GitHub tool discovery | Incident run 38054066762 had runner_id=0/steps=[] and unavailable logs; agent should identify it without Human labor. |
+| LLC-059-B | **Bounded self-repair loop:** classify failing build/test/CI config; Coder repairs and reruns, Tester/Reviewer stay independent; no blind retry or fake green. | Coder coding/debugging loop + Tester routing | Real Project Job with actual RED→diagnosis→repair→GREEN or explicit blocker, source-bound evidence. |
+| LLC-059-C | **Observed capability fallback:** If hosted runner/log unavailable, attempt an authorized equivalent internal test surface when already observed; record that hosted CI is still UNVERIFIED. | Capability catalog + Orchestrator | Direct runtime evidence from sandbox alternative and truthful test-surface distinction. |
+| LLC-059-D | **Minimal necessary Human request:** Escalate only authentic Human-only permissions, secrets, external host/device, decisions or exhausted/unsafe automation, explaining attempted alternatives. | Planner/Orchestrator Human Gate | Before/after metrics: avoidable Human handoffs, CI evidence self-retrieval, retries, latency and real Project acceptance. |
+
+**No automatic promotion:** The LLC entry is not an implementation, not an authority to bypass scope/denied writes, and not grounds to remove genuine Human Gates. Review the exact incident path (harness/prompt/tool capability/routing) before choosing the minimal implementation.
