@@ -1299,32 +1299,47 @@ function prepareExecutionCursorDecision(input: any) {
       last_completed_checkpoint: input.checkpoint_id,
       pending_action: null, retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
     }
-  } else if (!old) return block('CURSOR_NOT_PERSISTED')
-  else if (event === 'BEGIN_MUTATION') {
-    if (old.state !== 'STABLE') return block('PENDING_MUTATION_REQUIRES_RECONCILIATION')
-    if (input.observed_head_sha !== old.last_good_sha) return block('SOURCE_HEAD_ADVANCED_RECONCILE')
+  } else if (event === 'BEGIN_MUTATION') {
+    // First consequential mutation initializes PENDING in a single Memory write:
+    // no separate INITIALIZE round trip or Job lifecycle transition required.
+    if (old && old.state !== 'STABLE') return block('PENDING_MUTATION_REQUIRES_RECONCILIATION')
+    if (old && input.observed_head_sha !== old.last_good_sha) return block('SOURCE_HEAD_ADVANCED_RECONCILE')
+    if (!old && !input.checkpoint_id?.trim()) return block('INITIAL_CHECKPOINT_REQUIRED')
     if (!input.operation_id?.trim() || !input.target_path?.trim() ||
         input.target_path.startsWith('/') || input.target_path.split('/').includes('..') ||
         !validSha(input.intended_blob_sha) ||
         !(input.previous_blob_sha === null || validSha(input.previous_blob_sha)) ||
         input.intended_blob_sha === input.previous_blob_sha) return block('INVALID_WRITE_INTENT')
     next = {
-      ...old, state: 'PENDING',
+      ...(old ?? {
+        kind: 'EXECUTION_CURSOR', version: 1,
+        project_id: input.project_id, job_id: input.job_id,
+        execution_contract: 'NEXT', memory_namespace: namespace,
+        planning_revision: job.planning_revision, work_branch: input.work_branch,
+        last_good_sha: input.observed_head_sha,
+        last_completed_checkpoint: input.checkpoint_id,
+        progress_fingerprint: input.observed_head_sha,
+      }),
+      state: 'PENDING',
       pending_action: {
         operation_id: input.operation_id, target_path: input.target_path,
-        expected_head_sha: old.last_good_sha,
+        expected_head_sha: old?.last_good_sha ?? input.observed_head_sha,
         previous_blob_sha: input.previous_blob_sha,
         intended_blob_sha: input.intended_blob_sha,
       }, retry_count: 0, stalled_cycles: 0,
     }
-  } else if (event === 'COMPLETE_MUTATION') {
+  } else if (!old) return block('CURSOR_NOT_PERSISTED')
+  else if (event === 'COMPLETE_MUTATION') {
     const pending = old.pending_action
     if (old.state !== 'PENDING' || !pending ||
         !input.operation_id || input.operation_id !== pending.operation_id ||
         !input.checkpoint_id?.trim() ||
         !validSha(input.observed_blob_sha) ||
         input.observed_blob_sha !== pending.intended_blob_sha ||
-        input.observed_head_sha === pending.expected_head_sha) return block('PENDING_MUTATION_NOT_PROVEN')
+        input.observed_head_sha === pending.expected_head_sha ||
+        !validSha(input.observed_parent_sha) ||
+        input.observed_parent_sha !== pending.expected_head_sha)
+      return block('PENDING_MUTATION_NOT_PROVEN')
     next = {
       ...old, state: 'STABLE', pending_action: null,
       last_good_sha: input.observed_head_sha, last_completed_checkpoint: input.checkpoint_id,
@@ -2321,6 +2336,7 @@ function createServer(req: Request) {
         previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
         intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
         observed_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_parent_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
         stalled_cycles: z.number().int().min(0).optional(),
         cursor_record_text: z.string().optional(),
         cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
@@ -2346,13 +2362,13 @@ function createServer(req: Request) {
         cursor_memory_path: path,
         operation: decision.operation,
         expected_cursor_sha: decision.allowed ? (input.cursor_record_sha ?? null) : null,
-        cursor_record_text: decision.allowed ? JSON.stringify(decision.record, null, 2) + '\\n' : null,
+        cursor_record_text: decision.allowed ? JSON.stringify(decision.record, null, 2) + '\n' : null,
         external_steps: decision.allowed
           ? [
             'Authorize the exact current PROJECT.md and target Memory Repo path.',
             'Use GitHub CREATE when expected_cursor_sha=null, else UPDATE with exact current cursor blob SHA.',
             'Read back exact cursor path, bytes and blob SHA before acting on the prepared result.',
-            'For BEGIN_MUTATION, only after the intent is durable perform the approved source write; for COMPLETE_MUTATION, independently verify source HEAD and target blob first.',
+            'For BEGIN_MUTATION, persist intent before the approved source commit. For COMPLETE_MUTATION, independently verify Git HEAD, commit parent and target blob, then persist the checkpoint.',
           ] : [],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -2376,6 +2392,8 @@ function createServer(req: Request) {
       },
       outputSchema: {
         disposition: z.string(), reason: z.string(), source_write_authorized: z.boolean(),
+        next_action: z.string().optional(), operation_id: z.string().optional(),
+        last_completed_checkpoint: z.string().optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
