@@ -1253,6 +1253,142 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
   return null
 }
 
+// One small mutable source-of-progress record per NEXT Job. Not a Job/Run
+// lifecycle and not the Tester CHECKPOINT_CLAIM serialization record.
+function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
+  return executionMemoryRoot(projectId, 'NEXT', namespace) +
+    '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
+}
+
+// Pure preflight. GitHub blob SHA compare-and-swap and independent readback are
+// performed by the calling orchestrator, NOT by this request/response MCP.
+function prepareExecutionCursorDecision(input: any) {
+  const validSha = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+  const block = (reason: string) => ({ allowed: false, reason, operation: 'NONE', record: null })
+  let job: any, old: any = null
+  try { job = JSON.parse(input.job_record_text) } catch { return block('INVALID_JOB_RECORD') }
+  if (job?.kind !== 'JOB' || job.project_id !== input.project_id || job.job_id !== input.job_id ||
+      job.execution_contract !== 'NEXT' || !Number.isInteger(job.planning_revision) || job.planning_revision < 1 ||
+      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_IDENTITY_OR_LIFECYCLE_MISMATCH')
+  const namespace = recordNextMemoryNamespace(job)
+  if (!namespace || namespace !== input.memory_namespace) return block('CURSOR_NAMESPACE_MISMATCH')
+  if (typeof input.work_branch !== 'string' || !input.work_branch.trim() ||
+      !validSha(input.observed_head_sha)) return block('INVALID_BRANCH_OR_GIT_READBACK')
+  if ((input.cursor_record_text == null) !== (input.cursor_record_sha == null)) return block('INCOMPLETE_CURSOR_SNAPSHOT')
+  if (input.cursor_record_text != null) {
+    if (!validSha(input.cursor_record_sha)) return block('INVALID_CURSOR_SHA')
+    try { old = JSON.parse(input.cursor_record_text) } catch { return block('INVALID_CURSOR_JSON') }
+    if (old?.kind !== 'EXECUTION_CURSOR' || old.version !== 1 ||
+        old.project_id !== input.project_id || old.job_id !== input.job_id ||
+        old.execution_contract !== 'NEXT' || old.memory_namespace !== namespace ||
+        old.planning_revision !== job.planning_revision ||
+        old.work_branch !== input.work_branch || !validSha(old.last_good_sha) ||
+        !['STABLE','PENDING'].includes(old.state)) return block('STALE_OR_INVALID_CURSOR')
+  }
+  let next: any
+  const event = input.event
+  if (event === 'INITIALIZE') {
+    if (old) return block('CURSOR_ALREADY_EXISTS')
+    if (!input.checkpoint_id?.trim()) return block('CHECKPOINT_ID_REQUIRED')
+    next = {
+      kind: 'EXECUTION_CURSOR', version: 1,
+      project_id: input.project_id, job_id: input.job_id,
+      execution_contract: 'NEXT', memory_namespace: namespace,
+      planning_revision: job.planning_revision, work_branch: input.work_branch,
+      state: 'STABLE', last_good_sha: input.observed_head_sha,
+      last_completed_checkpoint: input.checkpoint_id,
+      pending_action: null, retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
+    }
+  } else if (!old) return block('CURSOR_NOT_PERSISTED')
+  else if (event === 'BEGIN_MUTATION') {
+    if (old.state !== 'STABLE') return block('PENDING_MUTATION_REQUIRES_RECONCILIATION')
+    if (input.observed_head_sha !== old.last_good_sha) return block('SOURCE_HEAD_ADVANCED_RECONCILE')
+    if (!input.operation_id?.trim() || !input.target_path?.trim() ||
+        input.target_path.startsWith('/') || input.target_path.split('/').includes('..') ||
+        !validSha(input.intended_blob_sha) ||
+        !(input.previous_blob_sha === null || validSha(input.previous_blob_sha)) ||
+        input.intended_blob_sha === input.previous_blob_sha) return block('INVALID_WRITE_INTENT')
+    next = {
+      ...old, state: 'PENDING',
+      pending_action: {
+        operation_id: input.operation_id, target_path: input.target_path,
+        expected_head_sha: old.last_good_sha,
+        previous_blob_sha: input.previous_blob_sha,
+        intended_blob_sha: input.intended_blob_sha,
+      }, retry_count: 0, stalled_cycles: 0,
+    }
+  } else if (event === 'COMPLETE_MUTATION') {
+    const pending = old.pending_action
+    if (old.state !== 'PENDING' || !pending ||
+        !input.operation_id || input.operation_id !== pending.operation_id ||
+        !input.checkpoint_id?.trim() ||
+        !validSha(input.observed_blob_sha) ||
+        input.observed_blob_sha !== pending.intended_blob_sha ||
+        input.observed_head_sha === pending.expected_head_sha) return block('PENDING_MUTATION_NOT_PROVEN')
+    next = {
+      ...old, state: 'STABLE', pending_action: null,
+      last_good_sha: input.observed_head_sha, last_completed_checkpoint: input.checkpoint_id,
+      retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
+    }
+  } else if (event === 'SAVE_CHECKPOINT') {
+    if (old.state !== 'STABLE' || input.observed_head_sha !== old.last_good_sha ||
+        !input.checkpoint_id?.trim() || input.checkpoint_id === old.last_completed_checkpoint)
+      return block('CHECKPOINT_NOT_PROVEN_OR_UNCHANGED')
+    next = { ...old, last_completed_checkpoint: input.checkpoint_id, stalled_cycles: 0 }
+  } else if (event === 'RECORD_PAUSE') {
+    if (!Number.isInteger(input.stalled_cycles) || input.stalled_cycles < 3 ||
+        input.observed_head_sha !== old.last_good_sha) return block('PAUSE_NOT_PROVEN')
+    if (old.stalled_cycles >= input.stalled_cycles) return block('PAUSE_ALREADY_RECORDED')
+    next = { ...old, stalled_cycles: input.stalled_cycles }
+  } else return block('UNKNOWN_CURSOR_EVENT')
+  return { allowed: true, reason: 'PREPARED_NOT_PERSISTED',
+    operation: old ? 'UPDATE' : 'CREATE', record: next }
+}
+
+// Restart consumes ONE immutable cursor snapshot plus fresh source readback;
+// only pending intent needs target-blob inspection. No extra per-tool queries.
+function resumeExecutionCursorDecision(input: any) {
+  const validSha = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+  const stop = (reason: string) => ({ disposition: 'STOP_AND_RECONCILE', reason, source_write_authorized: false })
+  let job: any, cursor: any
+  try { job = JSON.parse(input.job_record_text); cursor = JSON.parse(input.cursor_record_text) }
+  catch { return stop('INVALID_DURABLE_RECORD') }
+  if (!validSha(input.cursor_record_sha) || !validSha(input.current_head_sha) ||
+      job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+      job.job_id !== input.job_id || job.execution_contract !== 'NEXT' ||
+      cursor?.kind !== 'EXECUTION_CURSOR' || cursor.version !== 1 ||
+      cursor.project_id !== job.project_id || cursor.job_id !== job.job_id ||
+      cursor.execution_contract !== 'NEXT' ||
+      cursor.memory_namespace !== recordNextMemoryNamespace(job) ||
+      cursor.planning_revision !== job.planning_revision ||
+      cursor.work_branch !== input.work_branch || !validSha(cursor.last_good_sha) ||
+      !['STABLE','PENDING'].includes(cursor.state) ||
+      input.cursor_memory_path !== executionCursorPath(job.project_id, job.job_id, cursor.memory_namespace))
+    return stop('CURSOR_IDENTITY_OR_REVISION_MISMATCH')
+  if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)) return stop('TERMINAL_JOB')
+  if (cursor.state === 'STABLE') {
+    if (cursor.pending_action != null || input.current_head_sha !== cursor.last_good_sha)
+      return stop('SOURCE_ADVANCED_WITHOUT_DURABLE_INTENT')
+    return { disposition: 'RESUME_FROM_CHECKPOINT', reason: cursor.last_completed_checkpoint,
+      source_write_authorized: false }
+  }
+  const p = cursor.pending_action
+  if (!p || !p.operation_id || !p.target_path || !validSha(p.expected_head_sha) ||
+      p.expected_head_sha !== cursor.last_good_sha ||
+      !validSha(p.intended_blob_sha) || !(p.previous_blob_sha === null || validSha(p.previous_blob_sha)) ||
+      !(input.current_blob_sha === null || validSha(input.current_blob_sha)))
+    return stop('INCOMPLETE_PENDING_INTENT_OR_READBACK')
+  const decision = sourceMutationRecoveryDecision({
+    operation_id: p.operation_id, expected_head_sha: p.expected_head_sha,
+    current_head_sha: input.current_head_sha, previous_blob_sha: p.previous_blob_sha,
+    intended_blob_sha: p.intended_blob_sha, current_blob_sha: input.current_blob_sha,
+  })
+  // An unchanged target is not permission to write; reauthorize and read back first.
+  return { disposition: decision.disposition, reason: decision.reason,
+    next_action: decision.next_action, operation_id: p.operation_id,
+    last_completed_checkpoint: cursor.last_completed_checkpoint, source_write_authorized: false }
+}
+
 // GSA Reliability: pure, read-only reconstruction helpers.
 // Callers MUST obtain each input from independent authoritative Git readback.
 // These decisions are NOT mutation authorization and are not a second lifecycle.
@@ -2165,6 +2301,91 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_cursor_prepare',
+    {
+      title: 'Prepare a lightweight durable NEXT Job checkpoint cursor',
+      description: 'Prepare one CREATE/UPDATE of a Job-owned GitHub Memory Repo cursor only at significant checkpoints or before consequential source mutation. No storage write occurs in MCP; caller must use exact GitHub CAS and readback.',
+      inputSchema: {
+        project_id: z.string().uuid(), job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        memory_namespace: z.enum(['PRODUCTION','TEST_LAB']),
+        work_branch: z.string().min(1),
+        observed_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        event: z.enum(['INITIALIZE','BEGIN_MUTATION','COMPLETE_MUTATION','SAVE_CHECKPOINT','RECORD_PAUSE']),
+        checkpoint_id: z.string().optional(),
+        operation_id: z.string().optional(), target_path: z.string().optional(),
+        previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        stalled_cycles: z.number().int().min(0).optional(),
+        cursor_record_text: z.string().optional(),
+        cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        cursor_memory_path: z.string(), operation: z.enum(['CREATE','UPDATE','NONE']),
+        expected_cursor_sha: z.string().nullable(),
+        cursor_record_text: z.string().nullable(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Job cursor preparation.')
+      const decision = prepareExecutionCursorDecision(input)
+      const path = executionCursorPath(input.project_id, input.job_id, input.memory_namespace)
+      const result = {
+        allowed: decision.allowed, reason: decision.reason,
+        cursor_memory_path: path,
+        operation: decision.operation,
+        expected_cursor_sha: decision.allowed ? (input.cursor_record_sha ?? null) : null,
+        cursor_record_text: decision.allowed ? JSON.stringify(decision.record, null, 2) + '\\n' : null,
+        external_steps: decision.allowed
+          ? [
+            'Authorize the exact current PROJECT.md and target Memory Repo path.',
+            'Use GitHub CREATE when expected_cursor_sha=null, else UPDATE with exact current cursor blob SHA.',
+            'Read back exact cursor path, bytes and blob SHA before acting on the prepared result.',
+            'For BEGIN_MUTATION, only after the intent is durable perform the approved source write; for COMPLETE_MUTATION, independently verify source HEAD and target blob first.',
+          ] : [],
+      }
+      return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'execution_cursor_resume_evaluate',
+    {
+      title: 'Recover a NEXT Job from one durable cursor snapshot',
+      description: 'Read-only fresh-session cursor validation and lost-response recovery; no additional Job lifecycle, no write authorization, and no background worker.',
+      inputSchema: {
+        project_id: z.string().uuid(), job_id: z.string().uuid(),
+        job_record_text: z.string().min(2),
+        work_branch: z.string().min(1),
+        cursor_memory_path: z.string().min(1),
+        cursor_record_text: z.string().min(2),
+        cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        current_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+      },
+      outputSchema: {
+        disposition: z.string(), reason: z.string(), source_write_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Job cursor recovery.')
+      const decision = resumeExecutionCursorDecision(input)
+      return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
 
