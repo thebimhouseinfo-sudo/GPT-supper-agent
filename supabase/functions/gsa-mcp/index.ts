@@ -1258,6 +1258,19 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 // LLC58: read-only Planner classification of an explicit Human Plan Change.
 // Job planning_revision is local to each Job; this assessment must never
 // silently mutate historical records or grant source/memory write permission.
+// A Job has not historically been required to serialize kind='JOB'.
+// Legacy GSA V2 and some early NEXT records omit it. An explicit foreign
+// kind remains invalid; contract and exact Project/Job identity remain the
+// real durable admission boundary.
+function isRecognizedJobRecordShape(job: any): boolean {
+  return job != null && typeof job === 'object' && !Array.isArray(job) &&
+    (job.kind == null || job.kind === 'JOB') &&
+    typeof job.project_id === 'string' && typeof job.job_id === 'string' &&
+    jobExecutionContract(job) !== null &&
+    Number.isInteger(job.planning_revision) && job.planning_revision >= 1 &&
+    ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)
+}
+
 function assessHumanPlanChangeJobs(input: any) {
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
@@ -1271,7 +1284,7 @@ function assessHumanPlanChangeJobs(input: any) {
     let job: any
     try { job = JSON.parse(item.job_record_text) }
     catch { return reject('PLAN_CHANGE_JOB_JSON_INVALID') }
-    if (job?.kind !== 'JOB' || job.project_id !== input.project_id || !job.job_id ||
+    if (!isRecognizedJobRecordShape(job) || job.project_id !== input.project_id || !job.job_id ||
         !sha(item.job_record_sha)) return reject('PLAN_CHANGE_JOB_IDENTITY_OR_SHA_INVALID')
     if (ids.has(job.job_id)) return reject('PLAN_CHANGE_DUPLICATE_JOB')
     ids.add(job.job_id)
@@ -1331,7 +1344,7 @@ function prepareHumanPlanChangeIntent(input: any) {
     planJob = JSON.parse(input.plan_job_record_text)
     verification = JSON.parse(input.plan_review_record_text)
   } catch { return deny('PLAN_CHANGE_PLAN_REVIEW_RECORD_INVALID') }
-  if (planJob?.kind !== 'JOB' || planJob.type !== 'plan' ||
+  if (!isRecognizedJobRecordShape(planJob) || planJob.type !== 'plan' ||
       planJob.project_id !== input.project_id ||
       !planJob.job_id || !sha(input.plan_job_record_sha) ||
       !Number.isInteger(planJob.planning_revision) || planJob.planning_revision < 1 ||
@@ -1459,7 +1472,7 @@ function validatePlanChangeSupersession(input: any) {
       intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
       intent.version !== 1 || intent.project_id !== input.project_id ||
       !intent.change_id || !Array.isArray(intent.actions) ||
-      old?.kind !== 'JOB' || old.project_id !== input.project_id)
+      !isRecognizedJobRecordShape(old) || old.project_id !== input.project_id)
     return invalid('PLAN_CHANGE_SUPERSESSION_IDENTITY_INVALID')
   const expected = executionMemoryRoot(input.project_id, intent.execution_contract,
     intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
@@ -1512,7 +1525,7 @@ function resumeHumanPlanChangeIntent(input: any) {
     let job: any
     try { job = JSON.parse(s.job_record_text) }
     catch { return stop('PLAN_CHANGE_CURRENT_JOB_JSON_INVALID') }
-    if (job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+    if (!isRecognizedJobRecordShape(job) || job.project_id !== input.project_id ||
         !job.job_id || !sha(s.job_record_sha) || jobs.has(job.job_id))
       return stop('PLAN_CHANGE_CURRENT_JOB_INVALID_OR_DUPLICATE')
     jobs.set(job.job_id, { job, sha: s.job_record_sha })
@@ -1587,7 +1600,9 @@ function prepareExecutionCursorDecision(input: any) {
   // LLC58: distinguish historical Job contract incompatibility from wrong identity
   // or terminal lifecycle. A V2_STABLE Job cannot acquire a NEXT cursor merely
   // because the production *creation default* is NEXT.
-  if (job?.kind !== 'JOB') return block('JOB_RECORD_KIND_INVALID')
+  if (!job || typeof job !== 'object' || Array.isArray(job) ||
+      (job.kind != null && job.kind !== 'JOB'))
+    return block('JOB_RECORD_KIND_INVALID')
   if (job.project_id !== input.project_id) return block('PROJECT_ID_MISMATCH')
   if (job.job_id !== input.job_id) return block('JOB_ID_MISMATCH')
   if (jobExecutionContract(job) === 'V2_STABLE') return block('LEGACY_JOB_CURSOR_NOT_APPLICABLE')
@@ -1723,7 +1738,7 @@ function resumeExecutionCursorDecision(input: any) {
   try { job = JSON.parse(input.job_record_text); cursor = JSON.parse(input.cursor_record_text) }
   catch { return stop('INVALID_DURABLE_RECORD') }
   if (!validSha(input.cursor_record_sha) || !validSha(input.current_head_sha) ||
-      job?.kind !== 'JOB' || job.project_id !== input.project_id ||
+      (job?.kind != null && job.kind !== 'JOB') || job.project_id !== input.project_id ||
       job.job_id !== input.job_id || job.execution_contract !== 'NEXT' ||
       cursor?.kind !== 'EXECUTION_CURSOR' || cursor.version !== 1 ||
       cursor.project_id !== job.project_id || cursor.job_id !== job.job_id ||
@@ -4887,6 +4902,7 @@ function createServer(req: Request) {
       const nextPlanningError = validateNextPlanningModel(executionContract, normalizedTasks, nextPlanning, 1)
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const record = {
+        kind: 'JOB',
         job_id: jobId,
         handle: jobHandle(jobId),
         ...(replacement ? {
