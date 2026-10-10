@@ -4612,6 +4612,15 @@ function createServer(req: Request) {
         completion_requirements: z.array(z.string()).min(1),
         verification_requirements: z.array(z.string()).default([]),
         review_triggers: z.array(z.string()).default([]),
+        // Optional LLC58 replacement: only a durable reviewed Plan intent may
+        // reserve a preallocated replacement Job ID.
+        replacement_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          predecessor_job_record_text: z.string().min(2),
+          predecessor_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        }).optional(),
       },
       outputSchema: {
         job_id: z.string(),
@@ -4624,7 +4633,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -4652,7 +4661,37 @@ function createServer(req: Request) {
         const cutoverError = cutoverInventoryError()
         if (cutoverError) return { content: [{ type: 'text', text: cutoverError }], isError: true }
       }
-      const jobId = uuidv7()
+      let replacement: any = null
+      if (replacement_context) {
+        let intent: any, predecessor: any
+        try {
+          intent = JSON.parse(replacement_context.intent_record_text)
+          predecessor = JSON.parse(replacement_context.predecessor_job_record_text)
+        } catch {
+          return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_INVALID_RECORD: intent and predecessor must be valid JSON.' }], isError: true }
+        }
+        const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+        const expectedPath = executionMemoryRoot(project_id, intent?.execution_contract,
+          intent?.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+          '/WORK/PLAN_RECONCILIATIONS/' + intent?.change_id + '.json'
+        const matches = intent?.kind === 'PLAN_RECONCILIATION_INTENT' && intent.version === 1 &&
+          intent.project_id === project_id &&
+          intent.work_branch && intent.plan_job_id &&
+          sha(replacement_context.intent_record_sha) &&
+          replacement_context.intent_memory_path === expectedPath &&
+          predecessor?.kind === 'JOB' && predecessor.project_id === project_id &&
+          predecessor.lifecycle === 'SUPERSEDED' &&
+          sha(replacement_context.predecessor_job_record_sha)
+        const item = matches && Array.isArray(intent.actions) ? intent.actions.find((a: any) =>
+          a.decision === 'REPLACE' && a.predecessor_job_id === predecessor.job_id &&
+          a.replacement?.job_id && a.replacement?.handle === jobHandle(a.replacement.job_id)
+        ) : null
+        if (!item || item.predecessor_execution_contract !== jobExecutionContract(predecessor)) {
+          return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_NOT_AUTHORIZED: requires exact reviewed intent and SUPERSEDED predecessor readback.' }], isError: true }
+        }
+        replacement = { intent, predecessor, item }
+      }
+      const jobId = replacement?.item?.replacement?.job_id ?? uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
         task_id: task.task_id || uuidv7(),
@@ -4678,6 +4717,14 @@ function createServer(req: Request) {
       const record = {
         job_id: jobId,
         handle: jobHandle(jobId),
+        ...(replacement ? {
+          // Include full immutable ID in the displayed name: a four-char
+          // handle alone is not globally collision-free.
+          display_name: objective + ' / Plan ' + replacement.intent.change_id +
+            ' / ' + jobHandle(jobId) + ' [' + jobId + ']',
+          replacement_of_job_id: replacement.predecessor.job_id,
+          plan_change_id: replacement.intent.change_id,
+        } : {}),
         project_id,
         type,
         objective,
@@ -4731,7 +4778,7 @@ function createServer(req: Request) {
         },
         lifecycle: 'DRAFT',
         result: null,
-        linked_job_ids: [],
+        linked_job_ids: replacement ? [replacement.predecessor.job_id] : [],
         created_at: now,
         updated_at: now,
       }
@@ -4742,6 +4789,13 @@ function createServer(req: Request) {
         'GitHub Memory Repo: create_file at memory_path with job_record_text.',
         'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
       ]
+      if (replacement) {
+        externalSteps.unshift(
+          'Read back exact immutable Plan Change intent path + blob SHA and the SUPERSEDED predecessor Job path + blob SHA. Never trust caller-provided JSON alone.',
+          'Before CREATE, check target replacement Job path is absent. If it already exists, read/reconcile matching identity; never create a second replacement ID.',
+          'Preserve historical predecessor Run/Verification evidence. Do not copy historical PASS to this replacement Job.',
+        )
+      }
       if ((relationship_assessment ?? []).length) {
         externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
       }
