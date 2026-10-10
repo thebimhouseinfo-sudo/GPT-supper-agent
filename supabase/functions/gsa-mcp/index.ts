@@ -1326,8 +1326,6 @@ function prepareHumanPlanChangeIntent(input: any) {
     allowed: false, reason, operation: 'NONE', intent_memory_path: '',
     intent_record_text: null, mutation_authorized: false, external_steps: [],
   })
-  const impact = assessHumanPlanChangeJobs(input)
-  if (!impact.allowed) return deny(impact.reason)
   let planJob: any, verification: any
   try {
     planJob = JSON.parse(input.plan_job_record_text)
@@ -1359,8 +1357,6 @@ function prepareHumanPlanChangeIntent(input: any) {
       !sha(input.plan_review_record_sha) ||
       input.plan_review_memory_path !== expectedRef)
     return deny('PLAN_CHANGE_REVIEW_IDENTITY_OR_REF_MISMATCH')
-  if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
-    return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   if (typeof input.work_branch !== 'string' || !input.work_branch.trim())
     return deny('PLAN_CHANGE_WORK_BRANCH_REQUIRED')
   // Path is stable across lost responses and independent of randomness;
@@ -1389,6 +1385,12 @@ function prepareHumanPlanChangeIntent(input: any) {
       external_steps: ['Independently reread existing intent blob and all affected Job/Run/cursor state before resuming.'],
     }
   }
+  // Existing durable intent wins over a freshly reclassified predecessor:
+  // terminal SUPERSEDED Jobs are expected during interrupted resume.
+  const impact = assessHumanPlanChangeJobs(input)
+  if (!impact.allowed) return deny(impact.reason)
+  if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
+    return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   const known = new Set(impact.decisions.map((row: any) => row.job_id))
   const actions = impact.decisions.map((row: any) => {
     let replacement: any = null
