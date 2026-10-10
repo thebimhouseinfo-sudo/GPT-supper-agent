@@ -52,6 +52,7 @@ test('do not repeat pending mutation after lost response; finish requires commit
   const good=prepare({...fields,observed_parent_sha:a});
   assert.equal(good.allowed,true);assert.equal(good.operation,'UPDATE');
   assert.equal(good.record.state,'STABLE');assert.equal(good.record.pending_action,null);
+  assert.equal(good.record.last_operation_id,'write-1');
   assert.equal(good.record.last_completed_checkpoint,'CODE_COMPLETE');assert.equal(good.record.last_good_sha,d);
   assert.equal(resume({...base,...snapshot(good.record),cursor_memory_path:cursorPath(project,jobId,'TEST_LAB'),current_head_sha:d}).disposition,'RESUME_FROM_CHECKPOINT');
   assert.equal(resume({...base,...snapshot(good.record),cursor_memory_path:cursorPath(project,jobId,'TEST_LAB'),current_head_sha:a}).disposition,'STOP_AND_RECONCILE');
@@ -77,7 +78,18 @@ test('mutation negative control: invalid head ancestry fails checkpoint finaliza
   const p=start().record;
   const good=prepare({...base,...snapshot(p),event:'COMPLETE_MUTATION',operation_id:'write-1',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_blob_sha:c,observed_parent_sha:a});
   assert.equal(good.allowed,true);
-  assert.notEqual(prepare({...base,...snapshot(p),event:'COMPLETE_MUTATION',operation_id:'write-1',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_blob_sha:c,observed_parent_sha:b}).allowed,true);
+  assert.equal(prepare({...base,...snapshot(p),event:'COMPLETE_MUTATION',operation_id:'write-1',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_blob_sha:c,observed_parent_sha:b}).reason,'PENDING_MUTATION_NOT_PROVEN');
+});
+test('rare retries are persisted before source retry and capped at two',()=>{
+  const original=start().record;
+  const retry1=prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'write-1'});
+  assert.equal(retry1.allowed,true);assert.equal(retry1.record.retry_count,1);
+  const retry2=prepare({...base,...snapshot(retry1.record),event:'RECORD_RETRY',operation_id:'write-1'});
+  assert.equal(retry2.allowed,true);assert.equal(retry2.record.retry_count,2);
+  const denied=prepare({...base,...snapshot(retry2.record),event:'RECORD_RETRY',operation_id:'write-1'});
+  assert.equal(denied.reason,'RETRY_BLOCKED_OR_EXHAUSTED');
+  assert.equal(prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'other'}).allowed,false);
+  assert.equal(prepare({...base,...snapshot(original),observed_head_sha:d,event:'RECORD_RETRY',operation_id:'write-1'}).allowed,false);
 });
 test('new cursor tools are authenticated, read-only and not in the always-loaded default skills',()=>{
   for (const name of ['execution_cursor_prepare','execution_cursor_resume_evaluate']) {
