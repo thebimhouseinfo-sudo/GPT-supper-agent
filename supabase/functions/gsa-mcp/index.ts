@@ -1461,6 +1461,61 @@ function prepareHumanPlanChangeIntent(input: any) {
 // never an inferred consequence of a cursor rejection or default NEXT mode.
 // Pure preflight only; memory path SHA/readback and absence of active Runs
 // remain external authorization checks, not accepted as model assertions.
+// LLC58: serialize an affected Job's reviewed Plan fence before settling
+// its active Run/cursor and before terminal supersession. Only a real Job
+// exact-SHA GitHub update + readback makes this effective across chats.
+function prepareHumanPlanChangeFenceDecision(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const reject = (reason: string) => ({ allowed: false, reason, operation: 'NONE',
+    record: null, expected_job_sha: null, mutation_authorized: false })
+  let intent: any, job: any
+  try { intent=JSON.parse(input.intent_record_text); job=JSON.parse(input.job_record_text) }
+  catch { return reject('PLAN_CHANGE_FENCE_RECORD_JSON_INVALID') }
+  if (!sha(input.intent_record_sha) || !sha(input.job_record_sha) ||
+      !isRecognizedJobRecordShape(job) || job.project_id !== input.project_id ||
+      job.job_id !== input.job_id || intent?.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+      intent.version !== 1 || intent.project_id !== input.project_id ||
+      !intent.change_id || !Array.isArray(intent.actions))
+    return reject('PLAN_CHANGE_FENCE_IDENTITY_INVALID')
+  const root=executionMemoryRoot(input.project_id,intent.execution_contract,
+    intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+  if (input.intent_memory_path !== root+'/WORK/PLAN_RECONCILIATIONS/'+intent.change_id+'.json')
+    return reject('PLAN_CHANGE_FENCE_INTENT_PATH_MISMATCH')
+  const matching=intent.actions.filter((a: any) => a.decision === 'REPLACE' &&
+    a.predecessor_job_id === job.job_id)
+  if (matching.length !== 1) return reject('PLAN_CHANGE_FENCE_ACTION_NOT_UNIQUE')
+  const action=matching[0]
+  if (action.predecessor_planning_revision !== job.planning_revision ||
+      action.predecessor_lifecycle !== job.lifecycle ||
+      action.predecessor_execution_contract !== jobExecutionContract(job) ||
+      !action.replacement?.job_id ||
+      action.replacement.job_id === job.job_id ||
+      action.replacement.handle !== jobHandle(action.replacement.job_id) ||
+      !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle))
+    return reject('PLAN_CHANGE_FENCE_JOB_OR_REPLACEMENT_DRIFT')
+  const expectedFence={
+    change_id:intent.change_id,
+    intent_memory_path:input.intent_memory_path,
+    intent_record_sha:input.intent_record_sha,
+    original_job_sha:action.predecessor_job_sha,
+    replacement_job_id:action.replacement.job_id,
+  }
+  if (job.plan_change_pending) {
+    const existing=job.plan_change_pending
+    if (Object.keys(expectedFence).some((k: string) => existing[k] !== expectedFence[k]))
+      return reject('PLAN_CHANGE_DIFFERENT_FENCE_ALREADY_PRESENT')
+    return { allowed:true, reason:'EXISTING_PLAN_FENCE_REUSE_REQUIRES_READBACK',
+      operation:'NONE', record:job, expected_job_sha:input.job_record_sha,
+      mutation_authorized:false }
+  }
+  if (action.predecessor_job_sha !== input.job_record_sha)
+    return reject('PLAN_CHANGE_FENCE_PREDECESSOR_SHA_DRIFT')
+  return { allowed:true, reason:'PLAN_FENCE_PREPARED_NOT_PERSISTED',
+    operation:'UPDATE', record:{ ...job, plan_change_pending: expectedFence,
+      updated_at:new Date().toISOString() },
+    expected_job_sha:input.job_record_sha, mutation_authorized:false }
+}
+
 function validatePlanChangeSupersession(input: any) {
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   const invalid = (reason: string) => ({ allowed: false, reason, action: null })
@@ -1483,8 +1538,14 @@ function validatePlanChangeSupersession(input: any) {
     a.decision === 'REPLACE' && a.predecessor_job_id === old.job_id)
   if (matching.length !== 1) return invalid('PLAN_CHANGE_REPLACE_ACTION_NOT_UNIQUE')
   const a = matching[0]
-  if (a.predecessor_job_sha !== input.predecessor_job_sha ||
-      a.predecessor_lifecycle !== old.lifecycle ||
+  const fence=old.plan_change_pending
+  if (!fence || fence.change_id !== intent.change_id ||
+      fence.intent_memory_path !== input.intent_memory_path ||
+      fence.intent_record_sha !== input.intent_record_sha ||
+      fence.original_job_sha !== a.predecessor_job_sha ||
+      fence.replacement_job_id !== a.replacement?.job_id)
+    return invalid('PLAN_CHANGE_REQUIRED_FENCE_MISSING_OR_CONFLICTED')
+  if (a.predecessor_lifecycle !== old.lifecycle ||
       a.predecessor_planning_revision !== old.planning_revision ||
       a.predecessor_execution_contract !== jobExecutionContract(old) ||
       !a.replacement?.job_id || a.replacement.job_id === old.job_id ||
@@ -1565,9 +1626,19 @@ function resumeHumanPlanChangeIntent(input: any) {
       } else if (['COMPLETED','CANCELLED'].includes(old.lifecycle)) {
         return stop('PLAN_CHANGE_PREDECESSOR_TERMINAL_CONFLICT')
       } else {
-        if (oldSnapshot.sha !== a.predecessor_job_sha)
-          return stop('PLAN_CHANGE_PREDECESSOR_SHA_DRIFT')
-        const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
+        const fence=old.plan_change_pending
+        if (!fence) {
+          if (oldSnapshot.sha !== a.predecessor_job_sha)
+            return stop('PLAN_CHANGE_PREDECESSOR_SHA_DRIFT')
+          next='FENCE_PREDECESSOR_BY_EXACT_SHA'
+        } else {
+          if (fence.change_id !== intent.change_id ||
+              fence.intent_memory_path !== input.intent_memory_path ||
+              fence.intent_record_sha !== input.intent_record_sha ||
+              fence.original_job_sha !== a.predecessor_job_sha ||
+              fence.replacement_job_id !== id)
+            return stop('PLAN_CHANGE_PREDECESSOR_FENCE_CONFLICT')
+          const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
         if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
             !['NONE','TERMINAL','ACTIVE','UNKNOWN'].includes(live.active_run_state))
           next = 'REFETCH_ACTIVE_RUN_AND_CURSOR'
@@ -1576,6 +1647,7 @@ function resumeHumanPlanChangeIntent(input: any) {
         else if (['ACTIVE','UNKNOWN'].includes(live.active_run_state))
           next = 'SETTLE_ACTIVE_RUN'
         else next = 'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA'
+        }
       }
     }
     actions.push({ action_key: a.action_key, job_id: old.job_id, decision: a.decision,
@@ -1610,6 +1682,7 @@ function prepareExecutionCursorDecision(input: any) {
   if (!Number.isInteger(job.planning_revision) || job.planning_revision < 1)
     return block('JOB_PLAN_REVISION_INVALID')
   if (!['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle)) return block('JOB_LIFECYCLE_INVALID')
+  if (job.plan_change_pending) return block('PLAN_CHANGE_PENDING_FENCE')
   const namespace = recordNextMemoryNamespace(job)
   if (!namespace || namespace !== input.memory_namespace) return block('CURSOR_NAMESPACE_MISMATCH')
   if (typeof input.work_branch !== 'string' || !input.work_branch.trim() ||
@@ -2713,6 +2786,60 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_fence_prepare',
+    {
+      title: 'Prepare exact-SHA affected Job Plan fence',
+      description: 'LLC58: stop new Run/cursor writes before superseding a replaced READY or IN_PROGRESS Job. Prepared UPDATE only; external GitHub CAS/readback required.',
+      inputSchema: {
+        project_id:z.string().uuid(),job_id:z.string().uuid(),
+        job_record_text:z.string().min(2),
+        job_record_sha:z.string().regex(/^[0-9a-f]{40}$/),
+        intent_record_text:z.string().min(2),
+        intent_record_sha:z.string().regex(/^[0-9a-f]{40}$/),
+        intent_memory_path:z.string().min(1),
+      },
+      outputSchema:{
+        allowed:z.boolean(),reason:z.string(),
+        operation:z.enum(['UPDATE','NONE']),
+        job_memory_path:z.string(),
+        expected_job_sha:z.string().nullable(),
+        next_job_record_text:z.string().nullable(),
+        mutation_authorized:z.boolean(),
+        external_steps:z.array(z.string()),
+      },
+      securitySchemes:[{type:'oauth2',scopes:AUTH_SCOPES}],
+      _meta:{securitySchemes:[{type:'oauth2',scopes:AUTH_SCOPES}]},
+      annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+    } as any,
+    async (input: any) => {
+      const auth=await authContext(req)
+      if (!auth) return authError(req,'Authentication required for Job Plan fence.')
+      const decision=prepareHumanPlanChangeFenceDecision(input)
+      let job:any
+      try { job=JSON.parse(input.job_record_text) } catch { job={} }
+      const contract=jobExecutionContract(job)
+      const ns=recordNextMemoryNamespace(job)
+      const path=contract ? recordPath(input.project_id,'JOBS',input.job_id,contract,
+        ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) : ''
+      const result={
+        allowed:decision.allowed,reason:decision.reason,
+        operation:decision.operation,
+        job_memory_path:path,
+        expected_job_sha:decision.allowed ? decision.expected_job_sha : null,
+        next_job_record_text:decision.allowed ? prettyJson(decision.record) : null,
+        mutation_authorized:false,
+        external_steps:decision.allowed ? [
+          'Read back exact immutable reviewed Plan intent and current Job SHA; authorize both paths under current PROJECT.md.',
+          'If UPDATE, authorize_memory_mutation and write Job fence using the exact expected_job_sha; independently read back bytes/SHA.',
+          'Only after fence readback, reconcile pending cursor, Run, Git HEAD/tree; then use intent-bound job_transition(SUPERSEDED).',
+          'Do not dispatch or write source under a fenced Job in any chat; no background stop is implied.',
+        ]:[],
+      }
+      return {structuredContent:result,content:[{type:'text',text:JSON.stringify(result)}]}
     },
   )
 
@@ -5061,6 +5188,9 @@ function createServer(req: Request) {
       if (!allowed) {
         return { content: [{ type: 'text', text: 'Invalid Job lifecycle transition: ' + current.lifecycle + ' → ' + target_lifecycle }], isError: true }
       }
+      if (current.plan_change_pending && !(target_lifecycle === 'SUPERSEDED' && plan_change_context)) {
+        return { content:[{ type:'text',text:'PLAN_CHANGE_PENDING_FENCE: only intent-bound SUPERSEDED is allowed.' }],isError:true }
+      }
       if (target_lifecycle === 'READY') {
         if (!planning_review_verification_ref) {
           return { content: [{ type: 'text', text: 'DRAFT→READY requires a PASS planning-review Verification reference.' }], isError: true }
@@ -5253,6 +5383,9 @@ function createServer(req: Request) {
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
+      }
+      if (current.plan_change_pending) {
+        return { content:[{type:'text',text:'PLAN_CHANGE_PENDING_FENCE: revise the successor Plan, not a fenced Job.'}],isError:true }
       }
       const executionContract = jobExecutionContract(current)
       if (!executionContract) return invalidExecutionContract()
@@ -6307,6 +6440,9 @@ function createServer(req: Request) {
       }
       if (owningJob.job_id !== job_id || owningJob.project_id !== project_id || !['READY','IN_PROGRESS'].includes(owningJob.lifecycle)) {
         return { content: [{ type: 'text', text: 'Owning Job identity/lifecycle mismatch.' }], isError: true }
+      }
+      if (owningJob.plan_change_pending) {
+        return { content: [{ type:'text', text:'PLAN_CHANGE_PENDING_FENCE: Job is being reconciled with a newer reviewed Plan; do not start another Run.' }], isError:true }
       }
       const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
       if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
