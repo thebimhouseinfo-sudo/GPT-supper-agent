@@ -32,6 +32,7 @@ function load(name,extra={}){
 const assess=load('assessHumanPlanChangeJobs');
 const prepare=load('prepareHumanPlanChangeIntent',{assessHumanPlanChangeJobs:assess});
 const resume=load('resumeHumanPlanChangeIntent');
+const validateSupersession=load('validatePlanChangeSupersession');
 const ref=verifyPath(uid,reviewId,'NEXT','PRODUCTION');
 const planJob={kind:'JOB',project_id:uid,job_id:planId,type:'plan',
   execution_contract:'NEXT',memory_namespace:'PRODUCTION',lifecycle:'IN_PROGRESS',
@@ -47,6 +48,7 @@ const input={project_id:uid,change_ref:'docs/plans/UAR-R3.md',reviewed_plan_sha:
   plan_review_record_text:JSON.stringify(review),plan_review_record_sha:sha,
   plan_review_memory_path:ref,work_branch:'main',job_snapshots:[impacted]};
 function started(){return prepare(input);}
+const closedJob=intent=>({...old,lifecycle:'SUPERSEDED',superseded_by_plan_change_id:intent.change_id,superseded_by_replacement_job_id:newId});
 const snap=j=>({job_record_text:JSON.stringify(j),job_record_sha:sha});
 const observed=(record,jobs,activity=[])=>resume({
   project_id:uid,intent_memory_path:started().intent_memory_path,
@@ -85,7 +87,7 @@ test('LLC58: repeated intent prepare reconciles durable path and does not mint n
 });
 test('LLC58: already-persisted intent is reused after predecessor becomes SUPERSEDED',()=>{
   const p=started();
-  const closed={...old,lifecycle:'SUPERSEDED'};
+  const closed=closedJob(JSON.parse(p.intent_record_text));
   const x=prepare({...input,job_snapshots:[{...impacted,job_record_text:JSON.stringify(closed)}],
     existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha});
   assert.equal(x.allowed,true);
@@ -104,7 +106,7 @@ test('LLC58: interrupt before predecessor closure; settle cursor/Run rather than
 });
 test('LLC58: interrupt after supersession; deterministic reserved ID prevents duplicate Job',()=>{
   const i=JSON.parse(started().intent_record_text);
-  const closed={...old,lifecycle:'SUPERSEDED'};
+  const closed=closedJob(i);
   const none=observed(i,[closed]);
   assert.equal(none.actions[0].next_action,'CREATE_RESERVED_REPLACEMENT');
   assert.equal(none.actions[0].replacement_job_id,newId);
@@ -114,11 +116,52 @@ test('LLC58: interrupt after supersession; deterministic reserved ID prevents du
 });
 test('LLC58: reject foreign replacement Job and terminal predecessor conflict',()=>{
   const i=JSON.parse(started().intent_record_text);
-  const closed={...old,lifecycle:'SUPERSEDED'};
+  const closed=closedJob(i);
   assert.equal(observed(i,[closed,{...old,job_id:newId,lifecycle:'DRAFT'}]).allowed,false);
   assert.equal(observed(i,[{...old,lifecycle:'COMPLETED'}]).allowed,false);
   assert.equal(resume({project_id:uid,intent_memory_path:'bad',intent_record_text:JSON.stringify(i),
     intent_record_sha:sha,current_job_snapshots:[snap(old)]}).allowed,false);
+});
+
+test('LLC58: exact reviewed Plan intent binds SUPERSEDED transition to source Job snapshot',()=>{
+  const prepared=started();
+  const intent=JSON.parse(prepared.intent_record_text);
+  const baseline={
+    project_id:uid,intent_record_text:prepared.intent_record_text,
+    intent_record_sha:sha,intent_memory_path:prepared.intent_memory_path,
+    predecessor_job:old,predecessor_job_sha:sha,
+    cursor_state:'ABSENT',active_run_state:'NONE',
+  };
+  const pass=validateSupersession(baseline);
+  assert.equal(pass.allowed,true);
+  assert.equal(pass.action.predecessor_job_id,oldId);
+  assert.equal(pass.action.replacement.job_id,newId);
+  assert.equal(pass.mutation_authorized,false);
+  for (const bad of [
+    {...baseline,predecessor_job_sha:'b'.repeat(40)},
+    {...baseline,predecessor_job:{...old,planning_revision:3}},
+    {...baseline,predecessor_job:{...old,lifecycle:'COMPLETED'}},
+    {...baseline,predecessor_job:{...old,job_id:newId}},
+    {...baseline,intent_memory_path:'projects/other/WORK/PLAN_RECONCILIATIONS/x.json'},
+    {...baseline,cursor_state:'PENDING'},
+    {...baseline,cursor_state:'UNKNOWN'},
+    {...baseline,active_run_state:'ACTIVE'},
+    {...baseline,active_run_state:'UNKNOWN'},
+  ]) assert.equal(validateSupersession(bad).allowed,false);
+  assert.equal(intent.actions[0].decision,'REPLACE');
+});
+test('LLC58: concurrent change to predecessor SHA blocks resume, unrelated supersession cannot masquerade as this Plan',()=>{
+  const i=JSON.parse(started().intent_record_text);
+  const changed={job_record_text:JSON.stringify(old),job_record_sha:'b'.repeat(40)};
+  const stale=resume({
+    project_id:uid,intent_memory_path:started().intent_memory_path,intent_record_text:JSON.stringify(i),
+    intent_record_sha:sha,current_job_snapshots:[changed],
+    activity:[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}],
+  });
+  assert.equal(stale.allowed,false);
+  assert.equal(stale.reason,'PLAN_CHANGE_PREDECESSOR_SHA_DRIFT');
+  assert.equal(observed(i,[{...old,lifecycle:'SUPERSEDED'}]).reason,
+    'PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT');
 });
 test('LLC58: tool surface includes prepare, resume and governed replacement Job creation',()=>{
   for(const name of ['job_plan_change_assess','job_plan_change_prepare','job_plan_change_resume_evaluate'])
