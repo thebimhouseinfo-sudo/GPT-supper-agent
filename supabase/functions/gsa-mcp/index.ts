@@ -1307,11 +1307,16 @@ function prepareExecutionCursorDecision(input: any) {
     if (old && old.state !== 'STABLE') return block('PENDING_MUTATION_REQUIRES_RECONCILIATION')
     if (old && input.observed_head_sha !== old.last_good_sha) return block('SOURCE_HEAD_ADVANCED_RECONCILE')
     if (!old && !input.checkpoint_id?.trim()) return block('INITIAL_CHECKPOINT_REQUIRED')
-    if (!input.operation_id?.trim() || !input.target_path?.trim() ||
-        input.target_path.startsWith('/') || input.target_path.split('/').includes('..') ||
-        !validSha(input.intended_blob_sha) ||
-        !(input.previous_blob_sha === null || validSha(input.previous_blob_sha)) ||
-        input.intended_blob_sha === input.previous_blob_sha) return block('INVALID_WRITE_INTENT')
+    const kind = input.mutation_kind ?? 'FILE'
+    const fileIntentValid = kind === 'FILE' && input.target_path?.trim() &&
+      !input.target_path.startsWith('/') && !input.target_path.split('/').includes('..') &&
+      validSha(input.intended_blob_sha) &&
+      (input.previous_blob_sha === null || validSha(input.previous_blob_sha)) &&
+      input.intended_blob_sha !== input.previous_blob_sha
+    const treeIntentValid = kind === 'TREE' && validSha(input.previous_tree_sha) &&
+      validSha(input.intended_tree_sha) && input.previous_tree_sha !== input.intended_tree_sha
+    if (!input.operation_id?.trim() || !(fileIntentValid || treeIntentValid))
+      return block('INVALID_WRITE_INTENT')
     next = {
       ...(old ?? {
         kind: 'EXECUTION_CURSOR', version: 1,
@@ -1325,10 +1330,12 @@ function prepareExecutionCursorDecision(input: any) {
       }),
       state: 'PENDING',
       pending_action: {
-        operation_id: input.operation_id, target_path: input.target_path,
+        operation_id: input.operation_id, mutation_kind: kind,
         expected_head_sha: old?.last_good_sha ?? input.observed_head_sha,
-        previous_blob_sha: input.previous_blob_sha,
-        intended_blob_sha: input.intended_blob_sha,
+        ...(kind === 'TREE'
+          ? { previous_tree_sha: input.previous_tree_sha, intended_tree_sha: input.intended_tree_sha }
+          : { target_path: input.target_path, previous_blob_sha: input.previous_blob_sha,
+              intended_blob_sha: input.intended_blob_sha }),
       }, retry_count: 0, stalled_cycles: 0,
     }
   } else if (!old) return block('CURSOR_NOT_PERSISTED')
@@ -1337,11 +1344,14 @@ function prepareExecutionCursorDecision(input: any) {
     if (old.state !== 'PENDING' || !pending ||
         !input.operation_id || input.operation_id !== pending.operation_id ||
         !input.checkpoint_id?.trim() ||
-        !validSha(input.observed_blob_sha) ||
-        input.observed_blob_sha !== pending.intended_blob_sha ||
         input.observed_head_sha === pending.expected_head_sha ||
         !validSha(input.observed_parent_sha) ||
-        input.observed_parent_sha !== pending.expected_head_sha)
+        input.observed_parent_sha !== pending.expected_head_sha ||
+        (pending.mutation_kind === 'TREE'
+          ? !validSha(input.observed_tree_sha) ||
+            input.observed_tree_sha !== pending.intended_tree_sha
+          : !validSha(input.observed_blob_sha) ||
+            input.observed_blob_sha !== pending.intended_blob_sha))
       return block('PENDING_MUTATION_NOT_PROVEN')
     next = {
       ...old, state: 'STABLE', pending_action: null,
@@ -1401,16 +1411,33 @@ function resumeExecutionCursorDecision(input: any) {
       source_write_authorized: false }
   }
   const p = cursor.pending_action
-  if (!p || !p.operation_id || !p.target_path || !validSha(p.expected_head_sha) ||
-      p.expected_head_sha !== cursor.last_good_sha ||
-      !validSha(p.intended_blob_sha) || !(p.previous_blob_sha === null || validSha(p.previous_blob_sha)) ||
-      !(input.current_blob_sha === null || validSha(input.current_blob_sha)))
+  if (!p || !p.operation_id || !validSha(p.expected_head_sha) ||
+      p.expected_head_sha !== cursor.last_good_sha)
     return stop('INCOMPLETE_PENDING_INTENT_OR_READBACK')
-  const decision = sourceMutationRecoveryDecision({
-    operation_id: p.operation_id, expected_head_sha: p.expected_head_sha,
-    current_head_sha: input.current_head_sha, previous_blob_sha: p.previous_blob_sha,
-    intended_blob_sha: p.intended_blob_sha, current_blob_sha: input.current_blob_sha,
-  })
+  let decision: any
+  if (p.mutation_kind === 'TREE') {
+    if (!validSha(p.previous_tree_sha) || !validSha(p.intended_tree_sha) ||
+        !validSha(input.current_tree_sha)) return stop('TREE_READBACK_REQUIRED')
+    if (input.current_head_sha === p.expected_head_sha) {
+      decision = input.current_tree_sha === p.previous_tree_sha
+        ? { disposition: 'NOT_APPLIED', reason: 'UNCHANGED_AUTHORITATIVE_TREE', next_action: 'REAUTHORIZE_FROM_CURRENT_HEAD' }
+        : { disposition: 'UNKNOWN_CONFLICT', reason: 'INCONSISTENT_HEAD_AND_TREE', next_action: 'STOP_AND_RECONCILE' }
+    } else {
+      decision = input.current_tree_sha === p.intended_tree_sha
+        ? { disposition: 'TARGET_STATE_PRESENT', reason: 'EXPECTED_TREE_OBSERVED', next_action: 'RECONCILE_INTERVENING_COMMITS' }
+        : { disposition: 'UNKNOWN_CONFLICT', reason: 'SOURCE_HEAD_OR_TREE_DIVERGED', next_action: 'STOP_AND_RECONCILE' }
+    }
+  } else {
+    if (!p.target_path || !validSha(p.intended_blob_sha) ||
+        !(p.previous_blob_sha === null || validSha(p.previous_blob_sha)) ||
+        !(input.current_blob_sha === null || validSha(input.current_blob_sha)))
+      return stop('FILE_READBACK_REQUIRED')
+    decision = sourceMutationRecoveryDecision({
+      operation_id: p.operation_id, expected_head_sha: p.expected_head_sha,
+      current_head_sha: input.current_head_sha, previous_blob_sha: p.previous_blob_sha,
+      intended_blob_sha: p.intended_blob_sha, current_blob_sha: input.current_blob_sha,
+    })
+  }
   // An unchanged target is not permission to write; reauthorize and read back first.
   return { disposition: decision.disposition, reason: decision.reason,
     next_action: decision.next_action, operation_id: p.operation_id,
@@ -2353,10 +2380,14 @@ function createServer(req: Request) {
         observed_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
         event: z.enum(['INITIALIZE','BEGIN_MUTATION','COMPLETE_MUTATION','RECORD_RETRY','SAVE_CHECKPOINT','RECORD_PAUSE']),
         checkpoint_id: z.string().optional(),
-        operation_id: z.string().optional(), target_path: z.string().optional(),
+        operation_id: z.string().optional(), mutation_kind: z.enum(['FILE','TREE']).optional(),
+        target_path: z.string().optional(),
         previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
         intended_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
         observed_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        previous_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        intended_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+        observed_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
         observed_parent_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
         stalled_cycles: z.number().int().min(0).optional(),
         cursor_record_text: z.string().optional(),
@@ -2389,7 +2420,7 @@ function createServer(req: Request) {
             'Authorize the exact current PROJECT.md and target Memory Repo path.',
             'Use GitHub CREATE when expected_cursor_sha=null, else UPDATE with exact current cursor blob SHA.',
             'Read back exact cursor path, bytes and blob SHA before acting on the prepared result.',
-            'For BEGIN_MUTATION, persist intent before the approved source commit. For COMPLETE_MUTATION, independently verify Git HEAD, commit parent and target blob, then persist the checkpoint.',
+            'For BEGIN_MUTATION, persist intent before an atomic FILE or multi-file TREE commit. For COMPLETE_MUTATION, independently verify Git HEAD, parent and intended blob/tree, then persist the checkpoint.',
             'For RECORD_RETRY, only after a fresh NOT_APPLIED snapshot; persist the retry counter with exact SHA before retrying. Maximum 2 retries.',
           ] : [],
       }
@@ -2411,6 +2442,7 @@ function createServer(req: Request) {
         cursor_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
         current_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
         current_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        current_tree_sha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
       },
       outputSchema: {
         disposition: z.string(), reason: z.string(), source_write_authorized: z.boolean(),
