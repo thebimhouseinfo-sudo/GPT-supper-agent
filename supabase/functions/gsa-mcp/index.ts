@@ -1255,6 +1255,67 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 
 // One small mutable source-of-progress record per NEXT Job. Not a Job/Run
 // lifecycle and not the Tester CHECKPOINT_CLAIM serialization record.
+// LLC58: read-only Planner classification of an explicit Human Plan Change.
+// Job planning_revision is local to each Job; this assessment must never
+// silently mutate historical records or grant source/memory write permission.
+function assessHumanPlanChangeJobs(input: any) {
+  const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
+  if (!input?.project_id || !input?.change_ref || !sha(input?.reviewed_plan_sha))
+    return reject('PLAN_CHANGE_REVIEWED_TARGET_REQUIRED')
+  if (!Array.isArray(input.job_snapshots) || input.job_snapshots.length === 0)
+    return reject('PLAN_CHANGE_JOB_SNAPSHOTS_REQUIRED')
+  const ids = new Set<string>()
+  const rows: any[] = []
+  for (const item of input.job_snapshots) {
+    let job: any
+    try { job = JSON.parse(item.job_record_text) }
+    catch { return reject('PLAN_CHANGE_JOB_JSON_INVALID') }
+    if (job?.kind !== 'JOB' || job.project_id !== input.project_id || !job.job_id ||
+        !sha(item.job_record_sha)) return reject('PLAN_CHANGE_JOB_IDENTITY_OR_SHA_INVALID')
+    if (ids.has(job.job_id)) return reject('PLAN_CHANGE_DUPLICATE_JOB')
+    ids.add(job.job_id)
+    if (!['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION'].includes(item.decision) ||
+        typeof item.reason !== 'string' || !item.reason.trim())
+      return reject('PLAN_CHANGE_DECISION_AND_REASON_REQUIRED')
+    const lifecycle = job.lifecycle
+    if (!['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle))
+      return reject('PLAN_CHANGE_JOB_LIFECYCLE_INVALID')
+    const oldContract = jobExecutionContract(job)
+    if (!oldContract) return reject('PLAN_CHANGE_JOB_CONTRACT_INVALID')
+    // Historical finished work is immutable. New follow-up work must use
+    // a new Job, not reactivation or retrospective PASS reassignment.
+    if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle) &&
+        !['KEEP','REVALIDATE'].includes(item.decision))
+      return reject('PLAN_CHANGE_TERMINAL_JOB_CANNOT_BE_REPLACED')
+    let nextAction = 'KEEP_UNCHANGED'
+    if (item.decision === 'HUMAN_DECISION') nextAction = 'STOP_FOR_HUMAN_DECISION'
+    else if (item.decision === 'REVALIDATE') nextAction = 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE'
+    else if (item.decision === 'REPLACE') {
+      // A cursor/Run state is a readback claim, not an authorization. Any
+      // unfinished or unknown activity blocks replacement until reconciled.
+      if (lifecycle === 'IN_PROGRESS' &&
+          (item.cursor_state !== 'STABLE' && item.cursor_state !== 'ABSENT'))
+        nextAction = 'RECONCILE_PENDING_CURSOR_BEFORE_SUPERSEDE'
+      else if (lifecycle === 'IN_PROGRESS' &&
+          !['NONE','TERMINAL'].includes(item.active_run_state))
+        nextAction = 'SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE'
+      else nextAction = 'SUPERSEDE_AND_CREATE_NEW_UNIQUE_JOB'
+    }
+    rows.push({
+      job_id: job.job_id, job_sha: item.job_record_sha,
+      planning_revision: job.planning_revision, lifecycle,
+      execution_contract: oldContract, decision: item.decision,
+      reason: item.reason, next_action: nextAction,
+      old_evidence_applicable_to_new_job: false,
+    })
+  }
+  return {
+    allowed: true, reason: 'ASSESSMENT_ONLY_REQUIRES_REVIEWED_PLAN_AND_FRESH_MEMORY_READBACK',
+    decisions: rows, mutation_authorized: false,
+  }
+}
+
 function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
   return executionMemoryRoot(projectId, 'NEXT', namespace) +
     '/WORK/EXECUTION_CURSORS/' + jobId + '.json'
@@ -2379,6 +2440,40 @@ function createServer(req: Request) {
         cutover_ready: cutoverInventoryError() === null,
       }
       return { structuredContent: status, content: [{ type: 'text', text: JSON.stringify(status) }] }
+    },
+  )
+
+  server.registerTool(
+    'job_plan_change_assess',
+    {
+      title: 'Assess Jobs affected by a Human-reviewed Plan change',
+      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        change_ref: z.string().min(1),
+        reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        job_snapshots: z.array(z.object({
+          job_record_text: z.string().min(2),
+          job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          reason: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
+        })).min(1),
+      },
+      outputSchema: {
+        allowed: z.boolean(), reason: z.string(),
+        decisions: z.array(z.any()), mutation_authorized: z.boolean(),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Plan Change assessment.')
+      const assessment = assessHumanPlanChangeJobs(input)
+      return { structuredContent: assessment, content: [{ type: 'text', text: JSON.stringify(assessment) }] }
     },
   )
 
