@@ -182,15 +182,25 @@ Tester records:
 
 Retest evidence is revision/state-bound. If relevant source/config/runtime state changes, prior Retest evidence does not silently transfer to the changed scope.
 
-If practical capability is not OBSERVED:
+If practical capability is not yet OBSERVED, GSA first discovers connected tools and safely PROBEs authorized non-destructive test execution; a successful probe establishes only the observed capability, not the target verdict. If no agent-operable option or suitable alternative exists:
 
 ```text
-GSA prepares precise Retest
-→ human executes
-→ GSA records result/evidence
+GSA records what tools/alternatives failed and the exact missing Human-only dependency
+→ Human performs only that inaccessible action
+→ GSA records result/evidence and resumes
 ```
 
 Unavailable/unproven execution remains UNVERIFIED or RETEST_REQUIRED, never a fabricated PASS.
+
+### LLC59 — CI RED is an autonomous-first recovery event
+
+On hosted CI RED or an inconclusive check, Orchestrator reads the exact GitHub branch/sha, run/check, job, runner allocation, steps, and available logs. **Requesting Human to fetch logs is not the default.** If no runner was allocated (`runner_id=0`) and no steps executed, the correct classification is ENVIRONMENT_FAILURE / hosted CI UNVERIFIED; there is no test-output failure to extract. A 404 log from an unstarted job does not mean Human should supply a missing file.
+
+For an actual failing command, Coder owns source, test oracle, or workflow-config repair within approved scope, then inspects the diff, runs source-bound checks, and retrieves fresh CI evidence. Tester owns independent verification, classifies TEST_FAILURE vs PRODUCT_FAILURE, and routes test-fixture defects back to Coder without becoming a source writer. Reviewer selectively checks changed critical test assertions at meaningful boundaries.
+
+When CI runner is inaccessible, attempt one authorized available internal execution alternative after safe capability discovery/PROBE. Label its successful result `ALTERNATIVE_ENVIRONMENT_VERIFIED`, with exact source/blob/command and limitations; it is **not** a GitHub Actions PASS. An absent or blocked capability remains UNVERIFIED.
+
+Orchestrator continues authorized diagnostics/repair/recheck in the same turn, bounded by existing no-progress/retry limits. Ask Human only when a genuine decision, external secret/host, authorization boundary, or exhausted alternative requires it; state why agent self-service did not suffice. Do not add polling or recurring network checks to routine reads, and never circumvent denied actions.
 
 ## 10. Completion
 
