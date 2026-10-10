@@ -35,3 +35,14 @@ These are agent workflow capabilities. Helper/unit assertions are guardrails but
 
 ## GitHub CI evidence
 Run [38030799863, attempt 2](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/38030799863): hosted `deno-typecheck` PASS; `runtime-helper-check` PASS (15 tests). This establishes executable helper checks, not the live Project resume path.
+
+## Post-audit remediation candidate (2026-10-10)
+
+Human approved a **minimal Job-owned durable checkpoint** provided runtime latency is not materially affected. Implementation is now on `upgrade/gsa-reliability`, not on main:
+
+- `execution_cursor_prepare` returns one deterministic Memory Repo CREATE/UPDATE proposal for meaningful checkpoints and pending consequential Git writes; external GitHub exact-SHA CAS + readback remain mandatory.
+- `execution_cursor_resume_evaluate` reconstructs restart from one durable record and freshly read source HEAD/blob, fail-closed for stale namespace/revision, changed branch or unresolved write. No new background worker or Job/Run lifecycle status.
+- Lazy create on first mutation avoids one otherwise redundant INIT round trip. Ordinary tool calls do not persist cursor. Reviewer/Tester checkpoint markers and actual pauses may update the same record, not one file per event.
+
+This implements the previously **missing durable state contract** in source, but the earlier CHANGES_REQUIRED verdict is **not automatically overturned**: await source-bound CI, functional GitHub persistence/recovery exercise, Reviewer verification and on-project latency observations. The rule is to **merge only when implementation is verified enough for field use**, then validate behavior through actual GSA Jobs in real projects, not just small fixtures.
+
