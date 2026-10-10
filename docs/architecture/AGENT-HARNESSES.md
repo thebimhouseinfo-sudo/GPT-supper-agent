@@ -393,3 +393,13 @@ Routing:
 A superseding NEXT planning revision stays `IN_PROGRESS` but becomes non-dispatchable while `planning_review=PENDING/CHANGES_REQUIRED`. Old revision claims and Verifications are non-applicable automatically because runtime gates bind to the current `planning_revision`.
 
 `PASS_RETEST_REQUIRED` is only non-blocking coverage. It never satisfies a mandatory `EvidenceRequirement`, checkpoint, Milestone gate or Job completion prerequisite.
+
+## Reliability upgrade candidate — current serving boundaries
+
+- **Orchestrator:** on new/resumed chat, refetch active Project/Job/Run plus expected Git head/blob before retrying pending work; preserve exactly one canonical branch and last verified checkpoint. `execution_recovery_evaluate` is advisory; external Git writes remain subject to fresh authorization and post-write exact SHA readback. In a running turn, `orchestration_progress_evaluate` detects no-progress and ends the turn after three unchanged durable states. It cannot schedule work when no chat request is executing.
+- **Planner:** before adding a new cursor record, demonstrate a concrete missing-state counterexample from existing Job/Run/Verification/CONTROL. No second lifecycle. Existing claim/lease remains the only NEXT Tester checkpoint serialization point.
+- **Coder:** only for a reproduced nontrivial defect or failed hotfix retest, load `debugging` from `get_skill_catalog` → `load_skill` and construct the real entrypoint-to-host failure map before editing. The default Coder skill list remains `coding-loop` + `delegation`; frontend specialization is unaffected.
+- **Reviewer:** review changed/high-risk test assertions, critical mocks, failure propagation and known-bad RED evidence at meaningful boundaries; rerun but do not repeatedly re-review unchanged trusted tests.
+- **Tester:** keep helper/MODEL_ONLY tests distinct from real Git CAS, stage readback, and live E2E. An unavailable runner, inaccessible host or absent tool is `UNVERIFIED` rather than PASS.
+
+These are additive operating rules on the integration branch; final verification requires CI, stage exact-source readback and source-bound Reviewer/Tester evidence before a Human-authorized main promotion.
