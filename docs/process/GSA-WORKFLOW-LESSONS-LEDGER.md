@@ -158,3 +158,18 @@ At CP7, this ledger is reread to prove no accepted lesson remains only in a work
 
 
 | WL-022 | Evidence JSON is not durable evidence: NEXT gates require deterministic path + exact blob-SHA snapshots and immediate read-back before consequential persistence | CP5_DELTA | `CORE-RECORD-CONTRACTS.md`, `EXECUTION-AND-REVIEW.md`, runtime gate/claim contracts | CP5 Reviewer finding + E29-19/20/21 | CP5 |
+
+## LLC58 — GSA Local legacy Job admission and Human Plan Change (2026-10-10)
+
+**Source:** [LLC58 original](lessons/LLC-058-EXECUTION-CURSOR-LEGACY-JOB-2026-10-10.md). Original evidence and original unresolved classification are preserved. **Status: CANDIDATE / IMPLEMENTATION_REVIEW_PENDING.** This section adds the later Human clarification; it does not retroactively change the incident facts.
+
+| Lesson | Human clarification / reusable requirement | Candidate owner | Evidence / acceptance |
+|---|---|---|---|
+| LLC-058-A | A historical IN_PROGRESS Job must not be rejected under an opaque NEXT cursor error merely because newer production defaults differ from its durable contract; distinguish identity, lifecycle, contract, revision, namespace and cursor conflict, and route legitimate legacy Jobs to their own contract or explicit reviewed migration. | runtime cursor admission + Job lifecycle | J-9067 incident; non-destructive legacy admission matrix |
+| LLC-058-B | Human may interrupt to change the approved Plan. Before re-dispatch, compare READY/IN_PROGRESS/COMPLETED Jobs to the new reviewed intent; retain unaffected Jobs, reconcile impacted active Runs/cursors, supersede obsolete Jobs and create *new unique IDs/names* for replacement Jobs. Never reactivate terminal Jobs or transfer PASS evidence implicitly. | Planner / Job lifecycle / reconciliation gate | exact-SHA multi-Job impact matrix + interrupted replacement acceptance |
+| LLC-058-C | Reconciliation across several Jobs must be resumable/idempotent, with explicit dependency rebinding and source/Verification preservation. Pending writes remain blocked until reconciled. | durable control-plane + dispatch gate | failure injection after each consequential write; no duplicate Job creation |
+| LLC-058-D | Collector intake must not silently become source write permission, nor lose the lesson when the ordinary execution cursor is blocked. Preserve a permitted append-only LLC intake path under the active Project boundary. | LLC governance / authorization | record original LLC58, authorization negative controls |
+
+**Important distinctions:** a Plan revision *within one Job* is not necessarily a Project-level plan replacement affecting multiple Jobs; replacing a Job is not the same as revising its in-Job `planning_revision`; superseding a Run is not superseding its Job. Do not infer that LLC58's cursor denial was caused by Plan drift without the original Job JSON and served-runtime validation.
+
+**Completion:** retain CANDIDATE until exact-source implementation, negative controls, independent Reviewer and real GSA Local J-9067 acceptance establish the contract and migration/replacement behavior. No blanket legacy-to-NEXT conversion, no fake PASS and no raw Git bypass after a GSA admission denial.
