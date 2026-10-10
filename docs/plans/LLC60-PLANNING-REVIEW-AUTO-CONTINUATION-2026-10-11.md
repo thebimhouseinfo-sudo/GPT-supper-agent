@@ -61,3 +61,14 @@ The contract is **advisory and pending persistence** by design: `state=AWAITING_
 - Record number of unnecessary Human “continue” turns (target 0). Static prompt tests alone are **not** proof of ChatGPT same-turn execution.
 
 **Latency:** one small deterministic response object, no extra network roundtrip per tool call. Normal planning roundtrips already mandated by durable persistence. Do not add workflow polling.
+
+## Implementation checkpoint — 2026-10-11 (branch only)
+
+- `planningLoopContinuationDecision` and `PLANNING_LOOP_CONTINUATION_SCHEMA` are compiled from production GSA MCP source. Each of four existing Job tools returns an additive typed route; no new background worker, Job lifecycle or extra normal-path Memory write is introduced.
+- Orchestrator, Planner, Reviewer and the served `job-planning`/`planning-review` skills now explicitly require same-turn progression after durable readback. Planning-review remains role-isolated, while mandatory source/code Reviewer fresh-context isolation is preserved separately.
+- Canonical job runtime skill and architecture docs clarified the difference; expected human-only CR remains untouched.
+- `test-lab/llc60-planning-loop.test.cjs` has 10 new tests, including a two-CHANGES_REQUIRED model trace to PASS→READY, NEXT IN_PROGRESS routing, Human/blocked stop and mutation-negative oracles for REVIEW→REVISE and PASS→PROMOTE.
+- **Vercel Sandbox exact-source evidence:** `node --test` on seven workflow test files: **66 PASS / 0 FAIL / 0 skipped**; `npx deno@2.5.6 check supabase/functions/gsa-mcp/index.ts`: **PASS**. Exact source blob `be63374d0d279958d432afa82f7f94327c1f4c2e`.
+- **Remaining:** independent review (including test-script behavior rather than only string assertions), source-bound PR checks where hosted runner is available, explicit Human merge/deploy authorization, exact served runtime readback and real GSA Project Job acceptance. The source/tests **cannot guarantee** ChatGPT itself will make multiple tool calls in one turn on all host contexts; only field execution can establish that.
+
+Current disposition: **IMPLEMENTED_IN_BRANCH / NOT YET REAL-PROJECT VERIFIED**.
