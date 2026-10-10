@@ -1515,7 +1515,7 @@ function resumeHumanPlanChangeIntent(input: any) {
     if (job?.kind !== 'JOB' || job.project_id !== input.project_id ||
         !job.job_id || !sha(s.job_record_sha) || jobs.has(job.job_id))
       return stop('PLAN_CHANGE_CURRENT_JOB_INVALID_OR_DUPLICATE')
-    jobs.set(job.job_id, job)
+    jobs.set(job.job_id, { job, sha: s.job_record_sha })
   }
   const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
   for (const a of intent.actions) {
@@ -1523,8 +1523,12 @@ function resumeHumanPlanChangeIntent(input: any) {
         !['KEEP','REVALIDATE','REPLACE'].includes(a.decision))
       return stop('PLAN_CHANGE_ACTION_INVALID_OR_DUPLICATE')
     seenOld.add(a.predecessor_job_id)
-    const old = jobs.get(a.predecessor_job_id)
-    if (!old) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
+    const oldSnapshot = jobs.get(a.predecessor_job_id)
+    if (!oldSnapshot) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
+    const old = oldSnapshot.job
+    if (old.planning_revision !== a.predecessor_planning_revision ||
+        jobExecutionContract(old) !== a.predecessor_execution_contract)
+      return stop('PLAN_CHANGE_PREDECESSOR_REVISION_OR_CONTRACT_DRIFT')
     let next = a.decision === 'KEEP' ? 'KEEP_UNCHANGED' :
       a.decision === 'REVALIDATE' ? 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE' : ''
     if (a.decision === 'REPLACE') {
@@ -1532,8 +1536,11 @@ function resumeHumanPlanChangeIntent(input: any) {
       if (!id || id === a.predecessor_job_id || seenNew.has(id))
         return stop('PLAN_CHANGE_REPLACEMENT_ID_INVALID_OR_DUPLICATE')
       seenNew.add(id)
-      const replacement = jobs.get(id)
+      const replacement = jobs.get(id)?.job
       if (old.lifecycle === 'SUPERSEDED') {
+        if (old.superseded_by_plan_change_id !== intent.change_id ||
+            old.superseded_by_replacement_job_id !== id)
+          return stop('PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT')
         if (!replacement) next = 'CREATE_RESERVED_REPLACEMENT'
         else if (replacement.replacement_of_job_id !== old.job_id ||
                  replacement.plan_change_id !== intent.change_id)
@@ -1545,6 +1552,8 @@ function resumeHumanPlanChangeIntent(input: any) {
       } else if (['COMPLETED','CANCELLED'].includes(old.lifecycle)) {
         return stop('PLAN_CHANGE_PREDECESSOR_TERMINAL_CONFLICT')
       } else {
+        if (oldSnapshot.sha !== a.predecessor_job_sha)
+          return stop('PLAN_CHANGE_PREDECESSOR_SHA_DRIFT')
         const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
         if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
             !['NONE','TERMINAL','ACTIVE','UNKNOWN'].includes(live.active_run_state))
@@ -4847,7 +4856,9 @@ function createServer(req: Request) {
           a.decision === 'REPLACE' && a.predecessor_job_id === predecessor.job_id &&
           a.replacement?.job_id && a.replacement?.handle === jobHandle(a.replacement.job_id)
         ) : null
-        if (!item || item.predecessor_execution_contract !== jobExecutionContract(predecessor)) {
+        if (!item || item.predecessor_execution_contract !== jobExecutionContract(predecessor) ||
+            predecessor.superseded_by_plan_change_id !== intent.change_id ||
+            predecessor.superseded_by_replacement_job_id !== item.replacement.job_id) {
           return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_NOT_AUTHORIZED: requires exact reviewed intent and SUPERSEDED predecessor readback.' }], isError: true }
         }
         replacement = { intent, predecessor, item }
