@@ -60,6 +60,7 @@ test('cursor preserves Job namespace/revision and does not rewrite V2_STABLE',()
   assert.equal(prepare({...base,job_record_text:JSON.stringify({...job,execution_contract:'V2_STABLE'}),event:'INITIALIZE',checkpoint_id:'A'}).allowed,false);
   assert.equal(prepare({...base,memory_namespace:'PRODUCTION',event:'INITIALIZE',checkpoint_id:'A'}).reason,'CURSOR_NAMESPACE_MISMATCH');
   assert.equal(prepare({...base,job_record_text:JSON.stringify({...job,lifecycle:'COMPLETED'}),event:'INITIALIZE',checkpoint_id:'A'}).allowed,false);
+  assert.equal(prepare({...base,job_record_text:JSON.stringify({...job,lifecycle:'READY'}),event:'BEGIN_MUTATION',checkpoint_id:'PLAN_LOCKED',operation_id:'w',target_path:'src/a.ts',previous_blob_sha:b,intended_blob_sha:c}).reason,'JOB_NOT_IN_PROGRESS');
   const stable=prepare({...base,event:'INITIALIZE',checkpoint_id:'PLAN_LOCKED'}).record;
   assert.equal(prepare({...base,...snapshot(stable),job_record_text:JSON.stringify({...job,planning_revision:3}),event:'SAVE_CHECKPOINT',checkpoint_id:'A'}).reason,'STALE_OR_INVALID_CURSOR');
 });
@@ -84,6 +85,9 @@ test('new cursor tools are authenticated, read-only and not in the always-loaded
   }
   assert.match(source,/Authentication required for Job cursor preparation/);
   assert.match(source,/Authentication required for Job cursor recovery/);
+  assert.match(source,/lazily persist one Job execution cursor on the first consequential atomic Git mutation/);
+  assert.match(source,/execution_cursor_resume_evaluate decides last checkpoint or pending mutation/);
+  assert.match(source,/No cursor round trips for ordinary tools/);
   const skills=source.slice(source.indexOf('const ROLE_SKILLS'),source.indexOf('const RUNTIME_SKILLS'));
   assert.match(skills,/coder:\s*\['coding-loop', 'delegation'\]/);
 });
