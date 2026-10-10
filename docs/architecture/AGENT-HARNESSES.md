@@ -403,3 +403,12 @@ A superseding NEXT planning revision stays `IN_PROGRESS` but becomes non-dispatc
 - **Tester:** keep helper/MODEL_ONLY tests distinct from real Git CAS, stage readback, and live E2E. An unavailable runner, inaccessible host or absent tool is `UNVERIFIED` rather than PASS.
 
 These are additive operating rules on the integration branch; final verification requires CI, stage exact-source readback and source-bound Reviewer/Tester evidence before a Human-authorized main promotion.
+
+### Minimal durable cursor adoption (upgrade candidate)
+
+After an explicit NEXT Job opens, create one cursor lazily at the first consequential source mutation by calling `execution_cursor_prepare(BEGIN_MUTATION)` with the exact Job snapshot, namespace, branch, current HEAD, target path/blob and stable operation ID. Persist and independently read back the cursor **before** changing source. After the atomic source commit, verify HEAD, commit parent and intended target blob, then complete the cursor once; do not add writes to every command. At meaningful Task/Tester/Reviewer milestones, optionally SAVE_CHECKPOINT with exact source head; no write for unchanged checkpoint.
+
+On a new conversation or interrupted turn, resolve Job, cursor record and Git head, then call `execution_cursor_resume_evaluate` only when recovery information is needed. PENDING must be reconciled; success text or missing callback is not evidence. A terminal Run may route a new attributed Run, but terminal Job must not resume.
+
+If project scope is not authorized or durable cursor write/read-back is unavailable, fail closed at the risky source-mutation boundary; do not silently create an in-chat-only cursor. The caller handles exact GitHub CAS and evidence. **No background worker or extra tool calls on normal chat/read paths.**
+
