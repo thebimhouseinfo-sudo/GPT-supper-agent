@@ -512,3 +512,18 @@ At a boundary involving lifecycle, persistence, recovery, a new test harness/fix
 - Do not repeat deep test-script review for unchanged previously reviewed tests after ordinary reruns.
 
 Debugging is an **opt-in Coder skill** via the runtime catalog and `load_skill`, used for nontrivial reproduced bugs and failed hotfix retests. Normal feature Coder Runs keep their existing default skills; do not create a separate permanent Bug Fixer role.
+
+### Job-owned execution cursor (reliability v1, NEXT only)
+
+One small deterministic record lives in GitHub Memory Repo at `projects/<id>/WORK/EXECUTION_CURSORS/<job-id>.json` (or `projects/<id>/TEST-LAB/NEXT/WORK/EXECUTION_CURSORS/<job-id>.json` for staging NEXT). **It is not another Job/Run state machine** and does not replace deterministic Tester CHECKPOINT_CLAIM/Verification.
+
+Contents: `kind=EXECUTION_CURSOR`, `version=1`, project/Job/revision/namespace, canonical branch, `last_good_sha`, `last_completed_checkpoint`, `state=STABLE|PENDING`, optional `pending_action={operation_id,target_path,expected_head_sha,previous_blob_sha,intended_blob_sha}`, bounded retry/stall state and progress fingerprint. No full chat history, logs, per-tool event stream, or per-commit document proliferation.
+
+**Latency policy:** no cursor fetch/write on ordinary read, discussion, source inspection or small tool calls. For the *first consequential atomic Git write of a Job*, `BEGIN_MUTATION` creates the PENDING cursor in **one** Memory Repo write (no preceding INITIALIZE required). The call returns a *prepared* JSON record, not persistence. The Orchestrator authorizes the Memory Repo path, writes it with exact GitHub CREATE or blob-SHA UPDATE, and reads back the actual bytes/SHA before the source commit. Group related source changes into one reviewed atomic Git commit when safe. `COMPLETE_MUTATION` follows one confirmed source commit (verified HEAD, parent and target blob) and updates the same cursor to STABLE after readback. No additional checkpoint write for routine steps. `SAVE_CHECKPOINT` occurs only at a meaningful reviewed milestone; `RECORD_PAUSE` only on an actual no-progress stop. Never call after every MCP tool response.
+
+New sessions read one cursor + current Job/Run and Git branch HEAD, then call `execution_cursor_resume_evaluate` only if there is a pending/uncertain mutation or to determine last checkpoint. If the cursor is STABLE and head unchanged, restart from the checkpoint. If PENDING, independently read target Git blob and classify NOT_APPLIED/TARGET_STATE_PRESENT/UNKNOWN_CONFLICT, always without write permission. Reauthorize any subsequent mutation; never blind retry, invent missing intent, re-enter terminal Jobs or treat successful prepare as completed source work.
+
+The record is produced by `execution_cursor_prepare`; external GitHub persistence/CA​S stays explicit. Schema is additive only for NEXT; V2_STABLE Jobs do not require the cursor. An unavailable Memory Repo or failed read-back blocks critical writes rather than allowing ephemeral fallback.
+
+**Limits:** extra GitHub Memory Repo round trips occur *only* at safety-critical write boundaries. They cannot be eliminated without losing crash-recovery evidence. Runtime helper computation is pure; latency of network reads/writes must be measured in live Project Jobs, and no fixed sub-second guarantee is claimed.
+
