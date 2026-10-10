@@ -1432,7 +1432,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
       'IMPLEMENT: make only scope-traceable source changes.',
       'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files, secret leakage and affected recorded relationships.',
-      'VERIFY: run available repository-specific objective checks when capability is OBSERVED.',
+      'VERIFY: run available repository-specific objective checks when capability is OBSERVED; at high-risk checkpoints prove test oracles detect a known broken state, not merely that CI is green.',
       'SELF-REVIEW CLOSURE: re-read the original Job objective and active Task criteria, inspect the actual diff and affected relationships, and identify ordinary correctness/coverage findings before handoff.',
       'REPAIR: fix ordinary within-scope findings autonomously, then repeat INSPECT → VERIFY. Material scope/contract/authority changes route instead of being invented away; downstream work is recorded without drifting into another Job.',
       'GOAL RECHECK: only after repair, map every approved completion criterion in the current Run Task scope, with its exact task_id, to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NEXT Goal Recheck must consume the current Job snapshot; missing/extra criteria are rejected.',
@@ -1451,7 +1451,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     loop: [
       'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
       'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
-      'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
+      'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. When changed tests, escaped regression or release gates apply, selectively inspect the test script and mock boundary once at the checkpoint; never require re-review of unchanged trusted tests on every run. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
       'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
@@ -1520,6 +1520,21 @@ const ROLE_SKILLS: Record<string, string[]> = {
 }
 
 const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
+  'debugging': {
+    description: 'Optional Coder root-cause and call-chain debugging protocol for nontrivial bugs and failed hotfix retests. Not a separate role.',
+    body: [
+      '# Debugging — conditional Coder skill',
+      'Load only for a reproducible nontrivial defect or failed hotfix retest; do not run for ordinary feature work.',
+      '1. Record the exact user-visible failure, reproduction inputs, host/runtime revision, and deterministic versus intermittent behavior.',
+      '2. Map the real path: user action → public tool/entrypoint → caller/router → target → downstream state/config/storage → process/connector/host → observed output.',
+      '3. Inspect credible sibling/legacy paths and generated/cached registrations; classify plausible root causes with evidence, not guesses.',
+      '4. Before editing, identify the smallest shared cause. If a prior hotfix retest still failed, stop incremental patches and expand the full failure-surface map first.',
+      '5. Add a behavior oracle that detects the original fault: known-bad turns RED; intended behavior GREEN. Do not substitute mocks for the critical boundary.',
+      '6. Patch within the active Job scope. Run relevant CI, executable call-chain simulation and lifecycle restart simulation where applicable.',
+      '7. If a real host/connector is required, live acceptance remains UNVERIFIED until executed; a registered but unexposed tool is not passing behavior.',
+      '8. Reviewer checks changed test validity at high-risk checkpoints, not every ordinary test run. Preserve exact SHA, limitations and follow-up.',
+    ].join('\\n'),
+  },
   'critic-review': {
     description: 'Run a Human-invoked stateless second review using durable evidence/source truth, then compare with the prior Reviewer only after forming an independent verdict.',
     body: [
@@ -1569,6 +1584,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       'A code Run is not “edit once then report”. Use an evidence-driven loop.',
       '',
       'OBSERVE',
+      '- For a reproducible nontrivial bug or failed hotfix retest, discover debugging in get_skill_catalog and load_skill only for this affected Coder Run. Ordinary feature Coder work keeps its default skills.',
       '- Load L2 execution context: exact target, direct callers/consumers, relevant tests/contracts and recorded relationships. Expand to L3 only when findings/failures reveal a need.',
       '- Read the exact target and nearby conventions before editing.',
       '- Identify project-specific verification commands from repository evidence.',
@@ -1582,6 +1598,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Check accidental scope growth, weakened tests, commented-out logic, generated junk and secrets.',
       '',
       'VERIFY',
+      '- Important regression tests must assert behavior, not merely no exceptions. For high-risk changes prove known-bad mutation RED, positive control GREEN, and disclose critical mocks/stubs and exact source revision.',
       '- Run applicable build/test/lint/type checks that are actually available.',
       '- A failed check is evidence to diagnose, not something to hide or route around.',
       '',
@@ -1653,6 +1670,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- Trace cross-file and cross-repo read-only context when a local hunk cannot establish correctness.',
       '- Findings need a concrete claim, evidence/failure scenario, severity and routing.',
       '- Prefer no finding over a speculative low-confidence warning.',
+      '- For new/changed high-risk tests, escaped false-green regressions, altered harness/fixtures/CI or release gates, review test assertions, mock boundaries, failure propagation and mutation RED evidence at the checkpoint. Do not re-review unchanged trusted test logic on every routine rerun.',
       '- Never repair source in Reviewer role.',
       '- A new target revision invalidates the old review result for merge coverage.',
     ].join('\n'),
@@ -3924,7 +3942,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
+        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
       },
       outputSchema: {
         name: z.string(),
