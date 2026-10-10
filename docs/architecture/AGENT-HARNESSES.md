@@ -88,7 +88,8 @@ Completing Runs do not write progress/reference arrays back into the parent Job 
 ## 6. Reviewer
 
 Context-Isolated Reviewer:
-- uses fresh chat;
+- uses a fresh review context/chat for mandatory independent source/code reviews;
+- for a Job planning review, remains role-isolated and reconstructs from the persisted Job in the SAME USER TURN without requiring a new Human chat;
 - reads exact target/revision and applicable requirements/evidence;
 - source implementation read-only;
 - produces findings/results;
@@ -159,7 +160,7 @@ parent Run yields
 → parent resumes
 ```
 
-Context-isolated review remains fresh-chat.
+Independent source/code review remains context-isolated/fresh-chat where required. **Planning review** is role-isolated in the same user turn; its source of truth is the persisted Job/revision, not prior Planner reasoning.
 
 ## 10. Direct Agent
 
@@ -255,6 +256,14 @@ L1 SELECTIVE CONTENT READ
 File and folder names are legitimate evidence. A repository with weak or stale documentation is still plannable from its live structure.
 
 A durable brownfield Job must persist enough structure evidence for Reviewer to verify that Planner did not plan from stale descriptions alone.
+
+### LLC60 — Bounded same-turn planning handoff
+
+The Orchestrator must not end the Human turn after `job_prepare`, `plan_review_record` or `job_revise_plan` only because a tool returned or one role produced findings. These are intermediate outcomes. It must execute the returned `external_steps` for the authorized Memory Repo write(s), **independently read back** the current Job and Verification with exact blob SHA, then follow `continuation.next_action_after_readback` in the same turn.
+
+The typed continuation is **advisory and explicitly pending durable readback**, not proof of a write. `REVIEW_CURRENT_REVISION` loads a role-isolated planning Reviewer; `REVISE_PLAN` returns to Planner; `PROMOTE_READY` requires a persisted current-revision PASS then READY transition/readback; `RESUME_DISPATCH` is only for reviewed NEXT IN_PROGRESS; `CONTINUE_JOB_TOPOLOGY` follows confirmed READY. `STOP_HUMAN_DECISION` and `STOP_BLOCKED` are the only deliberate planning-loop stops aside from denied/conflicting persistence and no-progress evidence.
+
+Planning-review **does not need a separate Human chat**. Preserve independent source/code review isolation and the distinct Human-invoked CR requirement. Never repeat a pending write blindly, reuse stale review after a revision, manufacture PASS, or bypass denied CAS.
 
 ## Automatic planning review loop
 
