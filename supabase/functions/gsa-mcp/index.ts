@@ -1819,6 +1819,7 @@ const BASE_AGENT_HARNESS = [
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
+  '- LLC58 HUMAN PLAN CHANGE: a new Human request affecting READY/IN_PROGRESS Jobs starts Planner impact analysis and exact-revision review; do not keep coding stale Job scope. Use job_plan_change_assess, then reviewed immutable intent CREATE/readback, settle pending Runs/cursors, SUPERSEDE only obsolete Jobs, create replacement through reserved intent IDs. No cross-Project writes or implicit legacy-to-NEXT cursor conversion.',
   '- NEXT dispatch requires the exact current Job SHA and planning_revision, topology role ownership, required Task skills, and durable successful prerequisite Task Run snapshots before a Run may be persisted.',
   '- NEXT success closure requires exact current-revision Goal Recheck / REVIEW / TEST Verification snapshots; bare refs or stale target evidence never satisfy closure.',
   '- Expand context progressively from structure to exact execution evidence; do not keep broad stale context loaded merely because it was once relevant.',
@@ -1850,6 +1851,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
       'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims. Before each reconciled source retry, persist RECORD_RETRY and stop after 2 retries.',
+      'On Human Plan revision affecting multiple Jobs, run Planner impact matrix and review before Job mutation; after PASS persist one deterministic Plan Reconciliation Intent. On interruption call job_plan_change_resume_evaluate with fresh Job/cursor/Run readback, then continue one legal action. KEEP unaffected Jobs, settle unsafe mutations, never reenter terminal Jobs and never allocate a new replacement ID on retry.',
       'At source commit boundaries, request execution_cursor_prepare once before and once after the atomic mutation batch, with exact Memory Repo CAS/readback. No cursor round trips for ordinary tools, reads or repeated review.',
 
     ],
