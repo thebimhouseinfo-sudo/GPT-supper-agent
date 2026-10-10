@@ -1299,7 +1299,7 @@ function prepareExecutionCursorDecision(input: any) {
       planning_revision: job.planning_revision, work_branch: input.work_branch,
       state: 'STABLE', last_good_sha: input.observed_head_sha,
       last_completed_checkpoint: input.checkpoint_id,
-      pending_action: null, retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
+      pending_action: null, last_operation_id: null, retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
     }
   } else if (event === 'BEGIN_MUTATION') {
     // First consequential mutation initializes PENDING in a single Memory write:
@@ -1320,6 +1320,7 @@ function prepareExecutionCursorDecision(input: any) {
         planning_revision: job.planning_revision, work_branch: input.work_branch,
         last_good_sha: input.observed_head_sha,
         last_completed_checkpoint: input.checkpoint_id,
+        last_operation_id: null,
         progress_fingerprint: input.observed_head_sha,
       }),
       state: 'PENDING',
@@ -1344,9 +1345,19 @@ function prepareExecutionCursorDecision(input: any) {
       return block('PENDING_MUTATION_NOT_PROVEN')
     next = {
       ...old, state: 'STABLE', pending_action: null,
+      last_operation_id: pending.operation_id,
       last_good_sha: input.observed_head_sha, last_completed_checkpoint: input.checkpoint_id,
       retry_count: 0, stalled_cycles: 0, progress_fingerprint: input.observed_head_sha,
     }
+  } else if (event === 'RECORD_RETRY') {
+    if (old.state !== 'PENDING' || !old.pending_action ||
+        input.operation_id !== old.pending_action.operation_id ||
+        input.observed_head_sha !== old.pending_action.expected_head_sha ||
+        !Number.isInteger(old.retry_count) || old.retry_count >= 2)
+      return block('RETRY_BLOCKED_OR_EXHAUSTED')
+    // Only after an independent NOT_APPLIED readback, and before a real
+    // source retry. Extra durability cost occurs solely on failure recovery.
+    next = { ...old, retry_count: old.retry_count + 1 }
   } else if (event === 'SAVE_CHECKPOINT') {
     if (old.state !== 'STABLE' || input.observed_head_sha !== old.last_good_sha ||
         !input.checkpoint_id?.trim() || input.checkpoint_id === old.last_completed_checkpoint)
@@ -1535,7 +1546,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
-      'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims.',
+      'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims. Before each reconciled source retry, persist RECORD_RETRY and stop after 2 retries.',
       'At source commit boundaries, request execution_cursor_prepare once before and once after the atomic mutation batch, with exact Memory Repo CAS/readback. No cursor round trips for ordinary tools, reads or repeated review.',
 
     ],
@@ -1758,7 +1769,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'ACT',
       '- Make the smallest scope-traceable change.',
-      '- For NEXT consequential source commits, agree on one atomic batch with a stable operation ID and prepare/persist a Job cursor PENDING before writing; inspect Git HEAD, parent and target blob and finalize the same cursor after the commit. Never mutate when the intent was only prepared but not read back.',
+      '- For NEXT consequential source commits, agree on one atomic batch with a stable operation ID and prepare/persist a Job cursor PENDING before writing; inspect Git HEAD, parent and target blob and finalize the same cursor after the commit. Never mutate when the intent was only prepared but not read back. After a genuine NOT_APPLIED recovery, persist RECORD_RETRY (maximum two attempts) before retrying.',
 
       '- Preserve unrelated changes and avoid opportunistic cleanup.',
       '',
@@ -2340,7 +2351,7 @@ function createServer(req: Request) {
         memory_namespace: z.enum(['PRODUCTION','TEST_LAB']),
         work_branch: z.string().min(1),
         observed_head_sha: z.string().regex(/^[0-9a-f]{40}$/),
-        event: z.enum(['INITIALIZE','BEGIN_MUTATION','COMPLETE_MUTATION','SAVE_CHECKPOINT','RECORD_PAUSE']),
+        event: z.enum(['INITIALIZE','BEGIN_MUTATION','COMPLETE_MUTATION','RECORD_RETRY','SAVE_CHECKPOINT','RECORD_PAUSE']),
         checkpoint_id: z.string().optional(),
         operation_id: z.string().optional(), target_path: z.string().optional(),
         previous_blob_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
@@ -2379,6 +2390,7 @@ function createServer(req: Request) {
             'Use GitHub CREATE when expected_cursor_sha=null, else UPDATE with exact current cursor blob SHA.',
             'Read back exact cursor path, bytes and blob SHA before acting on the prepared result.',
             'For BEGIN_MUTATION, persist intent before the approved source commit. For COMPLETE_MUTATION, independently verify Git HEAD, commit parent and target blob, then persist the checkpoint.',
+            'For RECORD_RETRY, only after a fresh NOT_APPLIED snapshot; persist the retry counter with exact SHA before retrying. Maximum 2 retries.',
           ] : [],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
