@@ -103,7 +103,13 @@ test('one TREE intent covers a multi-file atomic commit without per-file cursor 
   assert.equal(resume(input).disposition,'NOT_APPLIED');
   assert.equal(resume({...input,current_head_sha:d,current_tree_sha:c}).disposition,'TARGET_STATE_PRESENT');
   assert.equal(resume({...input,current_head_sha:d,current_tree_sha:b}).disposition,'UNKNOWN_CONFLICT');
-  assert.equal(resume({...input,current_tree_sha:d}).disposition,'STOP_AND_RECONCILE');
+  // Same HEAD cannot yield a different tree: runtime reports UNKNOWN_CONFLICT,
+  // which is fail-closed and explicitly routes to STOP_AND_RECONCILE.
+  const inconsistent=resume({...input,current_tree_sha:d});
+  assert.equal(inconsistent.disposition,'UNKNOWN_CONFLICT');
+  assert.equal(inconsistent.reason,'INCONSISTENT_HEAD_AND_TREE');
+  assert.equal(inconsistent.next_action,'STOP_AND_RECONCILE');
+  assert.equal(inconsistent.source_write_authorized,false);
   assert.equal(prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:b}).reason,'PENDING_MUTATION_NOT_PROVEN');
   const success=prepare({...base,...snapshot(original.record),event:'COMPLETE_MUTATION',operation_id:'batch-2files',checkpoint_id:'CODE_COMPLETE',observed_head_sha:d,observed_parent_sha:a,observed_tree_sha:c});
   assert.equal(success.allowed,true);
