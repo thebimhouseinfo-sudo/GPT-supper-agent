@@ -116,14 +116,29 @@ Reviewer never modifies source.
 
 ```text
 resolve exact acceptance behavior
-→ capability check
+→ discover tools + inspect exact CI run/job/steps/logs
+→ capability check; if SURFACE_PRESENT, safely PROBE non-destructive test execution
 → OBSERVED: execute practical verification
-→ otherwise: prepare Human Retest
+→ CI runner/log unavailable: try authorized equivalent source-bound check, retain hosted CI UNVERIFIED
+→ only if no agent-operable path: prepare minimal Human Retest
 → record evidence + limitations
 → causal routing on failure
 ```
 
 SURFACE_PRESENT is not PASS evidence.
+
+## LLC59 — Autonomous CI evidence and Coder red/green repair
+
+When an authorized coding/test Run sees CI RED or an inconclusive hosted check, **GSA owns diagnosis before Human escalation**:
+
+1. Self-read exact branch/commit, GitHub run/check status, jobs, runner allocation, executed steps and downloadable logs through available connectors. Ask for Human logs only if actual evidence cannot be retrieved after bounded discovery and there is no other agent-operable route. Missing runner/steps/logs is an environment limitation, not evidence of a broken product.
+2. For an executed failing check, distinguish PRODUCT_FAILURE (source) from TEST_FAILURE (test script/config), ENVIRONMENT_FAILURE (runner/network/tool), NOT_READY and INTEGRATION_NOT_READY. Coder may repair project-owned source or test scripts within current authorized Job; Tester remains read-only.
+3. Continue the **same user turn** with Coder repair → diff inspection → source-bound tests/CI → Goal Recheck → meaningful independent Retest/Reviewer checkpoint. Normal harmless log reads and authorized non-destructive checks need no new Human consent.
+4. When hosted CI cannot execute, discover an actually available authorized internal execution surface. A successful non-destructive PROBE may establish capability; execute exact source revision on that surface and report **ALTERNATIVE_ENVIRONMENT_VERIFIED**, never claim hosted GitHub CI GREEN.
+5. Human Retest is reserved for unavoidable user-only approval, secret, device/local host or exhausted/unsafe alternatives. State the specific blocker and smallest required Human action, then resume when provided.
+6. Apply existing bounded retry/no-progress safeguards, source cursor CAS/readback and project/role boundaries. Do not poll, retry blindly, automate release or turn skipped tests into PASS.
+
+No new per-call scanning is implied: this flow activates only for a failure, uncertain check, or explicit CI investigation.
 
 ## Persistence order
 

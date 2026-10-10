@@ -36,6 +36,7 @@ const assess=load('assessHumanPlanChangeJobs');
 const prepare=load('prepareHumanPlanChangeIntent',{assessHumanPlanChangeJobs:assess});
 const resume=load('resumeHumanPlanChangeIntent');
 const validateSupersession=load('validatePlanChangeSupersession');
+const prepareFence=load('prepareHumanPlanChangeFenceDecision');
 const ref=verifyPath(uid,reviewId,'NEXT','PRODUCTION');
 const planJob={kind:'JOB',project_id:uid,job_id:planId,type:'plan',
   execution_contract:'NEXT',memory_namespace:'PRODUCTION',lifecycle:'IN_PROGRESS',
@@ -51,12 +52,19 @@ const input={project_id:uid,change_ref:'docs/plans/UAR-R3.md',reviewed_plan_sha:
   plan_review_record_text:JSON.stringify(review),plan_review_record_sha:sha,
   plan_review_memory_path:ref,work_branch:'main',job_snapshots:[impacted]};
 function started(){return prepare(input);}
-const closedJob=intent=>({...old,lifecycle:'SUPERSEDED',superseded_by_plan_change_id:intent.change_id,superseded_by_replacement_job_id:newId});
-const snap=j=>({job_record_text:JSON.stringify(j),job_record_sha:sha});
-const observed=(record,jobs,activity=[])=>resume({
+const fenceInput=(job=old,currentSha=sha)=>({
+  project_id:uid,job_id:oldId,job_record_text:JSON.stringify(job),
+  job_record_sha:currentSha,intent_record_text:started().intent_record_text,
+  intent_record_sha:sha,intent_memory_path:started().intent_memory_path,
+});
+const fencedJob=()=>prepareFence(fenceInput()).record;
+const closedJob=intent=>({...fencedJob(),lifecycle:'SUPERSEDED',
+  superseded_by_plan_change_id:intent.change_id,superseded_by_replacement_job_id:newId});
+const snap=(j,hash=sha)=>({job_record_text:JSON.stringify(j),job_record_sha:hash});
+const observed=(record,jobs,activity=[],currentShas={})=>resume({
   project_id:uid,intent_memory_path:started().intent_memory_path,
   intent_record_text:JSON.stringify(record),intent_record_sha:sha,
-  current_job_snapshots:jobs.map(snap),activity,
+  current_job_snapshots:jobs.map(j=>snap(j,currentShas[j.job_id]??sha)),activity,
 });
 test('LLC58: original GSA Local Job and Planning Review legacy schema can start reviewed reconciliation',()=>{
   // Reproduces J-9067 structural facts without copying private Job contents:
@@ -126,15 +134,29 @@ test('LLC58: already-persisted intent is reused after predecessor becomes SUPERS
   assert.equal(x.operation,'NONE');
   assert.equal(x.intent_record_text,p.intent_record_text);
 });
-test('LLC58: interrupt before predecessor closure; settle cursor/Run rather than replace blindly',()=>{
-  const i=JSON.parse(started().intent_record_text);
-  const run=observed(i,[old],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'NONE'}]);
-  assert.equal(run.actions[0].next_action,'RECONCILE_PENDING_SOURCE_CURSOR');
-  const running=observed(i,[old],[{job_id:oldId,cursor_state:'STABLE',active_run_state:'ACTIVE'}]);
+test('LLC58: fence predecessor before reconciling pending source cursor and active Runs',()=>{
+  const intent=JSON.parse(started().intent_record_text);
+  const unfenced=observed(intent,[old],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'ACTIVE'}]);
+  assert.equal(unfenced.actions[0].next_action,'FENCE_PREDECESSOR_BY_EXACT_SHA');
+  const fence=prepareFence(fenceInput());
+  assert.equal(fence.allowed,true);
+  assert.equal(fence.operation,'UPDATE');
+  assert.equal(fence.mutation_authorized,false);
+  assert.equal(fence.record.plan_change_pending.original_job_sha,sha);
+  assert.equal(fence.record.plan_change_pending.replacement_job_id,newId);
+  const fenced=fence.record;
+  const currentShas={[oldId]:'b'.repeat(40)};
+  const pending=observed(intent,[fenced],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'NONE'}],currentShas);
+  assert.equal(pending.actions[0].next_action,'RECONCILE_PENDING_SOURCE_CURSOR');
+  const running=observed(intent,[fenced],[{job_id:oldId,cursor_state:'STABLE',active_run_state:'ACTIVE'}],currentShas);
   assert.equal(running.actions[0].next_action,'SETTLE_ACTIVE_RUN');
-  const ready=observed(i,[old],[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}]);
+  const ready=observed(intent,[fenced],[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}],currentShas);
   assert.equal(ready.actions[0].next_action,'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA');
   assert.equal(ready.mutation_authorized,false);
+  const retry=prepareFence(fenceInput(fenced,'b'.repeat(40)));
+  assert.equal(retry.allowed,true);
+  assert.equal(retry.operation,'NONE');
+  assert.equal(prepareFence(fenceInput(old,'b'.repeat(40))).allowed,false);
 });
 test('LLC58: interrupt after supersession; deterministic reserved ID prevents duplicate Job',()=>{
   const i=JSON.parse(started().intent_record_text);
@@ -161,7 +183,7 @@ test('LLC58: exact reviewed Plan intent binds SUPERSEDED transition to source Jo
   const baseline={
     project_id:uid,intent_record_text:prepared.intent_record_text,
     intent_record_sha:sha,intent_memory_path:prepared.intent_memory_path,
-    predecessor_job:old,predecessor_job_sha:sha,
+    predecessor_job:fencedJob(),predecessor_job_sha:'b'.repeat(40),
     cursor_state:'ABSENT',active_run_state:'NONE',
   };
   const pass=validateSupersession(baseline);
@@ -170,10 +192,12 @@ test('LLC58: exact reviewed Plan intent binds SUPERSEDED transition to source Jo
   assert.equal(pass.action.replacement.job_id,newId);
   assert.equal(pass.mutation_authorized,false);
   for (const bad of [
-    {...baseline,predecessor_job_sha:'b'.repeat(40)},
-    {...baseline,predecessor_job:{...old,planning_revision:3}},
-    {...baseline,predecessor_job:{...old,lifecycle:'COMPLETED'}},
-    {...baseline,predecessor_job:{...old,job_id:newId}},
+    {...baseline,predecessor_job_sha:'invalid'},
+    {...baseline,predecessor_job:{...fencedJob(),plan_change_pending:{...fencedJob().plan_change_pending,original_job_sha:'c'.repeat(40)}}},
+    {...baseline,predecessor_job:{...fencedJob(),planning_revision:3}},
+    {...baseline,predecessor_job:{...fencedJob(),lifecycle:'COMPLETED'}},
+    {...baseline,predecessor_job:{...fencedJob(),job_id:newId}},
+    {...baseline,predecessor_job:old},
     {...baseline,intent_memory_path:'projects/other/WORK/PLAN_RECONCILIATIONS/x.json'},
     {...baseline,cursor_state:'PENDING'},
     {...baseline,cursor_state:'UNKNOWN'},
@@ -198,7 +222,7 @@ test('LLC58: concurrent change to predecessor SHA blocks resume, unrelated super
 test('LLC58 test-validity: removing predecessor-SHA guard changes the negative result',()=>{
   const dec=sf.statements.find(x=>ts.isFunctionDeclaration(x) && x.name?.text==='validatePlanChangeSupersession');
   const real=dec.getText(sf);
-  const needle='a.predecessor_job_sha !== input.predecessor_job_sha';
+  const needle='fence.original_job_sha !== a.predecessor_job_sha';
   assert.ok(real.includes(needle),'Mutation must target executed source guard, not an irrelevant string');
   const broken=real.replace(needle,'false');
   const js=ts.transpileModule(broken,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
@@ -207,9 +231,12 @@ test('LLC58 test-validity: removing predecessor-SHA guard changes the negative r
   const input={
     project_id:uid,intent_record_text:prepared.intent_record_text,intent_record_sha:sha,
     intent_memory_path:prepared.intent_memory_path,
-    predecessor_job:old,predecessor_job_sha:'b'.repeat(40),
+    predecessor_job:{...fencedJob(),plan_change_pending:{...fencedJob().plan_change_pending,original_job_sha:'b'.repeat(40)}},
+    predecessor_job_sha:'c'.repeat(40),
     cursor_state:'ABSENT',active_run_state:'NONE',
   };
+  const valid=validateSupersession({...input,predecessor_job:fencedJob()});
+  assert.equal(valid.allowed,true);
   assert.equal(validateSupersession(input).allowed,false);
   assert.equal(mutant(input).allowed,true,
     'Deliberately broken predicate would accept the stale Job; correct test must catch it');

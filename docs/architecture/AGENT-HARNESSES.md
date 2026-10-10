@@ -109,7 +109,7 @@ Tester:
   - `PROBE`: establish an uncertain runtime/tool/capability fact for later planning or implementation;
 - performs practical execution only when the required runtime/product capability is evidence-backed as `OBSERVED` at the level needed by the check;
 - may execute Retests when capability is observed;
-- otherwise prepares precise Retest steps while the human executes practical Retest and GSA records evidence;
+- before Human Retest, discovers usable agent-owned CI/log/test tools and may safely PROBE authorized non-destructive execution to establish OBSERVED capability; otherwise prepares precise minimal Retest steps only for genuine inaccessible Human-only actions;
 - classifies failures before routing: `PRODUCT_FAILURE`, `TEST_FAILURE`, `ENVIRONMENT_FAILURE`, `NOT_READY`, `INTEGRATION_NOT_READY`, `SPEC_GAP`, or `PLAN_GAP`;
 - never mutates product source or topology to fix a discovered gap.
 
@@ -126,6 +126,14 @@ For NEXT work:
 - Reviewer and non-checkpoint Tester success must first persist an exact Run-bound `REVIEW` / `TEST` Verification; bare chat verdicts or path strings do not authorize successful Run closure.
 - Job closure reconstructs Reviewer/Tester coverage from current-revision Run + Verification snapshots.
 - A frontend/UI Coder Task declares `required_skills=[ui-coder-frontend]`; NEXT `run_begin` resolves and injects that required skill context automatically and records the derived activation. Callers cannot satisfy the gate by self-declaring a skill name. Generic Coder work gets no UI specialization context.
+
+### LLC59 — Self-managed CI and source/test repair
+
+- **Orchestrator** automatically fetches CI/check metadata, failed jobs/steps and available logs (exact branch/commit) before handing log inspection to Human. A runner-not-started failure has no executed source test to debug and must be ENVIRONMENT_FAILURE/UNVERIFIED; it does not become a fabricated PRODUCT_FAILURE.
+- **Coder** repairs scoped source/test/config defects; inspect the actual diff, run authorized available tests and rerun/check CI without requiring Human to copy diagnostics. A failed hotfix retest escalates to a full root-cause/call-path scan before further patching.
+- **Tester** stays read-only but may safely probe an agent-accessible non-destructive test surface before treating capability as absent. Tool presence is not PASS; once observed, execute tests and record exact revision and limits. TEST_FAILURE routes to Coder for test-script/config repair, not directly to Human.
+- **Orchestrator** continues the bounded self-repair loop in the same turn; Human is needed only for explicit decision, credentials, inaccessible local host/device, denied authority, unresolved conflict, or exhausted safe alternatives. Hosted CI RED with no runner can be corroborated by independent tests but does not turn hosted CI GREEN.
+- **No additional normal-path overhead**: CI evidence discovery is triggered by RED/uncertainty/explicit CI work. Preserve Job/Run/Verifier gates, source cursor, restricted Project scope and independent review.
 
 ## 8. Orchestrator
 

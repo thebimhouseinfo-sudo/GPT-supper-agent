@@ -149,7 +149,7 @@ Browser QA surface is implemented through the authenticated Vercel Sandbox bridg
 
 Tool presence is only SURFACE_PRESENT. A successful browser call against the exact target URL/revision upgrades that check to OBSERVED evidence for the current Run. Bridge/runtime failure remains an environment limitation.
 
-Tester practical execution remains capability-gated; Human Retest is fallback.
+Tester practical VERIFY remains capability-gated; a safe authorized PROBE is permitted to establish capability from a discoverable tool. Human Retest is fallback only after available agent-operated diagnostic and execution paths have been checked, not the default when a check is RED.
 
 ### Tester evidence readiness refinement
 
@@ -173,6 +173,14 @@ OBSERVED = evidence-backed at the tested level
 ```
 
 This refinement does not replace the global `OBSERVED / SURFACE_PRESENT / UNAVAILABLE / UNKNOWN` states in CP3.
+
+## LLC59 — CI diagnostic and alternative test capability
+
+Connected GitHub workflow-run/job/step/log reads are diagnostic operations. They can be attempted within the authorized Project scope without prior behavioral-test OBSERVED status. **Actual executed test output** is needed to classify a source/test failure; run conclusion alone is insufficient.
+
+Historical GSA proof: [Actions run 38030799863](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/38030799863) executed two hosted jobs with successful steps; the helper log reports 15/15 PASS and typecheck succeeds. [Run 38054066762](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/38054066762) reported failure but had `runner_id=0`, no steps and no downloadable logs: treat it as runner/environment failure, not source failure.
+
+A safely probed alternative executor may verify source-bound tests when accessible. Report actual host, command and exact revision and retain the GitHub runner conclusion as UNVERIFIED. Never use an alternative executor to widen Project write authority or weaken mandatory live-host acceptance.
 
 ## 10. Media/design
 
