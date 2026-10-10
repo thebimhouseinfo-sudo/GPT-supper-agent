@@ -82,14 +82,14 @@ test('mutation negative control: invalid head ancestry fails checkpoint finaliza
 });
 test('rare retries are persisted before source retry and capped at two',()=>{
   const original=start().record;
-  const retry1=prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'write-1'});
+  const retry1=prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'write-1',observed_blob_sha:b});
   assert.equal(retry1.allowed,true);assert.equal(retry1.record.retry_count,1);
-  const retry2=prepare({...base,...snapshot(retry1.record),event:'RECORD_RETRY',operation_id:'write-1'});
+  const retry2=prepare({...base,...snapshot(retry1.record),event:'RECORD_RETRY',operation_id:'write-1',observed_blob_sha:b});
   assert.equal(retry2.allowed,true);assert.equal(retry2.record.retry_count,2);
-  const denied=prepare({...base,...snapshot(retry2.record),event:'RECORD_RETRY',operation_id:'write-1'});
+  const denied=prepare({...base,...snapshot(retry2.record),event:'RECORD_RETRY',operation_id:'write-1',observed_blob_sha:b});
   assert.equal(denied.reason,'RETRY_BLOCKED_OR_EXHAUSTED');
   assert.equal(prepare({...base,...snapshot(original),event:'RECORD_RETRY',operation_id:'other'}).allowed,false);
-  assert.equal(prepare({...base,...snapshot(original),observed_head_sha:d,event:'RECORD_RETRY',operation_id:'write-1'}).allowed,false);
+  assert.equal(prepare({...base,...snapshot(original),observed_head_sha:d,event:'RECORD_RETRY',operation_id:'write-1',observed_blob_sha:b}).allowed,false);
 });
 test('one TREE intent covers a multi-file atomic commit without per-file cursor writes',()=>{
   const tree=start();
