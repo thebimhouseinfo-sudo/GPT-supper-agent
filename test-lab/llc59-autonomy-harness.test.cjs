@@ -80,7 +80,7 @@ test('LLC59: Coder self-obtains logs, repairs in scope, re-runs and does not inv
   includesAll(coder, [
     'CI RED/GREEN SELF-REPAIR:',
     'fetch GitHub run/job/step/log evidence yourself',
-    'TEST_FAILURE is repairable by owning Coder',
+    'TEST_FAILURE in test scripts/config is repairable by owning Coder',
     'diff',
     'full affected call chain',
     'Never label alternate checks as hosted CI PASS',
@@ -109,7 +109,7 @@ test('LLC59: actual served Coder skill has autonomous fail→diagnose→fix→re
     'no runner or steps executed',
     'TEST_FAILURE is repairable by owning Coder',
     'local/remote sandbox only when available',
-    'not a fake CI GREEN',
+    'It does not change the hosted CI conclusion',
     'bounded evidence-changing attempts',
   ]);
 });
