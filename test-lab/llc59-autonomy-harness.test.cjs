@@ -96,7 +96,7 @@ test('LLC59: Tester may PROBE before OBSERVED but cannot mutate source or fake P
     'Execute practical VERIFY only after evidence-backed OBSERVED',
     'runner_id=0/steps=[]',
     'TEST_FAILURE within scope → owning Coder repairs test/config',
-    'Host',
+    'hosted test UNVERIFIED',
   ]);
   assert.ok(tester.includes('Source implementation is read-only'));
 });
@@ -108,7 +108,7 @@ test('LLC59: actual served Coder skill has autonomous fail→diagnose→fix→re
     'First self-inspect exact GitHub branch/commit',
     'no runner or steps executed',
     'TEST_FAILURE is repairable by owning Coder',
-    'internal execution surface',
+    'local/remote sandbox only when available',
     'not a fake CI GREEN',
     'bounded evidence-changing attempts',
   ]);
@@ -120,7 +120,7 @@ test('LLC59: actual served Tester skill does not hand off before discovery/probe
     'Capability discovery and a safe non-destructive PROBE are allowed before OBSERVED',
     'self-fetch job/steps/logs',
     'TEST_FAILURE routes to owning Coder',
-    'no agent-operable execution exists',
+    'AFTER relevant tool discovery',
     'Do not use Human as a courier',
     'UNVERIFIED',
   ]);
