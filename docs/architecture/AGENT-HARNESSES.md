@@ -42,6 +42,14 @@ The explicitly opened Project is the default operational frame.
 - Source or Project Memory changes must target the active Project's registered owned repositories or its own `projects/<project-id>/` Memory path.
 - Work for another Project requires opening that Project first and re-establishing its repository scope.
 
+## 2A. Shared intake — discussion before execution
+
+Project bootstrap uses **NO REASONING**: follow minimal fixed identity/config/metadata steps to Project READY without source investigation or planning. On every new Human message (not each tool return), the current receiving Agent remains responsible; default to Planner only if there is no current receiving Agent. Direct Agent invocation retains its explicit user-selected role.
+
+All Agents apply **LOW REASONING** to classify question vs action, answer direct questions, clarify genuinely missing material Human decisions without guessing, and propose only a thin skeleton for new/change requests. Skeleton agreement authorizes detailed planning only, not source writes. Use **FULL REASONING** for confirmed detailed planning, independent evidence review, and approved implementation. Reuse an already approved applicable plan rather than repeat discovery.
+
+Every User statement is discussion by default. No code/source write, GitHub mutation, consequential Job execution, merge or deployment merely from suggestions or agreement about an idea. Present the reviewed PASS plan for explicit Human execution approval (e.g. "bắt đầu sửa code", "làm đi", "đồng ý làm" in the pending approval context). Only then execute the agreed scope end-to-end, including bounded repairs, with no repetitive Task approvals. Merge/deploy require their own explicit authority. The Agent may proactively ask for approval when the plan is ready, but cannot approve on the Human's behalf. New Human messages during execution re-enter classify/clarify; Handoff only for a real capability/scope boundary.
+
 ## 3. Planner
 
 Planner:
@@ -88,7 +96,7 @@ Completing Runs do not write progress/reference arrays back into the parent Job 
 ## 6. Reviewer
 
 Context-Isolated Reviewer:
-- uses a fresh review context/chat for mandatory independent source/code reviews;
+- performs same-chat independent evidence review of the exact target revision; a separate Human chat is not required;
 - for a Job planning review, remains role-isolated and reconstructs from the persisted Job in the SAME USER TURN without requiring a new Human chat;
 - reads exact target/revision and applicable requirements/evidence;
 - source implementation read-only;
@@ -160,7 +168,7 @@ parent Run yields
 → parent resumes
 ```
 
-Independent source/code review remains context-isolated/fresh-chat where required. **Planning review** is role-isolated in the same user turn; its source of truth is the persisted Job/revision, not prior Planner reasoning.
+Source/code and planning review both rely on same-chat independent evidence reconstruction when applicable; the exact persisted Job/revision and source truth take precedence over earlier Agent reasoning. CR remains independently Human-invoked.
 
 ## 10. Direct Agent
 
@@ -261,7 +269,7 @@ A durable brownfield Job must persist enough structure evidence for Reviewer to 
 
 The Orchestrator must not end the Human turn after `job_prepare`, `plan_review_record` or `job_revise_plan` only because a tool returned or one role produced findings. These are intermediate outcomes. It must execute the returned `external_steps` for the authorized Memory Repo write(s), **independently read back** the current Job and Verification with exact blob SHA, then follow `continuation.next_action_after_readback` in the same turn.
 
-The typed continuation is **advisory and explicitly pending durable readback**, not proof of a write. `REVIEW_CURRENT_REVISION` loads a role-isolated planning Reviewer; `REVISE_PLAN` returns to Planner; `PROMOTE_READY` requires a persisted current-revision PASS then READY transition/readback; `RESUME_DISPATCH` is only for reviewed NEXT IN_PROGRESS; `CONTINUE_JOB_TOPOLOGY` follows confirmed READY. `STOP_HUMAN_DECISION` and `STOP_BLOCKED` are the only deliberate planning-loop stops aside from denied/conflicting persistence and no-progress evidence.
+The typed continuation is **advisory and explicitly pending durable readback**, not proof of a write. `REVIEW_CURRENT_REVISION` loads a role-isolated planning Reviewer; `REVISE_PLAN` returns to Planner; `PROMOTE_READY` requires a persisted current-revision PASS then READY transition/readback. `PRESENT_PLAN_FOR_APPROVAL` stops after READY readback or after a reviewed NEXT IN_PROGRESS superseding revision. Only explicit Human confirmation of the presented plan permits new execution. `STOP_HUMAN_DECISION` and `STOP_BLOCKED` remain explicit planning-loop stops alongside authorization/readback failures.
 
 Planning-review **does not need a separate Human chat**. Preserve independent source/code review isolation and the distinct Human-invoked CR requirement. Never repeat a pending write blindly, reuse stale review after a revision, manufacture PASS, or bypass denied CAS.
 
@@ -274,7 +282,7 @@ Planner
 → DRAFT planning revision
 → context-isolated Reviewer
 → PASS
-   └→ DRAFT → READY
+   └→ DRAFT → READY → present PASS plan → Human execution approval before any code Run
 → CHANGES_REQUIRED
    └→ Planner revise → new planning_revision → Reviewer again
 → HUMAN_REVIEW_REQUIRED
