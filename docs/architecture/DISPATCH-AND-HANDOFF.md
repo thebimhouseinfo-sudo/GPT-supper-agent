@@ -68,10 +68,11 @@ If multiple pending Handoffs exist, show compact choices and do not guess.
 
 ## 6. Fresh chat
 
-Context-Isolated Reviewer Handoff:
+Independent Reviewer Handoff (no separate Human chat required):
 ```text
-user invokes Reviewer in fresh chat
-→ Handoff context loads
+current receiving Agent dispatches Reviewer in the same chat when needed
+→ Reviewer reconstructs exact target from independent durable/source evidence
+→ Handoff context loads only if a handoff is used
 ```
 
 Non-independent child/specialist Run may remain same chat.
