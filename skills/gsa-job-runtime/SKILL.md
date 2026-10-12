@@ -38,6 +38,10 @@ Before executing any durable role Run:
 
 Do not rely on remembered role behavior when the harness can be loaded.
 
+## Shared Agent intake (before role work)
+
+**NO REASONING** during Project bootstrap: execute only prescribed minimal steps to READY. On new User messages, keep the active receiving Agent; use Planner by default only when none exists. **LOW REASONING**: classify question/action, answer questions, clarify missing material decisions without speculative alternatives, and draft a thin skeleton for new/changed work. User agreement on the skeleton permits **FULL REASONING** detailed planning and the autonomous review/repair loop, not implementation. At PASS present the reviewed plan and ask for explicit Human execution approval; until then stay in discussion. An explicit user instruction such as "bắt đầu sửa code", "làm đi", "đồng ý làm" counts only in the matching plan-approval context, not as blanket permission. Handoff only when capability differs. Keep Direct Agent shortcuts and existing Project scope checks.
+
 ## Planner loop
 
 ```text
@@ -56,10 +60,10 @@ L0 orientation
 → PLANNING_REVIEW Verification CREATE/readback, reviewed Job UPDATE/readback
    ├─ CHANGES_REQUIRED → Planner job_revise_plan → SHA readback → Reviewer again
    ├─ PASS DRAFT → job_transition READY + SHA readback
-   ├─ PASS NEXT IN_PROGRESS → resume dispatch, never force READY
+   ├─ PASS NEXT IN_PROGRESS → present reviewed superseding plan, await execution approval (do not force READY)
    ├─ HUMAN_REVIEW_REQUIRED → specific Human Gate
    └─ BLOCKED → exact blocker
-→ READY (or reviewed NEXT resume)
+→ READY (or reviewed NEXT revision) → present plan → WAIT for explicit Human execution approval
 ```
 
 Phase, Job Pack and Milestone are planning concepts expressed with the existing Job/Task topology unless later evidence proves a new persistent entity is necessary.
@@ -78,7 +82,7 @@ Planner is source read-only.
 
 Orchestrator owns the entire Planner ↔ planning Reviewer loop, not the individual role or the Human. The existing `job_prepare`, `plan_review_record`, `job_revise_plan`, and `job_transition(READY)` return a typed `continuation` specifying the next role/action **after** the instructed authorized GitHub Memory Repo persistence and exact SHA/record readback. `AWAITING_DURABLE_READBACK` is not completion. The caller continues immediately in the current turn; it must not stop and ask Human to type “continue” after a review, plan repair, or READY proposal.
 
-A stale SHA, failed/denied write, unreconciled duplicate Verification or unsupported record is a real blocker; never bypass authorization or pretend the next action happened. Do not run a repeat Reviewer on an unchanged reviewed revision without evidence; use existing no-progress protections. The only routine Human handoff is a substantive `HUMAN_REVIEW_REQUIRED` finding.
+A stale SHA, failed/denied write, unreconciled duplicate Verification or unsupported record is a real blocker; never bypass authorization or pretend the next action happened. Do not run a repeat Reviewer on an unchanged reviewed revision without evidence; use existing no-progress protections. A reviewed PASS plan also stops at Human execution approval, but routine CHANGES_REQUIRED findings do not require Human continuation.
 
 ## Coder loop
 
@@ -108,7 +112,7 @@ For a successful Coder Run, `run_complete` validates the exact GOAL_RECHECK reco
 
 ## Reviewer loop
 
-For mandatory independent source/code review, Reviewer retains fresh-context isolation. **Job planning-review is different:** a role-isolated Reviewer reconstructs exact Job/revision and source facts in the SAME USER TURN and does not require a separate Human chat. Do not inherit Planner reasoning; do not ask the user to invoke Reviewer manually.
+Source/code and Job planning Reviewer both use same-chat independent evidence review when applicable: reconstruct the exact target/revision from durable Job, source and Verification facts in the SAME USER TURN without inheriting prior Agent reasoning. A new Human chat is not required. Do not ask the user to invoke Reviewer manually.
 
 ```text
 exact requirements + exact target revision + evidence
