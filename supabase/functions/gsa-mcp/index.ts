@@ -1939,8 +1939,86 @@ function orchestrationProgressDecision(input: {
   return { disposition: 'CONTINUE', stalled_cycles: stalled, reason: stalled === 0 ? 'FINGERPRINT_CHANGED' : 'AWAIT_DURABLE_PROGRESS' }
 }
 
+// LLC60: one typed, readback-gated *advisory* continuation after a planning
+// tool's external GitHub Memory Repo writes. This is not a scheduler, a source
+// mutation authorization, a substitute for a fresh Job SHA, or persisted state.
+function planningLoopContinuationDecision(
+  stage: 'JOB_PREPARED' | 'PLAN_REVISED' | 'REVIEW_RECORDED' | 'READY_TRANSITION',
+  lifecycle: string,
+  planningRevision: number,
+  reviewResult?: string,
+) {
+  const invalid = () => ({
+    state: 'NOT_APPLICABLE' as const, next_action_after_readback: 'NONE' as const,
+    next_role: 'none' as const, resume_same_turn: false,
+    requires_readback: false, planning_revision: planningRevision,
+    human_action_required: false, mutation_authorized: false as const,
+  })
+  if (!Number.isInteger(planningRevision) || planningRevision < 1) return invalid()
+  let action: string = 'NONE'
+  let role: string = 'none'
+  if ((stage === 'JOB_PREPARED' || stage === 'PLAN_REVISED') &&
+      (lifecycle === 'DRAFT' || (stage === 'PLAN_REVISED' && lifecycle === 'IN_PROGRESS'))) {
+    action = 'REVIEW_CURRENT_REVISION'
+    role = 'reviewer'
+  } else if (stage === 'REVIEW_RECORDED' &&
+      (lifecycle === 'DRAFT' || lifecycle === 'IN_PROGRESS')) {
+    if (reviewResult === 'CHANGES_REQUIRED') {
+      action = 'REVISE_PLAN'
+      role = 'planner'
+    } else if (reviewResult === 'PASS') {
+      action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'PRESENT_PLAN_FOR_APPROVAL'
+      role = lifecycle === 'DRAFT' ? 'orchestrator' : 'human'
+    } else if (reviewResult === 'HUMAN_REVIEW_REQUIRED') {
+      action = 'STOP_HUMAN_DECISION'
+      role = 'human'
+    } else if (reviewResult === 'BLOCKED') {
+      action = 'STOP_BLOCKED'
+      role = 'orchestrator'
+    }
+  } else if (stage === 'READY_TRANSITION' && lifecycle === 'READY') {
+    action = 'PRESENT_PLAN_FOR_APPROVAL'
+    role = 'human'
+  }
+  if (action === 'NONE') return invalid()
+  const stopped = action === 'STOP_HUMAN_DECISION' || action === 'STOP_BLOCKED' || action === 'PRESENT_PLAN_FOR_APPROVAL'
+  return {
+    state: 'AWAITING_DURABLE_READBACK' as const,
+    next_action_after_readback: action,
+    next_role: role,
+    resume_same_turn: !stopped,
+    requires_readback: true,
+    planning_revision: planningRevision,
+    human_action_required: action === 'STOP_HUMAN_DECISION' || action === 'PRESENT_PLAN_FOR_APPROVAL',
+    mutation_authorized: false as const,
+  }
+}
+
+const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
+  state: z.enum(['AWAITING_DURABLE_READBACK', 'NOT_APPLICABLE']),
+  next_action_after_readback: z.enum([
+    'REVIEW_CURRENT_REVISION','REVISE_PLAN','PROMOTE_READY',
+    'PRESENT_PLAN_FOR_APPROVAL','STOP_HUMAN_DECISION','STOP_BLOCKED','NONE',
+  ]),
+  next_role: z.enum(['reviewer','planner','orchestrator','human','none']),
+  resume_same_turn: z.boolean(),
+  requires_readback: z.boolean(),
+  planning_revision: z.number().int().positive(),
+  human_action_required: z.boolean(),
+  mutation_authorized: z.literal(false),
+})
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
+  '- NEW HUMAN MESSAGE ONLY (not tool results): keep the currently receiving Agent; if none, default to Planner. Explicit Human Direct Agent invocation uses its selected role. Do not switch Agents merely because User sends a new message.',
+  '- NO REASONING / FIXED STEPS: GSA bootstrap and Project open perform only prescribed minimal identity/config/metadata checks to reach Project READY quickly; do not investigate source, load Job details or plan before User asks.',
+  '- LOW REASONING / CLASSIFY: on every new ordinary User message, distinguish a question/status request from a request to act/change scope. Questions get a direct evidence-grounded answer without a new Job or plan.',
+  '- LOW REASONING / CLARIFY: for an action/change, first identify missing material User choices. Ask directly rather than speculating among alternatives or researching deeply to guess intent; do not re-ask facts already known. A fully clear request needs no redundant clarification.',
+  '- LOW REASONING / SKELETON: if new or changed detailed planning is needed, present a short scope/approach skeleton and obtain Human confirmation BEFORE full planning, L0/L1 source investigation or durable Job DRAFT. Reuse an already approved applicable plan instead of rebuilding it.',
+  '- FULL REASONING only after direction/skeleton is confirmed: the responsible Agent creates/refines the detailed plan and autonomously obtains role-isolated Reviewer PASS through revise/re-review loops; never offer an unresolved failed plan as final.',
+  '- HUMAN EXECUTION APPROVAL: present the reviewed PASS plan and STOP in conversation. Begin source-changing or other consequential Job execution only after the Human explicitly approves that presented plan (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). Skeleton approval permits detailed planning only; a general action request or an ambiguous "ok" outside plan-approval context is not execution authorization. Once approved, continue approved scope without re-asking at each Task.',
+  '- INTERRUPT / NEW MESSAGE: the current receiving Agent repeats classify/clarify, answers questions directly, and handles clear changes within capability. Handoff only for a real capability/authority mismatch; do not silently change already approved Job scope. Direct Agent commands remain the explicit Human shortcut.',
+
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
   '- The explicitly opened Project is the default operational frame. Remembered context never silently switches Project.',
   '- If a request belongs to another unrelated Project, surface the Project mismatch before operational continuation unless the Human explicitly referenced it for the active Project work.',
@@ -1962,6 +2040,7 @@ const BASE_AGENT_HARNESS = [
   '- LLC59 HUMAN HANDOFF: only request Human action when an actual decision/approval, secret, unreachable local host/device, denied authorization or safely exhausted self-service capability requires it. State the exact blocker and smallest necessary action. Do not ask Human to collect already agent-accessible CI data.',
   '- Discover repository-specific build/test/lint/typecheck commands from source/config/evidence. Never assume a conventional command merely because it is common.',
   '- Verification is evidence, not ceremony. Report failed, skipped and unavailable checks truthfully; never manufacture a green result.',
+  '- LLC60 PLANNING CONTINUATION: job_prepare/job_revise_plan/plan_review_record/READY job_transition return a typed continuation after required external writes. A PREPARED tool response is not persisted. Execute authorize + GitHub Memory Repo exact-SHA write and independent readback first; then immediately follow continuation.next_action_after_readback in the SAME USER TURN. A review or plan edit alone is never a terminal planning result.',
   '- Tests alone do not prove the Job goal. Compare actual changes and evidence against the Job completion criteria before success.',
   '- Job boundaries are context boundaries. Finish and persist one meaningful bounded Job before carrying unrelated work into the next Job.',
   '- Accepted correction/migration requirements require durable source → owner → implementation surface → evidence → disposition traceability. A missing link is PLAN_GAP.',
@@ -1981,7 +2060,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Re-read Project lifecycle before every consequential action.',
       'Choose the next role from durable topology/state rather than chat-memory inference.',
       'Do not duplicate specialist work once it has been delegated.',
-      'Own same-turn continuation: after every tool result, evaluate durable state and immediately dispatch/call the next required role/tool until an explicit stop condition is reached.',
+      'Own same-turn continuation after tool results until a real stop condition; Human execution approval for a completed PASS plan is an explicit stop, not permission to start an execution Run.',
     ],
     loop: [
       'Resolve Project, active Job and durable current state.',
@@ -1990,7 +2069,10 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Load that role harness plus only relevant skills.',
       'Start the next attributed Run or planning-review action required by topology. Multiple sequential role/tool calls may occur inside one user turn.',
       'After each action/Run, persist required evidence/handoff/state, then continue from the returned durable state rather than ending the user turn by default.',
-      'For every newly prepared or materially revised Job plan, automatically dispatch a context-isolated Reviewer before reporting planning completion. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS permits DRAFT→READY or resumes a reviewed NEXT IN_PROGRESS superseding revision; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
+      'For every newly prepared or materially revised Job plan, automatically dispatch a role-isolated planning Reviewer in the SAME USER TURN after durable persistence/readback. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS promotes DRAFT→READY or resumes a reviewed NEXT IN_PROGRESS superseding revision; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
+      'LLC60 PLANNING LOOP OWNER: Orchestrator remains responsible across job_prepare → DRAFT CREATE/readback → planning-review Reviewer → PLANNING_REVIEW Verification CREATE/readback → reviewed Job UPDATE/readback → Planner revise or READY transition. Follow each result.continuation.next_action_after_readback immediately after matching authorized external_steps and exact readback. Intermediate plan/review results do not require User continuation; the final reviewed PASS plan explicitly requires Human execution approval before dispatch.',
+      'LLC60 ROUTES: REVIEW_CURRENT_REVISION→reviewer with current persisted Job revision; REVISE_PLAN→planner applies findings and persists incremented revision; PROMOTE_READY→orchestrator invokes job_transition READY with current exact-SHA PASS review and reads back; PRESENT_PLAN_FOR_APPROVAL→present the PASS plan to Human after READY readback OR review PASS of a superseding NEXT IN_PROGRESS plan; STOP before execution pending explicit approval. STOP_HUMAN_DECISION asks only for the specific material Human decision; STOP_BLOCKED reports the blocker. Never auto-invoke human-only Critic Reviewer.',
+      'LLC60 SAFETY: Plan review is independently role-isolated from previous Planner reasoning but DOES NOT require a new Human chat. A planning Verification or Job proposal is non-authoritative until exact GitHub persistence/readback; on lost responses/stale SHA refetch and reconcile rather than duplicating Verifications or skipping reviews. Use existing no-progress fingerprint guard instead of an infinite same-revision loop.',
       'NEXT CHECKPOINT: when current NEXT topology makes a TestCheckpointSpec runnable, start the Tester Run, acquire/reuse checkpoint_claim_prepare, persist/read back the deterministic claim + attempt, execute Tester, then checkpoint_verification_prepare and finalize the claim with exact SHA before routing.',
       'NEXT EVIDENCE GATE: before dispatching a consumer Task, crossing a Milestone gate or completing a NEXT Job, evaluate current claim + Verification evidence. Mandatory EvidenceRequirement/checkpoint evidence blocks even when a non-blocking PASS_RETEST_REQUIRED would otherwise be allowed.',
       'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
@@ -2014,6 +2096,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'For multi-repo Projects, require one working repository per executable Job while preserving Project-wide read/review impact awareness and authority/precedence direction.',
     ],
     loop: [
+      'ON NEW HUMAN MESSAGE: apply shared LOW REASONING classify/clarify/skeleton before this planning loop. Answer questions directly; only enter L0 for a defined planning objective after required skeleton confirmation.',
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
       'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
@@ -2026,10 +2109,10 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'GATE: place required review/test/human checkpoints and capability requirements. For NEXT planning, unknown runtime facts must become first-class EvidenceNeed/UnknownRuntimeFact records linked to sparse TestCheckpointSpec and downstream EvidenceRequirement; frontend/UI Coder Tasks must declare required_skills=[ui-coder-frontend] while non-UI Coder Tasks keep no specialization requirement.',
       'CHECK: verify every Task contributes to the finite objective, no acceptance condition is orphaned, the Job is neither mega-Job nor meaningless micro-Job, cross-repo impact/precedence has been assessed, and every accepted correction/migration requirement has durable owner/surface/evidence/disposition traceability.',
       'PERSIST DRAFT: create/update the durable Job as a planning revision after internal consistency checks.',
-      'REVIEW LOOP: switch to Reviewer contract in the same user turn and review the exact planning revision plus discovery/sizing evidence. Do not report the plan as finalized yet.',
-      'ADAPT: on CHANGES_REQUIRED, switch back to Planner in the same turn, repair actionable planning defects, increment planning_revision, persist with exact SHA, then immediately re-run Reviewer.',
+      'REVIEW LOOP: after job_prepare or job_revise_plan, persist and independently read back the exact Job SHA; then in the SAME USER TURN switch to role-isolated planning Reviewer for this exact planning revision. The review is not a separate Human chat and must not be reported as final planning completion.',
+      'ADAPT: on CHANGES_REQUIRED after persisted Verification + Job review readback, switch to Planner in the SAME USER TURN, repair actionable findings, call job_revise_plan, persist the new Job by exact SHA and immediately re-run Reviewer. Do not ask Human for a continue prompt between these operations; do not reuse stale Reviewer PASS.',
       'RUNTIME SUPERSESSION: for NEXT IN_PROGRESS PLAN_GAP/SPEC_GAP, require the persisted Tester Verification plus its terminal checkpoint claim, resupply/rebind the complete CP4 planning graph into a new planning_revision, keep the Job IN_PROGRESS, and block dispatch until Reviewer PASS. If Reviewer returns CHANGES_REQUIRED, continue the planning-review repair loop without requiring a duplicate Tester gap finding.',
-      'READY/RESUME GATE: only PASS review bound to the current planning_revision may promote DRAFT→READY or resume dispatch on a superseding NEXT IN_PROGRESS revision. HUMAN_REVIEW_REQUIRED pauses for explicit Human decision.',
+      'PLANNING COMPLETE: after current-revision PASS Verification and Job readback, promote DRAFT→READY and read back, OR leave reviewed NEXT IN_PROGRESS in place. In both cases present the PASS plan to Human and STOP for explicit execution approval; never auto-dispatch execution. HUMAN_REVIEW_REQUIRED pauses only for a material decision; BLOCKED only for an evidenced blocker.',
     ],
     outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
@@ -2081,7 +2164,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Prefer silence over speculative low-confidence findings.',
     ],
     loop: [
-      'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and reconstruct from durable Job plus repository evidence without inheriting Planner reasoning.',
+      'GROUND: resolve the exact review target. For planning review, bind to job_id + planning_revision and independently reconstruct from durable Job plus repository evidence WITHOUT inheriting earlier Planner reasoning. Planning-review is role-isolated and can run in the same Human chat/turn; mandatory fresh-chat context isolation for independent source/code Reviews is separate.',
       'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
       'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. When changed tests, escaped regression or release gates apply, selectively inspect the test script and mock boundary once at the checkpoint; never require re-review of unchanged trusted tests on every run. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
       'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
@@ -2089,7 +2172,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
       'PERSIST: for an attributed Reviewer Run, call run_verification_record and persist/read back the exact REVIEW Verification before any successful run_complete.',
-      'ROUTE: send findings back to owning work without modifying source.',
+      'ROUTE: for a planning review, persist exact PLANNING_REVIEW Verification then reviewed Job with SHA/readback, follow result.continuation immediately in the same turn: CHANGES_REQUIRED → Planner revises; PASS → Orchestrator promotes READY/resumes NEXT; HUMAN_REVIEW_REQUIRED → real Human Gate; BLOCKED → evidenced stop. A review verdict without persisted readback is not terminal progress. Reviewer never edits the plan or source.',
     ],
     outputs: ['review Verification record', 'findings', 'revision-bound result'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
@@ -2205,7 +2288,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '14. Split mega-Jobs when multiple causal chains or unrelated review domains would keep broad context alive too long. Do not create micro-Jobs for mechanical steps that cannot final meaningfully.',
       '15. Mark required Reviewer/Tester/Human Gate placement from risk and architecture, not habit.',
       '16. Before persisting, run a coverage/sizing check: every requested outcome maps to a Task/criterion, every Task maps to the objective, the Job is neither mega nor meaningless micro, relationships/precedence are addressed, and no material product decision was silently invented.',
-      '17. Persist the plan as DRAFT, then continue autonomously in the SAME USER TURN: load Reviewer contract, review the exact planning revision, switch back to Planner on CHANGES_REQUIRED, revise and re-review until PASS or Human Gate, and only then promote READY. Never return a final planning summary immediately after creating/updating the DRAFT.',
+      '17. Persist DRAFT with GitHub CREATE/CAS and independently read back the Job before following tool.continuation.REVIEW_CURRENT_REVISION. In the SAME USER TURN load role-isolated planning Reviewer (no new Human chat), persist PLANNING_REVIEW Verification and reviewed Job in order with exact SHA/readback, then follow tool.continuation: CHANGES_REQUIRED→Planner job_revise_plan→persist/readback→Reviewer again; PASS→DRAFT READY transition/readback or NEXT IN_PROGRESS dispatch resume; HUMAN_REVIEW_REQUIRED→specific Human decision; BLOCKED→concrete blocker. Neither a prepared tool result nor a completed review or revised Plan ends the user turn.',
       '18. If a materially different objective or causal chain appears, propose a linked Job instead of expanding this Job.',
     ].join('\n'),
   },
@@ -2282,7 +2365,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
     description: 'Role-isolated review of one exact Job planning revision before it may become READY; normally executed automatically in the same user turn.',
     body: [
       '# Planning Review',
-      'Review the durable Job plan, not the Planner reasoning. Planning review is role-isolated and normally runs in the same user turn; fresh-chat isolation is not required for this quality gate.',
+      'Review the durable Job plan, not the Planner reasoning. Planning review is role-isolated and normally runs in the SAME USER TURN; a fresh Human chat is NOT required for this planning-review gate. Reconstruct from the persisted Job/revision/source, never previous Planner reasoning. Independent source/code reviews retain their own context-isolation requirements.',
       '',
       '- Bind to exact job_id + planning_revision.',
       '- Require L0 repository-structure evidence: top-level folders, relevant subtree/file names, config/test/docs/assets/CI-deploy surfaces as applicable.',
@@ -2297,6 +2380,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '- HUMAN_REVIEW_REQUIRED only for a genuine material product/architecture/subjective choice that Planner cannot decide.',
       '- BLOCKED only when required evidence/capability is unavailable.',
       '- A revised planning_revision invalidates the prior review and must be reviewed again.',
+      '- After plan_review_record, authorized external Verification CREATE + Job UPDATE and exact independent readback must complete first. Then return control to Orchestrator in the same turn to follow continuation.next_action_after_readback, never issue a terminal user report merely because Reviewer returned CHANGES_REQUIRED or PASS. Reviewer does not revise the plan.',
     ].join('\n'),
   },
   'review-evidence': {
@@ -2688,6 +2772,9 @@ function createServer(req: Request) {
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
+        'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
+        'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
+        'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
         'A GSA Project may own or reference multiple source repositories. PROJECT.md repository registry is the durable source of truth for Project repo topology.',
@@ -2704,7 +2791,7 @@ function createServer(req: Request) {
         'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
-        'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> execution Runs. Never stop and report a newly prepared plan before this planning-review loop resolves. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
+        'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> present reviewed PASS plan -> await explicit Human execution approval -> execution Runs. Never stop the automatic review/repair loop before the plan is PASS; stop before execution until User authorizes it. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
         'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract. Critic Reviewer is HUMAN-INVOKED ONLY. It must operate stateless-by-contract: ignore conversation history as evidence and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
         'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, Verification under VERIFICATION/, and durable relationship/contract knowledge under KNOWLEDGE/. Use relationship_knowledge_prepare for evidence-backed precedence/reread relationships instead of inventing a new record family.',
         'Persist evidence/Verification/Handoff first and terminal Run update last. A terminal Run must never reference a record that was not persisted.',
@@ -4814,7 +4901,7 @@ function createServer(req: Request) {
         context_policy: role === 'critic_reviewer'
           ? 'STATELESS_REVIEW_HUMAN_ONLY; ignore conversation history as evidence, reconstruct from durable records and live source only, and compare prior Reviewer verdict last.'
           : role === 'reviewer'
-            ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
+            ? 'ROLE_ISOLATED_EVIDENCE; review exact requirements + target/revision + source/durable evidence independently within current chat if needed; do not require a fresh Human chat.'
             : 'MINIMUM_SUFFICIENT_CONTEXT; load skill bodies progressively and prefer durable references plus selective live-source reads.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -4873,7 +4960,7 @@ function createServer(req: Request) {
     'job_prepare',
     {
       title: 'Prepare a durable GSA Job',
-      description: 'Planner finalization tool. Builds one finite Job record after the Planner harness has produced an approved plan. NEXT plans may include revision-bound EvidenceNeed, TestCheckpointSpec, EvidenceRequirement, milestones and typed planning_topology; V2_STABLE keeps these collections empty.',
+      description: 'PREPARE ONLY: create a DRAFT Job record, NOT planning completion. Caller must persist/read back the Job and follow continuation to planning Reviewer in the SAME USER TURN. NEXT supports revision-bound planning evidence; V2_STABLE keeps these collections empty.',
       inputSchema: {
         project_id: z.string().uuid(),
         type: z.enum(['plan','code','design','review']),
@@ -4955,6 +5042,7 @@ function createServer(req: Request) {
         memory_path: z.string(),
         job_record_text: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5130,7 +5218,7 @@ function createServer(req: Request) {
         externalSteps.push('For each durable precedence/reread relationship discovered by planning, call relationship_knowledge_prepare and persist/read-back the resulting existing KNOWLEDGE/ ARCHITECTURE_NOTE before relying on it in later Jobs.')
       }
       externalSteps.push(
-        'Immediately continue in this SAME USER TURN: load Reviewer harness + planning-review skill and review this exact revision. Do not report planning completion to the user yet.',
+        'After DRAFT persistence and exact readback, follow continuation.next_action_after_readback=REVIEW_CURRENT_REVISION in this SAME USER TURN. Switch to the role-isolated planning Reviewer (no new Human chat). Do not report planning completion to the user yet.',
         'Do not modify source during Planner Job persistence.',
       )
       const result = {
@@ -5139,6 +5227,7 @@ function createServer(req: Request) {
         memory_path: path,
         job_record_text: prettyJson(record),
         external_steps: externalSteps,
+        continuation: planningLoopContinuationDecision('JOB_PREPARED', 'DRAFT', 1),
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -5148,7 +5237,7 @@ function createServer(req: Request) {
     'job_transition',
     {
       title: 'Transition a durable GSA Job',
-      description: 'Serialized Job lifecycle update using the exact current Job record and blob SHA. Supports DRAFT→READY only after PASS planning review, READY→IN_PROGRESS when execution starts, and IN_PROGRESS→COMPLETED only after completion evidence exists.',
+      description: 'PREPARE ONLY: authorized exact-SHA Job lifecycle transition. DRAFT→READY requires persisted current-revision PASS planning review. After READY update/readback, follow continuation to current Job topology rather than asking Human to say continue.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -5175,6 +5264,7 @@ function createServer(req: Request) {
         expected_job_sha: z.string(),
         next_job_record_text: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA.optional(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5312,12 +5402,14 @@ function createServer(req: Request) {
         'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
         'GitHub Memory Repo: update the Job file with next_job_record_text using expected_job_sha exactly.',
         'Read back the Job and verify the target lifecycle/result before reporting the Job transition complete.',
+        ...(target_lifecycle === 'READY' ? ['After exact READY readback, follow continuation.next_action_after_readback=PRESENT_PLAN_FOR_APPROVAL: show the reviewed PASS plan and STOP. Await explicit Human execution approval before any Job execution Run.'] : []),
       )
       const out = {
         memory_path: memoryPath,
         expected_job_sha: job_record_sha,
         next_job_record_text: prettyJson(next),
         external_steps: externalSteps,
+        ...(target_lifecycle === 'READY' ? { continuation: planningLoopContinuationDecision('READY_TRANSITION', 'READY', next.planning_revision) } : {}),
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
@@ -5327,7 +5419,7 @@ function createServer(req: Request) {
     'job_revise_plan',
     {
       title: 'Revise a GSA Job plan',
-      description: 'Planner-only exact-SHA planning revision update. DRAFT revisions follow the normal planning loop; NEXT IN_PROGRESS revisions are allowed only from persisted PLAN_GAP/SPEC_GAP Tester evidence and supersede the old planning topology.',
+      description: 'PREPARE ONLY: exact-SHA Planner plan revision. Persist/read back revised Job, then immediately re-run role-isolated planning Reviewer in SAME USER TURN. NEXT IN_PROGRESS supersession still requires originating Tester evidence.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -5387,6 +5479,7 @@ function createServer(req: Request) {
         next_job_record_text: z.string(),
         planning_revision: z.number(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5510,6 +5603,7 @@ function createServer(req: Request) {
         expected_job_sha: job_record_sha,
         next_job_record_text: prettyJson(next),
         planning_revision: nextRevision,
+        continuation: planningLoopContinuationDecision('PLAN_REVISED', next.lifecycle, nextRevision),
         external_steps: [
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
@@ -5518,7 +5612,7 @@ function createServer(req: Request) {
           inProgressNextRevision
             ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision. For first runtime supersession, read back the originating Verification and terminal claim (exact claim SHA) before updating the Job.'
             : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
-          'Immediately continue in this SAME USER TURN with a new Reviewer planning review for this exact revision before any user-facing planning-complete report.',
+          'After the new plan revision is persisted and read back by exact SHA, follow continuation.next_action_after_readback=REVIEW_CURRENT_REVISION; load the role-isolated planning Reviewer in this SAME USER TURN (no Human request to continue).',
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -5529,7 +5623,7 @@ function createServer(req: Request) {
     'plan_review_record',
     {
       title: 'Record planning review for one exact Job revision',
-      description: 'Reviewer-only planning Verification. PASS unlocks DRAFT→READY or resumes a superseding NEXT IN_PROGRESS planning revision; CHANGES_REQUIRED routes automatically back to Planner.',
+      description: 'PREPARE ONLY: Reviewer planning Verification plus reviewed Job update. Persist/read back both; then in SAME USER TURN follow continuation: CHANGES_REQUIRED→Planner revise→Reviewer, PASS DRAFT→READY, PASS NEXT IN_PROGRESS→resume. Do not end after a review result.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
@@ -5554,6 +5648,7 @@ function createServer(req: Request) {
         reviewed_job_record_text: z.string(),
         next_role: z.string(),
         external_steps: z.array(z.string()),
+        continuation: PLANNING_LOOP_CONTINUATION_SCHEMA,
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -5632,17 +5727,20 @@ function createServer(req: Request) {
         updated_at: new Date().toISOString(),
       }
       const jobMemoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
-      const nextRole = result === 'PASS' ? 'orchestrator' : result === 'CHANGES_REQUIRED' ? 'planner' : result === 'HUMAN_REVIEW_REQUIRED' ? 'human' : 'orchestrator'
+      const continuation = planningLoopContinuationDecision('REVIEW_RECORDED', current.lifecycle, planning_revision, result)
+      const nextRole = continuation.next_role
       const steps = [
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
         'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',
+        'Read back persisted planning-review Verification by exact path/SHA and require project, Job, planning_revision and result match before changing Job.',
         'Update Job planning_review with reviewed_job_record_text using expected_job_sha exactly.',
+        'Read back the updated Job and Verification; only then follow continuation.next_action_after_readback in the SAME USER TURN. A prepared or failed write does not activate next_role.',
       ]
       if (result === 'PASS') {
         steps.push(
           current.lifecycle === 'DRAFT'
-            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.'
-            : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
+            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then present the reviewed PASS plan to Human for explicit execution approval. Do not ask the user to manually request review.'
+            : 'NEXT IN_PROGRESS superseding plan now has Reviewer PASS: present it for explicit Human execution approval and STOP. Do not automatically resume dispatch; old-revision claims/verifications remain non-applicable.',
         )
       } else if (result === 'CHANGES_REQUIRED') {
         steps.push(
@@ -5668,6 +5766,7 @@ function createServer(req: Request) {
         reviewed_job_record_text: prettyJson(reviewedJob),
         next_role: nextRole,
         external_steps: steps,
+        continuation,
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },

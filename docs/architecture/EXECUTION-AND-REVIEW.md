@@ -72,6 +72,14 @@ Coder scope claim hints may help early coordination but cannot disable the compu
 
 Removing a previously planned review remains human-visible.
 
+### LLC60 — Automatic planning review is a nonterminal same-turn workflow
+
+The ordinary source/code Reviewer independence gate and the Job planning-review role isolation are distinct. Planning-review reconstructs from a persisted Job `planning_revision` and repository facts without inheriting Planner reasoning, but **does not require a new Human chat**. Otherwise the normal automatic Planner↔Reviewer loop would be broken by a false fresh-chat gate.
+
+For the planning loop, `job_prepare`, `job_revise_plan`, `plan_review_record`, and `job_transition(READY)` carry an additive typed `continuation`. It has `state=AWAITING_DURABLE_READBACK` and `mutation_authorized=false`, so it cannot grant source or Memory Repo mutation and cannot be interpreted as persisted work. Orchestrator performs exact authorized external steps and independent Job/Verification SHA/readback **before** following `next_action_after_readback`.
+
+From DRAFT: Reviewer PASS → authorized READY transition/readback → continue topology or return READY; CHANGES_REQUIRED → Planner revised `planning_revision`/readback → independent Reviewer again. For NEXT IN_PROGRESS superseding plans, Reviewer PASS resumes dispatch without changing lifecycle to READY. Human decision or blocker stops only when substantiated; output of one tool, review verdict or plan edit is never by itself a terminal reason. Existing no-progress/retry guards apply. No background scheduling, implicit CR, or unconditional Reviewer-after-every-Task overhead.
+
 ## 5. Review loop
 
 ```text

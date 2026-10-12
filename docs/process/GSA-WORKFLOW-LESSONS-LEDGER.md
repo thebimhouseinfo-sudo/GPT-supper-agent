@@ -186,3 +186,15 @@ At CP7, this ledger is reread to prove no accepted lesson remains only in a work
 | LLC-059-D | **Minimal necessary Human request:** Escalate only authentic Human-only permissions, secrets, external host/device, decisions or exhausted/unsafe automation, explaining attempted alternatives. | Planner/Orchestrator Human Gate | Before/after metrics: avoidable Human handoffs, CI evidence self-retrieval, retries, latency and real Project acceptance. |
 
 **No automatic promotion:** The LLC entry is not an implementation, not an authority to bypass scope/denied writes, and not grounds to remove genuine Human Gates. Review the exact incident path (harness/prompt/tool capability/routing) before choosing the minimal implementation.
+
+## LLC60 — Planning-review loop stops after review or plan repair (2026-10-11)
+
+**Source:** [LLC60 original report](lessons/LLC-060-PLANNER-REVIEW-LOOP-STOPS-2026-10-11.md); [issue #22](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/issues/22). **Status: CANDIDATE / SOURCE_FIX_IN_BRANCH / FIELD_ACCEPTANCE_PENDING.** Human reports that Planner/Reviewer finish each individual stage, then require another Human “continue” to repair or review again.
+
+| Lesson | Proposed requirement | Candidate owner | Required acceptance |
+|---|---|---|---|
+| LLC-060-A | A prepared planning tool response, review verdict, or revised plan must not end the user turn. After authorized durable GitHub Memory Repo write + independent SHA readback, Orchestrator follows the typed `continuation.next_action_after_readback`: DRAFT→Reviewer; CHANGES_REQUIRED→Planner revise→Reviewer; PASS DRAFT→READY; PASS NEXT IN_PROGRESS→resume dispatch. | Orchestrator + existing Job planning/review MCP outputs | One real scoped Job completes at least two fixable review cycles without Human “continue”; source-derived negative controls. |
+| LLC-060-B | Planning-review is independently **role isolated** from prior Planner reasoning but may run in the SAME USER TURN/chat, unlike mandatory fresh-context independent source/code reviews. Human-invoked CR remains Human-only. | Planner/Reviewer harness + planning-review skill | No false fresh-chat gate or automatic CR dispatch. |
+| LLC-060-C | The follow-up route is not mutation authority or durable progress. Preserve exact persisted Job/Verification SHA/readback, rerun only on new reviewable revision and stop only for material Human decision, evidenced blocker, denied writes or no-progress. | GSA Memory Repo CAS/Reviewer/Job lifecycle | Negative controls for stale-state, Human Gate, PASS→READY, NEXT supersession; live project evidence. |
+
+Neither documentation nor helper tests alone establish live ChatGPT same-turn continuation. Do not promote LLC60 to RESOLVED until operational evidence on a real scoped Project Job exists.
