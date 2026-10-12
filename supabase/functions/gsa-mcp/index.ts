@@ -1967,8 +1967,8 @@ function planningLoopContinuationDecision(
       action = 'REVISE_PLAN'
       role = 'planner'
     } else if (reviewResult === 'PASS') {
-      action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'RESUME_DISPATCH'
-      role = 'orchestrator'
+      action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'PRESENT_PLAN_FOR_APPROVAL'
+      role = lifecycle === 'DRAFT' ? 'orchestrator' : 'human'
     } else if (reviewResult === 'HUMAN_REVIEW_REQUIRED') {
       action = 'STOP_HUMAN_DECISION'
       role = 'human'
@@ -1997,7 +1997,7 @@ function planningLoopContinuationDecision(
 const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
   state: z.enum(['AWAITING_DURABLE_READBACK', 'NOT_APPLICABLE']),
   next_action_after_readback: z.enum([
-    'REVIEW_CURRENT_REVISION','REVISE_PLAN','PROMOTE_READY','RESUME_DISPATCH',
+    'REVIEW_CURRENT_REVISION','REVISE_PLAN','PROMOTE_READY',
     'PRESENT_PLAN_FOR_APPROVAL','STOP_HUMAN_DECISION','STOP_BLOCKED','NONE',
   ]),
   next_role: z.enum(['reviewer','planner','orchestrator','human','none']),
@@ -2060,7 +2060,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Re-read Project lifecycle before every consequential action.',
       'Choose the next role from durable topology/state rather than chat-memory inference.',
       'Do not duplicate specialist work once it has been delegated.',
-      'Own same-turn continuation: after every tool result, evaluate durable state and immediately dispatch/call the next required role/tool until an explicit stop condition is reached.',
+      'Own same-turn continuation after tool results until a real stop condition; Human execution approval for a completed PASS plan is an explicit stop, not permission to start an execution Run.',
     ],
     loop: [
       'Resolve Project, active Job and durable current state.',
@@ -2071,7 +2071,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'After each action/Run, persist required evidence/handoff/state, then continue from the returned durable state rather than ending the user turn by default.',
       'For every newly prepared or materially revised Job plan, automatically dispatch a role-isolated planning Reviewer in the SAME USER TURN after durable persistence/readback. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS promotes DRAFT→READY or resumes a reviewed NEXT IN_PROGRESS superseding revision; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
       'LLC60 PLANNING LOOP OWNER: Orchestrator remains responsible across job_prepare → DRAFT CREATE/readback → planning-review Reviewer → PLANNING_REVIEW Verification CREATE/readback → reviewed Job UPDATE/readback → Planner revise or READY transition. Follow each result.continuation.next_action_after_readback immediately after matching authorized external_steps and exact readback. A returned next_role, prepared Verification, persisted review, revised Job, or READY proposal is not a reason to ask Human to say continue.',
-      'LLC60 ROUTES: REVIEW_CURRENT_REVISION→reviewer with current persisted Job revision; REVISE_PLAN→planner applies findings and persists incremented revision; PROMOTE_READY→orchestrator invokes job_transition READY with current exact-SHA PASS review and reads back; RESUME_DISPATCH→orchestrator on NEXT IN_PROGRESS (never DRAFT READY); PRESENT_PLAN_FOR_APPROVAL→present the PASS plan to Human after confirmed READY and STOP before execution pending explicit approval. STOP_HUMAN_DECISION asks only for the specific material Human decision; STOP_BLOCKED reports the blocker. Never auto-invoke human-only Critic Reviewer.',
+      'LLC60 ROUTES: REVIEW_CURRENT_REVISION→reviewer with current persisted Job revision; REVISE_PLAN→planner applies findings and persists incremented revision; PROMOTE_READY→orchestrator invokes job_transition READY with current exact-SHA PASS review and reads back; PRESENT_PLAN_FOR_APPROVAL→present the PASS plan to Human after READY readback OR review PASS of a superseding NEXT IN_PROGRESS plan; STOP before execution pending explicit approval. STOP_HUMAN_DECISION asks only for the specific material Human decision; STOP_BLOCKED reports the blocker. Never auto-invoke human-only Critic Reviewer.',
       'LLC60 SAFETY: Plan review is independently role-isolated from previous Planner reasoning but DOES NOT require a new Human chat. A planning Verification or Job proposal is non-authoritative until exact GitHub persistence/readback; on lost responses/stale SHA refetch and reconcile rather than duplicating Verifications or skipping reviews. Use existing no-progress fingerprint guard instead of an infinite same-revision loop.',
       'NEXT CHECKPOINT: when current NEXT topology makes a TestCheckpointSpec runnable, start the Tester Run, acquire/reuse checkpoint_claim_prepare, persist/read back the deterministic claim + attempt, execute Tester, then checkpoint_verification_prepare and finalize the claim with exact SHA before routing.',
       'NEXT EVIDENCE GATE: before dispatching a consumer Task, crossing a Milestone gate or completing a NEXT Job, evaluate current claim + Verification evidence. Mandatory EvidenceRequirement/checkpoint evidence blocks even when a non-blocking PASS_RETEST_REQUIRED would otherwise be allowed.',
@@ -2112,7 +2112,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'REVIEW LOOP: after job_prepare or job_revise_plan, persist and independently read back the exact Job SHA; then in the SAME USER TURN switch to role-isolated planning Reviewer for this exact planning revision. The review is not a separate Human chat and must not be reported as final planning completion.',
       'ADAPT: on CHANGES_REQUIRED after persisted Verification + Job review readback, switch to Planner in the SAME USER TURN, repair actionable findings, call job_revise_plan, persist the new Job by exact SHA and immediately re-run Reviewer. Do not ask Human for a continue prompt between these operations; do not reuse stale Reviewer PASS.',
       'RUNTIME SUPERSESSION: for NEXT IN_PROGRESS PLAN_GAP/SPEC_GAP, require the persisted Tester Verification plus its terminal checkpoint claim, resupply/rebind the complete CP4 planning graph into a new planning_revision, keep the Job IN_PROGRESS, and block dispatch until Reviewer PASS. If Reviewer returns CHANGES_REQUIRED, continue the planning-review repair loop without requiring a duplicate Tester gap finding.',
-      'READY/RESUME GATE: after current-revision PASS Verification and reviewed Job are persisted/read back, invoke job_transition READY for a DRAFT Job in the SAME USER TURN and confirm READY readback before reporting the plan complete; for NEXT IN_PROGRESS just resume dispatch. HUMAN_REVIEW_REQUIRED pauses only for the concrete material Human decision; BLOCKED only for an evidenced blocker.',
+      'PLANNING COMPLETE: after current-revision PASS Verification and Job readback, promote DRAFT→READY and read back, OR leave reviewed NEXT IN_PROGRESS in place. In both cases present the PASS plan to Human and STOP for explicit execution approval; never auto-dispatch execution. HUMAN_REVIEW_REQUIRED pauses only for a material decision; BLOCKED only for an evidenced blocker.',
     ],
     outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
@@ -5740,7 +5740,7 @@ function createServer(req: Request) {
         steps.push(
           current.lifecycle === 'DRAFT'
             ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then present the reviewed PASS plan to Human for explicit execution approval. Do not ask the user to manually request review.'
-            : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
+            : 'NEXT IN_PROGRESS superseding plan now has Reviewer PASS: present it for explicit Human execution approval and STOP. Do not automatically resume dispatch; old-revision claims/verifications remain non-applicable.',
         )
       } else if (result === 'CHANGES_REQUIRED') {
         steps.push(
