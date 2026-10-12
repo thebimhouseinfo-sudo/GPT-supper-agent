@@ -1977,11 +1977,11 @@ function planningLoopContinuationDecision(
       role = 'orchestrator'
     }
   } else if (stage === 'READY_TRANSITION' && lifecycle === 'READY') {
-    action = 'CONTINUE_JOB_TOPOLOGY'
-    role = 'orchestrator'
+    action = 'PRESENT_PLAN_FOR_APPROVAL'
+    role = 'human'
   }
   if (action === 'NONE') return invalid()
-  const stopped = action === 'STOP_HUMAN_DECISION' || action === 'STOP_BLOCKED'
+  const stopped = action === 'STOP_HUMAN_DECISION' || action === 'STOP_BLOCKED' || action === 'PRESENT_PLAN_FOR_APPROVAL'
   return {
     state: 'AWAITING_DURABLE_READBACK' as const,
     next_action_after_readback: action,
@@ -1989,7 +1989,7 @@ function planningLoopContinuationDecision(
     resume_same_turn: !stopped,
     requires_readback: true,
     planning_revision: planningRevision,
-    human_action_required: action === 'STOP_HUMAN_DECISION',
+    human_action_required: action === 'STOP_HUMAN_DECISION' || action === 'PRESENT_PLAN_FOR_APPROVAL',
     mutation_authorized: false as const,
   }
 }
@@ -1998,7 +1998,7 @@ const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
   state: z.enum(['AWAITING_DURABLE_READBACK', 'NOT_APPLICABLE']),
   next_action_after_readback: z.enum([
     'REVIEW_CURRENT_REVISION','REVISE_PLAN','PROMOTE_READY','RESUME_DISPATCH',
-    'CONTINUE_JOB_TOPOLOGY','STOP_HUMAN_DECISION','STOP_BLOCKED','NONE',
+    'PRESENT_PLAN_FOR_APPROVAL','STOP_HUMAN_DECISION','STOP_BLOCKED','NONE',
   ]),
   next_role: z.enum(['reviewer','planner','orchestrator','human','none']),
   resume_same_turn: z.boolean(),
@@ -2010,6 +2010,15 @@ const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
 
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
+  '- NEW HUMAN MESSAGE ONLY (not tool results): keep the currently receiving Agent; if none, default to Planner. Explicit Human Direct Agent invocation uses its selected role. Do not switch Agents merely because User sends a new message.',
+  '- NO REASONING / FIXED STEPS: GSA bootstrap and Project open perform only prescribed minimal identity/config/metadata checks to reach Project READY quickly; do not investigate source, load Job details or plan before User asks.',
+  '- LOW REASONING / CLASSIFY: on every new ordinary User message, distinguish a question/status request from a request to act/change scope. Questions get a direct evidence-grounded answer without a new Job or plan.',
+  '- LOW REASONING / CLARIFY: for an action/change, first identify missing material User choices. Ask directly rather than speculating among alternatives or researching deeply to guess intent; do not re-ask facts already known. A fully clear request needs no redundant clarification.',
+  '- LOW REASONING / SKELETON: if new or changed detailed planning is needed, present a short scope/approach skeleton and obtain Human confirmation BEFORE full planning, L0/L1 source investigation or durable Job DRAFT. Reuse an already approved applicable plan instead of rebuilding it.',
+  '- FULL REASONING only after direction/skeleton is confirmed: the responsible Agent creates/refines the detailed plan and autonomously obtains role-isolated Reviewer PASS through revise/re-review loops; never offer an unresolved failed plan as final.',
+  '- HUMAN EXECUTION APPROVAL: present the reviewed PASS plan and STOP in conversation. Begin source-changing or other consequential Job execution only after the Human explicitly approves that presented plan (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). Skeleton approval permits detailed planning only; a general action request or an ambiguous "ok" outside plan-approval context is not execution authorization. Once approved, continue approved scope without re-asking at each Task.',
+  '- INTERRUPT / NEW MESSAGE: the current receiving Agent repeats classify/clarify, answers questions directly, and handles clear changes within capability. Handoff only for a real capability/authority mismatch; do not silently change already approved Job scope. Direct Agent commands remain the explicit Human shortcut.',
+
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
   '- The explicitly opened Project is the default operational frame. Remembered context never silently switches Project.',
   '- If a request belongs to another unrelated Project, surface the Project mismatch before operational continuation unless the Human explicitly referenced it for the active Project work.',
@@ -2062,7 +2071,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'After each action/Run, persist required evidence/handoff/state, then continue from the returned durable state rather than ending the user turn by default.',
       'For every newly prepared or materially revised Job plan, automatically dispatch a role-isolated planning Reviewer in the SAME USER TURN after durable persistence/readback. CHANGES_REQUIRED routes back to Planner for revision and re-review; PASS promotes DRAFT→READY or resumes a reviewed NEXT IN_PROGRESS superseding revision; HUMAN_REVIEW_REQUIRED pauses only for the concrete Human decision.',
       'LLC60 PLANNING LOOP OWNER: Orchestrator remains responsible across job_prepare → DRAFT CREATE/readback → planning-review Reviewer → PLANNING_REVIEW Verification CREATE/readback → reviewed Job UPDATE/readback → Planner revise or READY transition. Follow each result.continuation.next_action_after_readback immediately after matching authorized external_steps and exact readback. A returned next_role, prepared Verification, persisted review, revised Job, or READY proposal is not a reason to ask Human to say continue.',
-      'LLC60 ROUTES: REVIEW_CURRENT_REVISION→reviewer with current persisted Job revision; REVISE_PLAN→planner applies findings and persists incremented revision; PROMOTE_READY→orchestrator invokes job_transition READY with current exact-SHA PASS review and reads back; RESUME_DISPATCH→orchestrator on NEXT IN_PROGRESS (never DRAFT READY); CONTINUE_JOB_TOPOLOGY→orchestrator after confirmed READY. STOP_HUMAN_DECISION asks only for the specific material Human decision; STOP_BLOCKED reports the blocker. Never auto-invoke human-only Critic Reviewer.',
+      'LLC60 ROUTES: REVIEW_CURRENT_REVISION→reviewer with current persisted Job revision; REVISE_PLAN→planner applies findings and persists incremented revision; PROMOTE_READY→orchestrator invokes job_transition READY with current exact-SHA PASS review and reads back; RESUME_DISPATCH→orchestrator on NEXT IN_PROGRESS (never DRAFT READY); PRESENT_PLAN_FOR_APPROVAL→present the PASS plan to Human after confirmed READY and STOP before execution pending explicit approval. STOP_HUMAN_DECISION asks only for the specific material Human decision; STOP_BLOCKED reports the blocker. Never auto-invoke human-only Critic Reviewer.',
       'LLC60 SAFETY: Plan review is independently role-isolated from previous Planner reasoning but DOES NOT require a new Human chat. A planning Verification or Job proposal is non-authoritative until exact GitHub persistence/readback; on lost responses/stale SHA refetch and reconcile rather than duplicating Verifications or skipping reviews. Use existing no-progress fingerprint guard instead of an infinite same-revision loop.',
       'NEXT CHECKPOINT: when current NEXT topology makes a TestCheckpointSpec runnable, start the Tester Run, acquire/reuse checkpoint_claim_prepare, persist/read back the deterministic claim + attempt, execute Tester, then checkpoint_verification_prepare and finalize the claim with exact SHA before routing.',
       'NEXT EVIDENCE GATE: before dispatching a consumer Task, crossing a Milestone gate or completing a NEXT Job, evaluate current claim + Verification evidence. Mandatory EvidenceRequirement/checkpoint evidence blocks even when a non-blocking PASS_RETEST_REQUIRED would otherwise be allowed.',
@@ -2087,6 +2096,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'For multi-repo Projects, require one working repository per executable Job while preserving Project-wide read/review impact awareness and authority/precedence direction.',
     ],
     loop: [
+      'ON NEW HUMAN MESSAGE: apply shared LOW REASONING classify/clarify/skeleton before this planning loop. Answer questions directly; only enter L0 for a defined planning objective after required skeleton confirmation.',
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
       'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
@@ -2762,6 +2772,9 @@ function createServer(req: Request) {
     {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
+        'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
+        'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
+        'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
         'A GSA Project may own or reference multiple source repositories. PROJECT.md repository registry is the durable source of truth for Project repo topology.',
@@ -4888,7 +4901,7 @@ function createServer(req: Request) {
         context_policy: role === 'critic_reviewer'
           ? 'STATELESS_REVIEW_HUMAN_ONLY; ignore conversation history as evidence, reconstruct from durable records and live source only, and compare prior Reviewer verdict last.'
           : role === 'reviewer'
-            ? 'FRESH_CHAT_CONTEXT_ISOLATED; load exact requirements + target/revision + evidence only.'
+            ? 'ROLE_ISOLATED_EVIDENCE; review exact requirements + target/revision + source/durable evidence independently within current chat if needed; do not require a fresh Human chat.'
             : 'MINIMUM_SUFFICIENT_CONTEXT; load skill bodies progressively and prefer durable references plus selective live-source reads.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -5389,7 +5402,7 @@ function createServer(req: Request) {
         'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
         'GitHub Memory Repo: update the Job file with next_job_record_text using expected_job_sha exactly.',
         'Read back the Job and verify the target lifecycle/result before reporting the Job transition complete.',
-        ...(target_lifecycle === 'READY' ? ['After exact READY readback, follow continuation.next_action_after_readback=CONTINUE_JOB_TOPOLOGY in the same user turn; do not ask Human to say continue.'] : []),
+        ...(target_lifecycle === 'READY' ? ['After exact READY readback, follow continuation.next_action_after_readback=PRESENT_PLAN_FOR_APPROVAL: show the reviewed PASS plan and STOP. Await explicit Human execution approval before any Job execution Run.'] : []),
       )
       const out = {
         memory_path: memoryPath,
@@ -5726,7 +5739,7 @@ function createServer(req: Request) {
       if (result === 'PASS') {
         steps.push(
           current.lifecycle === 'DRAFT'
-            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then continue topology. Do not ask the user to manually request review.'
+            ? 'Immediately promote DRAFT→READY with job_transition using this planning-review Verification reference, then present the reviewed PASS plan to Human for explicit execution approval. Do not ask the user to manually request review.'
             : 'NEXT IN_PROGRESS superseding revision is now dispatchable again; old-revision claims/verifications remain non-applicable and must not be reused.',
         )
       } else if (result === 'CHANGES_REQUIRED') {
