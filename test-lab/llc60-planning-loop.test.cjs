@@ -133,7 +133,7 @@ test('LLC60 role-isolated planning Reviewer same turn does not become a new Huma
   const reviewer = roles.reviewer.loop.join('\n');
   const planSkill = skills['job-planning'].body;
   const reviewSkill = skills['planning-review'].body;
-  for (const text of [shared,orchestrator,planner,reviewer,planSkill,reviewSkill]) {
+  for (const text of [shared.join('\n'),orchestrator,planner,reviewer,planSkill,reviewSkill]) {
     assert.match(text,/SAME USER TURN|SAME USER TURN|same Human chat\/turn|same Human chat/);
   }
   assert.match(orchestrator,/next_action_after_readback/);
@@ -213,7 +213,7 @@ test('Shared intake contracts: discussion and skeleton approval cannot authorize
   assert.match(rules,/default to Planner/);
   assert.match(rules,/Handoff only for a real capability\/authority mismatch/);
   assert.doesNotMatch(rules,/automatic source write on mere agreement/i);
-  assert.match(roles.orchestrator.loop.join(' '),/STOP for explicit execution approval|Human execution approval.*explicit stop/);
+  assert.match(roles.orchestrator.authority.join(' '),/Human execution approval.*explicit stop/);
 });
 
 test('LLC60 negative control: READY continuation must not auto-dispatch without Human execution approval', () => {
