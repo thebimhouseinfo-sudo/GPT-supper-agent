@@ -27,7 +27,7 @@ function assertRoute(input, wantAction, wantRole, wantContinue = true) {
   assert.equal(d.next_action_after_readback, wantAction, JSON.stringify(input));
   assert.equal(d.next_role, wantRole);
   assert.equal(d.resume_same_turn, wantContinue);
-  assert.equal(d.human_action_required, wantAction === 'STOP_HUMAN_DECISION');
+  assert.equal(d.human_action_required, ['STOP_HUMAN_DECISION','PRESENT_PLAN_FOR_APPROVAL'].includes(wantAction));
   assert.equal(d.state, 'AWAITING_DURABLE_READBACK');
   assert.equal(d.requires_readback, true);
   assert.equal(d.mutation_authorized, false);
@@ -70,10 +70,10 @@ test('LLC60 CHANGES_REQUIRED always returns to Planner within same turn and new 
   }
 });
 
-test('LLC60 PASS DRAFT promotes READY; reviewed NEXT IN_PROGRESS only resumes dispatch', () => {
+test('LLC60 PASS DRAFT promotes READY then stops for Human execution approval; superseding NEXT also stops', () => {
   assertRoute(['REVIEW_RECORDED','DRAFT',3,'PASS'],'PROMOTE_READY','orchestrator');
-  assertRoute(['READY_TRANSITION','READY',3],'CONTINUE_JOB_TOPOLOGY','orchestrator');
-  assertRoute(['REVIEW_RECORDED','IN_PROGRESS',3,'PASS'],'RESUME_DISPATCH','orchestrator');
+  assertRoute(['READY_TRANSITION','READY',3],'PRESENT_PLAN_FOR_APPROVAL','human',false);
+  assertRoute(['REVIEW_RECORDED','IN_PROGRESS',3,'PASS'],'PRESENT_PLAN_FOR_APPROVAL','human',false);
 });
 
 test('LLC60 Human gate and concrete blocker stop loop rather than repeat attempts', () => {
@@ -143,9 +143,9 @@ test('LLC60 role-isolated planning Reviewer same turn does not become a new Huma
   const canonical = fs.readFileSync('docs/architecture/AGENT-HARNESSES.md','utf8');
   const jobRuntime = fs.readFileSync('skills/gsa-job-runtime/SKILL.md','utf8');
   assert.match(canonical,/planning review.*SAME USER TURN/i);
-  assert.match(canonical,/fresh review context\/chat for mandatory independent source\/code reviews/);
-  assert.match(jobRuntime,/independent source\/code review.*fresh-context isolation/);
-  assert.match(jobRuntime,/Job planning-review is different/);
+  assert.match(canonical,/same.chat.*independent.*evidence|independent.*evidence.*same.chat/i);
+  assert.match(jobRuntime,/same.chat.*independent.*evidence|independent.*evidence.*same.chat/i);
+  assert.doesNotMatch(source,/FRESH_CHAT_CONTEXT_ISOLATED/);
 });
 
 test('LLC60 model-only: 2 fixable reviews reach READY without any Human continue', () => {
@@ -171,7 +171,7 @@ test('LLC60 model-only: 2 fixable reviews reach READY without any Human continue
   assert.equal(trace.join(' -> '),[
     'REVIEW_CURRENT_REVISION','REVISE_PLAN',
     'REVIEW_CURRENT_REVISION','REVISE_PLAN',
-    'REVIEW_CURRENT_REVISION','PROMOTE_READY','CONTINUE_JOB_TOPOLOGY',
+    'REVIEW_CURRENT_REVISION','PROMOTE_READY','PRESENT_PLAN_FOR_APPROVAL',
   ].join(' -> '));
 });
 
@@ -188,9 +188,42 @@ test('LLC60 negative control: removing CHANGES_REQUIRED routing makes known-bad 
 
 test('LLC60 negative control: removing PASS→READY route fails the oracle', () => {
   const original = functionDecl.getText(sf);
-  const needle = "action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'RESUME_DISPATCH'";
+  const needle = "action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'PRESENT_PLAN_FOR_APPROVAL'";
   assert.ok(original.includes(needle),'Mutation targets live PASS branch');
-  const mutant = loadDecision(original.replace(needle,"action = 'RESUME_DISPATCH'"));
+  const mutant = loadDecision(original.replace(needle,"action = 'PRESENT_PLAN_FOR_APPROVAL'"));
   assert.equal(decide('REVIEW_RECORDED','DRAFT',3,'PASS').next_action_after_readback,'PROMOTE_READY');
   assert.notEqual(mutant('REVIEW_RECORDED','DRAFT',3,'PASS').next_action_after_readback,'PROMOTE_READY');
+});
+
+test('Shared intake contracts: discussion and skeleton approval cannot authorize source write', () => {
+  const rules = shared.join('\n');
+  const keys = [
+    'NO REASONING / FIXED STEPS',
+    'LOW REASONING / CLASSIFY',
+    'LOW REASONING / CLARIFY',
+    'LOW REASONING / SKELETON',
+    'FULL REASONING only after direction/skeleton is confirmed',
+    'HUMAN EXECUTION APPROVAL',
+    'INTERRUPT / NEW MESSAGE',
+  ];
+  for (const key of keys) assert.ok(rules.includes(key), 'Missing shared behavior: ' + key);
+  assert.ok(rules.indexOf(keys[1]) < rules.indexOf(keys[3]), 'Clarification must precede planning');
+  assert.match(rules,/Skeleton approval permits detailed planning only/);
+  assert.match(rules,/Begin source-changing or other consequential Job execution only after the Human explicitly approves/);
+  assert.match(rules,/default to Planner/);
+  assert.match(rules,/Handoff only for a real capability\/authority mismatch/);
+  assert.doesNotMatch(rules,/automatic source write on mere agreement/i);
+  assert.match(roles.orchestrator.loop.join(' '),/STOP for explicit execution approval|Human execution approval.*explicit stop/);
+});
+
+test('LLC60 negative control: READY continuation must not auto-dispatch without Human execution approval', () => {
+  const original = functionDecl.getText(sf);
+  const needle = "action = 'PRESENT_PLAN_FOR_APPROVAL'";
+  assert.ok(original.includes(needle),'Mutation targets exact READY branch');
+  const mutant = loadDecision(original.replace(needle, "action = 'CONTINUE_JOB_TOPOLOGY'"));
+  const approved = decide('READY_TRANSITION','READY',3);
+  assert.equal(approved.resume_same_turn,false);
+  assert.equal(approved.human_action_required,true);
+  assert.equal(approved.next_action_after_readback,'PRESENT_PLAN_FOR_APPROVAL');
+  assert.notEqual(mutant('READY_TRANSITION','READY',3).next_action_after_readback,'PRESENT_PLAN_FOR_APPROVAL');
 });
