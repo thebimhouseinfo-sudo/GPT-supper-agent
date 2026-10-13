@@ -119,6 +119,24 @@ Objective
 
 `Phase`, `Job Pack` and `Milestone` are planning/topology concepts. They do not replace the persistent `Project → Job → Task → Run` record hierarchy.
 
+Every newly authored or materially updated plan file anchors its approved intent at the start, before scope can drift during repeated review:
+
+```markdown
+# PLAN: ...
+
+## GOAL
+- Approved overall outcome, completion conditions and hard limits.
+
+## PHASE 1: ...
+### GOAL
+- Phase outcome and how its completion advances the overall GOAL.
+
+### Tasks
+...
+```
+
+Repeat the `### GOAL` block directly after **every** Phase heading and before that Phase's Tasks. In each planning review, independently compare overall GOAL, Phase GOALs and Tasks with the user-approved intent. Missing goals or unauthorized goal drift are review failures; only Human approval changes the goal. No new persistent Phase schema or extra review gate is implied.
+
 A Job Pack is an executable context boundary. Keep it:
 - large enough to finish meaningfully;
 - small enough to preserve context quality;
