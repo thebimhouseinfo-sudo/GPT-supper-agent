@@ -81,6 +81,8 @@ test('rl is a Planner review-loop modifier, never a source or merge authorizatio
   assert.match(rules, /PLANNER RL SHORTCUT/);
   for (const example of ['planner rl', 'planner rl đi', 'planer rl']) assert.ok(rules.includes(example));
   assert.match(rules, /rl never grants source edits, Job execution, merge or deploy/);
+  assert.match(rules, /including a draft discussed in chat/);
+  assert.match(rules, /ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification/);
   assert.match(rules, /HUMAN EXECUTION APPROVAL/);
   assert.match(source, /'PLANNER RL: recognize rl as a planning review-loop modifier/);
   assert.match(source, /planner \[pl\].*rl = review\/repair loop/);
