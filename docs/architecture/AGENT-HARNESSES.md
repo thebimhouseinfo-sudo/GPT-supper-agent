@@ -295,6 +295,16 @@ Planner fixes ordinary review findings without asking the user.
 Reviewer never rewrites the plan.
 Every revised planning revision invalidates prior planning-review PASS.
 
+### Goal anchoring (all plan files)
+
+For **every new or materially revised plan**, place `## GOAL` directly after the document title/front matter, and `### GOAL` directly under **each Phase heading**, before its Tasks. The overall goal states the user-approved outcome, completion and non-negotiable boundaries; each Phase goal states its outcome/completion and must support the overall goal. This is a document-format contract, not a new Job/Phase record type. Do not retroactively rewrite unrelated archived plans.
+
+At **every** planning review/revision, Reviewer compares both levels of goals to the Human-approved intent and actual Tasks. Missing goal anchors or drift from approved goals is `CHANGES_REQUIRED`; a proposed material change to an approved goal requires a real Human decision (`HUMAN_REVIEW_REQUIRED`). Planner repairs within approved intent and re-reviews until PASS; neither role invents a new goal.
+
+### `rl` — explicit Planner review-loop shortcut
+
+`rl` is an instruction modifier, **not** a new root command, role, Job lifecycle or review implementation. Examples: `planner rl`, `planner rl đi`, `planer rl` (common typo). Apply it to the identified current Plan: run the existing Planner → role-isolated planning Reviewer → Planner repairs → Reviewer loop within the same Human turn until persisted PASS, genuine Human decision, evidenced blocker or existing no-progress guard. If a plan or draft is identifiable (including one in the current conversation), begin its review without an extra Human confirmation. For durable Jobs, keep the exact GitHub CAS/readback gates; for direct/ephemeral drafts, review in the same turn without claiming a persisted Verification. Clarify only if there is no identifiable plan; a completely new plan still follows ordinary intake/skeleton rules. `rl` does not authorize source edits, execution, merge or deployment.
+
 
 ## Multi-repo Project planning
 
