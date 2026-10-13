@@ -56,6 +56,39 @@ const shared = constantBody('BASE_AGENT_HARNESS');
 const roles = constantBody('ROLE_HARNESSES');
 const skills = constantBody('RUNTIME_SKILLS');
 
+test('Plan GOAL anchors are served to Planner and planning Reviewer and documented for every Phase', () => {
+  const plan = roles.planner.loop.join('\n');
+  const review = roles.reviewer.loop.join('\n');
+  const all = [shared.join('\n'), plan, review, skills['job-planning'].body, skills['planning-review'].body];
+  for (const contract of all) {
+    assert.match(contract, /## GOAL/, 'global goal anchor in runtime role or skill');
+    assert.match(contract, /### GOAL/, 'per-Phase goal anchor in runtime role or skill');
+  }
+  assert.match(review, /CHANGES_REQUIRED/);
+  assert.match(review, /HUMAN_REVIEW_REQUIRED/);
+  assert.match(skills['planning-review'].body, /Human-approved goals/);
+  const canonical = fs.readFileSync('docs/architecture/AGENT-HARNESSES.md', 'utf8');
+  const plannerDoc = fs.readFileSync('docs/architecture/PLANNER-SCOPE-AND-UIUX.md', 'utf8');
+  const runtimeSkill = fs.readFileSync('skills/gsa-job-runtime/SKILL.md', 'utf8');
+  for (const doc of [canonical, plannerDoc, runtimeSkill]) {
+    assert.match(doc, /## GOAL/);
+    assert.match(doc, /### GOAL/);
+  }
+});
+
+test('rl is a Planner review-loop modifier, never a source or merge authorization', () => {
+  const rules = shared.join('\n');
+  assert.match(rules, /PLANNER RL SHORTCUT/);
+  for (const example of ['planner rl', 'planner rl đi', 'planer rl']) assert.ok(rules.includes(example));
+  assert.match(rules, /rl never grants source edits, Job execution, merge or deploy/);
+  assert.match(rules, /HUMAN EXECUTION APPROVAL/);
+  assert.match(source, /'PLANNER RL: recognize rl as a planning review-loop modifier/);
+  assert.match(source, /planner \[pl\].*rl = review\/repair loop/);
+  assert.match(roles.orchestrator.loop.join('\n'), /CHANGES_REQUIRED routes back to Planner/);
+  const doc = fs.readFileSync('docs/architecture/AGENT-HARNESSES.md', 'utf8');
+  assert.match(doc, /### `rl` — explicit Planner review-loop shortcut/);
+});
+
 test('LLC60 initial DRAFT and successive reviewed Plan revisions automatically route to Reviewer', () => {
   assertRoute(['JOB_PREPARED','DRAFT',1], 'REVIEW_CURRENT_REVISION','reviewer');
   assertRoute(['PLAN_REVISED','DRAFT',2], 'REVIEW_CURRENT_REVISION','reviewer');
