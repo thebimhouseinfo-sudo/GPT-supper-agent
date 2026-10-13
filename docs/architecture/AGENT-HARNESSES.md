@@ -303,7 +303,7 @@ At **every** planning review/revision, Reviewer compares both levels of goals to
 
 ### `rl` — explicit Planner review-loop shortcut
 
-`rl` is an instruction modifier, **not** a new root command, role, Job lifecycle or review implementation. Examples: `planner rl`, `planner rl đi`, `planer rl` (common typo). Apply it to the identified current Plan: run the existing Planner → role-isolated planning Reviewer → Planner repairs → Reviewer loop within the same Human turn until persisted PASS, genuine Human decision, evidenced blocker or existing no-progress guard. If there is no identified/agreed Plan, clarify the target; `rl` does not bypass initial plan/skeleton approval. It does not authorize source edits, execution, merge or deployment.
+`rl` is an instruction modifier, **not** a new root command, role, Job lifecycle or review implementation. Examples: `planner rl`, `planner rl đi`, `planer rl` (common typo). Apply it to the identified current Plan: run the existing Planner → role-isolated planning Reviewer → Planner repairs → Reviewer loop within the same Human turn until persisted PASS, genuine Human decision, evidenced blocker or existing no-progress guard. If a plan or draft is identifiable (including one in the current conversation), begin its review without an extra Human confirmation. For durable Jobs, keep the exact GitHub CAS/readback gates; for direct/ephemeral drafts, review in the same turn without claiming a persisted Verification. Clarify only if there is no identifiable plan; a completely new plan still follows ordinary intake/skeleton rules. `rl` does not authorize source edits, execution, merge or deployment.
 
 
 ## Multi-repo Project planning
