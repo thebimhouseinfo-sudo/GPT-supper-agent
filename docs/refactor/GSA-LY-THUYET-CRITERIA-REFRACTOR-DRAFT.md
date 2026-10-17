@@ -182,6 +182,12 @@ Người dùng có thể thay đổi mục tiêu giữa chừng. GSA không đư
 
 Tương tự, mỗi lần gặp sự cố, GSA được phép ghi Lessons Learned để không lặp lỗi. **Ghi một lesson không đồng nghĩa được phép viết thêm gate, schema hoặc sửa toàn harness ngay lập tức.** Mọi đề xuất mới cần nhìn lại Criteria và xem chức năng đã có xử lý được chưa. Đừng lặp sai lầm: thiếu tiêu chí → sinh thêm gate → gate gây tắc → thêm workaround → source phình ra.
 
+**[Người dùng — yêu cầu mới 17/10/2026] Decision Logger phải làm cho quyết định của người dùng trở thành dữ liệu dự án, không bị chìm trong lịch sử chat.** Khi Planner hoặc agent trình một lựa chọn có ý nghĩa về lý thuyết, scope, Criteria, milestone, phương án kỹ thuật, thay đổi plan hay quyền thực thi, GSA trình một câu hỏi ngắn cùng các phương án cụ thể để người dùng **click chọn** (chấp thuận phương án, chọn phương án khác, yêu cầu sửa, từ chối hoặc hoãn). Chỉ hỏi ở ranh giới quyết định có ý nghĩa, không biến mọi trao đổi hay thao tác nhỏ thành một Human Gate.
+
+Một lần click phải được ghi bền vững với nội dung lựa chọn, đối tượng và phiên bản đề xuất được quyết định, phạm vi áp dụng, nguồn xác thực đó là thao tác trực tiếp của Human, thời điểm, và ảnh hưởng được cho phép (ví dụ: chấp thuận lý thuyết **không** đồng nghĩa cho phép sửa code, merge hay deploy). Khi ghi thất bại hoặc không chứng minh được nguồn click thì **vẫn chưa được duyệt**; không được dùng lời agent thuật lại như bằng chứng. Khi quyết định mới thay thế quyết định trước, giữ lịch sử và liên kết thay thế thay vì ghi đè. GSA phải tìm và nạp được quyết định hiện hành ở chat mới mà không bắt người dùng đọc lại toàn bộ hội thoại.
+
+**Không tạo một approval engine thứ hai. [Nguyên tắc refactor]** Tận dụng Knowledge Artifact kiểu DECISION và Human Gate hiện có; Decision Logger là giao diện thu nhận lựa chọn và đường ghi nhận có xác thực. Các quyết định cũ chỉ nằm trong chat cần được tổng hợp thành **ứng viên quyết định** để người dùng kiểm tra/chọn xác nhận; không tự suy ra chúng đã được duyệt. **[Chi tiết kỹ thuật chưa chốt]** Khả năng ChatGPT Web cung cấp callback click có xác thực tới MCP cần được chứng minh; nếu không có thì dùng một giao diện xác thực tối giản, không được giả vờ rằng nút gửi lại một tin nhắn của AI đã là một sự kiện phê duyệt đáng tin cậy.
+
 **Criteria 20 — Thay đổi có kiểm soát:** Khi user duyệt thay đổi mục tiêu, GSA điều chỉnh phần kế hoạch và công việc bị ảnh hưởng, bảo toàn phần hợp lệ, không ghi đè lịch sử và không để thiếu yêu cầu đã được chốt.
 
 **Criteria 21 — Không dùng gate để vá gate:** Mỗi gate còn lại phải chứng minh nó bảo vệ một quyền, một rủi ro thực hoặc một tiêu chí; phần trùng chức năng, chỉ có tác dụng vá gate khác hoặc không còn mục đích phải được đánh giá để hợp nhất/loại bỏ. Không thêm gate mới chỉ vì một agent lo ngại theo giả định.
@@ -193,6 +199,10 @@ Tương tự, mỗi lần gặp sự cố, GSA được phép ghi Lessons Learne
 **Criteria 24 — AGENTS.md tối thiểu do Planner quản lý:** Khi thiết lập kế hoạch cho Project, Planner phải bảo đảm có `AGENTS.md` ở gốc GSA Project Memory, khởi tạo từ template chung và cập nhật khi đặc thù dự án thay đổi. Project không có yêu cầu chuyên biệt vẫn hợp lệ với nội dung tối thiểu. File không được là bản sao thứ hai của Criteria, không là nơi cấp quyền mới, không buộc tạo skill rỗng và không trở thành Human Gate mới chỉ vì được tạo.
 
 **Criteria 25 — Add-in Coder/Tester là bổ sung tùy chọn:** Trong cùng một GSA framework, Project có add-in AutoLISP, Swift hoặc frontend thì Coder/Tester nạp đúng kiến thức và kỹ năng cần cho Task; Project không có add-in vẫn dùng generic behavior đầy đủ. Planner, Reviewer và CR không bị Project thay thế cấu hình. Add-in không được thay workflow, phạm vi ghi, tiêu chí nghiệm thu, quyền approval hoặc quy tắc an toàn của framework. Một task không cần kỹ năng đặc thù không phải đọc hoặc gọi kỹ năng ấy.
+
+**Criteria 26 — Quyết định bằng thao tác chọn, lưu bền vững:** Người dùng được trình các lựa chọn rõ ràng và click để quyết định các vấn đề cần phê duyệt. GSA chỉ coi là quyết định có hiệu lực khi nhận được sự kiện Human được xác thực, gắn với đúng Project/đề xuất/phiên bản/phạm vi và có bằng chứng đã lưu, đọc lại được trong Project Memory. Không yêu cầu gõ “ok” trong chat rồi tự suy diễn; không tự chấp thuận khi UI hay persistence lỗi.
+
+**Criteria 27 — Truy vết, thay thế và tái sử dụng quyết định:** Ở bất kỳ phiên chat nào, GSA phải xác định được quyết định nào đang có hiệu lực, ai xác nhận, đã chọn giữa những phương án nào, áp dụng ở đâu và có thay thế quyết định cũ không. Quyết định cũ không bị mất; nội dung chỉ được thảo luận trong chat nhưng chưa xác minh không được biến thành approval. Decision Logger dùng lại cấu trúc lưu quyết định/Human Gate hiện có, không tạo thêm một luồng governance độc lập.
 
 ---
 
@@ -232,6 +242,8 @@ Tài liệu này cố ý **không giải quyết hộ người dùng** các lự
 **7. Model riêng cho agent trong GSA Web? [Chưa chốt và chưa chứng minh khả thi]** Ý tưởng Planner/Coder/Reviewer/CR dùng model khác nhau thuộc cuộc trao đổi **Bootstrap cho Codex local**. Không được coi file TOML của Codex là bằng chứng ChatGPT Web cho phép ép model ở từng role GSA.
 
 **8. Git “auto push” phải dịch thế nào sang GSA? [Chưa chốt]** Với Codex local, commit và push có thể tách biệt; với GitHub connector của GSA, source write thường là remote commit ngay. Quyền source write, tích hợp vào branch, merge production và deploy phải được hiểu tách biệt khi Planner mô tả milestone. Không tự copy nguyên quy tắc local Git.
+
+**9. Kênh click có xác thực trong ChatGPT Web? [Chưa chốt khả năng kỹ thuật]** Yêu cầu sản phẩm đã rõ: thay sự đồng ý tản mạn trong chat bằng lựa chọn có thể click và ghi được sự kiện Human trực tiếp. Nhưng cách UI gửi sự kiện đáng tin cậy tới GSA MCP còn phải kiểm chứng. Không được tự cho rằng một button do model sinh ra hay một tin nhắn từ agent là bằng chứng phê duyệt. Khi runtime không hỗ trợ, cần trình phương án giao diện xác thực thay thế để user quyết định; không được âm thầm giảm tiêu chuẩn chứng cứ.
 
 ---
 
