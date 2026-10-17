@@ -1,7 +1,7 @@
 # GPT Super Agent — Lý thuyết sản phẩm và Criteria hành vi
 
 **Bản dựng lại để người dùng đọc, sửa và chốt trước đợt refactor — 17/10/2026**
-**Bản cập nhật cho nhánh upgrade/gsa-refactor: quyết định Generic Framework + optional Coder/Tester Add-in (17/10/2026).**  
+**Bản cập nhật cho nhánh upgrade/gsa-refactor: Generic Framework + optional Coder/Tester Add-in; Fresh Start / Adopt Existing Project là định hướng tiếp nhận Project (17/10/2026).**  
 **Trạng thái: REFRACTOR INPUT / DỰ THẢO LÝ THUYẾT, CHƯA PHẢI APPROVED BASELINE.**  
 
 Tài liệu này trả lời trực tiếp ba câu hỏi: **GSA là gì? GSA phải hoạt động ra sao? Khi nào có thể nói GSA làm đúng?** Đây không phải kế hoạch lập trình, sơ đồ database, bản kiểm kê gate hay chỉ dẫn triển khai refactor. Người đọc có thể hiểu toàn bộ mà không phải mở tài liệu khác.
@@ -66,19 +66,21 @@ Ví dụ, Coder của một dự án AutoCAD có thể nạp skill quy định �
 
 ## III. Luồng 1 — Bắt đầu Project, hiểu yêu cầu và lập Criteria
 
-Khi người dùng mở một Project, GSA trước tiên xác định đúng dự án và nguồn sự thật hiện hành, đọc đủ trạng thái để hiểu tình hình, rồi tiếp nhận yêu cầu mới. **Mở Project không có nghĩa là cho phép tự ý sửa code.** Một chat mới mặc định là không gian thảo luận/Planner, trừ khi đang nhận một yêu cầu tiếp tục công việc đã được ủy quyền rõ ràng. **[Người dùng]**
+**Fresh Start / Adopt Existing Project. [Người dùng — quyết định mới 17/10/2026]** GSA phải tiếp nhận được cả dự án mới lẫn dự án đã triển khai giữa chừng. Khi Project chưa từng dùng GSA, chỉ cần một lần setup cơ bản: xác định Project và repository thuộc quyền, đọc cấu trúc/stack và hiện trạng source ở mức đủ làm việc, ghi điểm bắt đầu và các giới hạn thực tế đã biết, khởi tạo `AGENTS.md` generic tối thiểu, rồi cùng người dùng xác lập **Criteria mới mô tả đích đến của dự án từ thời điểm sử dụng GSA**. Không bắt phải dựng lại lịch sử chat, mọi phê duyệt cũ, mọi milestone đã qua hay toàn bộ Job/Run trong quá khứ. Không chạy bootstrap harness riêng và không cần review toàn bộ repository trước khi bắt đầu một công việc nhỏ. Dự án đang làm dở không được bị reset, làm lại hay giả vờ rằng các phần cũ đã được GSA nghiệm thu.
+
+Khi người dùng **mở** một Project đã setup, GSA chỉ xác định đúng dự án và dữ liệu hiện hành ở mức tối thiểu; mở Project không có nghĩa tự sửa code. Nếu đang tiếp tục một Job đã được GSA quản lý, dùng checkpoint và bằng chứng thực tế từ thời điểm tiếp nhận trở đi để khôi phục. **Fresh Start là khởi điểm quản trị mới, không phải xóa hay viết lại source và lịch sử Git.**
 
 Nếu người dùng nói “sửa lỗi này”, GSA phải phân biệt giữa báo cáo hiện tượng, câu hỏi về nguyên nhân và chỉ thị triển khai. Những điều đã nằm trong Project Memory không được hỏi lại. Những điều ảnh hưởng bản chất sản phẩm mà chưa được quyết định phải được nêu rõ; chi tiết cơ học có thể suy ra từ bằng chứng.
 
-**Criteria đi trước Project Plan. [Người dùng — yêu cầu mới]** Một Project phải có **một bộ tiêu chí gốc có thẩm quyền**, diễn đạt sản phẩm cần làm được gì, không được làm gì, và bằng chứng nào chứng minh việc đã hoàn thành. Planner có thể soạn bản đề xuất để người dùng duyệt. Sau khi duyệt, đó là baseline; Planner, Reviewer, Coder và CR không được tự nới, thu hẹp hoặc thay thế bằng tiêu chí do mình phát minh.
+**Criteria mới là mục tiêu tương lai, không phải bản tái dựng quá khứ. [Người dùng — quyết định mới]** Project có **một bộ Criteria gốc hiện hành** diễn đạt sản phẩm cần hướng tới điều gì, những giới hạn nào phải giữ và bằng chứng nào chứng minh đạt đích. Planner đề xuất từ yêu cầu hiện tại và hiện trạng source đã quan sát được để người dùng duyệt. Criteria không cần chứng minh ai đã từng duyệt từng tính năng cũ; phần đã tồn tại được ghi nhận như hiện trạng, không mặc nhiên là mục tiêu đúng hay kết quả PASS. Sau khi người dùng duyệt, Criteria trở thành baseline cho kế hoạch **từ thời điểm Fresh Start**, không được agent tự đổi nội dung để vừa với code hay gate.
 
 Criteria cấp Job/Task là các phép cụ thể hóa phần việc từ Project Criteria, không phải một bản lý thuyết sản phẩm cạnh tranh. Một phát hiện mới chỉ làm thay đổi Criteria gốc khi người dùng xem và chấp nhận sự thay đổi có ý nghĩa đó.
 
-**Criteria 01 — Đúng dự án:** Một yêu cầu mở Project được coi là xử lý đúng khi GSA chứng minh đang đọc trạng thái của Project được chọn, không dùng ký ức chat khác làm nguồn sự thật và không bắt đầu mutation ngoài quyền.
+**Criteria 01 — Đúng dự án, tiếp nhận nhẹ:** Với dự án mới hoặc đang triển khai dở, GSA xác định đúng source repository, quyền truy cập và baseline hiện tại qua bước setup tối thiểu, không hồi cứu toàn bộ lịch sử. Mở Project không tự cấp quyền sửa source. Khi hoàn tất setup, Project có thể dùng ngay generic framework.
 
 **Criteria 02 — Không đoán ý định:** Trước khi lập kế hoạch hoặc code, GSA xác định được GOAL, phạm vi và tiêu chí đủ rõ cho quyết định sắp thực hiện. Thiếu một lựa chọn quan trọng thì phải nêu đúng lựa chọn thiếu, không sáng tác yêu cầu.
 
-**Criteria 03 — Một chuẩn mục tiêu:** Người dùng có thể chỉ ra một bộ Project Criteria đã duyệt và mọi plan/milestone/Job liên quan giải thích được chúng phục vụ tiêu chí nào. Nếu agent đề xuất hành vi mới không truy ra Criteria, hành vi đó chưa phải nghĩa vụ triển khai.
+**Criteria 03 — Một chuẩn mục tiêu hướng tới:** Project có một Criteria hiện hành được người dùng duyệt, phản ánh đích đến từ thời điểm bắt đầu sử dụng GSA. Plan, milestone và Job tạo sau đó phải phục vụ Criteria; trạng thái source cũ là đầu vào quan sát, không tự trở thành criteria hoặc lịch sử approval bắt buộc phải tái dựng.
 
 ---
 
@@ -182,11 +184,7 @@ Người dùng có thể thay đổi mục tiêu giữa chừng. GSA không đư
 
 Tương tự, mỗi lần gặp sự cố, GSA được phép ghi Lessons Learned để không lặp lỗi. **Ghi một lesson không đồng nghĩa được phép viết thêm gate, schema hoặc sửa toàn harness ngay lập tức.** Mọi đề xuất mới cần nhìn lại Criteria và xem chức năng đã có xử lý được chưa. Đừng lặp sai lầm: thiếu tiêu chí → sinh thêm gate → gate gây tắc → thêm workaround → source phình ra.
 
-**[Người dùng — yêu cầu mới 17/10/2026] Decision Logger phải làm cho quyết định của người dùng trở thành dữ liệu dự án, không bị chìm trong lịch sử chat.** Khi Planner hoặc agent trình một lựa chọn có ý nghĩa về lý thuyết, scope, Criteria, milestone, phương án kỹ thuật, thay đổi plan hay quyền thực thi, GSA trình một câu hỏi ngắn cùng các phương án cụ thể để người dùng **click chọn** (chấp thuận phương án, chọn phương án khác, yêu cầu sửa, từ chối hoặc hoãn). Chỉ hỏi ở ranh giới quyết định có ý nghĩa, không biến mọi trao đổi hay thao tác nhỏ thành một Human Gate.
-
-Một lần click phải được ghi bền vững với nội dung lựa chọn, đối tượng và phiên bản đề xuất được quyết định, phạm vi áp dụng, nguồn xác thực đó là thao tác trực tiếp của Human, thời điểm, và ảnh hưởng được cho phép (ví dụ: chấp thuận lý thuyết **không** đồng nghĩa cho phép sửa code, merge hay deploy). Khi ghi thất bại hoặc không chứng minh được nguồn click thì **vẫn chưa được duyệt**; không được dùng lời agent thuật lại như bằng chứng. Khi quyết định mới thay thế quyết định trước, giữ lịch sử và liên kết thay thế thay vì ghi đè. GSA phải tìm và nạp được quyết định hiện hành ở chat mới mà không bắt người dùng đọc lại toàn bộ hội thoại.
-
-**Không tạo một approval engine thứ hai. [Nguyên tắc refactor]** Tận dụng Knowledge Artifact kiểu DECISION và Human Gate hiện có; Decision Logger là giao diện thu nhận lựa chọn và đường ghi nhận có xác thực. Các quyết định cũ chỉ nằm trong chat cần được tổng hợp thành **ứng viên quyết định** để người dùng kiểm tra/chọn xác nhận; không tự suy ra chúng đã được duyệt. **[Chi tiết kỹ thuật chưa chốt]** Khả năng ChatGPT Web cung cấp callback click có xác thực tới MCP cần được chứng minh; nếu không có thì dùng một giao diện xác thực tối giản, không được giả vờ rằng nút gửi lại một tin nhắn của AI đã là một sự kiện phê duyệt đáng tin cậy.
+**[Người dùng — quyết định thay thế 17/10/2026] Không hồi cứu quyết định lịch sử.** ~~Tổng hợp mọi phê duyệt nằm trong chat cũ để người dùng click xác nhận lại trước khi bắt đầu Project.~~ Hướng này không còn là yêu cầu refactor. Khi tiếp nhận dự án đang làm dở, GSA thiết lập **Fresh Start** từ một Criteria mới được người dùng xác nhận, không mở công việc truy nguyên quá khứ. Các quyết định mới có ảnh hưởng lớn vẫn phải được ghi lại trong Project Memory theo cơ chế hiện có và tuân thủ ranh giới phê duyệt, nhưng **không bắt buộc xây Decision Logger riêng hoặc ép user dùng nút click thay cho hội thoại**. Nếu về sau muốn UX chọn phương án, đó là cải tiến tùy chọn, không phải điều kiện setup hay gate mới.
 
 **Criteria 20 — Thay đổi có kiểm soát:** Khi user duyệt thay đổi mục tiêu, GSA điều chỉnh phần kế hoạch và công việc bị ảnh hưởng, bảo toàn phần hợp lệ, không ghi đè lịch sử và không để thiếu yêu cầu đã được chốt.
 
@@ -200,9 +198,9 @@ Một lần click phải được ghi bền vững với nội dung lựa chọn
 
 **Criteria 25 — Add-in Coder/Tester là bổ sung tùy chọn:** Trong cùng một GSA framework, Project có add-in AutoLISP, Swift hoặc frontend thì Coder/Tester nạp đúng kiến thức và kỹ năng cần cho Task; Project không có add-in vẫn dùng generic behavior đầy đủ. Planner, Reviewer và CR không bị Project thay thế cấu hình. Add-in không được thay workflow, phạm vi ghi, tiêu chí nghiệm thu, quyền approval hoặc quy tắc an toàn của framework. Một task không cần kỹ năng đặc thù không phải đọc hoặc gọi kỹ năng ấy.
 
-**Criteria 26 — Quyết định bằng thao tác chọn, lưu bền vững:** Người dùng được trình các lựa chọn rõ ràng và click để quyết định các vấn đề cần phê duyệt. GSA chỉ coi là quyết định có hiệu lực khi nhận được sự kiện Human được xác thực, gắn với đúng Project/đề xuất/phiên bản/phạm vi và có bằng chứng đã lưu, đọc lại được trong Project Memory. Không yêu cầu gõ “ok” trong chat rồi tự suy diễn; không tự chấp thuận khi UI hay persistence lỗi.
+**Criteria 26 — Fresh Start cho dự án đang triển khai:** GSA có thể tiếp nhận một repository đã có source, kế hoạch cũ hoặc các phần việc chưa hoàn tất chỉ bằng một bước setup ngắn. Thiết lập Project identity, quyền, baseline source và `AGENTS.md` tối thiểu; người dùng xác nhận Criteria mới rồi Planner lập plan/milestone cho chặng tiếp theo. Không bắt dựng lại mọi quyết định, Job hay approval từ lịch sử trước khi GSA tham gia. Không sửa, xóa hoặc coi code lịch sử là đã được nghiệm thu.
 
-**Criteria 27 — Truy vết, thay thế và tái sử dụng quyết định:** Ở bất kỳ phiên chat nào, GSA phải xác định được quyết định nào đang có hiệu lực, ai xác nhận, đã chọn giữa những phương án nào, áp dụng ở đâu và có thay thế quyết định cũ không. Quyết định cũ không bị mất; nội dung chỉ được thảo luận trong chat nhưng chưa xác minh không được biến thành approval. Decision Logger dùng lại cấu trúc lưu quyết định/Human Gate hiện có, không tạo thêm một luồng governance độc lập.
+**Criteria 27 — Criteria hướng tương lai, không làm lại quá khứ:** Criteria duy nhất của Project định nghĩa **đích cần đạt**; source hiện tại là **điểm xuất phát** và được đánh giá từng phần khi công việc cần đến. Chỉ những việc thuộc mục tiêu/ảnh hưởng thực tế mới cần khảo sát sâu hoặc kiểm chứng lại. Các quyết định được người dùng duyệt sau Fresh Start được ghi nhận đủ để tiếp tục công việc, không tạo chương trình truy vết ngược hoặc Decision Logger bắt buộc.
 
 ---
 
@@ -219,7 +217,7 @@ Phần gạch ngang dưới đây là **những hướng từng tồn tại tron
 - ~~Khi production main đổi, tự merge/rebase toàn bộ vào một nhánh correction đang chạy.~~ Với chương trình correction từng được duyệt, thay bằng đối chiếu có chọn lọc và chứng minh thay đổi nào cần nhập; **đây là chính sách theo bối cảnh chương trình đó**, không phải luật cứng cho mọi dự án.
 - ~~Chỉ cần dựa vào trí nhớ chat để xử lý lại một source write mất phản hồi.~~ Các thay đổi quan trọng phải có trạng thái durable đủ để đối chiếu Git thật và tiếp tục an toàn.
 
-**Những hành vi cần loại bỏ, dù không phải một lý thuyết user từng duyệt:** tạo gate vô cớ; review cứ mở thêm scope; checkpoint xong dừng khi còn AUTO; hỏi người dùng copy log có thể tự đọc; nói PASS dựa vào helper thay vì real path; tạo branch rồi bỏ quên; vá lỗi theo từng triệu chứng; tự sửa plan/criteria để qua gate; chồng một vòng quản trị mới lên vòng cũ. Đây là **anti-criteria do vấn đề thực tế và yêu cầu cải thiện của người dùng chỉ ra**, không phải bằng chứng mọi việc đó hiện còn xảy ra cùng mức độ.
+**Những hành vi cần loại bỏ, dù không phải một lý thuyết user từng duyệt:** tạo gate vô cớ; review cứ mở thêm scope; checkpoint xong dừng khi còn AUTO; hỏi người dùng copy log có thể tự đọc; nói PASS dựa vào helper thay vì real path; tạo branch rồi bỏ quên; vá lỗi theo từng triệu chứng; tự sửa plan/criteria để qua gate; chồng một vòng quản trị mới lên vòng cũ; ép dự án đã chạy từ trước phải tái dựng toàn bộ lịch sử chấp thuận trước khi dùng GSA. Đây là **anti-criteria do vấn đề thực tế và yêu cầu cải thiện của người dùng chỉ ra**, không phải bằng chứng mọi việc đó hiện còn xảy ra cùng mức độ.
 
 ---
 
@@ -243,13 +241,13 @@ Tài liệu này cố ý **không giải quyết hộ người dùng** các lự
 
 **8. Git “auto push” phải dịch thế nào sang GSA? [Chưa chốt]** Với Codex local, commit và push có thể tách biệt; với GitHub connector của GSA, source write thường là remote commit ngay. Quyền source write, tích hợp vào branch, merge production và deploy phải được hiểu tách biệt khi Planner mô tả milestone. Không tự copy nguyên quy tắc local Git.
 
-**9. Kênh click có xác thực trong ChatGPT Web? [Chưa chốt khả năng kỹ thuật]** Yêu cầu sản phẩm đã rõ: thay sự đồng ý tản mạn trong chat bằng lựa chọn có thể click và ghi được sự kiện Human trực tiếp. Nhưng cách UI gửi sự kiện đáng tin cậy tới GSA MCP còn phải kiểm chứng. Không được tự cho rằng một button do model sinh ra hay một tin nhắn từ agent là bằng chứng phê duyệt. Khi runtime không hỗ trợ, cần trình phương án giao diện xác thực thay thế để user quyết định; không được âm thầm giảm tiêu chuẩn chứng cứ.
+**9. ~~Decision Logger/UX click là điều kiện của refactor?~~ [Đã thay thế 17/10/2026]** Không bắt buộc. Trọng tâm đã chuyển sang Fresh Start và Criteria mới hướng tương lai. Việc tiếp nhận dự án không phụ thuộc chức năng hồi cứu quyết định hoặc UI click riêng. Human approval cho các thao tác quan trọng vẫn giữ theo contract an toàn hiện hữu.
 
 ---
 
 ## XII. Bức tranh một GSA đúng — câu chuyện nghiệm thu tổng thể
 
-Người dùng mở một dự án đang phát triển, bảo GSA xây dựng một tính năng hoặc sửa một vấn đề. GSA đọc đúng Project Memory và source repo, xác định điều gì đã được chốt, chỉ hỏi khi thiếu quyết định có ảnh hưởng thực sự. Planner soạn Criteria nếu cần cập nhật, dựng một Project Plan có GOAL/Phase GOAL, milestone, việc phải làm và nơi cần người dùng quyết định. Người dùng duyệt. GSA chuyển sang thực thi theo đúng giới hạn đã cho.
+Người dùng đưa vào GSA một dự án đã triển khai dở, hoặc tạo dự án mới. GSA làm Fresh Start ngắn gọn: xác nhận repository và quyền, quan sát hiện trạng tối thiểu, tạo AGENTS.md generic rồi cùng người dùng chốt **Criteria mới là đích của dự án từ đây trở đi**. GSA không lục lại các chat cũ để chứng minh mọi quyết định lịch sử. Planner dựa trên Criteria này lập Project Plan có GOAL/Phase GOAL, milestone, việc phải làm và nơi cần người dùng quyết định. Người dùng duyệt. GSA chuyển sang thực thi theo đúng giới hạn đã cho.
 
 Trong một lượt đang hoạt động, Coder viết source và tự kiểm. Có lỗi thì agent tự xem log, tự phân tích và sửa trong phạm vi. Tại mốc cần Tester hoặc Reviewer, hệ thống tự gọi theo kế hoạch; người dùng không phải đứng điều khiển từng lượt. Khi checkpoint thành công, GSA **tiếp tục bước AUTO kế tiếp**, không dùng checkpoint làm lời chào kết thúc. Khi đến một quyết định cần người dùng, hệ thống dừng đúng một chỗ và nói rõ cần quyết định gì.
 
