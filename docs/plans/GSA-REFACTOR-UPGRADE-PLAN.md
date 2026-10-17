@@ -1,0 +1,178 @@
+# GSA — Refactor Upgrade Plan (single integration line)
+
+Status: **PLANNING DRAFT — chờ Human duyệt bản Criteria và kế hoạch trước khi chạy source implementation**.
+Working branch: **`upgrade/gsa-refactor`** (tạo từ `main` tại `be8b663a878cca9c5b2920145f57fd20291d6164`).
+Criteria duy nhất: **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; blob được đọc để lập plan: `562778aad9c9d224e265ba6c519e8056f22eda7f`.
+Mức thẩm quyền: **plan triển khai đề xuất**, không phải Criteria khác; nội dung CHƯA CHỐT trong Criteria không được tự động chuyển thành yêu cầu bắt buộc.
+
+## GOAL
+
+Từ GSA hiện có, phát triển một **generic coding/project-agent framework gọn, đáng tin và có thể dùng ngay** cho dự án mới hoặc dự án đang triển khai dở trên ChatGPT Web. Mỗi GSA Project có **một Criteria hiện hành** mô tả đích cần đạt; Planner khởi tạo `AGENTS.md` tối thiểu; Coder và Tester hoạt động generic, chỉ nạp **add-in chuyên môn tùy chọn** khi Task cần. Planner, Reviewer và Critic Reviewer (CR) dùng chung trên mọi Project. Sau phê duyệt thực thi, GSA tự đi qua các bước AUTO trong cùng lượt hoạt động và tự xử lý kiểm chứng/sửa lỗi trong quyền; chỉ dừng ở quyết định Human thật, blocker được chứng minh hoặc phiên bị gián đoạn. Git, Memory, review và resume phải đúng quyền và dựa trên bằng chứng thực tế, không dựa vào lời hứa.
+
+**Hoàn thành nghĩa là:** các luồng trên được chứng minh bằng test âm/dương, public-path/live pilot phù hợp, exact revision và kết quả người dùng nhìn thấy; một codebase có ít trách nhiệm trùng lặp và ít thao tác thừa hơn nhưng không yếu đi ở ranh giới bảo mật, idempotency, compatibility hoặc evidence.
+
+**Không làm:** dựng lại lịch sử approval/chat trước khi GSA tiếp nhận Project; viết bootstrap riêng cho từng repository; thêm agent thường trực, engine gate thứ hai, background worker, kiến trúc đa model theo TOML Codex hoặc bộ Decision Logger hồi cứu. Không thay ý nghĩa Criteria dựa trên đề xuất của AI. Không tự merge `main`/deploy production.
+
+## 1. Nguồn sự thật và phạm vi refactor
+
+1. **Criteria** nắm WHAT/WHY/acceptance; duy nhất, chỉnh trực tiếp khi User phát sinh lý thuyết mới. Các đoạn `CHƯA CHỐT` tiếp tục ở **cùng** Criteria. Plan chỉ nắm HOW/WHEN và luôn kiểm tra lại Criteria blob mới nhất trước khi chỉnh công việc liên quan. Thay đổi Criteria không đòi viết một theory/roadmap khác.
+2. **Source hiện tại** là bằng chứng thực thi, không tự động là chuẩn sản phẩm. Đối chiếu thực tế `main` + nhánh integration + runtime live; không suy ra deployed production chỉ từ README. Source truth thuộc repo sản phẩm; Project Memory là control plane thuộc private GitHub Memory Repo.
+3. **Plan lịch sử:** `docs/plans/GSA-UPGRADE-INTEGRATION-ROADMAP.md` là kế hoạch CP0–CP7 đã qua; `GSA-RELIABILITY-*` và `LLC*` cũng thuộc các đợt riêng. Chỉ dùng để khảo sát tương thích/bài học. **Plan này là kế hoạch refactor đang hoạt động duy nhất** trên `upgrade/gsa-refactor`; không tiếp tục triển khai CP0–CP7 cũ lần nữa.
+4. **Branch:** mọi thay đổi refactor hội tụ vào `upgrade/gsa-refactor`. Mặc định không phân nhánh thêm; một nhánh ngắn cho thử nghiệm có lý do phải được hợp nhất/đối chiếu vào nhánh này trước khi mốc sau tiêu thụ. `main` giữ nguyên cho đến quyết định release riêng. Đối chiếu drift bằng diff/commit thực, không tự merge/rebase toàn bộ nhánh cũ.
+5. **Hạ tầng giữ lại:** authenticated GSA MCP (Supabase), GitHub Memory Repo, GitHub source, quyền Project/role, exact-SHA readback, NEXT/current durable workflow; `V2_STABLE` lịch sử vẫn đọc/tiếp tục được. Không bulk migrate Jobs/Run/Verification cũ. ChatGPT Web không là daemon chạy nền.
+
+**Reality baseline đã khảo sát khi lập plan:** `supabase/functions/gsa-mcp/index.ts` hiện là runtime tập trung (~498 KB), chứa chức năng identity, memory-path/namespace, checkpoint/Job/Run và tool contract; `skills/gsa-job-runtime/SKILL.md` giữ giao thức điều phối; `skills/gsa-bootstrap/SKILL.md` là bootstrap runtime/account (khác Fresh Start Project); có các bộ test `test-lab/runtime-logic.test.cjs`, `reliability-*.test.cjs`, `llc58/59/60-*.test.cjs` và CI `.github/workflows/gsa-next-logic.yml`. Đây là các điểm cần khảo sát **từng phần theo thay đổi**, không phải lý do tự tách module hoặc sao chép toàn bộ runtime.
+
+## 2. Nguyên tắc triển khai và review
+
+- Mỗi Phase dưới đây tương ứng **một Milestone kết quả**, không tạo sáu loại lifecycle/gate mới. Trong mỗi Phase, Planner tạo một hoặc vài Job có **một causal chain**; Task là bước hữu ích, không tách thành micro-Job cho mỗi lệnh Git, doc hoặc test.
+- **User approval:** chốt Criteria/plan để bắt đầu implementation; quyết định đổi mục tiêu/quyền; merge vào `main`; production deploy; các thao tác phá hủy/ngoài quyền vẫn cần đúng Human authority. Chấp thuận plan không phải tự động chấp thuận release. Không invent Human Gate chỉ cho việc tạo file/copy checkpoint.
+- **AUTO sau phê duyệt:** tiến tới Task/Job/Milestone phụ thuộc tiếp theo **trong cùng lượt còn hoạt động**, khi đủ quyền và evidence đã được ghi/đọc lại. Checkpoint không phải tín hiệu kết thúc cuộc chat. Không giả lập tự chạy khi phiên đóng.
+- **Reviewer:** bắt buộc ở ranh giới thay đổi logic/role/authority, migration/release và các floor an toàn hiện có; không mặc định review mỗi Task. **Tester:** checkpoint khi có câu hỏi thực nghiệm/consumer hoặc behavior quan trọng; không tự đặt checkpoint khắp nơi. **CR vẫn Human-invoked** cho đến khi User thay đổi mục XI của Criteria; không tự kích hoạt CR theo mốc.
+- Khi phát hiện gap mới: xác định đó là **sai hiện thực hóa** (Coder sửa), **sai plan** (Planner sửa plan), hay **đòi thêm/thay đổi WHAT** (trở lại Criteria cho User). Reviewer không biến nhận xét chưa duyệt thành requirement. Mọi gate/record mới phải có một failure scenario không thể bảo vệ bằng cơ chế hiện tại.
+- **Progress proof:** trạng thái PREPARED hoặc "CI green" riêng không chứng minh kết quả. Ghi nhận exact source/runtime revision, executed test oracle, failed/skipped/unverified, người chịu trách nhiệm, rollback. Không tự tạo ngưỡng hiệu năng hoặc quota-savings % để làm PASS.
+- **Change control:** Khi Criteria đổi giữa chừng, Planner cập nhật đúng phần Phase/Job bị ảnh hưởng; các phần không ảnh hưởng tiếp tục được. Không mở lại toàn bộ lịch sử và không tạo "plan V2" độc lập.
+
+## 3. Milestone map toàn Project
+
+| Mốc | Kết quả kiểm chứng được | Phụ thuộc | Bằng chứng tối thiểu | Tiếp theo |
+|---|---|---|---|---|
+| **M0 — Reality/Gate audit** | Bản đồ hiện tại: KEEP / SIMPLIFY / REMOVE / NEEDS_PROBE, gắn rủi ro và Criteria, không có gate vô chủ | Criteria working + repo/runtime read | Bản đồ ownership/call chain và negative controls hiện có | **AUTO → M1** nếu plan đã được duyệt |
+| **M1 — Fresh Start & Criteria** | Dự án mới và dự án dở được setup nhẹ; một Criteria hiện hành; `AGENTS.md` generic tối thiểu, không lịch sử approval | M0 | Project Memory/SHA readback và 2 đường khởi tạo; negative cross-Project | **AUTO → M2** |
+| **M2 — Coder/Tester add-in** | Generic không cấu hình vẫn làm; Project chỉ thêm skills Coder/Tester, nạp lazy và không override | M1 | 3 kịch bản no-add-in / Coder add-in / Tester add-in, negative unauthorized skill | **AUTO → M3** |
+| **M3 — Criteria-first Planner** | Plan/milestone có GOAL, coverage đúng và không thêm requirement; thay Criteria chỉ cập nhật phần ảnh hưởng | M1–M2 | Plan review test missing/extra, revision change, AUTO/HUMAN | **AUTO → M4** |
+| **M4 — Same-turn orchestration** | Checkpoint/readback rồi thực hiện AUTO hợp lệ; Reviewer/Tester/repair loop không bắt User gõ "continue" | M3 | Planning loop + source/checkpoint scenario có đúng stop condition | **AUTO → M5** |
+| **M5 — Simplify + durable correctness** | Bỏ/hợp nhất chỗ dư dựa trên evidence; recovery, Git, real testing giữ đúng quyền | M0–M4 | Before/after behavior/evidence và negative cases, regression V2/NEXT | **AUTO → M6** |
+| **M6 — Field acceptance & release prep** | Chạy những luồng thật trên staging và Project pilot; bằng chứng đầy đủ, giới hạn rõ, có phương án rollback | M0–M5 | Exact staging/source, pilot results, review/CI/limitations | **HUMAN: main merge; HUMAN: production deploy** |
+
+**Giải thích trạng thái mốc:** AUTO là đường điều phối đã được chấp thuận trong phiên đang hoạt động; HUMAN là quyền quyết định riêng, không là "checkpoint pending" chung. Nếu một Phase gặp blocker thực, chỉ phần việc phụ thuộc dừng. Mốc hoàn tất phải có kết quả đủ kiểm chứng, không chỉ có một report hay file schema mới. Một mốc đang chờ kiểm chứng host không bị giả PASS.
+
+## Phase M0 — Kiểm kê thực tế và audit gate
+
+### GOAL
+
+Xác định chính xác **cái gì đang có, vì sao tồn tại, cái gì thiếu hoặc trùng** trước khi viết refactor. Bảo vệ hành vi đúng và không nhân bản cơ chế.
+
+- **JP0 (SMALL/MEDIUM; Planner + Reviewer, source read-only):** dựng sơ đồ trách nhiệm cho project_create/open/status, persisted Job/Run/Verification/criteria, get_agent_harness/get_skill_catalog/load_skill, reviewer/tester loop, cursor/checkpoint recovery, Git/CI/release; đánh dấu vị trí MCP-owned vs ChatGPT orchestration vs GitHub external action. L0 tree → L1 selective source; không đọc toàn bộ index.ts trước khi biết cần gì.
+- **JP0 audit:** với mỗi gate đáng chú ý (đặc biệt NEXT claim/lease, applicability, plan revision, review floor, cursor, multiple-sha readback), chỉ ra rủi ro thật, criterion, mã hoặc đường thực thi bảo vệ rủi ro đó và oracle âm. Phân loại **KEEP, SIMPLIFY, REMOVE, NEEDS_PROBE**; không bỏ cơ chế chỉ vì code dài.
+- **Đầu ra:** tập findings **trong plan/milestone implementation**, không biến thành bộ Criteria thứ hai. Nếu phát hiện thiếu yêu cầu sản phẩm, bổ sung đề xuất tại đúng Criteria và xin Human chốt. Kết quả chỉ phát hiện, chưa tự sửa source.
+
+**M0 PASS khi:** không có giả định "hàm tồn tại = khả năng live đã được chứng minh"; có đủ ownership và danh sách cơ chế cần kiểm chứng để M1–M5 chạy; root-cause cụ thể cho mọi phương án REMOVE/SIMPLIFY ảnh hưởng security/evidence. Không tạo gate riêng để duyệt từng dòng audit.
+
+## Phase M1 — Fresh Start, một Criteria và AGENTS.md tối thiểu
+
+### GOAL
+
+Một Project bắt đầu từ trạng thái **hiện tại**, với hướng đi do người dùng chọn; không bootstrap harness lại và không hồi cứu phê duyệt lịch sử.
+
+- **JP1 (MEDIUM; one Project onboarding chain):** dùng cơ chế `PROJECT.md` và đăng ký repo hiện có; thêm thao tác setup-on-demand cho Project khi bắt đầu làm việc thực sự, không buộc Project open nhanh phải quét hết source. Kiểm tra quyền; quan sát tên stack/config/entrypoint theo mức cần thiết; ghi source baseline được nhìn thấy, chưa nhận mọi code cũ là PASS.
+- **JP1 criteria:** một nguồn Criteria có identity/path rõ dưới Project Memory, **đề nghị** `projects/<project-id>/CRITERIA.md` (tên/path final được xác nhận trong triển khai). Project có Criteria hiện hành; chưa được người dùng xác nhận thì trạng thái **CHƯA CHỐT**, không thể lén chuyển sang source implementation. Các thay đổi lý thuyết của Human cập nhật **cùng file**, revision Git làm lịch sử; plan chỉ trỏ vào revision đang áp dụng. Không đồng thời tạo `CRITERIA-V2.md`, decision shadow, second roadmap source.
+- **JP1 AGENTS:** Planner tạo/duy trì `projects/<project-id>/AGENTS.md` generic rất ngắn từ template; chỉ khai báo Project-specific Coder/Tester add-ins khi có. Thiếu add-in là hợp lệ. Không copy toàn bộ GSA global harness vào Project.
+- **Compatibility:** setup không phá Project đang có Work/Verification; không sửa source cũ; không bulk-migrate Job lịch sử hoặc bắt User chứng minh mỗi quyết định cũ.
+
+**M1 PASS khi:** hai pilot Project (mới / brownfield đang dở) có thể đạt READY + Criteria tương lai + AGENTS.md bằng quy trình ngắn, không dựng lịch sử, và mở Project cũ không bị lỗi vì thiếu AGENTS. Cross-Project write và repo không thuộc scope vẫn bị từ chối.
+
+## Phase M2 — Generic Coder/Tester + Project add-in tùy chọn
+
+### GOAL
+
+Tùy biến **chuyên môn** mà không tạo nhiều phiên bản của agent hoặc làm mất generic coding/testing.
+
+- **JP2 (MEDIUM; one skill-loading integration chain):** nạp global harness Coder/Tester trước; đọc `AGENTS.md` của Project đã được bind và được phép; nếu khai báo skill chuyên ngành cho đúng vai, nạp **chỉ skill phù hợp Task** từ Project Memory (có thể tổ chức tối giản dưới `SKILLS/coder/` và `SKILLS/tester/` khi thực sự cần). Không buộc tạo thư mục rỗng. Ưu tiên luồng GitHub đọc sẵn có và catalog/load_skill hiện tại; mở rộng bề mặt công cụ chỉ khi test chứng minh không đủ, không viết skill engine mới.
+- **JP2 không override:** Planner/Reviewer/CR luôn dùng shared generic. Coder/Tester vẫn có generic loop, quyền và evidence requirements như cũ. Add-in là nội dung chuyên môn (dialect/API/host/test strategy), **không** được định nghĩa lại role, source-write authority, tự đặt Criteria, tắt review, cấp secret hay thêm quyền đọc/ghi repo.
+- **JP2 assurance:** validate path thuộc Project; skill binding theo exact Project/Task, stale/missing/malformed add-in được báo đúng và generic fallback khi an toàn. Không tự trộn add-in của Project khác. Không nạp skills vô can vào context.
+
+**M2 PASS khi:** generic no-add-in PASS, CAD/AutoLISP Coder add-in được chọn đúng Task và không biến cú pháp Common Lisp thành mặc định, Tester host-check add-in tạo đúng chiến lược kiểm chứng; negative thử "disable security", cross-Project skill, wrong-role skill đều không có tác dụng vượt quyền. Host thật không được tuyên bố PASS nếu chỉ dùng fixture.
+
+## Phase M3 — Planner bắt buộc criteria-first và milestone có ý nghĩa
+
+### GOAL
+
+Planner biết **đích đến**, tạo Project Plan đủ mốc nhưng không tạo gate, Task hoặc lý thuyết dư.
+
+- **JP3 (MEDIUM; Planner + planning Reviewer):** khi lập kế hoạch cho toàn Project, dùng một Criteria current revision; thể hiện `## GOAL` ở đầu plan, `### GOAL` ở đầu Phase; lập milestone đủ kết quả, dependencies, cách nghiệm thu và trạng thái **AUTO sau approval / Human decision / manual trigger / blocked by actual evidence** dưới dạng điều phối hiện có, không thêm bốn lifecycle enum.
+- **JP3 coverage:** Reviewer rà cả **thiếu** và **thừa**. Mọi Task/Phase phải trả lời "giúp Criteria nào, bằng chứng gì"; finding chỉ là đề xuất nếu không thể gắn vào Criteria hiện hành hoặc security/observed risk. Job nhỏ nằm trong Project Plan không cần fake milestone. Tận dụng NEXT milestones/topology sẵn có khi phù hợp.
+- **JP3 change:** Human chỉnh lý thuyết → cập nhật Criteria trước → chỉ lập lại phần plan/milestone/Job bị ảnh hưởng; giữ phần đạt và trạng thái cũ để đối chiếu. Plan không được chứa các "product requirements" ngoài Criteria.
+
+**M3 PASS khi:** review PASS với một Project Plan có mốc đủ; bỏ một criterion khiến Reviewer tìm được thiếu, thêm một requirement ngoài Criteria khiến Reviewer phát hiện drift; plan revision chỉ invalidates scope affected và không buộc user duyệt lại công việc không đổi.
+
+## Phase M4 — Điều phối trong một lượt, dừng đúng điểm
+
+### GOAL
+
+GSA tiếp tục thực hiện phần đã được duyệt **trong lượt ChatGPT còn sống**, không hỏi User chuyển vai hoặc gõ "continue" sau checkpoint.
+
+- **JP4A (MEDIUM; planner↔reviewer):** tái sử dụng typed continuation hiện có cho Job DRAFT/revision/PLANNING_REVIEW/READY. MCP PREPARE → authorize/git persist → exact readback → route next action trong cùng turn; CHANGES_REQUIRED → Planner sửa → Reviewer đánh giá lại đến PASS hoặc blocker/Human thật. Không trình một lần PREPARE thành đã hoàn tất. Giữ stop tại Human approval khởi chạy source theo contract hiện tại.
+- **JP4B (MEDIUM; approved execution):** với Task đã có quyền, Orchestrator tự dispatch Coder, phát hiện CI/log/test failure và sửa trong Task; gọi Tester/Reviewer ở mốc cần, record evidence/readback, tiếp tục Task AUTO kế tiếp. Dùng existing Run/Handoff/Verification, tránh event bus, scheduler hay shadow lifecycle. Không auto CR khi mục XI chưa chốt.
+- **JP4B STOP đúng chỗ:** người dùng thay đổi GOAL/scope, thiếu quyền merge/deploy, security boundary, unsupported capability, CAS conflict, no progress đã chứng minh => stop với reason + next action nhỏ nhất. Chat closed => chỉ resume khi User/host có invocation mới, không hứa background loop.
+
+**M4 PASS khi:** ít nhất một chuỗi ba bước AUTO liên tiếp qua checkpoint + one repair/retest không yêu cầu Human nhắc; một review CHANGES_REQUIRED tự quay về Planner; một real Human stop không bị vượt; vòng không tiến triển dừng có lý do; không tăng số lần Memory mutation cho routine read vô ích.
+
+## Phase M5 — Cắt gọn có kiểm chứng, giữ đúng security/recovery/Git
+
+### GOAL
+
+Loại bớt phần nghi lễ và workaround không còn phục vụ Criteria, nhưng vẫn bảo vệ các rủi ro đã được chứng minh.
+
+- **JP5A (MEDIUM; focused ownership simplification):** áp dụng kết quả M0 cho luồng đang thay đổi; loại/hợp nhất các contract, schema, prompt hoặc duplicated checks có cùng authority và oracle. **Không** tạo parallel Job lifecycle/lease, không copy source runtime đầy đủ vào prompt, không tách `index.ts` chỉ vì kích thước; nếu tách code thì phải giảm được một coupling/failure risk cụ thể và giữ test nguyên nghĩa.
+- **JP5B (MEDIUM; durable safety):** giữ exact Project/branch/scope, optimistic SHA/CAS, idempotent unknown-write recovery và append-preserving evidence; chỉ đọc cursor/checkpoint khi thực sự có mutation hoặc cần resume. Giữ tương thích NEXT và lịch sử V2_STABLE; evidence stale/missing không được PASS. Test concurrency/duplicate/replay ở cả đường success và failure, không chỉ test helper.
+- **JP5C (SMALL/MEDIUM; Git + test autonomy):** một integration branch chính, status/absorption rõ; không ép dọn toàn bộ branch lịch sử. Coder tự lấy CI jobs/steps/logs và sửa lỗi source/test trong quyền; nếu runner không chạy, classify ENVIRONMENT_FAILURE/UNVERIFIED và dùng tool khác chỉ khi đã chứng minh capability; không tuyên bố CI PASS thay.
+- **So sánh before/after:** số công đoạn Human không cần thiết, lượt tool/Memory write trên các scenario lặp lại, context/skill load thực tế, số nhánh có source chưa nhập, số gate có rủi ro và oracle riêng. Đây là **chỉ số mô tả**, không đặt target % tiết kiệm hay gate-count tùy tiện.
+
+**M5 PASS khi:** hành vi E1/E17/E19/E21–E35 liên quan còn tương thích hoặc có sửa đổi kiểm chứng vì Criteria mới; negative test của security, stale evidence, crash/retry, duplicate write, Git scope và release vẫn fail-closed. Có ít nhất một luồng được đơn giản hóa bằng bằng chứng cụ thể, không chỉ đổi tên lớp.
+
+## Phase M6 — Acceptance thực tế, hợp nhất, release
+
+### GOAL
+
+Chỉ tuyên bố thành công khi đúng luồng GSA người dùng sử dụng chạy được, không chỉ CI helper GREEN.
+
+- **JP6A (MEDIUM; exact source/release proof):** chạy Deno typecheck cho `supabase/functions/gsa-mcp/index.ts`; các Node test trong `test-lab/` và test âm mới thực sự kiểm lỗi; kiểm tra chính script oracle với known-bad fixture ở các điểm rủi ro. Kiểm thử trên isolated `gsa-mcp-next` và test Memory namespace đúng; proof deployed-source readback phải khớp exact reviewed revision. Không biến Test Lab thành sản phẩm đã phát hành.
+- **JP6B (MEDIUM; real workflow pilot):** ít nhất 4 kịch bản:
+  1. New Project + generic agents + Criteria/AGENTS.md tối thiểu.
+  2. Adopt brownfield midstream (ví dụ GSA-Localconnector chỉ khi Project/host được cấp quyền): không hồi cứu chat, không sửa những phần ngoài scope.
+  3. Project add-in cho Coder và Tester (fixture + ít nhất một host/tool thực tế khi khả năng được xác minh); no-add-in vẫn tốt.
+  4. Project Plan sửa Criteria giữa chừng; auto review/repair/checkpoint + real Human stop + restart/unknown-write recovery.
+  Test exact source, memory state, permissions, negative cases, honest limitations và câu trả lời hướng người dùng. Không coi missing host=PASS.
+- **JP6C (SMALL; release candidate):** chứng minh các code thay đổi đã vào `upgrade/gsa-refactor`, reconcile `main` drift theo bằng chứng, Reviewer đánh giá exact candidate, Tester lưu bằng chứng, giữ rollback source/deployed runtime. Trình Human **hai quyết định tách biệt**: merge `main` và production deploy. Sau khi được duyệt, deploy/readback/smoke; nếu fail thì rollback theo đã xác minh, không tự báo phát hành thành công.
+- **Đóng dự án refactor:** Criteria canonical được chuyển từ working draft sang **một** đường dẫn đúng thẩm quyền (move/promote, không duy trì bản sao song song); historical plans chỉ tham khảo. Các Project mới dùng setup mới; legacy Project không bị ép migration.
+
+**M6 PASS khi:** E2E public path và Project pilot chứng minh Criteria applicable trên version đang test; các giới hạn UNVERIFIED minh bạch, User có thể thấy GSA hoạt động ít thao tác hơn. Production PASS chỉ sau quyết định và xác minh deploy riêng.
+
+## 4. Coverage — tất cả 29 Criteria hiện hành
+
+Các ID là tham chiếu từ **Criteria duy nhất**, không định nghĩa lại WHAT. Khi Criteria đổi, Planner cập nhật mapping này cùng plan ảnh hưởng.
+
+| Phase/mốc | Criteria được thực hiện hoặc chứng minh |
+|---|---|
+| M0 | C03 C06 C09 C17 C21 C22 C29 |
+| M1 | C01 C02 C03 C23 C24 C26 C27 C28 C29 |
+| M2 | C19 C23 C24 C25 |
+| M3 | C02 C03 C04 C05 C06 C20 C28 C29 |
+| M4 | C07 C08 C09 C10 C13 C18 |
+| M5 | C09 C11 C12 C13 C14 C15 C16 C17 C18 C21 C22 |
+| M6 | C01 C04 C05 C07 C08 C09 C10 C11 C12 C14 C15 C16 C17 C19 C20 C21 C22 C23 C24 C25 C26 C27 C28 C29 |
+
+Một criterion có thể có **implementation owner** ở một mốc và **acceptance evidence** ở M6. Không nhân bản requirement text sang Job/plan.
+
+## 5. Quyết định còn mở — không tự biến thành scope
+
+Các mục dưới đây **vẫn nằm ở mục XI của Criteria**, không có plan con nào được phép chốt thay:
+- CR: Human-only hay ủy quyền trước ở milestone? **Giữ Human-only hiện hành** trừ khi User chốt khác; M4 không phụ thuộc auto CR.
+- Resume ở chat mới: cần invocation rõ ràng để bắt đầu Job; open Project đơn thuần không tự chạy source. Không có daemon/background promise.
+- Screenshot/evidence backend: chưa chốt policy; giữ cơ chế an toàn hiện tại, M6 không viết lại storage ngoài scope. Nếu live acceptance cần thay đổi policy, quay lại Criteria.
+- NEXT lease/evidence gates: chỉ được SIMPLIFY/REMOVE từng cơ chế sau M0 oracle và tests, không "cắt toàn bộ NEXT".
+- Git Admin agent riêng, role-specific model controls và Git auto-push semantics: không phỏng đoán khả năng host. M5 giải quyết tối thiểu nhu cầu git tracking bằng vai/connector hiện có; mở rộng quyền cần Human.
+
+**Mốc HUMAN cần thiết:** (a) duyệt Criteria baseline + plan execution trước M0 thay đổi source; (b) quyết định material phát sinh cho scope chịu ảnh hưởng; (c) final main merge; (d) final production deploy. Với phần chưa chốt không ảnh hưởng một Phase, không dựng gate giả chặn Phase đó.
+
+## 6. Self-review / acceptance checklist của plan
+
+- Đặt GOAL dựa đúng working Criteria, không thêm mục tiêu ngoài C01–C29; mọi Phase có ### GOAL; M0–M6 có kết quả kiểm chứng và dependency có lý do.
+- Một branch refactor duy nhất, không tái sử dụng CP0–CP7 cũ làm current plan; historical V2/NEXT/Memory được giữ tương thích.
+- Explicit fresh-start, generic agents, optional skills, AGENTS.md, single Criteria, same-turn AUTO, durable resume, real test proof và Human authority.
+- Không giả định callback nút Human click, model override của ChatGPT Web, background worker, hoặc capability unavailable. Các điểm CHƯA CHỐT không bị agent tự chốt.
+- Reviewer phải tìm cả điều **thiếu** lẫn điều **thừa**; CR vẫn Human-invoked; test đúng public path/exact revision.
+- **Review state:** kiểm tra nội bộ về cấu trúc và Criteria coverage. **Chưa có GSA durable Job planning Reviewer PASS** cho plan này; không được quảng cáo là plan approved hoặc bắt đầu source implementation từ commit tài liệu.
+
+**Kết thúc bản plan:** triển khai chỉ sau Human xác nhận kế hoạch và các quyền theo phạm vi. Khi người dùng bổ sung lý thuyết mới, cập nhật Criteria **trước**, sửa các Phase của plan chịu ảnh hưởng **sau**; không tạo thêm "truth file".
