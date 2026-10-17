@@ -2,7 +2,8 @@
 
 **Bản dựng lại để người dùng đọc, sửa và chốt trước đợt refactor — 17/10/2026**
 **Bản cập nhật cho nhánh upgrade/gsa-refactor: Generic Framework + optional Coder/Tester Add-in; Fresh Start / Adopt Existing Project là định hướng tiếp nhận Project (17/10/2026).**  
-**Trạng thái: REFRACTOR INPUT / DỰ THẢO LÝ THUYẾT, CHƯA PHẢI APPROVED BASELINE.**  
+**Trạng thái: WORKING CRITERIA cho đợt refactor; toàn văn đang được người dùng hiệu chỉnh, CHƯA PHẢI APPROVED BASELINE.**
+**Single Source of Truth:** Trong nhánh nâng cấp, chính tài liệu này là nơi duy nhất tích lũy và cập nhật lý thuyết/Criteria refactor trước khi được chốt. Không tạo các bản lý thuyết cạnh tranh. Sau khi chốt, phải chuyển thành Criteria canonical của GSA; các plan tiếp theo chỉ dẫn chiếu, triển khai và kiểm chứng, không tự trở thành nguồn yêu cầu mới.  
 
 Tài liệu này trả lời trực tiếp ba câu hỏi: **GSA là gì? GSA phải hoạt động ra sao? Khi nào có thể nói GSA làm đúng?** Đây không phải kế hoạch lập trình, sơ đồ database, bản kiểm kê gate hay chỉ dẫn triển khai refactor. Người đọc có thể hiểu toàn bộ mà không phải mở tài liệu khác.
 
@@ -75,6 +76,10 @@ Nếu người dùng nói “sửa lỗi này”, GSA phải phân biệt giữa
 **Criteria mới là mục tiêu tương lai, không phải bản tái dựng quá khứ. [Người dùng — quyết định mới]** Project có **một bộ Criteria gốc hiện hành** diễn đạt sản phẩm cần hướng tới điều gì, những giới hạn nào phải giữ và bằng chứng nào chứng minh đạt đích. Planner đề xuất từ yêu cầu hiện tại và hiện trạng source đã quan sát được để người dùng duyệt. Criteria không cần chứng minh ai đã từng duyệt từng tính năng cũ; phần đã tồn tại được ghi nhận như hiện trạng, không mặc nhiên là mục tiêu đúng hay kết quả PASS. Sau khi người dùng duyệt, Criteria trở thành baseline cho kế hoạch **từ thời điểm Fresh Start**, không được agent tự đổi nội dung để vừa với code hay gate.
 
 Criteria cấp Job/Task là các phép cụ thể hóa phần việc từ Project Criteria, không phải một bản lý thuyết sản phẩm cạnh tranh. Một phát hiện mới chỉ làm thay đổi Criteria gốc khi người dùng xem và chấp nhận sự thay đổi có ý nghĩa đó.
+
+**Cập nhật lý thuyết phải đi thẳng vào Criteria. [Người dùng — nguyên tắc mới 17/10/2026]** Khi người dùng bổ sung, sửa hoặc loại bỏ một yêu cầu lý thuyết của Project, GSA/Planner cập nhật **ngay tài liệu Criteria duy nhất hiện hành** của chính Project đó. Không lưu thay đổi ấy thành một draft plan, ghi chú lý thuyết hoặc document mới để rồi hy vọng sau này ghép lại. Nếu yêu cầu còn đang bàn và chưa phải quyết định cuối, ghi ngay tại vị trí liên quan trong cùng Criteria với trạng thái **CHƯA CHỐT** và các phương án đang mở; không lặng lẽ coi là đã duyệt. Khi được chốt, sửa đúng mục liên quan, đánh dấu hoặc gạch phần bị thay thế và giữ khả năng đối chiếu lịch sử qua Git. Không cần xây thêm decision engine hay gate mới để làm việc này.
+
+**Ranh giới trách nhiệm:** Criteria quyết định **WHAT/WHY** — đích cần đạt, giới hạn và điều kiện nghiệm thu; Project Plan/Milestone/Job quyết định **HOW/WHEN** — công việc và trình tự đạt Criteria. Planner/Reviewer/CR được đề xuất cập nhật Criteria, nhưng không được tự đổi ý định người dùng từ các finding kỹ thuật, lỗi code hoặc nhu cầu vượt gate. Nếu người dùng thay đổi lý thuyết khiến plan hiện tại không còn đúng, cập nhật Criteria trước, sau đó chỉ điều chỉnh phần plan bị ảnh hưởng; không giữ hai nguồn mệnh lệnh song song.
 
 **Criteria 01 — Đúng dự án, tiếp nhận nhẹ:** Với dự án mới hoặc đang triển khai dở, GSA xác định đúng source repository, quyền truy cập và baseline hiện tại qua bước setup tối thiểu, không hồi cứu toàn bộ lịch sử. Mở Project không tự cấp quyền sửa source. Khi hoàn tất setup, Project có thể dùng ngay generic framework.
 
@@ -186,7 +191,7 @@ Tương tự, mỗi lần gặp sự cố, GSA được phép ghi Lessons Learne
 
 **[Người dùng — quyết định thay thế 17/10/2026] Không hồi cứu quyết định lịch sử.** ~~Tổng hợp mọi phê duyệt nằm trong chat cũ để người dùng click xác nhận lại trước khi bắt đầu Project.~~ Hướng này không còn là yêu cầu refactor. Khi tiếp nhận dự án đang làm dở, GSA thiết lập **Fresh Start** từ một Criteria mới được người dùng xác nhận, không mở công việc truy nguyên quá khứ. Các quyết định mới có ảnh hưởng lớn vẫn phải được ghi lại trong Project Memory theo cơ chế hiện có và tuân thủ ranh giới phê duyệt, nhưng **không bắt buộc xây Decision Logger riêng hoặc ép user dùng nút click thay cho hội thoại**. Nếu về sau muốn UX chọn phương án, đó là cải tiến tùy chọn, không phải điều kiện setup hay gate mới.
 
-**Criteria 20 — Thay đổi có kiểm soát:** Khi user duyệt thay đổi mục tiêu, GSA điều chỉnh phần kế hoạch và công việc bị ảnh hưởng, bảo toàn phần hợp lệ, không ghi đè lịch sử và không để thiếu yêu cầu đã được chốt.
+**Criteria 20 — Thay đổi có kiểm soát:** Khi user duyệt thay đổi mục tiêu, GSA ghi ngay nội dung thay đổi vào Criteria duy nhất, sau đó điều chỉnh phần kế hoạch và công việc bị ảnh hưởng, bảo toàn phần hợp lệ, không ghi đè lịch sử và không để thiếu yêu cầu đã được chốt. Bản plan không được tự trở thành nguồn lý thuyết cạnh tranh.
 
 **Criteria 21 — Không dùng gate để vá gate:** Mỗi gate còn lại phải chứng minh nó bảo vệ một quyền, một rủi ro thực hoặc một tiêu chí; phần trùng chức năng, chỉ có tác dụng vá gate khác hoặc không còn mục đích phải được đánh giá để hợp nhất/loại bỏ. Không thêm gate mới chỉ vì một agent lo ngại theo giả định.
 
@@ -201,6 +206,10 @@ Tương tự, mỗi lần gặp sự cố, GSA được phép ghi Lessons Learne
 **Criteria 26 — Fresh Start cho dự án đang triển khai:** GSA có thể tiếp nhận một repository đã có source, kế hoạch cũ hoặc các phần việc chưa hoàn tất chỉ bằng một bước setup ngắn. Thiết lập Project identity, quyền, baseline source và `AGENTS.md` tối thiểu; người dùng xác nhận Criteria mới rồi Planner lập plan/milestone cho chặng tiếp theo. Không bắt dựng lại mọi quyết định, Job hay approval từ lịch sử trước khi GSA tham gia. Không sửa, xóa hoặc coi code lịch sử là đã được nghiệm thu.
 
 **Criteria 27 — Criteria hướng tương lai, không làm lại quá khứ:** Criteria duy nhất của Project định nghĩa **đích cần đạt**; source hiện tại là **điểm xuất phát** và được đánh giá từng phần khi công việc cần đến. Chỉ những việc thuộc mục tiêu/ảnh hưởng thực tế mới cần khảo sát sâu hoặc kiểm chứng lại. Các quyết định được người dùng duyệt sau Fresh Start được ghi nhận đủ để tiếp tục công việc, không tạo chương trình truy vết ngược hoặc Decision Logger bắt buộc.
+
+**Criteria 28 — Một nguồn sự thật duy nhất cho lý thuyết sản phẩm:** Tất cả thay đổi lý thuyết do người dùng nêu từ lúc Project bắt đầu dùng GSA phải được cập nhật trực tiếp vào **một Criteria hiện hành** của Project. Không tạo draft plan, working note, theory doc hoặc roadmap độc lập như một nơi ghi yêu cầu khác. Những phần đang thảo luận được đánh dấu CHƯA CHỐT ngay trong Criteria; phần đã bị thay thế được gạch hoặc ghi rõ tình trạng, không giữ hai yêu cầu cùng hiệu lực. Các plan/Job/Review chỉ dẫn chiếu và triển khai Criteria hiện hành. Khi user thay đổi Criteria, Planner đánh giá ảnh hưởng và cập nhật kế hoạch phụ thuộc, không bắt user rà soát hàng loạt tài liệu mâu thuẫn.
+
+**Criteria 29 — Kiểm tra chống drift và nguồn chân lý cạnh tranh:** Một yêu cầu mới không được coi đã nằm trong scope triển khai nếu chỉ xuất hiện ở plan, PR, ghi chú, bài review hoặc hội thoại mà chưa được phản ánh trong Criteria hiện hành với trạng thái rõ ràng. Reviewer kiểm rằng kế hoạch không thêm nghĩa vụ ngoài Criteria; nếu phát hiện khác biệt phải quay lại Criteria để người dùng chốt, không sinh thêm gate chỉ để hợp thức hóa một tài liệu thứ hai. GSA phải nạp đúng phiên bản Criteria hiện hành mỗi khi lập/sửa plan và tiếp tục Job quan trọng.
 
 ---
 
@@ -217,7 +226,7 @@ Phần gạch ngang dưới đây là **những hướng từng tồn tại tron
 - ~~Khi production main đổi, tự merge/rebase toàn bộ vào một nhánh correction đang chạy.~~ Với chương trình correction từng được duyệt, thay bằng đối chiếu có chọn lọc và chứng minh thay đổi nào cần nhập; **đây là chính sách theo bối cảnh chương trình đó**, không phải luật cứng cho mọi dự án.
 - ~~Chỉ cần dựa vào trí nhớ chat để xử lý lại một source write mất phản hồi.~~ Các thay đổi quan trọng phải có trạng thái durable đủ để đối chiếu Git thật và tiếp tục an toàn.
 
-**Những hành vi cần loại bỏ, dù không phải một lý thuyết user từng duyệt:** tạo gate vô cớ; review cứ mở thêm scope; checkpoint xong dừng khi còn AUTO; hỏi người dùng copy log có thể tự đọc; nói PASS dựa vào helper thay vì real path; tạo branch rồi bỏ quên; vá lỗi theo từng triệu chứng; tự sửa plan/criteria để qua gate; chồng một vòng quản trị mới lên vòng cũ; ép dự án đã chạy từ trước phải tái dựng toàn bộ lịch sử chấp thuận trước khi dùng GSA. Đây là **anti-criteria do vấn đề thực tế và yêu cầu cải thiện của người dùng chỉ ra**, không phải bằng chứng mọi việc đó hiện còn xảy ra cùng mức độ.
+**Những hành vi cần loại bỏ, dù không phải một lý thuyết user từng duyệt:** tạo gate vô cớ; review cứ mở thêm scope; checkpoint xong dừng khi còn AUTO; hỏi người dùng copy log có thể tự đọc; nói PASS dựa vào helper thay vì real path; tạo branch rồi bỏ quên; vá lỗi theo từng triệu chứng; tự sửa plan/criteria để qua gate; chồng một vòng quản trị mới lên vòng cũ; ép dự án đã chạy từ trước phải tái dựng toàn bộ lịch sử chấp thuận trước khi dùng GSA; phân tán các thay đổi lý thuyết của người dùng ra nhiều draft plan và ghi chú rồi để chúng trở thành các source of truth cạnh tranh. Đây là **anti-criteria do vấn đề thực tế và yêu cầu cải thiện của người dùng chỉ ra**, không phải bằng chứng mọi việc đó hiện còn xảy ra cùng mức độ.
 
 ---
 
