@@ -263,5 +263,24 @@ test('M6: isolated staging slugs never inherit production execution or Memory na
   }
   assert.equal(h.edgeFunctionSlug(newStage), 'gsa-mcp-refactor-stage')
   assert.equal(h.edgeFunctionSlug(unknown), 'gsa-mcp-invalid')
-  assert.ok(source.includes("root.route('/gsa-mcp-*', app)"))
+  // Routing itself is exercised against Hono in the separate live-matcher test below.
+})
+
+test('M6: deployed Hono matcher serves exact production and isolated staging slugs only', async () => {
+  const { Hono } = require('hono')
+  const root = new Hono()
+  const app = new Hono()
+  app.get('/health', (c) => c.text('ROUTE_OK'))
+  const paths = [...source.matchAll(/^\s*root\.route\('([^']+)', app\)/gm)].map(m => m[1])
+  assert.equal(paths.length, 3, 'Production, legacy staging and restricted dynamic staging path must be registered')
+  for (const p of paths) root.route(p, app)
+  for (const slug of ['gsa-mcp', 'gsa-mcp-next', 'gsa-mcp-refactor-stage', 'gsa-mcp-test-123']) {
+    const response = await root.request('https://example.supabase.co/' + slug + '/health')
+    assert.equal(response.status, 200, 'Route must be reachable: ' + slug)
+    assert.equal(await response.text(), 'ROUTE_OK')
+  }
+  for (const slug of ['unrelated-service', 'gsa-mcp-UPPER', 'not-gsa-mcp-refactor-stage']) {
+    const response = await root.request('https://example.supabase.co/' + slug + '/health')
+    assert.equal(response.status, 404, 'Unrelated slugs must not get GSA staging routes: ' + slug)
+  }
 })
