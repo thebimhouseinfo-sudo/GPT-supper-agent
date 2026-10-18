@@ -156,7 +156,7 @@ test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contrac
   const roleMap = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
   assert.ok(roleMap.includes('advisor: {'))
   assert.ok(roleMap.includes('Never act as Reviewer/CR'))
-  assert.ok(roleMap.includes('CRITERIA REVISION'))
+  assert.ok(roleMap.includes('GOAL FIRST'))
   const startup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
   assert.ok(startup.includes('AGENTS.md'))
   assert.ok(startup.includes('Status: DRAFT'))
