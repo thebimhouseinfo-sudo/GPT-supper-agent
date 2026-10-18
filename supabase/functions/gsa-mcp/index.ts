@@ -9017,5 +9017,5 @@ app.all('/mcp', async (c) => {
 
 root.route('/gsa-mcp', app)
 root.route('/gsa-mcp-next', app)
-root.route('/gsa-mcp-*', app) // Hono wildcard matches isolated staging slug paths; production remains exact /gsa-mcp
+root.route('/:slug{gsa-mcp-[a-z0-9-]+}', app) // Hono constrained first-segment parameter admits isolated staging slugs only
 Deno.serve(root.fetch)
