@@ -2120,6 +2120,22 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
   },
+  advisor: {
+    authority: [
+      'Generic Technical Advisor for Human product decisions only. Read Criteria draft or approved Criteria plus proposed delta; selectively read existing source for accurate technical context.',
+      'Explain feasibility, prerequisites, direct/cascading technical impact, effort/cost/risk and missing/excess solutions proportionate to actual use/scale.',
+      'Never act as Reviewer/CR, approve/veto requirements, mutate Criteria/Plan/source or issue PASS/FAIL.',
+    ],
+    loop: [
+      'TRIGGER: before initial Human approval of the coherent Criteria draft, or before any material edit of already approved Criteria. Do not run on ordinary Task/chat.',
+      'GROUND: Human Criteria WHAT/WHY is authoritative. Read actual architecture/source when needed; Plan proposed by AI is NOT a Human requirement.',
+      'ADVISE: distinguish verified facts from uncertainty; explain feasibility, conditions, costs, unnecessary complexity and ripple effects, including changes that may force major redesign.',
+      'CHOICES: offer practical alternatives only when useful; do not force fixed tiers.',
+      'HANDOFF: Human decides, Planner records decision. Re-consult only if final delta materially changed. No quality verdict or file write.',
+    ],
+    outputs: ['technical advice for Human decision', 'impact/tradeoff and uncertainty explanation'],
+    canonical_refs: ['PROJECT-MEMORY.md', 'PLANNER-SCOPE-AND-UIUX.md', 'EXECUTION-AND-REVIEW.md'],
+  },
   designer: {
     authority: [
       'Own visual interpretation, UI/UX coverage and Asset Requirements.',
@@ -2231,6 +2247,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
 const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
   planner: ['job-planning', 'delegation'],
+  advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
   reviewer: ['review-evidence', 'planning-review'],
@@ -2846,7 +2863,7 @@ function createServer(req: Request) {
         'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
         'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
         'When user types gsa/ call get_cli_root and copy menu_text verbatim as the entire answer.',
-        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
+        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, advisor=advisor, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
         'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
         'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> present reviewed PASS plan -> await explicit Human execution approval -> execution Runs. Never stop the automatic review/repair loop before the plan is PASS; stop before execution until User authorizes it. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
@@ -2899,6 +2916,7 @@ function createServer(req: Request) {
         '  • delete [rm] — Delete Project Memory after confirmation.\n\n' +
         'DIRECT AGENT — Call a specialist role directly.\n' +
         '  • planner [pl] — Plan scope, tasks and gates (rl = review/repair loop).\n' +
+        '  • advisor — Technical advice to Human before Criteria approval/change.\n' +
         '  • designer [ds] — Define UI/UX and assets.\n' +
         '  • coder [cd] — Implement approved changes.\n' +
         '  • reviewer [rv] — Run context-isolated review.\n' +
@@ -5028,7 +5046,7 @@ function createServer(req: Request) {
       title: 'Load a GSA role harness',
       description: 'Load shared GSA operating rules plus one role contract. Then load only the returned suggested skills that are relevant to the current Run.',
       inputSchema: {
-        role: z.enum(['orchestrator','planner','designer','coder','reviewer','critic_reviewer','tester']),
+        role: z.enum(['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']),
         mode: z.enum(['JOB','DIRECT_AGENT']).default('JOB'),
       },
       outputSchema: {
@@ -7467,9 +7485,9 @@ function createServer(req: Request) {
     'start_direct_agent',
     {
       title: 'Start a Direct Agent',
-      description: 'Handler for pl/ds/cd/rv/ts. CR uses the separate Human-only start_critic_review path. Direct work is ephemeral by default.',
+      description: 'Handler for pl/advisor/ds/cd/rv/ts. CR uses the separate Human-only start_critic_review path. Direct work is ephemeral by default.',
       inputSchema: {
-        role: z.enum(['planner','designer','coder','reviewer','tester']),
+        role: z.enum(['planner','advisor','designer','coder','reviewer','tester']),
         objective: z.string().optional(),
         target_url: z.string().url().optional(),
       },
@@ -7493,6 +7511,7 @@ function createServer(req: Request) {
       if (!auth) return authError(req, 'Authentication required to start a Direct Agent.')
       const contracts: Record<string, { purpose: string; source_write: boolean; output: string }> = {
         planner: { purpose: 'Plan scope, tasks, dependencies and gates.', source_write: false, output: 'Plan / Project or Job proposal' },
+        advisor: { purpose: 'Advise Human on feasibility and technical effects before Criteria approval/change.', source_write: false, output: 'Read-only technical advice' },
         designer: { purpose: 'Define UI/UX and asset requirements.', source_write: false, output: 'Design / Asset Requirement' },
         coder: { purpose: 'Implement approved source changes.', source_write: true, output: 'Source diff + Goal Recheck + evidence' },
         reviewer: { purpose: 'Run context-isolated review.', source_write: false, output: 'Findings + review result' },
