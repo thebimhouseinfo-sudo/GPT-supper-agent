@@ -83,11 +83,14 @@ function edgeFunctionSlug(req: Request) {
   const url = new URL(req.url)
   const parts = url.pathname.split('/').filter(Boolean)
   const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
-  return candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
+  // Only exact gsa-mcp is production. Explicit gsa-mcp-* function slugs are staging.
+  // No arbitrary path may opt into the production NEXT namespace.
+  return candidate === 'gsa-mcp' || (typeof candidate === 'string' && /^gsa-mcp-[a-z0-9-]+$/.test(candidate))
+    ? candidate : 'gsa-mcp'
 }
 
 function runtimeSurface(req: Request) {
-  return edgeFunctionSlug(req) === 'gsa-mcp-next' ? 'STAGING_NEXT' as const : 'PRODUCTION' as const
+  return edgeFunctionSlug(req) === 'gsa-mcp' ? 'PRODUCTION' as const : 'STAGING_NEXT' as const
 }
 
 function jobCreationExecutionContractDefault(req: Request): ExecutionContract {
@@ -9014,4 +9017,5 @@ app.all('/mcp', async (c) => {
 
 root.route('/gsa-mcp', app)
 root.route('/gsa-mcp-next', app)
+root.route('/gsa-mcp-:stage', app) // additional isolated staging slugs; never production memory namespace
 Deno.serve(root.fetch)
