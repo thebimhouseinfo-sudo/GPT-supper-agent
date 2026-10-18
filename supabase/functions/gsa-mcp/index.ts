@@ -4760,7 +4760,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Invalid Project identity/path or missing Human confirmation.' }], isError: true }
       const repo = normalizeGithubRepo(repository_url)
       const owned = parsed.repositories.find((r: any) => r.url.toLowerCase() === repo?.url.toLowerCase() && r.relation === 'OWNED')
-      if (!owned || !validIntegrationBranch(development_branch) || (release_branch && !validIntegrationBranch(release_branch)))
+      if (!repo || !owned || !validIntegrationBranch(development_branch) || (release_branch && !validIntegrationBranch(release_branch)))
         return { content: [{ type: 'text', text: 'Branch policy must target an OWNED repository with valid Git ref names.' }], isError: true }
       const policies = parsed.branch_policies.map((p: any) => p.repository_url.toLowerCase() === repo.url.toLowerCase()
         ? { ...p, development_branch, release_branch: release_branch ?? null } : p)
