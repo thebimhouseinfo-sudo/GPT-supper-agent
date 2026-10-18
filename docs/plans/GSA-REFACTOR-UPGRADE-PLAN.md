@@ -2,12 +2,12 @@
 
 Status: **PLANNING DRAFT — chờ Human duyệt bản Criteria và kế hoạch trước khi chạy source implementation**.
 Working branch: **`upgrade/gsa-refactor`** (tạo từ `main` tại `be8b663a878cca9c5b2920145f57fd20291d6164`).
-Criteria duy nhất: **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; blob được đọc để lập plan: `562778aad9c9d224e265ba6c519e8056f22eda7f`.
+Criteria duy nhất: **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; current blob để kiểm lại GOAL và plan: `7b6d95c719fa632ef0249925d4795549d6d18402` (Criteria vẫn WORKING, chưa Human phê duyệt baseline).
 Mức thẩm quyền: **plan triển khai đề xuất**, không phải Criteria khác; nội dung CHƯA CHỐT trong Criteria không được tự động chuyển thành yêu cầu bắt buộc.
 
 ## GOAL
 
-Từ GSA hiện có, phát triển một **generic coding/project-agent framework gọn, đáng tin và có thể dùng ngay** cho dự án mới hoặc dự án đang triển khai dở trên ChatGPT Web. Mỗi GSA Project có **một Criteria hiện hành** mô tả đích cần đạt; Planner khởi tạo `AGENTS.md` tối thiểu; Coder và Tester hoạt động generic, chỉ nạp **add-in chuyên môn tùy chọn** khi Task cần. Planner, Reviewer và Critic Reviewer (CR) dùng chung trên mọi Project. Sau phê duyệt thực thi, GSA tự đi qua các bước AUTO trong cùng lượt hoạt động và tự xử lý kiểm chứng/sửa lỗi trong quyền; chỉ dừng ở quyết định Human thật, blocker được chứng minh hoặc phiên bị gián đoạn. Git, Memory, review và resume phải đúng quyền và dựa trên bằng chứng thực tế, không dựa vào lời hứa.
+Từ GSA hiện có, phát triển một **generic coding/project-agent framework gọn, đáng tin và có thể dùng ngay** cho dự án mới hoặc dự án đang triển khai dở trên ChatGPT Web. Mỗi GSA Project có **một Criteria hiện hành** mô tả đích cần đạt; **Planner làm rõ GOAL, người dùng, mục đích sử dụng, quy mô thực và giới hạn trước khi lập kế hoạch**; **Advisor generic** tư vấn trên **toàn Criteria dự thảo trước lần Human duyệt đầu** và **trước khi sửa Criteria đã duyệt**; Human chốt. Planner tạo `AGENTS.md` tối thiểu; Coder và Tester generic, chỉ nạp **add-in chuyên môn tùy chọn** khi Task cần. Planner, Advisor, Reviewer và Critic Reviewer (CR) dùng chung trên mọi Project, mỗi vai có trách nhiệm riêng. Sau phê duyệt thực thi, GSA tự đi qua các bước AUTO trong cùng lượt hoạt động và tự xử lý kiểm chứng/sửa lỗi trong quyền; chỉ dừng ở quyết định Human thật, blocker được chứng minh hoặc phiên bị gián đoạn. Git, Memory, review và resume phải đúng quyền và dựa trên bằng chứng thực tế, không dựa vào lời hứa.
 
 **Hoàn thành nghĩa là:** các luồng trên được chứng minh bằng test âm/dương, public-path/live pilot phù hợp, exact revision và kết quả người dùng nhìn thấy; một codebase có ít trách nhiệm trùng lặp và ít thao tác thừa hơn nhưng không yếu đi ở ranh giới bảo mật, idempotency, compatibility hoặc evidence.
 
@@ -46,6 +46,24 @@ Từ GSA hiện có, phát triển một **generic coding/project-agent framewor
 | **M6 — Field acceptance & release prep** | Chạy những luồng thật trên staging và Project pilot; bằng chứng đầy đủ, giới hạn rõ, có phương án rollback | M0–M5 | Exact staging/source, pilot results, review/CI/limitations | **HUMAN: main merge; HUMAN: production deploy** |
 
 **Giải thích trạng thái mốc:** AUTO là đường điều phối đã được chấp thuận trong phiên đang hoạt động; HUMAN là quyền quyết định riêng, không là "checkpoint pending" chung. Nếu một Phase gặp blocker thực, chỉ phần việc phụ thuộc dừng. Mốc hoàn tất phải có kết quả đủ kiểm chứng, không chỉ có một report hay file schema mới. Một mốc đang chờ kiểm chứng host không bị giả PASS.
+
+### Criteria revision → GOAL impact review (18/10/2026)
+
+**Chỉ sửa GOAL trước khi sửa detail:** Human bổ sung trình tự Advisor/Criteria và GOAL-first review. Đối chiếu Criteria **working** blob `7b6d95c719fa632ef0249925d4795549d6d18402` (C02/C03/C06/C20/C23/C26/C28/C29), Planner kiểm GOAL tổng và từng Phase như sau. Đây là **impact assessment trong cùng Upgrade Plan**, không phải một Criteria phụ và không phải phê duyệt source implementation.
+
+| GOAL | Quyết định sau đối chiếu | Căn cứ |
+|---|---|---|
+| **Overall** | **ĐIỀU CHỈNH** — Planner discovery + Advisor đúng hai checkpoint và Human decision | C02 C03 C23 C26 |
+| **M0** | **GIỮ** — targeted audit đã hoàn thành, không hồi tố test/source | C06 C21 C22 |
+| **M1** | **ĐIỀU CHỈNH** — chốt GOAL/quy mô phù hợp và Advisor xem toàn Criteria trước first approval | C01 C02 C03 C23 C26 |
+| **M2** | **GIỮ** — add-in Coder/Tester chỉ tùy chọn, Advisor không là add-in | C19 C23 C25 |
+| **M3** | **ĐIỀU CHỈNH** — khi Criteria sửa, review GOAL tổng/Phase trước detail | C04 C06 C20 C28 C29 |
+| **M4** | **GIỮ** — AUTO trong lượt có hiệu lực | C07 C08 |
+| **M5** | **GIỮ** — simplification/recovery đúng quyền | C11 C12 C21 C22 |
+| **M6** | **GIỮ** — field acceptance phải kiểm cả behavior mới theo Criteria, không đổi đích milestone | C09 C17 C23 C26 C29 |
+
+**Trình tự áp dụng:** đã kiểm đủ GOAL → lưu GOAL revisions trong **chính plan** → readback → mới cập nhật chi tiết M1/M3 và acceptance liên quan. Các nội dung không được Human quyết định vẫn giữ CHƯA CHỐT ở Criteria; không tạo GOAL hay phase mới.
+
 
 ## Phase M0 — Kiểm kê thực tế và audit gate
 
@@ -136,7 +154,7 @@ Xác định chính xác **cái gì đang có, vì sao tồn tại, cái gì thi
 
 ### GOAL
 
-Tiếp nhận **đúng Project và source hiện tại** bằng một bước setup nhẹ cho Project mới hoặc đang làm dở; ghi lại baseline quan sát được, cùng người dùng **chốt Criteria gốc về mục tiêu tương lai** (phần chưa quyết định vẫn ghi `CHƯA CHỐT` trong cùng file) và một `AGENTS.md` generic tối thiểu. **Mở Project không tự tạo Job, không sửa source, không làm lại quá khứ.** Sau khi người dùng duyệt Criteria, Planner có thể lập Project Plan/milestone ở M3 dựa trên nguồn yêu cầu duy nhất.
+Tiếp nhận **đúng Project/source** bằng setup nhẹ; Planner làm rõ **GOAL, mục đích sử dụng, quy mô thực/tương lai đã cam kết và giới hạn tương xứng**, soạn **một Criteria tương lai**, Advisor generic phản biện **toàn draft trước lần Human duyệt đầu**; Human chốt, `AGENTS.md` generic tối thiểu được tạo. **Mở Project không tạo Job, không sửa source, không truy xét quá khứ.** Criteria đã duyệt là đầu vào để M3 lập Project Plan/milestone.
 
 **Criteria trực tiếp:** C01–C03, C23–C24, C26–C29. **Bảo vệ đang có:** C11–C12 (resume/không lặp write), C15 (đúng quyền), C17 (test thật), C21–C22 (không thêm gate thừa). Những cái này là **giới hạn an toàn**, không tạo GOAL hoặc approval workflow thứ hai.
 
@@ -277,7 +295,7 @@ Tùy biến **chuyên môn** mà không tạo nhiều phiên bản của agent h
 
 ### GOAL
 
-Planner biết **đích đến**, tạo Project Plan đủ mốc nhưng không tạo gate, Task hoặc lý thuyết dư.
+Planner tạo Project Plan/GOAL/milestone từ Criteria **đã được Human duyệt**. **Sau mỗi Criteria edit hợp lệ, kiểm và điều chỉnh Overall GOAL + mọi Phase GOAL bị ảnh hưởng trước rồi mới cập nhật detail/milestone/Job/Task/test**, giữ phần không đổi; Reviewer kiểm đúng Criteria revision và không thêm gate/yêu cầu sản phẩm dư.
 
 - **JP3 (MEDIUM; Planner + planning Reviewer):** khi lập kế hoạch cho toàn Project, dùng một Criteria current revision; thể hiện `## GOAL` ở đầu plan, `### GOAL` ở đầu Phase; lập milestone đủ kết quả, dependencies, cách nghiệm thu và trạng thái **AUTO sau approval / Human decision / manual trigger / blocked by actual evidence** dưới dạng điều phối hiện có, không thêm bốn lifecycle enum.
 - **JP3 coverage:** Reviewer rà cả **thiếu** và **thừa**. Mọi Task/Phase phải trả lời "giúp Criteria nào, bằng chứng gì"; finding chỉ là đề xuất nếu không thể gắn vào Criteria hiện hành hoặc security/observed risk. Job nhỏ nằm trong Project Plan không cần fake milestone. Tận dụng NEXT milestones/topology sẵn có khi phù hợp.
