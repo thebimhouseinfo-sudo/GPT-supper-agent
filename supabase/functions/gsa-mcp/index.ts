@@ -2622,7 +2622,7 @@ function parseProjectManifest(text: string) {
   const purpose = values.purpose ?? ''
   const created_at = values.created_at ?? ''
   const updated_at = values.updated_at ?? ''
-  if (!project_id || !name || !primary_repo_url || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
+  if (!PROJECT_ID_PATTERN.test(project_id) || !name || !normalizeGithubRepo(primary_repo_url) || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
 
   const repositories: Array<{ role: string; relation: string; url: string }> = []
   for (const rawLine of text.split('\n')) {
@@ -2633,7 +2633,36 @@ function parseProjectManifest(text: string) {
   const dedup = [...new Map(repositories.map((r) => [r.url.toLowerCase(), r])).values()]
   const repo_mode = values.repo_mode === 'MULTI' || dedup.length > 1 ? 'MULTI' : 'SINGLE'
   const repo_registry_status = values.repo_registry_status || (values.repo_mode ? 'CONFIRMED' : 'LEGACY_UNASSESSED')
+  // The flat fields are the legacy/single-PRIMARY shortcut; section rows support multi-repo Projects.
+  // Unknown/invalid branch values are never replaced with GitHub's default branch.
+  const branchRows = new Map<string, { repository_url: string; development_branch: string | null; release_branch: string | null }>()
+  for (const line of text.split('\n')) {
+    const row = line.match(/^\s*-\s*(?:PRIMARY|DEPENDENCY|SUPPORT|REFERENCE)\s*\|\s*(https:\/\/github\.com\/[^\s|]+)\s*\|\s*development=([^|\s]*)\s*\|\s*release=([^|\s]*)\s*$/i)
+    if (!row) continue
+    const normalized = normalizeGithubRepo(row[1])
+    if (!normalized) continue
+    branchRows.set(normalized.url.toLowerCase(), {
+      repository_url: normalized.url,
+      development_branch: validIntegrationBranch(row[2]) ? row[2] : null,
+      release_branch: validIntegrationBranch(row[3]) ? row[3] : null,
+    })
+  }
+  const branch_policies = dedup.map((repo) => {
+    const key = repo.url.toLowerCase()
+    const stored = branchRows.get(key)
+    const dev = stored?.development_branch ??
+      (repo.role === 'PRIMARY' && validIntegrationBranch(values.development_branch) ? values.development_branch : null)
+    const release = stored?.release_branch ??
+      (repo.role === 'PRIMARY' && validIntegrationBranch(values.release_branch) ? values.release_branch : null)
+    return { repository_url: repo.url, development_branch: dev, release_branch: release,
+      status: repo.relation === 'OWNED' ? (dev ? 'CONFIGURED' : 'UNCONFIGURED') : 'REFERENCE_ONLY' }
+  })
+  const primaryPolicy = branch_policies.find((p) => p.repository_url.toLowerCase() === primary_repo_url.toLowerCase())
   return {
+    development_branch: primaryPolicy?.development_branch ?? null,
+    release_branch: primaryPolicy?.release_branch ?? null,
+    branch_policy_status: primaryPolicy?.status ?? 'UNCONFIGURED',
+    branch_policies,
     project_id,
     name,
     lifecycle,
@@ -2713,8 +2742,27 @@ function transitionProjectManifest(text: string, target: 'ACTIVE' | 'PAUSED' | '
   return { parsed, next: lines.join('\n'), updated_at: now }
 }
 
+const PROJECT_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
+
 function validMemoryPath(path: string) {
-  return /^projects\/[0-9a-fA-F-]{36}\//.test(path)
+  if (typeof path !== 'string' || !path.startsWith('projects/') || path.includes('\\') || path.includes('%')) return false
+  const segments = path.split('/')
+  if (segments.length < 3 || !PROJECT_ID_PATTERN.test(segments[1])) return false
+  return segments.slice(2).every((segment) =>
+    segment !== '.' && segment !== '..' && /^[a-zA-Z0-9_.-]+$/.test(segment))
+}
+
+function validProjectManifestPath(path: string, projectId: string) {
+  return PROJECT_ID_PATTERN.test(projectId) &&
+    path === 'projects/' + projectId + '/PROJECT.md' && validMemoryPath(path)
+}
+
+function validIntegrationBranch(name: string) {
+  return typeof name === 'string' && name.length > 0 && name.length <= 128 &&
+    !name.startsWith('/') && !name.endsWith('/') && !name.endsWith('.lock') &&
+    !name.includes('..') && !name.includes('//') && !name.includes('@{') &&
+    /^[A-Za-z0-9][A-Za-z0-9_.\/-]*$/.test(name) &&
+    name.split('/').every((segment) => segment !== '.' && segment !== '..' && !segment.startsWith('.'))
 }
 
 
@@ -2787,6 +2835,7 @@ function createServer(req: Request) {
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
         'A GSA Project may own or reference multiple source repositories. PROJECT.md repository registry is the durable source of truth for Project repo topology.',
+        'ADMIN BRANCH POLICY: PROJECT.md persists per-repo Human-approved development_branch and release_branch; Project READY must display both or UNCONFIGURED. Planner/Coder may not infer source integration target from main/default. Use project_branch_policy_prepare, exact GitHub verification and CAS/readback before updating policy. Source writes/merges dependent on an unconfigured or stale branch are blocked; ordinary discussion/read/planning is not.',
         'For brownfield discovery, if live evidence suggests additional dependent/owned repos that are not registered, stop at a Human Gate and ask the user to confirm the Project repo set before finalizing planning.',
         'Every executable Job must identify one working repository. Even when only one repo is modified, Planner/Reviewer must inspect the registered Project repo map for cross-repo impact and record that assessment.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
@@ -4657,7 +4706,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: String(err) }], isError: true }
       }
       const parsed = parseProjectManifest(updated)
-      if (!parsed) return { content: [{ type: 'text', text: 'Updated PROJECT.md would be invalid.' }], isError: true }
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Updated PROJECT.md path/identity would be invalid.' }], isError: true }
       const result = {
         repository_mode: parsed.repo_mode,
         registered_repositories: parsed.repositories,
@@ -4673,6 +4722,83 @@ function createServer(req: Request) {
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_branch_policy_prepare',
+    {
+      title: 'Prepare Human-approved Project Development Branch configuration',
+      description: 'Admin function. PREPARE ONLY: update one OWNED repository branch policy in PROJECT.md. Callers must verify live Git branches, authorize Memory scope, write with exact SHA and read back. No GitHub branch is selected by default.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        repository_url: z.string().url(),
+        development_branch: z.string().min(1),
+        release_branch: z.string().nullable().optional(),
+        human_confirmed: z.literal(true),
+      },
+      outputSchema: {
+        memory_path: z.string(),
+        expected_sha: z.string(),
+        repository_url: z.string(),
+        development_branch: z.string(),
+        release_branch: z.string().nullable(),
+        updated_manifest_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, repository_url, development_branch, release_branch, human_confirmed }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare branch policy.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id) || !human_confirmed)
+        return { content: [{ type: 'text', text: 'Invalid Project identity/path or missing Human confirmation.' }], isError: true }
+      const repo = normalizeGithubRepo(repository_url)
+      const owned = parsed.repositories.find((r: any) => r.url.toLowerCase() === repo?.url.toLowerCase() && r.relation === 'OWNED')
+      if (!owned || !validIntegrationBranch(development_branch) || (release_branch && !validIntegrationBranch(release_branch)))
+        return { content: [{ type: 'text', text: 'Branch policy must target an OWNED repository with valid Git ref names.' }], isError: true }
+      const policies = parsed.branch_policies.map((p: any) => p.repository_url.toLowerCase() === repo.url.toLowerCase()
+        ? { ...p, development_branch, release_branch: release_branch ?? null } : p)
+      const header = project_manifest_text.split('\n')
+      const frontEnd = header.indexOf('---', 1)
+      if (frontEnd < 0) return { content: [{ type: 'text', text: 'Malformed Project front matter.' }], isError: true }
+      // Keep one canonical branch mapping section; root fields are PRIMARY convenience only.
+      let next = project_manifest_text.replace(/\n## Branch Policy[^\n]*\n[\s\S]*?(?=\n## |$)/, '')
+      const primary = policies.find((p: any) => p.repository_url.toLowerCase() === parsed.primary_repo_url.toLowerCase())
+      const lines = next.split('\n').filter((line) => !/^(development_branch|release_branch|integration_target|branch_policy_owner):/.test(line))
+      const yamlEnd = lines.indexOf('---', 1)
+      if (yamlEnd < 0) return { content: [{ type: 'text', text: 'Malformed Project front matter.' }], isError: true }
+      lines.splice(yamlEnd, 0,
+        'development_branch: ' + (primary?.development_branch ?? ''),
+        'release_branch: ' + (primary?.release_branch ?? ''),
+        'integration_target: ' + (primary?.development_branch ?? ''),
+        'branch_policy_owner: HUMAN_CONFIRMED')
+      next = lines.join('\n').trimEnd() +
+        '\n\n## Branch Policy (Human-approved)\n' +
+        policies.map((p: any) => {
+          const entry = parsed.repositories.find((r: any) => r.url.toLowerCase() === p.repository_url.toLowerCase())
+          return '- ' + entry.role + ' | ' + p.repository_url + ' | development=' + (p.development_branch ?? '') +
+            ' | release=' + (p.release_branch ?? '')
+        }).join('\n') + '\n'
+      const out = {
+        memory_path, expected_sha: project_manifest_sha,
+        repository_url: repo.url, development_branch, release_branch: release_branch ?? null,
+        updated_manifest_text: next,
+        external_steps: [
+          'Verify this PROJECT.md was freshly fetched from the configured Memory Repo and SHA matches expected_sha; an input manifest/SHA is not trustworthy without GitHub readback.',
+          'Verify the selected source repository belongs to this Project and both nonempty configured Git branches exist on live GitHub; never infer default/main.',
+          'Verify Human actually approved this exact repo+branch change, not merely caller-supplied human_confirmed; reconcile affected active Jobs before switching integration target.',
+          'Call authorize_project_scope(MUTATE_MEMORY) and authorize_memory_mutation(update) for this exact Project path.',
+          'GitHub Memory Repo: update_file with expected_sha (CAS), then independently fetch/readback and compare exact selected branch policy.',
+          'Never merge, deploy or write source merely because this configuration was prepared.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
@@ -4695,6 +4821,13 @@ function createServer(req: Request) {
         repository_mode: z.string(),
         repo_registry_status: z.string(),
         registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
+        branch_policy_status: z.string(),
+        development_branch: z.string().nullable(),
+        release_branch: z.string().nullable(),
+        branch_policies: z.array(z.object({
+          repository_url: z.string(), development_branch: z.string().nullable(),
+          release_branch: z.string().nullable(), status: z.string(),
+        })),
         memory_path: z.string(),
         project_manifest_sha: z.string(),
         openable: z.boolean(),
@@ -4706,9 +4839,8 @@ function createServer(req: Request) {
     async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to open a Project.')
-      if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
       const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
       const result = {
         project_id: parsed.project_id,
         handle: projectHandle(parsed.project_id),
@@ -4718,6 +4850,10 @@ function createServer(req: Request) {
         repository_mode: parsed.repo_mode,
         repo_registry_status: parsed.repo_registry_status,
         registered_repositories: parsed.repositories,
+        development_branch: parsed.development_branch,
+        release_branch: parsed.release_branch,
+        branch_policy_status: parsed.branch_policy_status,
+        branch_policies: parsed.branch_policies,
         memory_path,
         project_manifest_sha,
         openable: parsed.lifecycle !== 'ARCHIVED',
@@ -4741,6 +4877,13 @@ function createServer(req: Request) {
         repository_mode: z.string(),
         repo_registry_status: z.string(),
         registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
+        branch_policy_status: z.string(),
+        development_branch: z.string().nullable(),
+        release_branch: z.string().nullable(),
+        branch_policies: z.array(z.object({
+          repository_url: z.string(), development_branch: z.string().nullable(),
+          release_branch: z.string().nullable(), status: z.string(),
+        })),
         project_manifest_sha: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -4761,6 +4904,10 @@ function createServer(req: Request) {
         repository_mode: parsed.repo_mode,
         repo_registry_status: parsed.repo_registry_status,
         registered_repositories: parsed.repositories,
+        development_branch: parsed.development_branch,
+        release_branch: parsed.release_branch,
+        branch_policy_status: parsed.branch_policy_status,
+        branch_policies: parsed.branch_policies,
         project_manifest_sha,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -4798,9 +4945,8 @@ function createServer(req: Request) {
       async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
         const auth = await authContext(req)
         if (!auth) return authError(req, 'Authentication required to change Project lifecycle.')
-        if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
         const parsed = parseProjectManifest(project_manifest_text)
-        if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+        if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
         if (!allowedFrom.includes(parsed.lifecycle)) {
           return { content: [{ type: 'text', text: 'Lifecycle transition blocked from ' + parsed.lifecycle + ' to ' + target + '.' }], isError: true }
         }
