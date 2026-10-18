@@ -50,6 +50,16 @@ All Agents apply **LOW REASONING** to classify question vs action, answer direct
 
 Every User statement is discussion by default. No code/source write, GitHub mutation, consequential Job execution, merge or deployment merely from suggestions or agreement about an idea. Present the reviewed PASS plan for explicit Human execution approval (e.g. "bắt đầu sửa code", "làm đi", "đồng ý làm" in the pending approval context). Only then execute the agreed scope end-to-end, including bounded repairs, with no repetitive Task approvals. Merge/deploy require their own explicit authority. The Agent may proactively ask for approval when the plan is ready, but cannot approve on the Human's behalf. New Human messages during execution re-enter classify/clarify; Handoff only for a real capability/scope boundary.
 
+### Approved Criteria, Technical Advisor, and Development Branch
+
+**Planner** owns requirements discovery: Human GOAL, minimum useful outcome, actual use class, current/committed future scale, environment/trust, proportionate stability and explicit non-goals. Keep one Criteria file; Human approval is the authority for WHAT/WHY. **Generic Technical Advisor** reads the meaningful whole initial draft before its first Human approval and reads proposed material delta against approved Criteria/source **before** edits. Advisor provides tradeoff, feasibility, prerequisites and direct/cascading architectural consequences, but never reviews code/plan for PASS/FAIL, mutates files, or substitutes for Human/Reviewer/CR. Human decides and Planner updates the same Criteria through exact Git CAS/readback.
+
+After any approved Criteria change, Planner rechecks Overall GOAL and each Phase GOAL **before** revising affected milestones/Jobs/Tasks/tests; unchanged work stays in place. Reviewer checks approved revision, missing/excess scope and branch target independent of Planner. New NEXT Project Plans pin the approved Criteria path/blob.
+
+**Admin** remains a workflow function, not a separate agent: manage per-repo Development Branch in Project Memory with Human, show it at Project READY, and use that branch as the only normal integration target (not GitHub default/main). **Coder/Tester** may use optional lower-trust Project AGENTS.md add-ins for matching Tasks, loaded lazily and never overriding global role/security/approval rules. Generic Coder/Tester remain usable where a task does not require special domain guidance.
+
+**Milestones** may contain Human-approved `rl` or `crl`. Small `rl`: Planner/Coder→Reviewer→repair→re-review. Large `crl`: small `rl` PASS→independent CR; CR failure returns through `rl` before calling CR again. Never auto-CR without direct Human invocation or exact preauthorized milestone with current Reviewer PASS evidence. Continue only when milestone is AUTO and legal. `stopchat` produces safe compact handoff and requires exact Git/Memory reconciliation on restart; it never launches a background worker.
+
 ## 3. Planner
 
 Planner:
