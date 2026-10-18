@@ -2,12 +2,12 @@
 
 **Bản dựng lại để người dùng đọc, sửa và chốt trước đợt refactor — 17/10/2026**
 **Bản cập nhật cho nhánh upgrade/gsa-refactor: Generic Framework + optional Coder/Tester Add-in; Fresh Start / Adopt Existing Project là định hướng tiếp nhận Project (17/10/2026).**  
-**Trạng thái: WORKING CRITERIA cho đợt refactor; toàn văn đang được người dùng hiệu chỉnh, CHƯA PHẢI APPROVED BASELINE.**
-**Single Source of Truth:** Trong nhánh nâng cấp, chính tài liệu này là nơi duy nhất tích lũy và cập nhật lý thuyết/Criteria refactor trước khi được chốt. Không tạo các bản lý thuyết cạnh tranh. Sau khi chốt, phải chuyển thành Criteria canonical của GSA; các plan tiếp theo chỉ dẫn chiếu, triển khai và kiểm chứng, không tự trở thành nguồn yêu cầu mới.  
+**Trạng thái: APPROVED BASELINE — Human duyệt toàn bộ Criteria ngày 18/10/2026; gồm 30 mục (C01–C29 và C14A). Chưa phê duyệt source implementation, merge hoặc deploy.**
+**Single Source of Truth:** Đây là **Criteria canonical đã được Human duyệt** cho đợt refactor GSA trên `upgrade/gsa-refactor`. Giữ nguyên đường dẫn file lịch sử có hậu tố `-DRAFT` để các liên kết và reference hiện tại không đứt; **tên file không làm thay đổi trạng thái APPROVED**. Không duy trì một bản Criteria cạnh tranh. Plan chỉ xác định HOW/WHEN, không tự thay đổi yêu cầu.  
 
 Tài liệu này trả lời trực tiếp ba câu hỏi: **GSA là gì? GSA phải hoạt động ra sao? Khi nào có thể nói GSA làm đúng?** Đây không phải kế hoạch lập trình, sơ đồ database, bản kiểm kê gate hay chỉ dẫn triển khai refactor. Người đọc có thể hiểu toàn bộ mà không phải mở tài liệu khác.
 
-Bản khảo cứu chi tiết `GSA_REQUIREMENT_ARCHAEOLOGY_2026-10-17.md` **được giữ nguyên** như hồ sơ bằng chứng. Tài liệu đang đọc là bản diễn đạt lại thành lý thuyết sản phẩm và criteria dễ thảo luận. Những điểm chưa có quyết định cuối cùng được giữ rõ ở cuối, không bị AI tự chọn thay.
+Bản khảo cứu chi tiết `GSA_REQUIREMENT_ARCHAEOLOGY_2026-10-17.md` **được giữ nguyên** như hồ sơ bằng chứng. Tài liệu đang đọc là bản diễn đạt lại thành lý thuyết sản phẩm và criteria dễ thảo luận. Các giới hạn/câu hỏi về **khả năng triển khai kỹ thuật** được ghi rõ ở cuối; chúng không cấp phép AI tự đổi yêu cầu đã duyệt.
 
 **Ký hiệu rất ít, dùng khi cần:** **[Người dùng]** là hướng được người dùng nêu trực tiếp; **[Nền tảng]** là nguyên lý từ các tài liệu GSA đã được quản trị, không mặc định do người dùng tự viết; **[Đề xuất AI — chưa chốt]** là cách hiện thực do tài liệu/agent gợi ý; **[Chưa chốt]** là hai hướng đang xung đột hoặc thiếu quyết định. Những lý thuyết có bằng chứng đã bị thay thế được ~~gạch ngang~~.
 
@@ -244,7 +244,7 @@ Phần gạch ngang dưới đây là **những hướng từng tồn tại tron
 
 ---
 
-## XI. Những lựa chọn đã chốt và điểm còn mở
+## XI. Quyết định Human đã chốt và những giới hạn kỹ thuật cần xác minh
 
 Các quyết định trong mục này cập nhật từ trao đổi Human ngày 18/10/2026; các phương án lịch sử chỉ còn để đối chiếu, **không được coi là requirement song song**.
 
@@ -284,7 +284,7 @@ Với UI, mỗi Project lưu ảnh kiểm thử trong repo của chính nó và 
 
 Sau thời gian làm việc, repository không tích tụ nhiều nhánh bỏ quên; Projects không có hai bộ criteria cạnh tranh; harness không phải liên tục được vá bằng gate mới để vượt gate cũ. GSA ngày càng hiểu chuyên môn từng Project tốt hơn nhờ skills và lý thuyết đã được duyệt, nhưng bộ máy chung vẫn gọn.
 
-**Đó là đích sản phẩm để Planner sau này lập kế hoạch refactor.** Planner không được thay câu chuyện này bằng việc tái tạo từng schema, helper hoặc gate xuất hiện trong lịch sử. Chỉ khi người dùng duyệt bản lý thuyết và chốt các điểm ở mục XI, tài liệu mới có thể trở thành Criteria baseline duy nhất cho việc thiết kế một phiên bản GSA tinh gọn hơn.
+**Đó là đích sản phẩm đã được Human chốt làm Criteria baseline cho refactor.** Planner không được thay câu chuyện này bằng việc tái tạo từng schema, helper hoặc gate xuất hiện trong lịch sử. Các hạn chế công cụ/điểm cần xác minh kỹ thuật vẫn phải được xử lý trung thực trong Plan/Test; chúng không tự trở thành thay đổi Criteria. Mọi delta WHAT/WHY sau baseline này cần Human quyết định theo quy trình Advisor → Human → Planner.
 
 ---
 
