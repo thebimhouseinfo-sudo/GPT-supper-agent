@@ -15,7 +15,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError'
+  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision'
 ]
 const extracted = []
 for (const node of ast.statements) {
@@ -218,4 +218,29 @@ test('M4: Human CR fallback and milestone invocation record distinct provenance'
   assert.ok(record.includes("'APPROVED_MILESTONE'"))
   assert.ok(record.includes('Re-fetch the exact current Job SHA'))
   assert.ok(source.includes("review_loop: z.enum(['none','rl','crl'])"))
+})
+
+test('M4 loop: Reviewer FAIL repairs then re-reviews; CR FAIL returns to rl before CR again', () => {
+  const job = { planning_revision: 3, planning_review: { status: 'PASS', reviewed_revision: 3 },
+    milestones: [{ milestone_id: 'm', review_loop: 'crl', human_pre_authorized: true, continuation: 'AUTO' }] }
+  const choose = (stage, result, tries = 0) => h.milestoneLoopDecision(job, 'm', stage, result, tries)
+  assert.equal(choose('BEGIN', 'NONE').next_action, 'RUN_REVIEWER')
+  assert.equal(choose('REVIEWER', 'CHANGES_REQUIRED').next_action, 'REPAIR_AND_REREVIEW')
+  assert.equal(choose('REVIEWER', 'PASS').next_action, 'VERIFY_REVIEWER_PASS_THEN_CR')
+  assert.equal(choose('CR', 'FAIL').next_action, 'REPAIR_AND_REREVIEW')
+  assert.equal(choose('CR', 'PASS').next_action, 'CONTINUE_AUTO')
+  assert.equal(choose('CR', 'FAIL', 3).next_action, 'STOP_BLOCKED')
+  assert.equal(choose('CR', 'BLOCKED').resume_same_turn, false)
+  assert.equal(h.milestoneLoopDecision({ ...job, milestones: [{ milestone_id: 'm', review_loop: 'crl', human_pre_authorized: false, continuation: 'AUTO' }] }, 'm', 'REVIEWER', 'PASS').next_action, 'STOP')
+})
+
+test('M4 loop: rl never starts CR and Human milestone continuation stops on PASS', () => {
+  const job = { planning_revision: 1, planning_review: { status: 'PASS', reviewed_revision: 1 },
+    milestones: [{ milestone_id: 'm', review_loop: 'rl', human_pre_authorized: true, continuation: 'HUMAN' }] }
+  const d = h.milestoneLoopDecision(job, 'm', 'REVIEWER', 'PASS')
+  assert.equal(d.next_action, 'PRESENT_RESULT')
+  assert.equal(d.resume_same_turn, false)
+  assert.equal(h.milestoneLoopDecision({ ...job, milestones: [{ ...job.milestones[0], continuation: 'AUTO' }] }, 'm', 'REVIEWER', 'PASS').next_action, 'CONTINUE_AUTO')
+  assert.equal(h.milestoneLoopDecision(job, 'm', 'CR', 'PASS').next_action, 'STOP')
+  assert.equal(h.milestoneLoopDecision({ ...job, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 1 } }, 'm', 'BEGIN', 'NONE').next_action, 'STOP')
 })
