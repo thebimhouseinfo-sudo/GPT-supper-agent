@@ -5458,6 +5458,7 @@ function createServer(req: Request) {
         non_goals: z.array(z.string()).default([]),
         execution_contract: z.enum(['V2_STABLE','NEXT']).default(jobCreationExecutionContractDefault(req)),
         plan_kind: z.enum(['PROJECT_PLAN','JOB']).default('JOB'),
+        integration_branch: z.string().optional(),
         criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
@@ -5539,7 +5540,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -5598,6 +5599,11 @@ function createServer(req: Request) {
           return { content: [{ type: 'text', text: 'PLAN_REPLACEMENT_NOT_AUTHORIZED: requires exact reviewed intent and SUPERSEDED predecessor readback.' }], isError: true }
         }
         replacement = { intent, predecessor, item }
+      }
+      if (((type === 'code') || (plan_kind === 'PROJECT_PLAN')) &&
+          resolveExecutionContract(execution_contract) === 'NEXT' &&
+          !validIntegrationBranch(integration_branch)) {
+        return { content: [{ type: 'text', text: 'DEVELOPMENT_BRANCH_REQUIRED: new NEXT code/Project Plans must bind the Human-configured Development Branch for the selected OWNED repository; read PROJECT.md, never infer default/main.' }], isError: true }
       }
       const criteriaError = projectCriteriaBindingError(project_id, plan_kind, criteria_binding)
       if (criteriaError) return { content: [{ type: 'text', text: criteriaError }], isError: true }
@@ -5665,6 +5671,7 @@ function createServer(req: Request) {
           project_repository_mode,
           registered_repositories: normalizedRegistered,
           working_repository_url: normalizedWorking,
+          integration_branch: integration_branch ?? null,
           cross_repo_impact: cross_repo_impact ?? [],
         },
         product_workflow: product_workflow ?? null,
@@ -5701,6 +5708,7 @@ function createServer(req: Request) {
       const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        ...(integration_branch ? ['Verify this Job integration_branch equals the registered working repository Development Branch in exact current PROJECT.md, and that GitHub live branch exists. Readback must be independent of caller-provided input; do not use GitHub default.'] : []),
         ...(criteria_binding ? [
           'Fetch exact Project CRITERIA.md from the configured Memory Repo at criteria_binding.criteria_path; verify blob SHA=' + criteria_binding.criteria_blob_sha + ' and actual Human APPROVED content. An input approval_status flag is not reliable evidence by itself.',
           'Before Reviewer PASS or dependent code execution, re-read current Criteria/Project Memory and reconcile if revision has changed; only Human may change approved WHAT/WHY.',
@@ -6193,6 +6201,10 @@ function createServer(req: Request) {
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
       }
+      if (current.repository_context?.integration_branch &&
+          !validIntegrationBranch(current.repository_context.integration_branch)) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: configured Job integration branch is malformed.' }], isError: true }
+      }
       const criteriaErr = projectCriteriaBindingError(project_id, current.plan_kind ?? 'JOB', current.criteria_binding)
       if (criteriaErr) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + criteriaErr }], isError: true }
       if (executionContract === 'NEXT') {
@@ -6243,6 +6255,9 @@ function createServer(req: Request) {
       const continuation = planningLoopContinuationDecision('REVIEW_RECORDED', current.lifecycle, planning_revision, result)
       const nextRole = continuation.next_role
       const steps = [
+        ...(current.repository_context?.integration_branch ? [
+          'Reviewer verifies current Project Memory Development Branch for the working repository equals the bound Job integration_branch, and the live GitHub branch exists. No implicit main/default or cross-repo branch.',
+        ] : []),
         ...(current.criteria_binding ? [
           'Reviewer independently fetches approved Criteria revision at exact configured path/blob SHA and compares Overall/Phase GOAL coverage before accepting a Project Plan. Historical source code alone is not Criteria approval.',
         ] : []),
