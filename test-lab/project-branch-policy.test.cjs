@@ -263,5 +263,5 @@ test('M6: isolated staging slugs never inherit production execution or Memory na
   }
   assert.equal(h.edgeFunctionSlug(newStage), 'gsa-mcp-refactor-stage')
   assert.equal(h.edgeFunctionSlug(unknown), 'gsa-mcp-invalid')
-  assert.ok(source.includes("root.route('/gsa-mcp-:stage', app)"))
+  assert.ok(source.includes("root.route('/gsa-mcp-*', app)"))
 })
