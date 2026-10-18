@@ -9017,5 +9017,5 @@ app.all('/mcp', async (c) => {
 
 root.route('/gsa-mcp', app)
 root.route('/gsa-mcp-next', app)
-root.route('/gsa-mcp-:stage', app) // additional isolated staging slugs; never production memory namespace
+root.route('/gsa-mcp-*', app) // Hono wildcard matches isolated staging slug paths; production remains exact /gsa-mcp
 Deno.serve(root.fetch)
