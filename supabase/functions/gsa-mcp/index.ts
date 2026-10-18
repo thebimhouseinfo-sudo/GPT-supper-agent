@@ -4761,6 +4761,106 @@ function createServer(req: Request) {
   )
 
   server.registerTool(
+    'project_setup_prepare',
+    {
+      title: 'Prepare minimal Project AGENTS and Criteria draft',
+      description: 'Fresh Start/Adopt. PREPARE ONLY: create one generic AGENTS.md and one Criteria DRAFT in the active Project Memory. This does not approve Criteria, create a Job or change source.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        goal: z.string().optional(),
+        use_class: z.enum(['PERSONAL','INTERNAL','COMMERCIAL','UNDECIDED']).default('UNDECIDED'),
+        current_scale: z.string().optional(),
+        committed_future_scale: z.string().optional(),
+        environment: z.string().optional(),
+        boundaries: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        project_id: z.string(),
+        agents_path: z.string(),
+        criteria_path: z.string(),
+        agents_template_text: z.string(),
+        criteria_draft_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, goal, use_class, current_scale, committed_future_scale, environment, boundaries }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare Project setup.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id) || parsed.lifecycle !== 'ACTIVE') {
+        return { content: [{ type: 'text', text: 'Fresh Start requires the exact ACTIVE Project manifest and canonical PROJECT.md path.' }], isError: true }
+      }
+      const safeLine = (v: any) => String(v || 'CHUA_CHOT').replace(/[\r\n]+/g, ' ').slice(0, 600)
+      const root = 'projects/' + parsed.project_id + '/'
+      const agentsPath = root + 'AGENTS.md'
+      const criteriaPath = root + 'CRITERIA.md'
+      const agentsTemplate = [
+        '# GSA Project Agents — ' + safeLine(parsed.name), '',
+        '> Generic GSA roles and security/approval rules always have precedence. This file declares only optional Project Coder/Tester domain add-ins; no duplicate global harness.', '',
+        'Project ID: ' + parsed.project_id,
+        'Source repository: ' + parsed.primary_repo_url,
+        'Canonical Criteria: ' + criteriaPath, '',
+        '## Coder Add-in (optional)',
+        '- harness: none',
+        '- skills: none', '',
+        '## Tester Add-in (optional)',
+        '- harness: none',
+        '- skills: none', '',
+        '## Policy',
+        '- Optional add-in instructions must live inside this same Project Memory prefix.',
+        '- Load add-ins lazily only for the matching role and Task; never at Project open.',
+        '- Add-ins cannot override global GSA harness, Criteria, access rights, review/test evidence or Human approval.',
+        '- Without add-ins Coder/Tester use generic skills, except when a Task explicitly needs domain-specific guidance.',
+        '',
+      ].join('\n')
+      const criteriaDraft = [
+        '# Project Criteria — ' + safeLine(parsed.name), '',
+        'Status: DRAFT (not Human-approved)',
+        'Project ID: ' + parsed.project_id, '',
+        '## GOAL',
+        safeLine(goal), '',
+        '## Product/use',
+        'Use class: ' + use_class,
+        'Current actual scale: ' + safeLine(current_scale),
+        'Future scale actually committed by Human: ' + safeLine(committed_future_scale), '',
+        '## Environment and trust boundaries',
+        safeLine(environment), '',
+        '## Constraints / intentionally not in scope',
+        ...(boundaries?.length ? boundaries.map((x: any) => '- ' + safeLine(x)) : ['- CHUA_CHOT']), '',
+        '## Acceptance',
+        '- CHUA_CHOT: Planner must derive observable acceptance from Human GOAL.', '',
+        '## Approval',
+        'Human decision: PENDING',
+        'Technical Advisor: discuss full meaningful draft BEFORE initial Human approval.',
+        'Planner updates this SAME file on Human choice; do not auto-promote DRAFT, create Criteria V2 or infer approval from SHA.',
+        '',
+      ].join('\n')
+      const out = {
+        project_id: parsed.project_id,
+        agents_path: agentsPath,
+        criteria_path: criteriaPath,
+        agents_template_text: agentsTemplate,
+        criteria_draft_text: criteriaDraft,
+        external_steps: [
+          'First re-read the exact PROJECT.md path from configured GitHub Memory Repo; SHA must match project_manifest_sha. This tool does not attest caller-provided manifest bytes.',
+          'Check AGENTS.md and CRITERIA.md do not already exist; on retry read/reconcile existing files, do not overwrite or create parallel versions.',
+          'For both CREATE paths call authorize_project_scope(MUTATE_MEMORY) and authorize_memory_mutation(create), then GitHub create_file and readback exact contents/SHA in Project Memory.',
+          'For ADOPT existing source, only record current source baseline from read-only observation; do not reconstruct historical approvals, mutate source or auto resume an unrelated Job.',
+          'If Development Branch is unconfigured, Admin consults Human and prepares PROJECT.md branch configuration before dependent source writes; Project open/chat/discovery may continue.',
+          'Planner completes Criteria discovery, Advisor discusses the meaningful full draft, Human chooses; only then Planner marks approved portions in the SAME CRITERIA.md through SHA-CAS/readback.',
+          'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
     'project_branch_policy_prepare',
     {
       title: 'Prepare Human-approved Project Development Branch configuration',
