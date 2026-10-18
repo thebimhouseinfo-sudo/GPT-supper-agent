@@ -15,7 +15,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError'
+  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError'
 ]
 const extracted = []
 for (const node of ast.statements) {
@@ -190,4 +190,32 @@ test('M3: Project Plan preparation and planning Reviewer preserve exact Criteria
   assert.ok(review.includes('projectCriteriaBindingError'))
   assert.ok(review.includes('criteria_binding: current.criteria_binding ?? null'))
   assert.ok(review.includes('Reviewer independently fetches approved Criteria revision'))
+})
+
+test('M4: CRL requires approved milestone, current planning PASS and exact Reviewer PASS', () => {
+  const review = { kind: 'REVIEW', result: 'PASS', producer: 'reviewer', project_id: id,
+    job_id: '01a0f05c-3567-73d0-8a65-90da7ebbd324', planning_revision: 2, milestone_id: 'm1' }
+  const job = { project_id: id, job_id: review.job_id, lifecycle: 'IN_PROGRESS', planning_revision: 2,
+    planning_review: { status: 'PASS', reviewed_revision: 2 },
+    milestones: [{ milestone_id: 'm1', review_loop: 'crl', human_pre_authorized: true }] }
+  const snap = { path: 'projects/' + id + '/VERIFICATION/x.json', sha: 'a'.repeat(40), record_text: JSON.stringify(review) }
+  assert.equal(h.milestoneCrlEvidenceError(job, 'm1', snap), null)
+  assert.ok(h.milestoneCrlEvidenceError(job, 'unknown', snap))
+  assert.ok(h.milestoneCrlEvidenceError({ ...job, milestones: [{ milestone_id: 'm1', review_loop: 'rl', human_pre_authorized: true }] }, 'm1', snap))
+  assert.ok(h.milestoneCrlEvidenceError({ ...job, milestones: [{ milestone_id: 'm1', review_loop: 'crl', human_pre_authorized: false }] }, 'm1', snap))
+  assert.ok(h.milestoneCrlEvidenceError({ ...job, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 2 } }, 'm1', snap))
+  assert.ok(h.milestoneCrlEvidenceError(job, 'm1', { ...snap, sha: 'bad' }))
+  assert.ok(h.milestoneCrlEvidenceError(job, 'm1', { ...snap, record_text: JSON.stringify({ ...review, result: 'FAIL' }) }))
+  assert.ok(h.milestoneCrlEvidenceError(job, 'm1', { ...snap, record_text: JSON.stringify({ ...review, planning_revision: 1 }) }))
+})
+
+test('M4: Human CR fallback and milestone invocation record distinct provenance', () => {
+  const start = source.slice(source.indexOf("'start_critic_review',"), source.indexOf("'critic_review_record',"))
+  const record = source.slice(source.indexOf("'critic_review_record',"), source.indexOf("'run_begin',"))
+  assert.ok(start.includes('human_invoked === true'))
+  assert.ok(start.includes('milestoneCrlEvidenceError'))
+  assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
+  assert.ok(record.includes("'APPROVED_MILESTONE'"))
+  assert.ok(record.includes('Re-fetch the exact current Job SHA'))
+  assert.ok(source.includes("review_loop: z.enum(['none','rl','crl'])"))
 })
