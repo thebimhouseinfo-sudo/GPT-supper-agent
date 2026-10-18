@@ -15,7 +15,8 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision'
+  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
+  'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
 for (const node of ast.statements) {
@@ -243,4 +244,24 @@ test('M4 loop: rl never starts CR and Human milestone continuation stops on PASS
   assert.equal(h.milestoneLoopDecision({ ...job, milestones: [{ ...job.milestones[0], continuation: 'AUTO' }] }, 'm', 'REVIEWER', 'PASS').next_action, 'CONTINUE_AUTO')
   assert.equal(h.milestoneLoopDecision(job, 'm', 'CR', 'PASS').next_action, 'STOP')
   assert.equal(h.milestoneLoopDecision({ ...job, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 1 } }, 'm', 'BEGIN', 'NONE').next_action, 'STOP')
+})
+
+test('M6: isolated staging slugs never inherit production execution or Memory namespace', () => {
+  const req = (slug) => ({ url: 'https://example.supabase.co/functions/v1/' + slug + '/health' })
+  const prod = req('gsa-mcp')
+  const oldStage = req('gsa-mcp-next')
+  const newStage = req('gsa-mcp-refactor-stage')
+  const unknown = req('unrelated-service')
+  assert.equal(h.edgeFunctionSlug(prod), 'gsa-mcp')
+  assert.equal(h.runtimeSurface(prod), 'PRODUCTION')
+  assert.equal(h.nextMemoryNamespaceForRequest(prod), 'PRODUCTION')
+  assert.equal(h.jobCreationExecutionContractDefault(prod), 'NEXT')
+  for (const r of [oldStage, newStage, unknown]) {
+    assert.equal(h.runtimeSurface(r), 'STAGING_NEXT')
+    assert.equal(h.nextMemoryNamespaceForRequest(r), 'TEST_LAB')
+    assert.equal(h.jobCreationExecutionContractDefault(r), 'V2_STABLE')
+  }
+  assert.equal(h.edgeFunctionSlug(newStage), 'gsa-mcp-refactor-stage')
+  assert.equal(h.edgeFunctionSlug(unknown), 'gsa-mcp-invalid')
+  assert.ok(source.includes("root.route('/gsa-mcp-:stage', app)"))
 })
