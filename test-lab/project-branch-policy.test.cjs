@@ -15,7 +15,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins'
+  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError'
 ]
 const extracted = []
 for (const node of ast.statements) {
@@ -167,4 +167,27 @@ test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contrac
   assert.ok(base.includes('PROJECT ADDINS'))
   assert.ok(base.includes('CRITERIA CHANGE ORDER'))
   assert.ok(base.includes('BRANCH AUTHORITY'))
+})
+
+test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
+  const correct = { criteria_path: 'projects/' + id + '/CRITERIA.md', criteria_blob_sha: 'a'.repeat(40), approval_status: 'APPROVED' }
+  assert.equal(h.projectCriteriaBindingError(id, 'PROJECT_PLAN', correct), null)
+  assert.ok(h.projectCriteriaBindingError(id, 'PROJECT_PLAN', null))
+  assert.ok(h.projectCriteriaBindingError(id, 'PROJECT_PLAN', { ...correct, approval_status: 'DRAFT' }))
+  assert.ok(h.projectCriteriaBindingError(id, 'PROJECT_PLAN', { ...correct, criteria_blob_sha: 'bad' }))
+  assert.ok(h.projectCriteriaBindingError(id, 'PROJECT_PLAN', { ...correct, criteria_path: 'projects/' + id + '/OTHER.md' }))
+  assert.ok(h.projectCriteriaBindingError('01a0d70c-9683-7324-9d3d-a8231a93c63b', 'PROJECT_PLAN', correct))
+  assert.equal(h.projectCriteriaBindingError(id, 'JOB', null), null, 'Unrelated legacy/small Jobs must still work')
+})
+
+test('M3: Project Plan preparation and planning Reviewer preserve exact Criteria binding', () => {
+  const create = source.slice(source.indexOf("'job_prepare',"), source.indexOf("'job_revise_plan',"))
+  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
+  const review = source.slice(source.indexOf("'plan_review_record',"), source.indexOf("'start_critic_review',"))
+  assert.ok(create.includes('plan_kind'))
+  assert.ok(create.includes('criteria_binding: criteria_binding ?? null'))
+  assert.ok(revise.includes('criteria_binding: effectiveCriteria ?? null'))
+  assert.ok(review.includes('projectCriteriaBindingError'))
+  assert.ok(review.includes('criteria_binding: current.criteria_binding ?? null'))
+  assert.ok(review.includes('Reviewer independently fetches approved Criteria revision'))
 })
