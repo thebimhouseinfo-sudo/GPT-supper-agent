@@ -2929,6 +2929,7 @@ function createServer(req: Request) {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
         'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
+        'STOPCHAT shortcut: stop at a safe Job/cursor boundary, persist only needed durable state/readback, then call stopchat_handoff_prepare for an accurate concise copyable resume handoff. No background work.',
         'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
         'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'PLAN GOAL ANCHORS: write ## GOAL at the top of each new/revised plan file and ### GOAL immediately inside each Phase before Tasks; Reviewer checks all phase goals and Tasks against original Human-approved overall goal on every planning revision. No silent goal changes.',
@@ -4825,6 +4826,83 @@ function createServer(req: Request) {
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'stopchat_handoff_prepare',
+    {
+      title: 'Prepare a concise GSA stopchat handoff',
+      description: 'Read-only presentation helper for an intentional stopchat. Does not save unverified progress or schedule background work. Reconcile pending writes/cursors and persist only actually necessary durable state BEFORE using the prepared handoff.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        selected_job_id: z.string().uuid().nullable().optional(),
+        selected_milestone: z.string().nullable().optional(),
+        source_commit_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        criteria_revision: z.string().nullable().optional(),
+        plan_revision: z.string().nullable().optional(),
+        verified_progress: z.array(z.string()).default([]),
+        uncertain_writes: z.array(z.string()).default([]),
+        human_approvals: z.array(z.string()).default([]),
+        blockers: z.array(z.string()).default([]),
+        next_action: z.string().min(1),
+      },
+      outputSchema: {
+        project_id: z.string(),
+        handoff_text: z.string(),
+        pending_reconciliation: z.boolean(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, selected_job_id, selected_milestone, source_commit_sha, criteria_revision, plan_revision, verified_progress, uncertain_writes, human_approvals, blockers, next_action }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for stopchat handoff.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) {
+        return { content: [{ type: 'text', text: 'STOPCHAT_PROJECT_MISMATCH: exact active PROJECT.md is required.' }], isError: true }
+      }
+      const clean = (v: any) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500)
+      const items = (values: any[], fallback: string) =>
+        (values?.length ? values.map((v: any) => '- ' + clean(v)).join('\n') : '- ' + fallback)
+      const pending = (uncertain_writes ?? []).length > 0
+      const text = [
+        'GSA stopchat — resume handoff (not execution authorization)', '',
+        'Project: ' + clean(parsed.name) + ' [' + parsed.project_id + ']',
+        'Source repository: ' + parsed.primary_repo_url,
+        'Development Branch: ' + (parsed.development_branch ?? 'UNCONFIGURED'),
+        'Release Branch: ' + (parsed.release_branch ?? 'NOT_CONFIGURED'),
+        'Source commit (verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
+        'Project Memory: ' + memory_path + ' @ ' + project_manifest_sha,
+        'Criteria revision: ' + clean(criteria_revision || 'UNVERIFIED'),
+        'Plan revision: ' + clean(plan_revision || 'UNVERIFIED'),
+        'Selected Job: ' + clean(selected_job_id || 'NONE'),
+        'Milestone: ' + clean(selected_milestone || 'NONE'), '',
+        'Verified progress:', items(verified_progress, 'none supplied'), '',
+        'Uncertain writes / reconcile before retry:', items(uncertain_writes, 'none reported'), '',
+        'Human approvals already in force:', items(human_approvals, 'none supplied; do not infer approval'), '',
+        'Blockers:', items(blockers, 'none reported'), '',
+        'NEXT ACTION: ' + clean(next_action), '',
+        'To resume in a fresh chat: open this GSA Project, read exact Project Memory and live source HEAD/Job evidence; confirm the requested next action and applicable Human scope. Never auto-run merely because a chat opened.',
+      ].join('\n')
+      const out = {
+        project_id: parsed.project_id,
+        handoff_text: text,
+        pending_reconciliation: pending,
+        external_steps: [
+          'Stop at a safe boundary. When an active Job/pending source write exists, persist/read back only necessary cursor/Job/Verification state before sharing this handoff.',
+          'Re-fetch current PROJECT.md from the configured Memory Repo and compare blob SHA=' + project_manifest_sha + ', source HEAD and any active Job/cursor before treating details as verified.',
+          pending
+            ? 'Uncertain writes exist. Re-read source blob/HEAD and durable cursor; never retry the write blindly. Clearly label any unresolved result UNVERIFIED.'
+            : 'No uncertain writes were supplied; do not create a redundant checkpoint solely for stopchat.',
+          'This tool is read-only; it does not save state, close ChatGPT, create a Job, trigger a background worker or grant execution authority.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
