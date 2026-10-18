@@ -1105,6 +1105,7 @@ const MILESTONE_SCHEMA = z.object({
   gate_checkpoint_ids: z.array(z.string().min(1)).default([]),
   review_loop: z.enum(['none','rl','crl']).default('none'),
   human_pre_authorized: z.boolean().default(false),
+  continuation: z.enum(['AUTO','HUMAN']).default('HUMAN'),
 })
 
 const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
@@ -1154,6 +1155,34 @@ function validateExecutionTopology(tasks: any[], topology: any[]): string | null
     }
   }
   return null
+}
+
+function milestoneLoopDecision(job: any, milestoneId: string, stage: string, verdict: string, noProgressCycles = 0) {
+  const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
+  const stopped = (reason: string) => ({ next_action: 'STOP', next_role: 'human', resume_same_turn: false, reason })
+  if (!milestone) return stopped('Unknown milestone on the current Job.')
+  if (noProgressCycles >= 3) return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'No progress for three cycles.' }
+  if (!['rl','crl'].includes(milestone.review_loop)) return stopped('No approved review loop on this milestone.')
+  if (milestone.human_pre_authorized !== true) return stopped('Human has not approved this milestone review loop.')
+  if (job?.planning_review?.status !== 'PASS' || job?.planning_review?.reviewed_revision !== job?.planning_revision) {
+    return stopped('Current Job planning revision is not Reviewer PASS.')
+  }
+  if (verdict === 'BLOCKED') return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'Reviewer/CR reported a real blocker.' }
+  if (stage === 'BEGIN') return { next_action: 'RUN_REVIEWER', next_role: 'reviewer', resume_same_turn: true, reason: 'Begin approved milestone rl.' }
+  if (stage === 'REVIEWER' && ['FAIL','CHANGES_REQUIRED'].includes(verdict)) {
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
+  }
+  if (stage === 'CR' && ['FAIL','CHANGES_REQUIRED'].includes(verdict) && milestone.review_loop === 'crl') {
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
+  }
+  if (stage === 'REVIEWER' && verdict === 'PASS' && milestone.review_loop === 'crl') {
+    return { next_action: 'VERIFY_REVIEWER_PASS_THEN_CR', next_role: 'orchestrator', resume_same_turn: true, reason: 'Bind exact current Reviewer PASS Verification then invoke CR only for this Human-approved milestone.' }
+  }
+  if (verdict === 'PASS' && ((stage === 'REVIEWER' && milestone.review_loop === 'rl') || (stage === 'CR' && milestone.review_loop === 'crl'))) {
+    const auto = milestone.continuation === 'AUTO'
+    return { next_action: auto ? 'CONTINUE_AUTO' : 'PRESENT_RESULT', next_role: auto ? 'orchestrator' : 'human', resume_same_turn: auto, reason: auto ? 'Review complete; move to the next authorized milestone.' : 'Human stop configured at milestone.' }
+  }
+  return stopped('Review stage/verdict is not a valid transition for this milestone.')
 }
 
 function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any): string | null {
@@ -4826,6 +4855,53 @@ function createServer(req: Request) {
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'milestone_loop_evaluate',
+    {
+      title: 'Evaluate bounded milestone rl/crl next step',
+      description: 'Read-only routing decision for Human-approved milestone review loops. Never performs source writes, invokes CR without independent evidence, creates a background task or replaces Job/Run Verifications.',
+      inputSchema: {
+        job_record_text: z.string().min(2),
+        milestone_id: z.string().min(1),
+        stage: z.enum(['BEGIN','REVIEWER','CR']),
+        verdict: z.enum(['NONE','PASS','FAIL','CHANGES_REQUIRED','BLOCKED']).default('NONE'),
+        no_progress_cycles: z.number().int().min(0).default(0),
+      },
+      outputSchema: {
+        next_action: z.string(),
+        next_role: z.string(),
+        resume_same_turn: z.boolean(),
+        reason: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ job_record_text, milestone_id, stage, verdict, no_progress_cycles }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for milestone routing.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job record.' }], isError: true }
+      }
+      const decision = milestoneLoopDecision(job, milestone_id, stage, verdict, no_progress_cycles)
+      const out = {
+        ...decision,
+        external_steps: [
+          'Re-fetch exact current Job/Plan from Project Memory and confirm planning revision plus Human milestone approval; this read-only helper does not prove caller-provided Job/Review evidence.',
+          decision.next_action === 'VERIFY_REVIEWER_PASS_THEN_CR'
+            ? 'Read back exact current Reviewer PASS Verification; call start_critic_review with Human-approved milestone + matching durable snapshot. Do not infer CR authority from planning PASS alone.'
+            : 'Read back any required Reviewer/CR Verification and source revision before acting on a continuation; a response is not a persisted Verification or source-write permission.',
+          decision.next_action === 'REPAIR_AND_REREVIEW'
+            ? 'Coder/Planner repairs within approved scope, then reruns independent Reviewer. On CR FAIL the next CR may run only after new Reviewer PASS.'
+            : 'Continue only when milestone AUTO is Human-approved and all related safety/permission gates are met; no background execution.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
