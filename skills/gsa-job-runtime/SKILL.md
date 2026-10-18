@@ -38,6 +38,14 @@ Before executing any durable role Run:
 
 Do not rely on remembered role behavior when the harness can be loaded.
 
+### Fresh Start, Criteria, branch, and Project add-ins
+
+Open a Project through minimal authenticated metadata; Project READY displays the Human-configured per-repo Development/Release Branch or UNCONFIGURED without assuming Git default. Project open does not create Job, load add-ins in bulk or edit source. Fresh Start / adoption prepares one Project Criteria draft and minimal AGENTS.md, preserving existing repository and historic Jobs. Advisor provides read-only **technical advice** before first Criteria approval or proposed material approved-Criteria delta; Human decides and Planner maintains the one canonical Criteria.
+
+For new NEXT Project Plans bind exact approved Criteria blob SHA/path, review Overall/Phase GOAL before Task details, and check each code Job's integration target against configured PROJECT.md and live Git. Task-time Coder/Tester add-ins are optional and lower-trust; a missing required specialist domain skill yields BLOCKED/UNVERIFIED rather than an invented generic PASS.
+
+For milestones Human-approved as `rl` or `crl`, follow bounded same-turn review/repair/Reviewer loops; `crl` requires the current independent Reviewer PASS snapshot, then CR; CR FAIL returns through `rl`. No automatic CR outside this scope. `stopchat` stops at a safe boundary and prepares a concise Project/branch/revision/Job/progress/uncertain-write/approval/next-action handoff, persisting only needed state, never background work.
+
 ## Shared Agent intake (before role work)
 
 **NO REASONING** during Project bootstrap: execute only prescribed minimal steps to READY. On new User messages, keep the active receiving Agent; use Planner by default only when none exists. **LOW REASONING**: classify question/action, answer questions, clarify missing material decisions without speculative alternatives, and draft a thin skeleton for new/changed work. User agreement on the skeleton permits **FULL REASONING** detailed planning and the autonomous review/repair loop, not implementation. At PASS present the reviewed plan and ask for explicit Human execution approval; until then stay in discussion. An explicit user instruction such as "bắt đầu sửa code", "làm đi", "đồng ý làm" counts only in the matching plan-approval context, not as blanket permission. Handoff only when capability differs. Keep Direct Agent shortcuts and existing Project scope checks.
