@@ -2,7 +2,7 @@
 
 Status: **PLANNING DRAFT — chờ Human duyệt bản Criteria và kế hoạch trước khi chạy source implementation**.
 Working branch: **`upgrade/gsa-refactor`** (tạo từ `main` tại `be8b663a878cca9c5b2920145f57fd20291d6164`).
-Criteria duy nhất: **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; current blob để kiểm lại GOAL và plan: `7b6d95c719fa632ef0249925d4795549d6d18402` (Criteria vẫn WORKING, chưa Human phê duyệt baseline).
+Criteria duy nhất: **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; current blob để kiểm GOAL/plan: `4422f35b14330a45d15a6af1d9e369899a54b46e` (Criteria vẫn WORKING, chưa Human phê duyệt baseline).
 Mức thẩm quyền: **plan triển khai đề xuất**, không phải Criteria khác; nội dung CHƯA CHỐT trong Criteria không được tự động chuyển thành yêu cầu bắt buộc.
 
 ## GOAL
@@ -64,6 +64,8 @@ Từ GSA hiện có, phát triển một **generic coding/project-agent framewor
 | **M6** | **GIỮ** — field acceptance phải kiểm cả behavior mới theo Criteria, không đổi đích milestone | C09 C17 C23 C26 C29 |
 
 **Trình tự áp dụng:** đã kiểm đủ GOAL → lưu GOAL revisions trong **chính plan** → readback → mới cập nhật chi tiết M1/M3 và acceptance liên quan. Các nội dung không được Human quyết định vẫn giữ CHƯA CHỐT ở Criteria; không tạo GOAL hay phase mới.
+
+**GOAL re-review sau Criteria revision `4422f35b14330a45d15a6af1d9e369899a54b46e`:** Thay đổi chỉ làm rõ trường hợp Advisor cần xem lại **delta/bản draft đã thay đổi đáng kể sau tư vấn**; không làm đổi sản phẩm đích. Planner đã đối chiếu Overall GOAL và GOAL **M0–M6** với Criteria mới: **KEEP tất cả GOAL như revision trước**, không sinh Phase/GOAL mới, detail duy nhất cần điều chỉnh là điều kiện Advisor tư vấn trên **nội dung cuối cùng có ý nghĩa**, thuộc M1/M3/M6. Đây là outcome impact review, không phải Reviewer durable Verification.
 
 
 ## Phase M0 — Kiểm kê thực tế và audit gate
