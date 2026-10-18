@@ -284,3 +284,14 @@ test('M6: deployed Hono matcher serves exact production and isolated staging slu
     assert.equal(response.status, 404, 'Unrelated slugs must not get GSA staging routes: ' + slug)
   }
 })
+
+test('M4: Critic harness and selftest recognize milestone Human preauthorization without generic CR auto-dispatch', () => {
+  const critic = source.slice(source.indexOf('  critic_reviewer: {'), source.indexOf('  tester: {'))
+  assert.ok(critic.includes('HUMAN AUTHORITY:'))
+  assert.ok(critic.includes('Human-preauthorized milestone crl'))
+  assert.ok(critic.includes('persisted current Reviewer PASS'))
+  assert.ok(!critic.includes('must never auto-dispatch this role'))
+  assert.ok(source.includes('critic_human_authority_scoped:'))
+  assert.ok(source.includes('critic_harness_present:'))
+  assert.ok(source.includes('Orchestrator may continue an approved AUTO milestone'))
+})
