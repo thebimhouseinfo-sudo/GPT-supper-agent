@@ -86,7 +86,7 @@ function edgeFunctionSlug(req: Request) {
   // Only exact gsa-mcp is production. Explicit gsa-mcp-* function slugs are staging.
   // No arbitrary path may opt into the production NEXT namespace.
   return candidate === 'gsa-mcp' || (typeof candidate === 'string' && /^gsa-mcp-[a-z0-9-]+$/.test(candidate))
-    ? candidate : 'gsa-mcp'
+    ? candidate : 'gsa-mcp-invalid'
 }
 
 function runtimeSurface(req: Request) {
