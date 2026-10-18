@@ -1082,6 +1082,22 @@ const EVIDENCE_REQUIREMENT_SCHEMA = z.object({
   checkpoint_id: z.string().min(1),
 })
 
+const CRITERIA_BINDING_SCHEMA = z.object({
+  criteria_path: z.string().min(1),
+  criteria_blob_sha: z.string().regex(/^[0-9a-f]{40}$/),
+  approval_status: z.literal('APPROVED'),
+})
+
+function projectCriteriaBindingError(projectId: string, planKind: string, binding: any): string | null {
+  if (planKind !== 'PROJECT_PLAN') return null
+  if (!binding || binding.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
+      !/^[0-9a-f]{40}$/.test(String(binding.criteria_blob_sha || '')) ||
+      binding.approval_status !== 'APPROVED') {
+    return 'PROJECT_CRITERIA_NOT_BOUND: a Project Plan requires approved Project CRITERIA.md exact blob SHA, not an AI draft or source default.'
+  }
+  return null
+}
+
 const MILESTONE_SCHEMA = z.object({
   milestone_id: z.string().min(1),
   name: z.string().min(1),
@@ -5338,6 +5354,8 @@ function createServer(req: Request) {
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
         execution_contract: z.enum(['V2_STABLE','NEXT']).default(jobCreationExecutionContractDefault(req)),
+        plan_kind: z.enum(['PROJECT_PLAN','JOB']).default('JOB'),
+        criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -5418,7 +5436,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -5478,6 +5496,11 @@ function createServer(req: Request) {
         }
         replacement = { intent, predecessor, item }
       }
+      const criteriaError = projectCriteriaBindingError(project_id, plan_kind, criteria_binding)
+      if (criteriaError) return { content: [{ type: 'text', text: criteriaError }], isError: true }
+      if (criteria_binding && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', criteria_binding)) {
+        return { content: [{ type: 'text', text: 'Provided Criteria binding is invalid for this Project.' }], isError: true }
+      }
       const jobId = replacement?.item?.replacement?.job_id ?? uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -5515,6 +5538,8 @@ function createServer(req: Request) {
         } : {}),
         project_id,
         type,
+        plan_kind: plan_kind ?? 'JOB',
+        criteria_binding: criteria_binding ?? null,
         objective,
         scope,
         non_goals,
@@ -5573,6 +5598,10 @@ function createServer(req: Request) {
       const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        ...(criteria_binding ? [
+          'Fetch exact Project CRITERIA.md from the configured Memory Repo at criteria_binding.criteria_path; verify blob SHA=' + criteria_binding.criteria_blob_sha + ' and actual Human APPROVED content. An input approval_status flag is not reliable evidence by itself.',
+          'Before Reviewer PASS or dependent code execution, re-read current Criteria/Project Memory and reconcile if revision has changed; only Human may change approved WHAT/WHY.',
+        ] : []),
         'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
         'GitHub Memory Repo: create_file at memory_path with job_record_text.',
         'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
@@ -5837,6 +5866,7 @@ function createServer(req: Request) {
         completion_requirements: z.array(z.string()).optional(),
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
+        criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
         revision_reason: z.string().min(1),
         superseding_verification_record_text: z.string().min(2).optional(),
         superseding_verification_ref: z.string().min(1).optional(),
@@ -5855,7 +5885,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -5912,6 +5942,12 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && tasks !== undefined && topology === undefined) {
         return { content: [{ type: 'text', text: 'NEXT_EXECUTION_TOPOLOGY_REBIND_REQUIRED: revising Tasks must resupply execution topology for the same planning revision.' }], isError: true }
       }
+      const effectiveCriteria = criteria_binding ?? current.criteria_binding
+      const criteriaErr = projectCriteriaBindingError(project_id, current.plan_kind ?? 'JOB', effectiveCriteria)
+      if (criteriaErr) return { content: [{ type: 'text', text: criteriaErr }], isError: true }
+      if (effectiveCriteria && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', effectiveCriteria)) {
+        return { content: [{ type: 'text', text: 'Current Criteria binding is malformed or belongs to another Project.' }], isError: true }
+      }
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
       const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
@@ -5933,6 +5969,7 @@ function createServer(req: Request) {
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const next = {
         ...current,
+        criteria_binding: effectiveCriteria ?? null,
         objective: objective ?? current.objective,
         scope: scope ?? current.scope,
         non_goals: non_goals ?? current.non_goals,
@@ -6053,6 +6090,8 @@ function createServer(req: Request) {
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
       }
+      const criteriaErr = projectCriteriaBindingError(project_id, current.plan_kind ?? 'JOB', current.criteria_binding)
+      if (criteriaErr) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + criteriaErr }], isError: true }
       if (executionContract === 'NEXT') {
         const executionTopologyError = validateExecutionTopology(current.tasks ?? [], current.topology ?? [])
         if (executionTopologyError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + executionTopologyError }], isError: true }
@@ -6085,6 +6124,7 @@ function createServer(req: Request) {
         repository_structure_evidence: current.repository_discovery.structure_evidence,
         selected_source_evidence: current.repository_discovery.selected_source_evidence ?? [],
         planning_context: current.planning_context ?? null,
+        criteria_binding: current.criteria_binding ?? null,
         created_at: new Date().toISOString(),
       }
       const reviewedJob = {
@@ -6100,6 +6140,9 @@ function createServer(req: Request) {
       const continuation = planningLoopContinuationDecision('REVIEW_RECORDED', current.lifecycle, planning_revision, result)
       const nextRole = continuation.next_role
       const steps = [
+        ...(current.criteria_binding ? [
+          'Reviewer independently fetches approved Criteria revision at exact configured path/blob SHA and compares Overall/Phase GOAL coverage before accepting a Project Plan. Historical source code alone is not Criteria approval.',
+        ] : []),
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
         'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',
         'Read back persisted planning-review Verification by exact path/SHA and require project, Job, planning_revision and result match before changing Job.',
