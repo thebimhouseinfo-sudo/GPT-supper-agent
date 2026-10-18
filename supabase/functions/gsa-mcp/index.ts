@@ -2287,7 +2287,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
   },
   critic_reviewer: {
     authority: [
-      'Human-invoked independent peer review only. Orchestrator, Planner, Reviewer, Coder and Tester must never auto-dispatch this role.',
+      'HUMAN AUTHORITY: Critic Reviewer requires direct Human cr/crl OR exact Human-preauthorized milestone crl with persisted current Reviewer PASS. Never auto-dispatch without either grant.',
       'Conversation history is non-authoritative and must not be used as review evidence. Reconstruct the target from durable records and live source truth regardless of which chat invoked CR.',
       'Reconstruct from persisted Project Memory, exact Job/revision, existing Verification references and live source truth only. Do not use unpersisted conversation context.',
       'Source and Job state are read-only. CR may only produce a CRITIC_REVIEW Verification artifact; it never repairs source, rewrites the plan, or changes lifecycle.',
@@ -2361,7 +2361,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
     ].join('\n'),
   },
   'critic-review': {
-    description: 'Run a Human-invoked stateless second review using durable evidence/source truth, then compare with the prior Reviewer only after forming an independent verdict.',
+    description: 'Run a Human-invoked or Human-preauthorized milestone CR using durable source evidence, then compare with the prior Reviewer only after independently forming a verdict.',
     body: [
       '# Critic Review',
       'CR is an independent peer-review path only when Human invokes it OR a milestone explicitly Human-approved for crl is reached with current Reviewer PASS.',
@@ -2372,7 +2372,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '4. Do not read or rely on the prior Reviewer verdict until independent criteria, findings and verdict are already formed.',
       '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
       '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
-      '7. CR result never auto-promotes, blocks, completes or otherwise mutates Job lifecycle; Human decides what to do with it.',
+      '7. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
     ].join('\n'),
   },
   'job-planning': {
@@ -8881,9 +8881,9 @@ app.get('/selftest', (c) => {
     tester_readiness_ladder_present: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET')),
     tester_failure_classes_present: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP, PLAN_GAP')),
     tester_retest_revision_bound: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('Bind Retest evidence to the exact target revision/state')),
-    critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN GATE')),
+    critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN AUTHORITY:')),
     critic_skill_suggested: (ROLE_SKILLS.critic_reviewer ?? []).includes('critic-review'),
-    critic_is_human_only: Boolean(renderHarness('critic_reviewer')?.includes('Human-invoked independent peer review only')),
+    critic_human_authority_scoped: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN AUTHORITY:') && renderHarness('critic_reviewer')?.includes('Human-preauthorized milestone crl')),
     critic_stateless_contract: Boolean(renderHarness('critic_reviewer')?.includes('Conversation history is non-authoritative')),
     ux_first_temp_ui_defaults_to_gate:
       uxFirstTemporaryUiGateRequired({ product_workflow: 'UX_FIRST', ui_strategy: { temporary_ui: [{ kind: 'temporary' }], temporary_ui_human_approval: 'REQUIRED_PENDING' } }, 'coder') &&
