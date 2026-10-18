@@ -136,11 +136,11 @@ Xác định chính xác **cái gì đang có, vì sao tồn tại, cái gì thi
 
 ### GOAL
 
-Tiếp nhận **đúng Project và source hiện tại** bằng một bước setup nhẹ cho Project mới hoặc đang làm dở; ghi lại baseline quan sát được, có **một Criteria hướng tới tương lai** để người dùng chốt và một `AGENTS.md` generic tối thiểu. **Mở Project không tự tạo Job, không sửa source, không làm lại quá khứ.** Sau khi người dùng duyệt Criteria, Planner có thể lập Project Plan/milestone ở M3 dựa trên nguồn yêu cầu duy nhất.
+Tiếp nhận **đúng Project và source hiện tại** bằng một bước setup nhẹ cho Project mới hoặc đang làm dở; ghi lại baseline quan sát được, cùng người dùng **chốt Criteria gốc về mục tiêu tương lai** (phần chưa quyết định vẫn ghi `CHƯA CHỐT` trong cùng file) và một `AGENTS.md` generic tối thiểu. **Mở Project không tự tạo Job, không sửa source, không làm lại quá khứ.** Sau khi người dùng duyệt Criteria, Planner có thể lập Project Plan/milestone ở M3 dựa trên nguồn yêu cầu duy nhất.
 
 **Criteria trực tiếp:** C01–C03, C23–C24, C26–C29. **Bảo vệ đang có:** C11–C12 (resume/không lặp write), C15 (đúng quyền), C17 (test thật), C21–C22 (không thêm gate thừa). Những cái này là **giới hạn an toàn**, không tạo GOAL hoặc approval workflow thứ hai.
 
-**M1 DONE khi:** setup được **3 tình huống** NEW (repo mới), ADOPT_EXISTING_REPO (đã có code, chưa dùng GSA), REGISTERED_BROWNFIELD (đã có `PROJECT.md`); đúng Project identity/baseline, một Criteria hiện hành với nội dung đã chốt/chưa chốt rõ, `AGENTS.md` tối thiểu; không đụng code/legacy Jobs; retry sau mất phản hồi không tạo ghi trùng. **Không bắt chứng minh một tính năng/concurrency guarantee mà Criteria không yêu cầu.**
+**M1 DONE khi:** setup được **3 tình huống** NEW (repo mới), ADOPT_EXISTING_REPO (đã có code, chưa dùng GSA), REGISTERED_BROWNFIELD (đã có `PROJECT.md`); đúng Project identity/baseline, một Criteria hiện hành với **GOAL/phạm vi đủ để lập kế hoạch đã được người dùng chốt** (các chi tiết chưa quyết định vẫn được ghi rõ `CHƯA CHỐT`), `AGENTS.md` tối thiểu; không đụng code/legacy Jobs; retry sau mất phản hồi không tạo ghi trùng. **Không bắt chứng minh một tính năng/concurrency guarantee mà Criteria không yêu cầu.**
 
 #### M1 — Execution detail: 5 Task, một causal chain
 
@@ -189,7 +189,7 @@ Tiếp nhận **đúng Project và source hiện tại** bằng một bước se
 | **N8** | Repo đã OWNED bởi Project khác hoặc intent chưa rõ | Không tự attach/gán quyền; chỉ hỏi khi thật sự thiếu quyết định |
 | **N9** | Mutate fixture để bỏ guard hoặc cho CHƯA CHỐT thành approved | Test phải RED, tránh false-green |
 
-**Verification:** Test đúng source revision; review ở checkpoint F13 khi có thay đổi nhạy cảm, không sau mọi Task. M1 có thể PASS theo evidence cho các hành vi **thực sự thuộc M1**; không bị giữ bởi API approval hoặc hypothetical race không nằm trong Criteria. Nếu rights/retry hiện thực sai, không tự gọi PASS. Phần chưa kiểm được ở live host ghi `UNVERIFIED`, không tự chuyển thành success. E2E Project setup thật trên test environment và release thuộc M6.
+**Verification:** Test đúng source revision; review ở checkpoint F13 khi có thay đổi nhạy cảm, không sau mọi Task. **Nếu GOAL/phạm vi cần để lập kế hoạch chưa được Human chốt, setup có thể lưu hoàn chỉnh nhưng không đánh dấu M1 READY để M3 lập plan; chỉ hỏi đúng quyết định còn thiếu (C02/C03).** M1 có thể PASS theo evidence cho các hành vi **thực sự thuộc M1**; không bị giữ bởi API approval hoặc hypothetical race không nằm trong Criteria. Nếu rights/retry hiện thực sai, không tự gọi PASS. Phần chưa kiểm được ở live host ghi `UNVERIFIED`, không tự chuyển thành success. E2E Project setup thật trên test environment và release thuộc M6.
 
 **Tiếp tục:** khi đủ test/review evidence, Planner/Orchestrator tiếp tục M2/M3 theo dependency **trong lượt đang hoạt động**; Human duyệt riêng việc sửa code và merge/deploy. Không đồng nhất `plan review PASS` với `runtime PASS`.
 
@@ -202,7 +202,9 @@ Tiếp nhận **đúng Project và source hiện tại** bằng một bước se
 **Finding 3 (C01/C26):** milestone map sửa "2 đường" thành ba tình huống NEW / ADOPT / REGISTERED.
 **GOAL check:** C01–C03/C23–C24/C26–C29 trực tiếp vào M1 GOAL; các kiểm thử security/retry là điều kiện bảo vệ và HOW, không sinh WHAT mới. Các review history ở dưới thuộc **SUPERSEDED**; không dùng verdict cũ cho revision sau sửa.
 
-**Status:** chờ Reviewer kiểm lại exact Git blob. **Chỉ file-level RL**, không phải GSA durable Job `PLANNING_REVIEW` hoặc quyền sửa source.
+**Reviewer independent check:** phát hiện điều kiện M1 DONE chưa nói rõ Human chốt Criteria gốc (C03/C26); Planner đã sửa GOAL, DONE và Verification như trên. **Review PASS ở mức consistency của plan sau source readback**, không phải bằng chứng M1 runtime đã thực thi, GSA durable `PLANNING_REVIEW`, CRITIC_REVIEW hay quyền sửa source.
+
+#### M1 — Historical CR/RL notes (SUPERSEDED by Criteria alignment above, 18/10/2026)
 
 #### M1 — Planner tiếp nhận CR-M1-05/06 → RL độc lập (18/10/2026)
 
