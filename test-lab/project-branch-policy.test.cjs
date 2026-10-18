@@ -15,7 +15,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest'
+  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins'
 ]
 const extracted = []
 for (const node of ast.statements) {
@@ -115,4 +115,54 @@ test('Contract: READY and status expose branch config; Admin requires owned repo
   assert.match(prepare, /Verify the selected source repository/)
   assert.match(prepare, /human_confirmed: z\.literal\(true\)/)
   assert.match(prepare, /readback/)
+})
+
+test('M2: role-scoped addins are lazy path references, not trusted harness overrides', () => {
+  const agents = [
+    '# GSA Project Agents',
+    '## Coder Add-in (optional)',
+    '- harness: projects/' + id + '/ADDINS/coder/harness.md',
+    '- skills: projects/' + id + '/SKILLS/coder/visual-lisp.md, projects/' + id + '/SKILLS/coder/host-api.md',
+    '## Tester Add-in (optional)',
+    '- harness: projects/' + id + '/ADDINS/tester/harness.md',
+    '- skills: none',
+    '## Policy',
+    'Never override the global harness',
+  ].join('\\n')
+  const coder = h.resolveProjectRoleAddins(id, 'coder', agents)
+  assert.equal(coder.status, 'READY')
+  assert.equal(coder.skill_paths.length, 2)
+  assert.match(coder.harness_path, /ADDINS\\/coder\\/harness\\.md/)
+  const tester = h.resolveProjectRoleAddins(id, 'tester', agents)
+  assert.equal(tester.status, 'READY')
+  assert.equal(tester.skill_paths.length, 0)
+  assert.match(tester.harness_path, /ADDINS\\/tester\\/harness\\.md/)
+  const other = h.resolveProjectRoleAddins('01a0d70c-9683-7324-9d3d-a8231a93c63b', 'coder', agents)
+  assert.equal(other.status, 'DENIED')
+})
+
+test('M2: empty optional addin keeps generic; traversal never becomes a skill', () => {
+  const ok = '## Coder Add-in (optional)\\n- harness: none\\n- skills: none\\n'
+  assert.equal(h.resolveProjectRoleAddins(id, 'coder', ok).status, 'NONE')
+  const bad = '## Coder Add-in (optional)\\n- harness: projects/' + id + '/../foreign/AGENTS.md\\n- skills: none\\n'
+  assert.equal(h.resolveProjectRoleAddins(id, 'coder', bad).status, 'DENIED')
+  const foreign = '## Coder Add-in (optional)\\n- harness: projects/' + id + '/CRITERIA.md\\n- skills: none\\n'
+  assert.equal(h.resolveProjectRoleAddins(id, 'coder', foreign).status, 'DENIED')
+})
+
+test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contract exist', () => {
+  const roleMap = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+  assert.match(roleMap, /advisor: \{/)
+  assert.match(roleMap, /Never act as Reviewer\\/CR/)
+  assert.match(roleMap, /CRITERIA REVISION/)
+  const startup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  assert.match(startup, /AGENTS\\.md/)
+  assert.match(startup, /Status: DRAFT/)
+  assert.match(startup, /CHUA_CHOT/)
+  assert.match(startup, /same CRITERIA\\.md/i)
+  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  assert.match(base, /STOPCHAT/)
+  assert.match(base, /PROJECT ADDINS/)
+  assert.match(base, /CRITERIA CHANGE ORDER/)
+  assert.match(base, /DEVELOPMENT BRANCH|BRANCH AUTHORITY/)
 })
