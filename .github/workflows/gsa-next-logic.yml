@@ -26,8 +26,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install isolated TypeScript parser
-        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa-next-test typescript@5.9.3
+      - name: Install isolated TypeScript parser and production Hono router
+        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa-next-test typescript@5.9.3 'hono@^4.9.7'
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
