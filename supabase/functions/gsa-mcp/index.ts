@@ -4770,7 +4770,7 @@ function createServer(req: Request) {
       // Keep one canonical branch mapping section; root fields are PRIMARY convenience only.
       let next = project_manifest_text.replace(/\n## Branch Policy[^\n]*\n[\s\S]*?(?=\n## |$)/, '')
       const primary = policies.find((p: any) => p.repository_url.toLowerCase() === parsed.primary_repo_url.toLowerCase())
-      const lines = next.split('\n').filter((line) => !/^(development_branch|release_branch|integration_target|branch_policy_owner):/.test(line))
+      const lines = next.split('\n').filter((line: string) => !/^(development_branch|release_branch|integration_target|branch_policy_owner):/.test(line))
       const yamlEnd = lines.indexOf('---', 1)
       if (yamlEnd < 0) return { content: [{ type: 'text', text: 'Malformed Project front matter.' }], isError: true }
       lines.splice(yamlEnd, 0,
@@ -4782,6 +4782,7 @@ function createServer(req: Request) {
         '\n\n## Branch Policy (Human-approved)\n' +
         policies.map((p: any) => {
           const entry = parsed.repositories.find((r: any) => r.url.toLowerCase() === p.repository_url.toLowerCase())
+          if (!entry) throw new Error('Branch policy references an unregistered repository.')
           return '- ' + entry.role + ' | ' + p.repository_url + ' | development=' + (p.development_branch ?? '') +
             ' | release=' + (p.release_branch ?? '')
         }).join('\n') + '\n'
