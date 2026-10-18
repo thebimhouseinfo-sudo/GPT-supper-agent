@@ -1103,6 +1103,8 @@ const MILESTONE_SCHEMA = z.object({
   name: z.string().min(1),
   node_ids: z.array(z.string().min(1)).min(1),
   gate_checkpoint_ids: z.array(z.string().min(1)).default([]),
+  review_loop: z.enum(['none','rl','crl']).default('none'),
+  human_pre_authorized: z.boolean().default(false),
 })
 
 const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
@@ -1150,6 +1152,29 @@ function validateExecutionTopology(tasks: any[], topology: any[]): string | null
     if (stage.next != null && (!taskIdSet.has(stage.next) || stage.next === task.task_id)) {
       return 'EXECUTION_TOPOLOGY_INVALID: topology next must be null or another current Task ID.'
     }
+  }
+  return null
+}
+
+function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any): string | null {
+  const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
+  if (!milestoneId || !milestone || milestone.review_loop !== 'crl' || milestone.human_pre_authorized !== true) {
+    return 'CR_MILESTONE_UNAUTHORIZED: Human must have approved crl on this exact milestone.'
+  }
+  if (!['READY','IN_PROGRESS'].includes(job?.lifecycle) ||
+      job?.planning_review?.status !== 'PASS' || job?.planning_review?.reviewed_revision !== job?.planning_revision) {
+    return 'CR_MILESTONE_NOT_READY: current Job planning revision must have Reviewer PASS and be READY/IN_PROGRESS.'
+  }
+  if (!reviewerSnapshot?.path || !/^[0-9a-f]{40}$/.test(String(reviewerSnapshot?.sha ?? ''))) {
+    return 'CR_MILESTONE_REVIEW_MISSING: exact Reviewer PASS snapshot is required.'
+  }
+  let review: any
+  try { review = JSON.parse(reviewerSnapshot.record_text) } catch { return 'CR_MILESTONE_REVIEW_INVALID: unreadable Reviewer snapshot.' }
+  if (review.kind !== 'REVIEW' || review.result !== 'PASS' ||
+      review.project_id !== job.project_id || review.job_id !== job.job_id ||
+      review.planning_revision !== job.planning_revision ||
+      review.milestone_id !== milestoneId || review.producer !== 'reviewer') {
+    return 'CR_MILESTONE_REVIEW_INVALID: Reviewer PASS must match this Job/milestone/planning revision.'
   }
   return null
 }
@@ -6188,14 +6213,16 @@ function createServer(req: Request) {
   server.registerTool(
     'start_critic_review',
     {
-      title: 'Start Human-only Critic Reviewer',
-      description: 'Human-invoked CR entrypoint for an independent second review. Same-chat invocation is allowed. Conversation history is non-authoritative and must be ignored as review evidence; reconstruct from durable records and live source truth. Never call automatically.',
+      title: 'Start authorized Critic Reviewer',
+      description: 'Independent CR after direct Human request OR Human-approved milestone crl after exact Reviewer PASS. Never trigger CR without either scope-bound authority.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         job_record_sha: z.string().min(7),
-        human_invoked: z.literal(true),
+        human_invoked: z.boolean().default(false),
+        approved_milestone_id: z.string().optional(),
+        milestone_reviewer_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
         prior_review_verification_ref: z.string().optional(),
@@ -6212,13 +6239,14 @@ function createServer(req: Request) {
         target_revision: z.string().nullable(),
         prior_review_verification_ref: z.string().nullable(),
         durable_inputs_only: z.boolean(),
+        authorization_source: z.enum(['HUMAN_COMMAND','APPROVED_MILESTONE']),
         next_step: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, human_invoked, target_ref, target_revision, prior_review_verification_ref }: any) => {
+    async ({ project_id, job_id, job_record_text, human_invoked, approved_milestone_id, milestone_reviewer_snapshot, target_ref, target_revision, prior_review_verification_ref }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to start Critic Reviewer.')
       let current: any
@@ -6229,13 +6257,13 @@ function createServer(req: Request) {
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
-      if (human_invoked !== true) {
-        return { content: [{ type: 'text', text: 'HUMAN_INVOCATION_REQUIRED: CR can only be started by an explicit Human command.' }], isError: true }
-      }
+      const milestoneError = human_invoked === true ? null :
+        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       const result = {
         role: 'critic_reviewer',
         allowed: true,
-        status: 'READY_FOR_STATELESS_REVIEW',
+        status: human_invoked === true ? 'READY_FOR_STATELESS_REVIEW' : 'PENDING_MILESTONE_EVIDENCE_READBACK',
         context_policy: 'Same-chat invocation is explicitly allowed. Ignore all conversation history, including Planner/Reviewer reasoning visible in this chat, as review evidence. Reconstruct the target only from persisted Project/Job/Verification records plus live source truth. Form the independent verdict before reading prior Reviewer verdict.',
         project_id,
         job_id,
@@ -6244,7 +6272,10 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
         durable_inputs_only: true,
-        next_step: 'Proceed now even if Planner/Reviewer ran earlier in this same chat. Load critic_reviewer harness + critic-review skill, disregard chat-history reasoning, reconstruct from durable records/live source, perform blind review, then compare prior Reviewer last and persist with critic_review_record.',
+        authorization_source: human_invoked === true ? 'HUMAN_COMMAND' : 'APPROVED_MILESTONE',
+        next_step: human_invoked === true
+          ? 'Proceed with independent CR on the Human target; read durable evidence before verdict and compare prior Reviewer only afterwards.'
+          : 'BEFORE CR: re-fetch current approved Job blob and confirm matching SHA/planning revision plus Human milestone crl authorization, re-fetch the supplied Reviewer PASS Verification by exact path/SHA and compare all matching fields. A supplied JSON snapshot alone does not authorize CR. Then execute independent CR and record its APPROVED_MILESTONE source, not human_invoked.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -6260,7 +6291,9 @@ function createServer(req: Request) {
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         planning_revision: z.number().int().positive().optional(),
-        human_invoked: z.literal(true),
+        human_invoked: z.boolean().default(false),
+        approved_milestone_id: z.string().optional(),
+        milestone_reviewer_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         result: z.enum(['PASS','PASS_WITH_FINDINGS','FAIL','BLOCKED']),
         findings: z.array(z.object({
           severity: z.enum(['CRITICAL','IMPORTANT','MINOR']),
@@ -6290,12 +6323,9 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
+    async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, approved_milestone_id, milestone_reviewer_snapshot, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to record Critic Review.')
-      if (human_invoked !== true) {
-        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: explicit Human invocation is mandatory.' }], isError: true }
-      }
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -6306,6 +6336,8 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
       }
+      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -6326,7 +6358,10 @@ function createServer(req: Request) {
         producer: 'critic_reviewer',
         execution_contract: executionContract,
         ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
-        human_invoked: true,
+        human_invoked: human_invoked === true,
+        authorization_source: human_invoked === true ? 'HUMAN_COMMAND' : 'APPROVED_MILESTONE',
+        approved_milestone_id: human_invoked === true ? null : approved_milestone_id,
+        milestone_reviewer_snapshot_ref: human_invoked === true ? null : milestone_reviewer_snapshot?.path,
         target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
         target_revision: target_revision ?? null,
         result,
@@ -6344,6 +6379,7 @@ function createServer(req: Request) {
         job_mutated: false,
         next_role: 'human',
         external_steps: [
+          ...(human_invoked === true ? [] : ['Re-fetch the exact current Job SHA from GitHub Memory Repo and confirm Human-approved milestone crl, then independently fetch the matching Reviewer PASS snapshot path/SHA before recording CR. Supplied snapshot JSON is not evidence by itself.']),
           'Persist verification_record_text at verification_memory_path after authorize_memory_mutation(create).',
           'Do not update the Job record or lifecycle from CR output.',
           'Present the independent verdict and any disagreement to Human for the next decision.',
