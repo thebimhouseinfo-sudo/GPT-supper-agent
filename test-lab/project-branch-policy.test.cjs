@@ -15,7 +15,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
-  'validIntegrationBranch', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
+  'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
@@ -102,6 +102,31 @@ test('C14A: invalid/missing configured branch is UNCONFIGURED, not rewritten as 
   const p = h.parseProjectManifest(fixture('development_branch: ../wrong\nrelease_branch: main'))
   assert.equal(p.development_branch, null)
   assert.equal(p.branch_policy_status, 'UNCONFIGURED')
+})
+
+test('C14A revision binding: missing, retained, newly supplied and malformed refs', () => {
+  const nextCode = { type: 'code', plan_kind: 'JOB', repository_context: { integration_branch: null } }
+  const existing = { ...nextCode, repository_context: { integration_branch: 'upgrade/gsa-refactor' } }
+  assert.match(h.revisedJobIntegrationBranchError(nextCode, 'NEXT', undefined), /DEVELOPMENT_BRANCH_REQUIRED/)
+  assert.equal(h.revisedJobIntegrationBranchError(nextCode, 'NEXT', 'upgrade/gsa-refactor'), null)
+  assert.equal(h.revisedJobIntegrationBranchError(existing, 'NEXT', undefined), null)
+  assert.match(h.revisedJobIntegrationBranchError(existing, 'NEXT', '../main'), /DEVELOPMENT_BRANCH_INVALID/)
+  assert.match(h.revisedJobIntegrationBranchError(existing, 'NEXT', ''), /DEVELOPMENT_BRANCH_INVALID/)
+  assert.match(h.revisedJobIntegrationBranchError({ ...nextCode, plan_kind: 'PROJECT_PLAN', type: 'plan' }, 'NEXT', undefined), /DEVELOPMENT_BRANCH_REQUIRED/)
+  assert.equal(h.revisedJobIntegrationBranchError(nextCode, 'V2_STABLE', undefined), null, 'legacy behavior must remain')
+  assert.equal(h.revisedJobIntegrationBranchError({ ...nextCode, type: 'plan' }, 'NEXT', undefined), null, 'non-Project Plan not forcibly rebound')
+})
+
+test('C14A job_revise_plan consumes and persists branch with external project/live-ref/readback gates', () => {
+  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
+  assert.match(revise, /integration_branch: z\.string\(\)\.optional\(\)/)
+  assert.match(revise, /criteria_binding, integration_branch, revision_reason/)
+  assert.match(revise, /revisedJobIntegrationBranchError\(current, executionContract, integration_branch\)/)
+  assert.match(revise, /integration_branch: effectiveIntegrationBranch/)
+  assert.match(revise, /Human-configured Development Branch equals repository_context\.integration_branch/)
+  assert.match(revise, /verify live GitHub branch/)
+  assert.match(revise, /Read back the Job and verify.*repository_context\.integration_branch/)
+  assert.match(revise, /planningLoopContinuationDecision\('PLAN_REVISED'/)
 })
 
 test('Contract: READY and status expose branch config; Admin requires owned repo and Git verification', () => {
