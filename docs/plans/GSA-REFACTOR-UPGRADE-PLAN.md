@@ -214,7 +214,7 @@ Audit read-only đã hoàn thành và được giữ nguyên làm baseline: phâ
 
 **Criteria trực tiếp:** C01–C03, C23–C24, C26–C31. **Bảo vệ đang có:** C11–C12 (resume/không lặp write), C15 (đúng quyền), C17 (test thật), C21–C22 (không thêm gate thừa). Những cái này là **giới hạn an toàn**, không tạo GOAL hoặc approval workflow thứ hai.
 
-**M1 DONE khi:** NEW, EXISTING có Criteria, EXISTING chưa có Criteria và REGISTERED đều xác định đúng Project/source/branch, báo drift và xin Human xác nhận product-theory duy nhất; Advisor chỉ kích hoạt khi Human muốn chốt, tư vấn rồi lưu receipt scope+revision, sau Human approval mới CAS/readback Criteria; AGENTS.md và branch config đúng. Đây **chưa phải BOOTSTRAP READY** nếu thiếu reviewed Plan, milestone/capability và Human execution approval. Không tự code/reset legacy hoặc giả signature.
+**M1 DONE khi:** NEW, EXISTING có Criteria, EXISTING chưa có Criteria và REGISTERED đều xác định đúng Project/source/branch, báo drift và xin Human xác nhận product-theory duy nhất; Advisor chỉ kích hoạt khi Human muốn chốt, tư vấn rồi lưu receipt scope+revision, sau Human approval mới CAS/readback Criteria; AGENTS.md và branch config đúng. Đây **chưa phải BOOTSTRAP READY** nếu thiếu reviewed Plan hoặc milestone/capability readiness; **Human execution approval là điều kiện tiếp theo, độc lập sau BOOTSTRAP READY**, không phải một phần của readiness. Không tự code/reset legacy hoặc giả signature.
 
 #### M1 — Execution detail: 5 Task, một causal chain
 
