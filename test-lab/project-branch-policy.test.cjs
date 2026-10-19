@@ -16,7 +16,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
-  'resolveProjectCriteriaIntake',
+  'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
@@ -177,6 +177,47 @@ test('M2: empty optional addin keeps generic; traversal never becomes a skill', 
   assert.equal(h.resolveProjectRoleAddins(id, 'coder', bad).status, 'DENIED')
   const foreign = ['## Coder Add-in (optional)', '- harness: projects/' + id + '/CRITERIA.md', '- skills: none'].join(nl)
   assert.equal(h.resolveProjectRoleAddins(id, 'coder', foreign).status, 'DENIED')
+})
+
+
+test('M2: ordinary Coder/Tester Task uses generic capability without domain add-in', () => {
+  for (const role of ['coder','tester']) {
+    const r = h.projectTaskCapabilityAssessment(id, role, undefined, false, { status: 'NONE', harness_path: null, skill_paths: [] })
+    assert.equal(r.readiness, 'GENERIC_READY')
+    assert.equal(r.ready_for_task, true)
+  }
+})
+
+test('M2: configured paths alone never satisfy required domain functionality', () => {
+  const task = '01a154a5-d049-7c4a-b758-d55600d4fcd0'
+  const path = 'projects/' + id + '/SKILLS/coder/autolisp.md'
+  const refs = { status: 'READY', harness_path: null, skill_paths: [path] }
+  const empty = h.projectTaskCapabilityAssessment(id,'coder',task,true,{ status:'NONE',harness_path:null,skill_paths: [] })
+  assert.equal(empty.readiness,'BLOCKED_REQUIRED_ADDIN')
+  const notChecked = h.projectTaskCapabilityAssessment(id,'coder',task,true,refs)
+  assert.equal(notChecked.readiness,'CONFIGURED_UNVERIFIED')
+  assert.equal(notChecked.ready_for_task,false)
+  const evidence = { project_id:id, role:'coder', task_id:task, path, file_sha:'a'.repeat(40),
+    result:'FUNCTIONAL', verification_ref:'projects/' + id + '/VERIFICATION/functional-test.json' }
+  for (const altered of [{ ...evidence, role:'tester' }, { ...evidence, project_id:'01a0d70c-9683-7324-9d3d-a8231a93c63b' },
+    { ...evidence, task_id:'01a154a5-d049-7c4a-b758-d55600d4fcd1' },
+    { ...evidence, path:'projects/' + id + '/SKILLS/coder/other.md' }, { ...evidence, file_sha:'invalid' },
+    { ...evidence, result:'UNVERIFIED' },{ ...evidence, verification_ref:'projects/foreign/VERIFICATION/test.json' }]) {
+    assert.equal(h.projectTaskCapabilityAssessment(id,'coder',task,true,refs,[altered]).ready_for_task,false)
+    assert.equal(h.projectTaskCapabilityAssessment(id,'coder',task,true,refs,[altered]).readiness,'CONFIGURED_UNVERIFIED')
+  }
+  const supplied = h.projectTaskCapabilityAssessment(id,'coder',task,true,refs,[evidence])
+  assert.equal(supplied.readiness,'EVIDENCE_PRESENT_UNVERIFIED')
+  assert.equal(supplied.ready_for_task,false,'claim without independent GitHub and functional readback must not grant execution')
+})
+
+test('M2: tool exposes capability evidence as non-authoritative discovery only', () => {
+  const tool = source.slice(source.indexOf("'project_role_addins_resolve',"),source.indexOf("'project_branch_policy_prepare',"))
+  assert.match(tool,/projectTaskCapabilityAssessment\(project_id, role, task_id/)
+  assert.match(tool,/ready_for_task: assessed\.ready_for_task/)
+  assert.match(tool,/Independently GitHub readback exact project\/role\/task\/path SHA/)
+  assert.match(tool,/configured skill path and even a caller-supplied FUNCTIONAL evidence record/)
+  assert.match(tool,/generic_available: !requires_domain_addin/)
 })
 
 test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contract exist', () => {
