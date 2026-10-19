@@ -1101,6 +1101,50 @@ function projectCriteriaBindingError(projectId: string, planKind: string, bindin
   return null
 }
 
+// M3: prepared, reviewable product Bootstrap evidence decision.
+// This is not a second lifecycle or a source-write permission. M5 must check
+// fresh immutable source/Memory snapshots and actual Human approval before dispatch.
+function projectBootstrapReadinessDecision(projectId: string, input: any) {
+  const result = (status: string, detail: string) => ({
+    status, detail, bootstrapped: false, source_write_authorized: false,
+    requires_external_readback: true,
+  })
+  const c = input?.criteria
+  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c) ||
+      input?.criteria_human_approved !== true)
+    return result('CRITERIA_NOT_APPROVED', 'Human-approved canonical product Criteria is required before official Implementation Plan.')
+  if (input?.criteria_current_blob_sha !== c.criteria_blob_sha)
+    return result('CRITERIA_STALE_OR_UNVERIFIED', 'Read and verify current canonical Criteria GitHub SHA before any official Plan.')
+  const plan = input?.plan
+  if (!plan) return result('IMPLEMENTATION_PLAN_MISSING', 'No official Implementation Plan may be inferred from DRAFT or code.')
+  if (plan.plan_kind !== 'PROJECT_PLAN' ||
+      projectCriteriaBindingError(projectId, 'PROJECT_PLAN', plan.criteria_binding) ||
+      plan.criteria_binding?.criteria_blob_sha !== c.criteria_blob_sha)
+    return result('PLAN_CRITERIA_MISMATCH', 'Reviewed Plan must bind the exact current Human-approved Criteria SHA.')
+  if (plan.planning_review?.status !== 'PASS' ||
+      !Number.isInteger(plan.planning_revision) ||
+      plan.planning_review?.reviewed_revision !== plan.planning_revision)
+    return result('PLAN_REVIEW_PENDING', 'Independent current revision Reviewer PASS required.')
+  const tasks = Array.isArray(plan.tasks) ? plan.tasks : []
+  if (tasks.length === 0 || tasks.some((t: any) => !t.task_id ||
+      !Array.isArray(t.completion_criteria) || t.completion_criteria.length === 0))
+    return result('PLAN_TASK_ACCEPTANCE_MISSING', 'Each implementation Task needs a meaningful completion condition.')
+  const capability = Array.isArray(input?.capabilities) ? input.capabilities : []
+  if (tasks.some((t: any) => !capability.some((c: any) =>
+    c.task_id === t.task_id && (c.readiness === 'GENERIC_READY' ||
+      (c.readiness === 'DOMAIN_READY_VERIFIED' && c.evidence_verified === true)))))
+    return result('CAPABILITY_NOT_READY', 'Generic ready or independently verified domain Task capability required, not only configured paths.')
+  const milestones = Array.isArray(plan.milestones) ? plan.milestones : []
+  if (milestones.length === 0 ||
+      milestones.some((m: any) => !m.milestone_id || !Array.isArray(m.node_ids) || m.node_ids.length === 0 ||
+        m.node_ids.some((id: string) => !tasks.some((t: any) => t.task_id === id))) ||
+      tasks.some((t: any) => !milestones.some((m: any) => m.node_ids.includes(t.task_id))))
+    return result('MILESTONES_NOT_READY', 'Milestones must cover actual Tasks with coherent dependencies and acceptance.')
+  return result(input?.human_execution_approved === true
+    ? 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED' : 'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING',
+    'Prepared readiness only. M5 must independently verify immutable snapshots, source branch and actual Human approval before code; do not repeat Bootstrap on later normal Jobs.')
+}
+
 const MILESTONE_SCHEMA = z.object({
   milestone_id: z.string().min(1),
   name: z.string().min(1),
@@ -5206,6 +5250,47 @@ function createServer(req: Request) {
           requires_domain_addin ? 'A configured skill path and even a caller-supplied FUNCTIONAL evidence record is NOT readiness. Independently GitHub readback exact project/role/task/path SHA and the referenced real functional Test Verification before attesting DOMAIN_READY in reviewed Project Bootstrap evidence; otherwise BLOCKED/UNVERIFIED.' : 'Generic Coder/Tester is ready for ordinary Tasks with no required domain add-in. Do not manufacture a mandatory add-in.',
         ],
       }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_bootstrap_readiness_prepare',
+    {
+      title: 'Evaluate Project Bootstrap prerequisites without authorizing code',
+      description: 'C30 PREPARE ONLY: strict Criteria-first ordered preflight. Caller must independently read back Project Criteria, reviewed Plan, capability evidence, milestone acceptance and Human approval before treating prepared status as BOOTSTRAP READY. Never authorizes source writes.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        criteria: CRITERIA_BINDING_SCHEMA.optional(),
+        criteria_human_approved: z.boolean().default(false),
+        criteria_current_blob_sha: z.string().optional(),
+        plan: z.any().optional(),
+        capabilities: z.array(z.any()).default([]),
+        human_execution_approved: z.boolean().default(false),
+      },
+      outputSchema: {
+        status: z.string(), detail: z.string(), bootstrapped: z.literal(false),
+        source_write_authorized: z.literal(false), requires_external_readback: z.literal(true),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Project Bootstrap readiness.')
+      const prepared = projectBootstrapReadinessDecision(project_id, {
+        criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved,
+      })
+      const out = { ...prepared, external_steps: [
+        'Verify the exact canonical Project CRITERIA.md exists in Project Memory at the current GitHub blob SHA and was approved by Human; never trust a caller-supplied boolean, text or SHA alone.',
+        'Verify one official Implementation Plan, its exact Criteria binding and durable current-revision independent Reviewer PASS Verification; existing unrelated Jobs remain untouched.',
+        'Match Coder/Tester Task skills to actual capability evidence. Generic capability is valid for ordinary Tasks; domain add-in references or caller claims alone are not FUNCTIONAL READY.',
+        'Check milestone Task coverage, dependencies, observable acceptance, and required test/review scopes from current reviewed Plan.',
+        'Only after actual prerequisites can an authorized GSA consequential dispatch/write apply M5 guard and separately verify Human execution approval; this tool never permits code.',
+        'Once BOOTSTRAP READY and Human authorization were already verified for this Project revision, continue ordinary later Job workflow without re-Bootstrap per Task.',
+      ] }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
