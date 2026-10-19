@@ -484,6 +484,20 @@ Reviewer đối chiếu: (1) GOAL layer đã ghi/readback ở commit `a33905287e
 **Kết thúc bản plan:** source edits chỉ sau Bootstrap READY, current-revision reviewed Plan được trình Human và Human phê duyệt execution trên Plan đó. Criteria hiện đã **APPROVED**. Với bất kỳ thay đổi Criteria **sau approval**: Planner/Human thống nhất delta **trước khi ghi** → Advisor tư vấn pre-edit → Human chọn → Criteria CAS/readback → Planner **review Overall GOAL + từng Phase GOAL trước** → cập nhật GOAL bị ảnh hưởng rồi **mới sửa detail/milestone/Job/test** → Reviewer RL đúng revision. Không thêm file theory, parallel plan hoặc gate giả.
 
 
+### Planner `rl` sau C30/C31 — file-level review (19/10/2026)
+
+**Binding:** Criteria APPROVED `f866321da03c2e656499679997b70cfe31807ab6`; review bắt đầu từ plan blob `3c87098214394cc150535abe1b76b8c8945b76fc` trên `upgrade/gsa-refactor`. Đây là **direct document RL** trên Plan canonical, **không** phải `PLANNING_REVIEW` Verification của một durable GSA Job, CR độc lập hay source/runtime acceptance.
+
+**Reviewer vòng 1 — CHANGES_REQUIRED** (các lỗi phạm vi Plan, không đổi WHAT/WHY):
+- **RL-C30-01 / IMPORTANT:** M0–M6 là trình tự *phát triển GSA*, không phải thứ tự *Bootstrap mỗi Project*; thiếu phân biệt khiến capability tooling M2 có thể bị hiểu là được lập Plan trước Approved Criteria. **Planner sửa:** giải thích hai thứ tự ngay sau milestone map, giữ GOAL/M0 và order C30.
+- **RL-C31-02 / IMPORTANT:** Advisor receipt dễ bị hiểu là một hệ/file song song và M1/M4 chưa nói rõ cùng Criteria. **Planner sửa:** signature/advice scope gắn trực tiếp trong một `CRITERIA.md` canonical, guard chống Planner tự khai, có Human decision sau tư vấn. Không xây approval service.
+- **RL-C30-03 / IMPORTANT:** M1/M6 acceptance cũ chưa buộc EXISTING có Criteria và chưa có Criteria đi qua product-theory/code-drift review; wording Advisor ban đầu dễ bị hiểu thành tự kích hoạt khi draft đủ. **Planner sửa:** sửa ngay các Task/acceptance hiện hành và đường phối hợp M1/M4, không chỉ append delta.
+- **RL-C30-04 / MINOR:** M1 DONE gộp Human execution approval vào BOOTSTRAP READY. **Planner sửa:** READY được tính từ Criteria/Plan/capability/milestones; Human phê duyệt thực thi là bước riêng **sau** READY.
+
+**Planner repair commits:** `5c77e8cacbf0344af0c1b575562ce5b348f24dbc`, `35ac0682712fb7b41633f1dbb8c1d3a0f20d2254`. Giữ một Plan, bảy Phase GOAL, existing M0 audit và criteria coverage; không có source code mutation.
+
+**Reviewer vòng 2 — document PASS (scope-bound):** so approved Criteria hiện hành với Overall GOAL/M0–M6 và plan details: bốn finding trên đã có disposition; 20 kiểm tra cấu trúc/trace GOAL, C30/C31, chữ ký Advisor trong Criteria canonical, thứ tự READY/Human approval, Existing paths, B01–B10 và nguồn sự thật đều đạt. **Không suy ra** GSA runtime guard, source tests, public-path E2E hoặc durable Reviewer Job Verification đã PASS. Reviewer PASS này **không** tự cấp quyền source implementation, merge hoặc deploy.
+
 ## 7. Lịch sử RL trước quyết định 18/10/2026 (SUPERSEDED về CR Human-only)
 
 **LƯU Ý:** Các nhận định cũ trong mục này như “CR Human-only” và Criteria blob `562778...` chỉ là lịch sử review theo revision cũ. **Không** dùng để override Criteria APPROVED hiện hành `f866321da03c2e656499679997b70cfe31807ab6`, các chính sách `rl`/`crl` theo milestone đã duyệt hoặc M2/M4/M5 details hiện hành.
