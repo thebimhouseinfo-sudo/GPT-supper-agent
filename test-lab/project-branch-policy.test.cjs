@@ -16,7 +16,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
-  'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment',
+  'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment', 'projectBootstrapReadinessDecision',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
@@ -280,6 +280,51 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
   const advisor = source.slice(source.indexOf('  advisor: {'), source.indexOf('  designer: {'))
   assert.match(advisor, /only Human intent/)
   assert.match(advisor, /Do not activate on draft completion/)
+})
+
+
+test('C30 M3: official Plan cannot precede Human-approved, current canonical Criteria', () => {
+  const sha = 'a'.repeat(40)
+  const criteria = { criteria_path:'projects/' + id + '/CRITERIA.md',
+    criteria_blob_sha:sha, approval_status:'APPROVED' }
+  const task='01a154b5-1a8c-7c31-ad7e-927e27c658ce'
+  const plan = { plan_kind:'PROJECT_PLAN', criteria_binding:criteria, planning_revision:3,
+    planning_review:{status:'PASS',reviewed_revision:3},
+    tasks:[{task_id:task, completion_criteria:['observable output']}],
+    milestones:[{milestone_id:'m1',node_ids:[task]}] }
+  const cap=[{task_id:task,readiness:'GENERIC_READY'}]
+  const input={criteria,criteria_human_approved:true,criteria_current_blob_sha:sha,plan,capabilities:cap}
+  const status=x=>h.projectBootstrapReadinessDecision(id,x).status
+  assert.equal(status({}), 'CRITERIA_NOT_APPROVED')
+  assert.equal(status({...input,criteria_human_approved:false}), 'CRITERIA_NOT_APPROVED')
+  assert.equal(status({...input,criteria:{...criteria,criteria_path:'projects/' + id + '/NOT-CRITERIA.md'}}),'CRITERIA_NOT_APPROVED')
+  assert.equal(status({...input,criteria_current_blob_sha:'b'.repeat(40)}),'CRITERIA_STALE_OR_UNVERIFIED')
+  assert.equal(status({...input,plan:undefined}),'IMPLEMENTATION_PLAN_MISSING')
+  assert.equal(status({...input,plan:{...plan,criteria_binding:{...criteria,criteria_blob_sha:'b'.repeat(40)}}}),'PLAN_CRITERIA_MISMATCH')
+  assert.equal(status({...input,plan:{...plan,planning_review:{status:'PENDING',reviewed_revision:3}}}),'PLAN_REVIEW_PENDING')
+  assert.equal(status({...input,plan:{...plan,planning_review:{status:'PASS',reviewed_revision:2}}}),'PLAN_REVIEW_PENDING')
+  assert.equal(status({...input,plan:{...plan,tasks:[{task_id:task,completion_criteria:[]}]}}),'PLAN_TASK_ACCEPTANCE_MISSING')
+  assert.equal(status({...input,capabilities:[]}), 'CAPABILITY_NOT_READY')
+  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'CONFIGURED_UNVERIFIED'}]}),'CAPABILITY_NOT_READY')
+  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'DOMAIN_READY_VERIFIED',evidence_verified:false}]}),'CAPABILITY_NOT_READY')
+  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'DOMAIN_READY_VERIFIED',evidence_verified:true}]}),'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(status({...input,plan:{...plan,milestones:[]}}),'MILESTONES_NOT_READY')
+  assert.equal(status({...input,plan:{...plan,milestones:[{milestone_id:'m1',node_ids:['unknown-task']}]}}),'MILESTONES_NOT_READY')
+  const pending=h.projectBootstrapReadinessDecision(id,input)
+  assert.equal(pending.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(pending.bootstrapped,false,'caller-supplied artifacts are not independently verified')
+  assert.equal(pending.source_write_authorized,false)
+  const claimed=h.projectBootstrapReadinessDecision(id,{...input,human_execution_approved:true})
+  assert.equal(claimed.status,'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
+  assert.equal(claimed.source_write_authorized,false,'self-claimed Human approval is not a code gate')
+})
+
+test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job lifecycle', () => {
+  const tool=source.slice(source.indexOf("'project_bootstrap_readiness_prepare',"),source.indexOf("'project_branch_policy_prepare',"))
+  assert.match(tool,/source_write_authorized: z.literal\(false\)/)
+  assert.match(tool,/readOnlyHint: true/)
+  assert.match(tool,/actual Human approval/)
+  assert.match(tool,/Once BOOTSTRAP READY and Human authorization were already verified/)
 })
 
 test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
