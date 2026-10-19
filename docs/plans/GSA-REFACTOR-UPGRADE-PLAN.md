@@ -65,6 +65,36 @@ Từ GSA hiện có, phát triển một **generic coding/project-agent framewor
 
 **Ranh giới:** No-code khi chưa có APPROVED Criteria; discovery/Criteria draft vẫn được phép. Không tái Bootstrap theo từng Job sau READY; chỉ affected scope chịu reconcile khi Criteria đổi. Kế hoạch M0 lịch sử không bị tuyên bố FAIL/mở lại vô căn cứ.
 
+### Implementation detail C30/C31 — ưu tiên cho M1–M6 (19/10/2026)
+
+**Authority:** Criteria approved blob f866321da03c2e656499679997b70cfe31807ab6; phần này là HOW/WHEN của C30/C31 và **supersedes only** các câu cũ về “setup nhẹ đủ code”, Advisor review tự động ở mọi Criteria draft, gate có thể xóa nếu thừa. Các phần M0–M6 ngoài phạm vi này giữ nguyên. Không tạo Plan/Criteria thứ hai, không tạo phase mới.
+
+**M1 — Bootstrap intake / Criteria product theory, NEW & EXISTING.** Đưa hai đường đến **một APPROVED Criteria canonical** trước Plan: (a) NEW chưa code: brainstorm/research, Criteria DRAFT, khi Human muốn chốt gọi Advisor tư vấn full draft + receipt, Human quyết định, CAS/readback APPROVED; (b) EXISTING đã có Criteria: đọc file để phân biệt product theory với bản kỹ thuật, đối chiếu source để báo đã đạt/thiếu/thừa/drift, Human cân nhắc giữ/sửa; (c) EXISTING chưa có Criteria: đọc source/docs, tổng kết sản phẩm thực tế, tạo một Criteria DRAFT ở ngôn ngữ WHAT/WHY, nêu suy luận/unknown và hỏi Human code có drift khỏi ý định hay không, sau đó Advisor/Human chốt. Không mặc nhiên lấy code làm mong muốn. PROJECT OPEN / metadata READY chỉ cho phép trò chuyện, phân tích, research, audit và sửa Criteria draft; không đồng nghĩa Bootstrap READY, không tự chạy Job cũ, không reset source/hồi cứu lịch sử. Tạo/giữ AGENTS.md tối thiểu và branch mapping đúng Project.
+
+**M1 trace/test:** C26 C28 C30 C31. Negative: Criteria thiếu hoặc chỉ có README kỹ thuật không được tự mark APPROVED; thiếu Advisor receipt khi chốt không được sửa approved Criteria; wording-only/brainstorm không gọi Advisor; không tạo Implementation Plan hoặc code. Positive: hai trường hợp EXISTING và NEW đến APPROVED đúng Human decision, không mất legacy history.
+
+**M2 — Coder/Tester capability readiness.** Khi Criteria đã có, đánh giá generic Coder/Tester đủ theo domain/host/required checks hay cần harness+skills/tools bổ sung. Nếu generic đủ, CAPABILITY READY không yêu cầu add-in; nếu thiếu capability thiết yếu, ghi BLOCKED/UNVERIFIED, bổ sung chuyên môn theo Project/vai/Task rồi xác minh. Không giả tạo skills, không nạp add-in toàn cục và không biến task tooling thành quyền code.
+
+**M2 trace/test:** C19 C23–C25 C30. Generic PASS, AutoLISP/host-skill PASS khi được cấp; missing critical domain skill/tool phải từ chối readiness, wrong-Project/role không được load.
+
+**M3 — Criteria → reviewed Plan + milestones → Bootstrap READY.** Trước **Human-approved Criteria**, cấm tạo/chốt **official Implementation Plan**; skeleton/ý tưởng kỹ thuật trao đổi chỉ là DISCOVERY, không được trở thành executable Plan. Sau approval, Planner xây hoặc reconcile một Plan đúng Criteria blob SHA, đặt Overall GOAL + Phase GOAL, mọi meaningful Task có product outcome/acceptance tracable tới Criteria, dependency, milestone outcome, các điểm AUTO/HUMAN, Reviewer PASS current revision. Kế thừa phần DONE hợp lệ; inspect current Job/checkpoint trước supersede những phần bị đổi. BOOTSTRAP READY là trạng thái logic dựa trên APPROVED Criteria + reviewed current Plan + milestones hợp lý + M2 capability READY, **khác Project OPEN**. **Human approval of that reviewed Plan** vẫn là điều kiện độc lập trước coding; không lấy câu yêu cầu “code ngay” khi chưa READY làm exemption.
+
+**M3 trace/test:** C04–C06 C20 C29 C30. Missing/old/fake Criteria blob, missing reviewed Plan, missing milestone, incomplete dependency/acceptance, missing capability, fake plan approval đều ngăn code; no Criteria ngăn official Plan; valid existing work preserved. Tránh approval engine/state machine thứ hai.
+
+**M4 — Advisor event-only and normal orchestration.** Trigger Advisor đúng hai loại **Human intent**: (1) Human muốn chốt initial Criteria, (2) Human muốn quyết định thay đổi WHAT/WHY của approved Criteria. Advisor chỉ đọc draft hoặc approved baseline+delta và source liên quan, tư vấn chi phí/rủi ro/tác động, trả **ADVISOR SIGNED receipt** tối thiểu gắn baseline Criteria revision + delta scope, xác nhận Human đã nhận advice, rồi dừng. Không PASS/FAIL, không veto, không sửa Criteria. Planner chỉ ghi approved Criteria sau receipt + Human decision; delta materially khác phạm vi đã tư vấn phải re-advice đúng delta mới. Không trigger cho brainstorm, research, thảo luận giả định, thay Plan HOW/WHEN, code review, Task, sửa câu chữ. Advisor không trở thành thường trực. Các luồng rl/crl/AUTO/stopchat tiếp tục độc lập sau Bootstrap, không tái Bootstrap mỗi Job.
+
+**M4 implementation probe:** source role/route Advisor có thể đã tồn tại, nhưng connector runtime/tool schema thật có thể chưa expose; phải kiểm thực tế before claiming PASS. Nếu thiếu Advisor callable/receipt route, BLOCK Criteria approval, không giả mạo chữ ký. Reuse GSA runtime/harness và existing Memory SHA; không tạo hệ quản trị mới.
+
+**M4 trace/test:** C03 C20 C28 C31 + preserved C07/C08. Test trigger/non-trigger, exactly-scoped receipt, stale/bogus receipt DENY, Human giữ/đổi ý, same-turn normal rl/crl không triệu hồi Advisor.
+
+**M5 — Bootstrap Hard Gate at consequential execution/write.** Enforce Project-approved Criteria/current reviewed Plan/milestones/capability/Human approval tại **GSA-owned Coder dispatch và source-write permission boundary**; không chỉ nhắc trong prompt. Hiện source hàm projectCriteriaBindingError chỉ yêu cầu binding cho plan_kind=PROJECT_PLAN, nhưng plan_kind=JOB có thể rỗng, do đó phải kiểm tất cả entrypoints triển khai từ Job và các GSA-controlled writes. Giữ read/discovery/Criteria DRAFT bình thường. Nếu Human đòi bypass, trả thiếu bước và BLOCK write; nếu đủ điều kiện, normal workflow tiếp tục mà không lặp gate ở mỗi Task. Phân biệt phạm vi GSA có quyền chặn với Human tự ghi ngoài GSA/connector độc lập: không hứa chặn thao tác ngoài control của GSA. Gộp gate khác chỉ khi có oracle; **C30 không được loại** như gate dư. Giữ current Git/Memory scope auth, exact-SHA/CAS, Development Branch/Release Branch và NEXT/V2_STABLE recovery.
+
+**M5 trace/test:** C15 C21/C22 C30/C31. Test ở ranh giới dispatcher/GitHub WRITE: mỗi thiếu Criteria/Plan/Reviewer PASS/milestone/capability/Human execution approval đều DENY **trước commit**, stale revision, forged receipt, wrong Project/branch, alternate GSA write route. Test positive valid Bootstrap READY + approved execution. Legacy existing incomplete Bootstrap cannot bypass via Job state; legacy data/history not erased.
+
+**M6 — End-to-end acceptance.** Bộ oracle tối thiểu: B01 NEW no Criteria → no Plan/no Code; B02 EXISTING with Criteria product-theory check + code drift report; B03 EXISTING no Criteria → code-derived draft + Human truth check; B04 Human finalization intent → Advisor advice/receipt → Human choice → approved exact Criteria; B05 negative Advisor chat/Plan/wording; B06 negative all missing Bootstrap prerequisites before code; B07 READY + Human approval → Coder/Tester execute normally across next Job without re-Bootstrap; B08 approved Criteria delta → selective GOAL-first Plan/review reconcile, unaffected Jobs retained; B09 wrong repo/branch/stale evidence/alternate GSA write path DENY; B10 no regression branch config, rl/crl, stopchat, UI evidence, NEXT/V2, M0 and historical checkpoints. Unit helper PASS không phải public-path/live acceptance; phải chứng minh host/connector thực hoặc ghi UNVERIFIED.
+
+**Implementation work packs (within existing phases):** M1-C30 intake product-theory + M1-C31 receipt, M2-readiness, M3-reviewed-plan/milestones readiness, M4-Advisor activation, M5-source-boundary Hard Gate, M6-negative/E2E acceptance. M0 DONE giữ nguyên. M6 hiện có staging helper verification PARTIAL_VERIFIED cũ, không tự thành PASS cho C30/C31.
+
 ### Criteria revision → GOAL impact review (18/10/2026)
 
 **Chỉ sửa GOAL trước khi sửa detail:** Human bổ sung trình tự Advisor/Criteria và GOAL-first review. Đối chiếu Criteria **working** blob `7b6d95c719fa632ef0249925d4795549d6d18402` (C02/C03/C06/C20/C23/C26/C28/C29), Planner kiểm GOAL tổng và từng Phase như sau. Đây là **impact assessment trong cùng Upgrade Plan**, không phải một Criteria phụ và không phải phê duyệt source implementation.
@@ -389,25 +419,25 @@ Chứng minh end-to-end **No Criteria → No Plan → No Code** và **Bootstrap 
 
 **M6 outcome at this checkpoint: PARTIAL_VERIFIED — runnable CI-equivalent source checks and staging public health/selftest PASS; authenticated real-Project E2E and hosted CI remain UNVERIFIED.**
 
-## 4. Coverage — tất cả 30 Criteria APPROVED (C01–C29 và C14A)
+## 4. Coverage — tất cả 32 Criteria APPROVED (C01–C31 và C14A)
 
 Các ID là tham chiếu từ **Criteria duy nhất**, không định nghĩa lại WHAT. Khi Criteria đổi, Planner cập nhật mapping này cùng plan ảnh hưởng.
 
 | Phase/mốc | Criteria được thực hiện hoặc chứng minh |
 |---|---|
 | M0 | C03 C06 C09 C17 C21 C22 C29 |
-| M1 | C01 C02 C03 C14A C23 C24 C26 C27 C28 C29 |
-| M2 | C19 C23 C24 C25 |
-| M3 | C02 C03 C04 C05 C06 C14A C20 C28 C29 |
-| M4 | C07 C08 C09 C10 C13 C18 |
-| M5 | C09 C11 C12 C13 C14 C14A C15 C16 C17 C18 C21 C22 |
-| M6 | C01 C04 C05 C07 C08 C09 C10 C11 C12 C14 C14A C15 C16 C17 C19 C20 C21 C22 C23 C24 C25 C26 C27 C28 C29 |
+| M1 | C01 C02 C03 C14A C23 C24 C26 C27 C28 C29 C30 C31 |
+| M2 | C19 C23 C24 C25 C30 |
+| M3 | C02 C03 C04 C05 C06 C14A C20 C28 C29 C30 C31 |
+| M4 | C07 C08 C09 C10 C13 C18 C31 |
+| M5 | C09 C11 C12 C13 C14 C14A C15 C16 C17 C18 C21 C22 C30 C31 |
+| M6 | C01 C04 C05 C07 C08 C09 C10 C11 C12 C14 C14A C15 C16 C17 C19 C20 C21 C22 C23 C24 C25 C26 C27 C28 C29 C30 C31 |
 
 Một criterion có thể có **implementation owner** ở một mốc và **acceptance evidence** ở M6. Không nhân bản requirement text sang Job/plan.
 
 ## 5. Quyết định đã chốt / giới hạn triển khai
 
-**Criteria hiện hành (APPROVED):** blob `9e661f97825c8b87a60396442d5a41f5ad8e7823`, Human 18/10/2026, đủ 30 tiêu chí (C01–C29 + C14A). Các SHA cũ trong hồ sơ RL lịch sử không còn là source-of-truth.
+**Criteria hiện hành (APPROVED):** blob `f866321da03c2e656499679997b70cfe31807ab6`, Human 18–19/10/2026, đủ 32 tiêu chí (C01–C31 + C14A). Các SHA cũ trong hồ sơ RL lịch sử không còn là source-of-truth.
 
 - **Review loop:** `rl` = Planner/Coder↔Reviewer đến PASS/blocker; `crl` = `rl` PASS → CR; CR FAIL quay về `rl` rồi CR lại. Human được phép chỉ định sẵn `rl`/`crl` trên milestone, đó là sự ủy quyền cho GSA tự chạy tại mốc, không là quyền tự CR mọi nơi.
 - **`stopchat`:** handoff đúng Project/revision/Job để mở chat mới và resume khi Human cho phép; không thêm background automation hoặc session watchdog giả.
@@ -415,7 +445,7 @@ Một criterion có thể có **implementation owner** ở một mốc và **acc
 - **Admin:** chức năng, không là agent; per-repo Development/Release Branch do Human chọn ghi ở `PROJECT.md` và hiện trong Project READY. Source Git = code truth; Memory = branch config/Criteria/Plan/Job. Merge đúng Development Branch theo function packs/milestones, `main`/deploy quyền riêng.
 - **Gate:** giữ khi có rủi ro/test oracle bảo vệ thật; phần redundant/false-block thì hợp nhất/bỏ dựa evidence, không theo số quota.
 - **Agent model:** không hỗ trợ ép model per-role trên GSA Web; không thiết kế model config/TOML local.
-- **Bootstrap:** chỉ nhập hành vi phù hợp Web; không bê nguyên local coding-agent shell/VM/hook/sandbox/review gates.
+- **Bootstrap C30:** bắt buộc Approved Criteria → reviewed Plan → capability/milestones READY → Human execution approval trước code; sau READY bình thường, không bê local shell/VM/hook/sandbox. **Advisor C31:** chỉ Human Criteria intent, signed receipt là bằng chứng tư vấn, không veto.
 - **Điểm còn cần xác minh kỹ thuật:** shortcut routing/host semantics, Project add-in loading, GitHub permission/readback và cross-chat resume; nếu không hỗ trợ phải nói `UNVERIFIED`, không tự biến thành yêu cầu dựng subsystem mới.
 
 **HUMAN boundaries:** Criteria first approval sau Advisor; Criteria material delta sau Advisor; authorization bắt đầu source changes; material change chưa chốt; `main` merge; production deploy. CRL milestone đã duyệt **không cần Human xác nhận lại mỗi vòng**. Advisor/CR không cấp quyền làm thay Human.
@@ -442,14 +472,14 @@ Reviewer đối chiếu: (1) GOAL layer đã ghi/readback ở commit `a33905287e
 
 ## 6. Self-review / acceptance checklist của plan
 
-- Đặt GOAL dựa đúng Criteria APPROVED `9e661f97825c8b87a60396442d5a41f5ad8e7823`, không thêm mục tiêu ngoài C01–C29 và C14A; mọi Phase có ### GOAL; M0–M6 có kết quả kiểm chứng và dependency có lý do.
+- Đặt GOAL dựa đúng Criteria APPROVED `f866321da03c2e656499679997b70cfe31807ab6`, không thêm mục tiêu ngoài C01–C31 và C14A; mọi Phase có ### GOAL; M0–M6 có kết quả kiểm chứng và dependency có lý do.
 - Một Development Branch `upgrade/gsa-refactor` cho GSA (Release Branch `main`), per-repo branch config có nguồn từ `PROJECT.md`; không tái sử dụng CP0–CP7 cũ làm current plan; historical V2/NEXT/Memory được giữ tương thích.
 - Fresh Start, Planner real use/scale discovery, Advisor chỉ đúng hai Criteria moments, single Criteria/AGENTS; **Coder/Tester harness+skills add-in** đúng Project; milestone `rl`/`crl` tự chạy, `stopchat` handoff/resume; UI evidence trong target repo; Admin merge function packs, gate risk-based; no per-agent model assignment.
 - Không giả định callback nút Human click, model override của ChatGPT Web, background worker, hoặc capability unavailable. Các điểm CHƯA CHỐT không bị agent tự chốt.
 - Reviewer kiểm Overall/Phase GOAL vs current Criteria **trước detail**, bắt thiếu/thừa; tự chạy `rl` tới PASS/blocker; `crl` thêm CR sau RL PASS và quay về RL khi CR FAIL. CR có thể được preauthorized tại milestone, Advisor không thay CR/Reviewer. Chỉ PASS khi source/revision đúng và evidence thật.
-- **Review state:** kiểm tra nội bộ về cấu trúc và Criteria coverage. **Chưa có GSA durable Job planning Reviewer PASS** cho plan này; không được quảng cáo là plan approved hoặc bắt đầu source implementation từ commit tài liệu.
+- **Review state:** Plan updated to C30/C31, requires current-revision document review and durable Job planning Reviewer PASS where applicable; Plan commit alone does not authorize source implementation.
 
-**Kết thúc bản plan:** source edits chỉ sau Human phê duyệt execution. Criteria hiện đã **APPROVED**. Với bất kỳ thay đổi Criteria **sau approval**: Planner/Human thống nhất delta **trước khi ghi** → Advisor tư vấn pre-edit → Human chọn → Criteria CAS/readback → Planner **review Overall GOAL + từng Phase GOAL trước** → cập nhật GOAL bị ảnh hưởng rồi **mới sửa detail/milestone/Job/test** → Reviewer RL đúng revision. Không thêm file theory, parallel plan hoặc gate giả.
+**Kết thúc bản plan:** source edits chỉ sau Bootstrap READY, current-revision reviewed Plan được trình Human và Human phê duyệt execution trên Plan đó. Criteria hiện đã **APPROVED**. Với bất kỳ thay đổi Criteria **sau approval**: Planner/Human thống nhất delta **trước khi ghi** → Advisor tư vấn pre-edit → Human chọn → Criteria CAS/readback → Planner **review Overall GOAL + từng Phase GOAL trước** → cập nhật GOAL bị ảnh hưởng rồi **mới sửa detail/milestone/Job/test** → Reviewer RL đúng revision. Không thêm file theory, parallel plan hoặc gate giả.
 
 
 ## 7. Lịch sử RL trước quyết định 18/10/2026 (SUPERSEDED về CR Human-only)
