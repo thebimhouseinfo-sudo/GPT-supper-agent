@@ -238,7 +238,7 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
   assert.match(base, /not approval/)
   const advisor = source.slice(source.indexOf('  advisor: {'), source.indexOf('  designer: {'))
   assert.match(advisor, /only Human intent/)
-  assert.match(advisor, /Not on draft completion/)
+  assert.match(advisor, /Do not activate on draft completion/)
 })
 
 test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
