@@ -2081,6 +2081,16 @@ const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
   mutation_authorized: z.literal(false),
 })
 
+// Product Criteria intake only; current GSA execution gates remain unchanged.
+function resolveProjectCriteriaIntake(mode: 'NEW' | 'EXISTING', state: 'PRESENT' | 'ABSENT' | 'UNKNOWN', observedSource: string) {
+  const observed = typeof observedSource === 'string' && observedSource.trim().length > 0
+  if (mode === 'NEW') return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: false, review: 'NEW: ask Human for desired GOAL, WHAT/WHY and acceptance before Criteria approval; do not create an Implementation Plan or code.' }
+  if (state === 'PRESENT') return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: false, review: 'EXISTING with Criteria: validate with Human that the existing Criteria describes the intended product (not just design/code); compare actual source for achieved, missing, excess and drift. Source is evidence, not approval.' + (observed ? ' Source observation (independent read required): ' + observedSource.slice(0, 600) : ' Source comparison UNVERIFIED until inspection.') }
+  if (state === 'UNKNOWN') return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: false, review: 'EXISTING: inspect canonical Criteria in Project Memory before preparing anything. Never overwrite or infer approval.' }
+  if (!observed) return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING without Criteria: first read actual source/docs; derive a tentative product-language hypothesis and ask Human whether source behavior has drifted from intended goals.' }
+  return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: true, review: 'EXISTING without Criteria: source-derived product hypothesis only; ask Human what is correct, missing or excess before approval. Code never approves Criteria.' }
+}
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- NEW HUMAN MESSAGE ONLY (not tool results): keep the currently receiving Agent; if none, default to Planner. Explicit Human Direct Agent invocation uses its selected role. Do not switch Agents merely because User sends a new message.',
@@ -2093,7 +2103,7 @@ const BASE_AGENT_HARNESS = [
   '- PLANNER RL SHORTCUT: In a planning request, rl means run the existing Planner → role-isolated planning Reviewer → Planner repair → re-review loop on the identified plan until evidence-backed PASS or a genuine Human decision, blocker or no-progress guard. Accept planner rl, planner rl đi, and the common typo planer rl. Use the identified current plan, including a draft discussed in chat, without an extra planning confirmation. Durable Jobs follow exact GitHub/CAS readback; direct/ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification. Clarify only if no target plan is identifiable; a completely new plan still follows normal intake. Do not duplicate Jobs. rl never grants source edits, Job execution, merge or deploy.',
   '- HUMAN EXECUTION APPROVAL: present the reviewed PASS plan and STOP in conversation. Begin source-changing or other consequential Job execution only after the Human explicitly approves that presented plan (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). Skeleton approval permits detailed planning only; a general action request or an ambiguous "ok" outside plan-approval context is not execution authorization. Once approved, continue approved scope without re-asking at each Task.',
   '- FRESH START / ADOPT: on new or brownfield Project establish minimal source/owner/branch baseline without reconstructing past jobs or approvals. Never auto-resume an old Job on Project open. Planner maintains ONE Project Memory CRITERIA.md for future product GOAL/scale/non-goals/acceptance; Human approves, drafts do not self-promote. AGENTS.md generic is minimal.',
-  '- TECH ADVISOR CHECKPOINTS: generic read-only Advisor advises on the coherent initial Criteria draft BEFORE first Human approval and on material approved-Criteria delta BEFORE edits. Advisor uses actual technical source context when needed, tells Human feasibility/cost/risk/direct/cascading effect and missing/excess, never scores PASS/FAIL or replaces Reviewer/CR. Human decides and Planner writes.',
+  '- TECH ADVISOR CHECKPOINTS: activate Advisor ONLY after explicit Human intent to finalize initial Criteria or materially change approved Criteria WHAT/WHY. Not for brainstorming, drafts, ordinary planning, code review or wording-only edits. Advisor reads exact draft/baseline+delta, advises Human then acknowledges ADVISOR SIGNED for the same canonical Criteria revision/scope (proof of advice, not approval). Human decides and Planner writes; never forge Advisor advice.',
   '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
   '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
   '- BRANCH AUTHORITY: Admin stores Human-confirmed Development/Release Branch per source repo in PROJECT.md, READY displays them; Planner/Coder use ONLY configured Development Branch as merge target, never guess main/default. Missing/renamed/stale mapping permits read/chat/planning but blocks source write/merge dependent on the branch. Production merge/deploy require separate Human decisions.',
@@ -2212,7 +2222,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Never act as Reviewer/CR, approve/veto requirements, mutate Criteria/Plan/source or issue PASS/FAIL.',
     ],
     loop: [
-      'TRIGGER: before initial Human approval of the coherent Criteria draft, or before any material edit of already approved Criteria. Do not run on ordinary Task/chat.',
+      'TRIGGER: only Human intent to finalize first Criteria or change approved WHAT/WHY. Do not activate on draft completion, brainstorming, technical questions, Plan HOW/WHEN, wording changes or ordinary Task/chat.',
       'GROUND: Human Criteria WHAT/WHY is authoritative. Read actual architecture/source when needed; Plan proposed by AI is NOT a Human requirement.',
       'ADVISE: distinguish verified facts from uncertainty; explain feasibility, conditions, costs, unnecessary complexity and ripple effects, including changes that may force major redesign.',
       'CHOICES: offer practical alternatives only when useful; do not force fixed tiers.',
@@ -5008,6 +5018,10 @@ function createServer(req: Request) {
         memory_path: z.string().min(1),
         project_manifest_text: z.string().min(1),
         project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        intake_mode: z.enum(['NEW','EXISTING']).default('NEW'),
+        existing_criteria_state: z.enum(['PRESENT','ABSENT','UNKNOWN']).default('UNKNOWN'),
+        observed_source_summary: z.string().optional(),
+        source_criteria_drift: z.string().optional(),
         goal: z.string().optional(),
         use_class: z.enum(['PERSONAL','INTERNAL','COMMERCIAL','UNDECIDED']).default('UNDECIDED'),
         current_scale: z.string().optional(),
@@ -5019,6 +5033,9 @@ function createServer(req: Request) {
         project_id: z.string(),
         agents_path: z.string(),
         criteria_path: z.string(),
+        intake_disposition: z.enum(['CREATE_DRAFT_IF_ABSENT','READ_EXISTING_NO_WRITE','INSPECT_FIRST_NO_WRITE']),
+        intake_review_text: z.string(),
+        advisor_activation: z.literal('HUMAN_CRITERIA_INTENT_ONLY'),
         agents_template_text: z.string(),
         criteria_draft_text: z.string(),
         external_steps: z.array(z.string()),
@@ -5027,7 +5044,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ memory_path, project_manifest_text, project_manifest_sha, goal, use_class, current_scale, committed_future_scale, environment, boundaries }: any) => {
+    async ({ memory_path, project_manifest_text, project_manifest_sha, intake_mode, existing_criteria_state, observed_source_summary, source_criteria_drift, goal, use_class, current_scale, committed_future_scale, environment, boundaries }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare Project setup.')
       const parsed = parseProjectManifest(project_manifest_text)
@@ -5035,6 +5052,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Fresh Start requires the exact ACTIVE Project manifest and canonical PROJECT.md path.' }], isError: true }
       }
       const safeLine = (v: any) => String(v || 'CHUA_CHOT').replace(/[\r\n]+/g, ' ').slice(0, 600)
+      const intake = resolveProjectCriteriaIntake(intake_mode, existing_criteria_state, observed_source_summary ?? '')
       const root = 'projects/' + parsed.project_id + '/'
       const agentsPath = root + 'AGENTS.md'
       const criteriaPath = root + 'CRITERIA.md'
@@ -5057,12 +5075,13 @@ function createServer(req: Request) {
         '- Without add-ins Coder/Tester use generic skills, except when a Task explicitly needs domain-specific guidance.',
         '',
       ].join('\n')
-      const criteriaDraft = [
+      const criteriaDraft = intake.disposition === 'CREATE_DRAFT_IF_ABSENT' ? [
         '# Project Criteria — ' + safeLine(parsed.name), '',
         'Status: DRAFT (not Human-approved)',
         'Project ID: ' + parsed.project_id, '',
         '## GOAL',
-        safeLine(goal), '',
+        intake.source_derived ? 'CHUA_CHOT: source-derived product hypothesis; Human must confirm desired GOAL' : safeLine(goal), '',
+        ...(intake.source_derived ? ['## Observed source (provisional; not product authority)', safeLine(observed_source_summary), '## Possible drift requiring Human decision', safeLine(source_criteria_drift), ''] : []),
         '## Product/use',
         'Use class: ' + use_class,
         'Current actual scale: ' + safeLine(current_scale),
@@ -5075,23 +5094,28 @@ function createServer(req: Request) {
         '- CHUA_CHOT: Planner must derive observable acceptance from Human GOAL.', '',
         '## Approval',
         'Human decision: PENDING',
-        'Technical Advisor: discuss full meaningful draft BEFORE initial Human approval.',
+        'Technical Advisor: INACTIVE until Human requests initial Criteria approval or material approved Criteria change.',
+        'ADVISOR SIGNED: PENDING; only actual advice delivered to Human may sign for a baseline revision and scoped delta.',
         'Planner updates this SAME file on Human choice; do not auto-promote DRAFT, create Criteria V2 or infer approval from SHA.',
         '',
-      ].join('\n')
+      ].join('\n') : ''
+      const intakeReview = intake.review + (intake_mode === 'EXISTING' && source_criteria_drift ? ' Possible drift (provisional): ' + safeLine(source_criteria_drift) : '')
       const out = {
         project_id: parsed.project_id,
         agents_path: agentsPath,
         criteria_path: criteriaPath,
+        intake_disposition: intake.disposition,
+        intake_review_text: intakeReview,
+        advisor_activation: 'HUMAN_CRITERIA_INTENT_ONLY' as const,
         agents_template_text: agentsTemplate,
         criteria_draft_text: criteriaDraft,
         external_steps: [
           'First re-read the exact PROJECT.md path from configured GitHub Memory Repo; SHA must match project_manifest_sha. This tool does not attest caller-provided manifest bytes.',
-          'Check AGENTS.md and CRITERIA.md do not already exist; on retry read/reconcile existing files, do not overwrite or create parallel versions.',
-          'For both CREATE paths call authorize_project_scope(MUTATE_MEMORY) and authorize_memory_mutation(create), then GitHub create_file and readback exact contents/SHA in Project Memory.',
-          'For ADOPT existing source, only record current source baseline from read-only observation; do not reconstruct historical approvals, mutate source or auto resume an unrelated Job.',
+          'Independently read current canonical CRITERIA.md and source. Never trust caller-supplied ABSENT or source observations without checking GitHub; if Criteria exists, no setup Criteria write regardless of supplied state.',
+          'Create AGENTS.md only when absent; create canonical Criteria DRAFT only if intake_disposition=CREATE_DRAFT_IF_ABSENT and GitHub independently confirms file absent. Each CREATE requires existing scope+memory authorization and exact readback. Otherwise do not write Criteria.',
+          'For EXISTING with Criteria, inspect product-theory fit and compare actual source for achieved/missing/excess/drift; give Human a report, not an automatic Criteria edit. For EXISTING without Criteria, inspect source then draft a product hypothesis marked CHUA_CHOT; no code-derived approval.',
           'If Development Branch is unconfigured, Admin consults Human and prepares PROJECT.md branch configuration before dependent source writes; Project open/chat/discovery may continue.',
-          'Planner completes Criteria discovery, Advisor discusses the meaningful full draft, Human chooses; only then Planner marks approved portions in the SAME CRITERIA.md through SHA-CAS/readback.',
+          'Advisor stays inactive while brainstorming or editing DRAFT. Activate ONLY on explicit Human intent to finalize first Criteria or material WHAT/WHY change; advice delivery acknowledges ADVISOR SIGNED for revision/delta scope in the SAME CRITERIA.md. Human decides; Planner only then writes/readbacks approved changes. No fake Advisor signature.',
           'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
         ],
       }
