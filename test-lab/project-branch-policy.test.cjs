@@ -16,6 +16,7 @@ assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMes
 const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
+  'resolveProjectCriteriaIntake',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
@@ -193,6 +194,51 @@ test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contrac
   assert.ok(base.includes('PROJECT ADDINS'))
   assert.ok(base.includes('CRITERIA CHANGE ORDER'))
   assert.ok(base.includes('BRANCH AUTHORITY'))
+})
+
+
+test('C30: NEW can draft; EXISTING Criteria presence never overwrites canonical product theory', () => {
+  const fresh = h.resolveProjectCriteriaIntake('NEW', 'UNKNOWN', '')
+  assert.equal(fresh.disposition, 'CREATE_DRAFT_IF_ABSENT')
+  assert.equal(fresh.source_derived, false)
+  const existing = h.resolveProjectCriteriaIntake('EXISTING', 'PRESENT', 'Already has code and source')
+  assert.equal(existing.disposition, 'READ_EXISTING_NO_WRITE')
+  assert.match(existing.review, /desired product|intended product/)
+  assert.match(existing.review, /missing, excess and drift/)
+  const unknown = h.resolveProjectCriteriaIntake('EXISTING', 'UNKNOWN', 'some code')
+  assert.equal(unknown.disposition, 'INSPECT_FIRST_NO_WRITE')
+  assert.match(unknown.review, /inspect/)
+})
+
+test('C30: EXISTING without Criteria must inspect code before a provisional draft', () => {
+  const noEvidence = h.resolveProjectCriteriaIntake('EXISTING', 'ABSENT', '')
+  assert.equal(noEvidence.disposition, 'INSPECT_FIRST_NO_WRITE')
+  assert.match(noEvidence.review, /actual source/)
+  const withEvidence = h.resolveProjectCriteriaIntake('EXISTING', 'ABSENT', 'Functional MVP implements X')
+  assert.equal(withEvidence.disposition, 'CREATE_DRAFT_IF_ABSENT')
+  assert.equal(withEvidence.source_derived, true)
+  assert.match(withEvidence.review, /source-derived product hypothesis/)
+  assert.match(withEvidence.review, /Human/)
+})
+
+test('M1 setup routes independently validated Criteria states and Advisor remains intent-only', () => {
+  const setup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  assert.match(setup, /intake_mode: z\.enum\(\['NEW','EXISTING'\]\)/)
+  assert.match(setup, /existing_criteria_state: z\.enum\(\['PRESENT','ABSENT','UNKNOWN'\]\)/)
+  assert.match(setup, /intake_disposition: z\.enum/)
+  assert.match(setup, /resolveProjectCriteriaIntake\(intake_mode, existing_criteria_state/)
+  assert.match(setup, /intake\.disposition === 'CREATE_DRAFT_IF_ABSENT'/)
+  assert.match(setup, /source-derived product hypothesis; Human must confirm/)
+  assert.match(setup, /GitHub independently confirms file absent/)
+  assert.match(setup, /ADVISOR SIGNED: PENDING/)
+  assert.match(setup, /advisor_activation: 'HUMAN_CRITERIA_INTENT_ONLY'/)
+  assert.match(setup, /No fake Advisor signature/)
+  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  assert.match(base, /explicit Human intent/)
+  assert.match(base, /not approval/)
+  const advisor = source.slice(source.indexOf('  advisor: {'), source.indexOf('  designer: {'))
+  assert.match(advisor, /only Human intent/)
+  assert.match(advisor, /Not on draft completion/)
 })
 
 test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
