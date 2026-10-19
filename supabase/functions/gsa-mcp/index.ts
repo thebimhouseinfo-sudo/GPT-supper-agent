@@ -2871,6 +2871,20 @@ function validIntegrationBranch(name: string) {
     name.split('/').every((segment) => segment !== '.' && segment !== '..' && !segment.startsWith('.'))
 }
 
+// C14A: preserve an existing Job branch unless Planner explicitly rebinds it.
+// The caller must independently verify the selected OWNED repository's Human-approved
+// Development Branch and live Git ref against current PROJECT.md before persisting.
+function revisedJobIntegrationBranchError(job: any, contract: ExecutionContract, requested: string | undefined): string | null {
+  const effective = requested === undefined ? job?.repository_context?.integration_branch : requested
+  if (effective != null && !validIntegrationBranch(effective)) {
+    return 'DEVELOPMENT_BRANCH_INVALID: Job integration_branch must be a valid explicit Git ref.'
+  }
+  if (contract === 'NEXT' && (job?.type === 'code' || job?.plan_kind === 'PROJECT_PLAN') && !validIntegrationBranch(effective)) {
+    return 'DEVELOPMENT_BRANCH_REQUIRED: NEXT code/Project Plans must bind the Human-configured Development Branch of the selected OWNED repository; never infer main/default.'
+  }
+  return null
+}
+
 
 function resolveProjectRoleAddins(projectId: string, role: 'coder' | 'tester', agentsText: string) {
   const expected = role === 'coder' ? '## Coder Add-in (optional)' : '## Tester Add-in (optional)'
@@ -6057,6 +6071,7 @@ function createServer(req: Request) {
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
         criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
+        integration_branch: z.string().optional(),
         revision_reason: z.string().min(1),
         superseding_verification_record_text: z.string().min(2).optional(),
         superseding_verification_ref: z.string().min(1).optional(),
@@ -6075,7 +6090,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -6138,6 +6153,9 @@ function createServer(req: Request) {
       if (effectiveCriteria && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', effectiveCriteria)) {
         return { content: [{ type: 'text', text: 'Current Criteria binding is malformed or belongs to another Project.' }], isError: true }
       }
+      const branchError = revisedJobIntegrationBranchError(current, executionContract, integration_branch)
+      if (branchError) return { content: [{ type: 'text', text: branchError }], isError: true }
+      const effectiveIntegrationBranch = integration_branch === undefined ? current.repository_context?.integration_branch ?? null : integration_branch
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
       const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
@@ -6160,6 +6178,10 @@ function createServer(req: Request) {
       const next = {
         ...current,
         criteria_binding: effectiveCriteria ?? null,
+        repository_context: {
+          ...current.repository_context,
+          integration_branch: effectiveIntegrationBranch,
+        },
         objective: objective ?? current.objective,
         scope: scope ?? current.scope,
         non_goals: non_goals ?? current.non_goals,
@@ -6202,10 +6224,14 @@ function createServer(req: Request) {
         planning_revision: nextRevision,
         continuation: planningLoopContinuationDecision('PLAN_REVISED', next.lifecycle, nextRevision),
         external_steps: [
+          ...(effectiveIntegrationBranch ? [
+            'C14A branch binding: independently re-read exact current PROJECT.md. Verify the selected working repository is OWNED and its Human-configured Development Branch equals repository_context.integration_branch=' + effectiveIntegrationBranch + '; reject implicit main/default, wrong repository or unconfigured policy.',
+            'C14A branch binding: verify live GitHub branch ' + effectiveIntegrationBranch + ' exists in the exact selected working repository before any Job Memory mutation.',
+          ] : []),
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
           'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
-          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING.',
+          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING, and repository_context.integration_branch equals the independently confirmed Development Branch (no fallback).',
           inProgressNextRevision
             ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision. For first runtime supersession, read back the originating Verification and terminal claim (exact claim SHA) before updating the Job.'
             : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
