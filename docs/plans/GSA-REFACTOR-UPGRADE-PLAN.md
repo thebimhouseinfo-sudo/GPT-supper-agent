@@ -1,13 +1,13 @@
 # GSA — Refactor Upgrade Plan (single integration line)
 
-Status: **PLANNING — Criteria đã APPROVED (18/10/2026), Planner đối chiếu GOAL trước khi chỉnh detail; plan cần Reviewer PASS và Human execution approval trước source implementation**.
+Status: **PLANNING REVISION — Criteria C01–C31 + C14A APPROVED (18–19/10/2026); GOAL-first update for C30/C31 before details; requires current-revision Reviewer PASS and explicit Human approval of reviewed Plan before source implementation**.
 Working branch: **`upgrade/gsa-refactor`** (tạo từ `main` tại `be8b663a878cca9c5b2920145f57fd20291d6164`).
-Criteria canonical duy nhất (giữ nguyên historical path): **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; **APPROVED** source blob `9e661f97825c8b87a60396442d5a41f5ad8e7823` (Human 18/10/2026).
+Criteria canonical duy nhất (giữ nguyên historical path): **`docs/refactor/GSA-LY-THUYET-CRITERIA-REFRACTOR-DRAFT.md`** trên chính nhánh này; **APPROVED** source blob `f866321da03c2e656499679997b70cfe31807ab6` (Human 18–19/10/2026; C30–C31 added).
 Mức thẩm quyền: **plan triển khai đề xuất**, không phải Criteria khác; nội dung CHƯA CHỐT trong Criteria không được tự động chuyển thành yêu cầu bắt buộc.
 
 ## GOAL
 
-Từ GSA hiện có, phát triển một **generic coding/project-agent framework gọn, đáng tin và có thể dùng ngay** cho dự án mới hoặc dự án đang triển khai dở trên ChatGPT Web. Mỗi GSA Project có **một Criteria hiện hành** mô tả đích cần đạt; **Planner làm rõ GOAL, người dùng, mục đích sử dụng, quy mô thực và giới hạn trước khi lập kế hoạch**; **Advisor generic** tư vấn trên **toàn Criteria dự thảo trước lần Human duyệt đầu** và **trước khi sửa Criteria đã duyệt**; Human chốt. Planner tạo `AGENTS.md` tối thiểu; Coder và Tester generic, chỉ nạp **add-in harness + skills chuyên môn tùy chọn** đúng Project/vai/Task khi cần. Planner, Advisor, Reviewer và Critic Reviewer (CR) dùng chung trên mọi Project, mỗi vai có trách nhiệm riêng. Review loop theo đúng `rl` (Planner/Coder ↔ Reviewer đến PASS) hoặc `crl` (sau `rl` PASS có CR; CR FAIL quay lại `rl`), có thể được Human gọi hoặc khai báo sẵn ở milestone đã duyệt. Sau phê duyệt thực thi, GSA tự đi qua các bước AUTO trong cùng lượt hoạt động và tự xử lý kiểm chứng/sửa lỗi trong quyền; chỉ dừng ở quyết định Human thật, blocker được chứng minh hoặc phiên bị gián đoạn. Git, Memory, review và resume phải đúng quyền và dựa trên bằng chứng thực tế; `stopchat` giúp chuyển chat an toàn; ảnh test UI nằm tại source repo của Project với link GitHub; Admin là chức năng quản trị **Development Branch/Release Branch do Human xác định ở cấp Project và hiển thị trong Project READY**; Planner/Coder tích hợp theo Development Branch đã cấu hình, không tự đoán từ `main` hoặc GitHub default. Admin merge theo function pack/milestone vừa đủ, không là agent; gate chỉ giữ khi có mục đích bảo vệ thực. Không dựa vào lời hứa.
+Từ GSA hiện có, phát triển một **generic coding/project-agent framework gọn, đáng tin**, trong đó **Human mô tả sản phẩm bằng một Criteria duy nhất**, AI chuyển Criteria được duyệt thành Plan/milestones/Tasks có GOAL truy vết, rồi Coder/Tester triển khai và kiểm chứng sản phẩm. **Project OPEN không phải BOOTSTRAP READY**: bắt buộc đi theo **Approved Criteria → Reviewed Implementation Plan → Coder/Tester Capability Ready → Milestones Ready → Bootstrap Ready → Human-authorized coding**; trước Approved Criteria không lập Implementation Plan chính thức, không code dù Human yêu cầu bỏ qua. NEW Project được brainstorm/research; Existing Project nếu có Criteria phải xác minh đó là lý thuyết sản phẩm và đối chiếu code báo drift, nếu chưa có phải đọc code dựng Criteria draft và hỏi lại Human; không mặc định code cũ là mong muốn đúng. **Technical Advisor chỉ kích hoạt khi Human muốn chốt Criteria lần đầu hoặc quyết định đổi WHAT/WHY đã approved**; Advisor tư vấn tác động, để lại **advisory receipt/signed** theo revision + delta rồi dừng; Human quyết định, Planner mới ghi Criteria. Sau Bootstrap GSA vận hành bình thường, không tái-bootstrap cho mỗi Task; chỉnh Criteria chỉ reconcile phần Plan/Job chịu ảnh hưởng. Các năng lực hiện hữu về `AGENTS.md` add-in chuyên môn Coder/Tester, Goal Recheck, Reviewer/CR `rl`/`crl`, AUTO orchestration, `stopchat`, Git/Memory quyền và exact-SHA, Development Branch/Release Branch Human-configured, field verification/UI evidence vẫn được giữ theo các Criteria đã duyệt. Không lập Advisor thường trực, approval engine/gate stack thứ hai, không mở rộng scope ngoài Criteria hoặc tự merge `main`/deploy.
 
 **Hoàn thành nghĩa là:** các luồng trên được chứng minh bằng test âm/dương, public-path/live pilot phù hợp, exact revision và kết quả người dùng nhìn thấy; một codebase có ít trách nhiệm trùng lặp và ít thao tác thừa hơn nhưng không yếu đi ở ranh giới bảo mật, idempotency, compatibility hoặc evidence.
 
@@ -48,6 +48,23 @@ Từ GSA hiện có, phát triển một **generic coding/project-agent framewor
 
 **Giải thích trạng thái mốc:** AUTO là đường điều phối đã được chấp thuận trong phiên đang hoạt động; HUMAN là quyền quyết định riêng, không là "checkpoint pending" chung. Nếu một Phase gặp blocker thực, chỉ phần việc phụ thuộc dừng. Mốc hoàn tất phải có kết quả đủ kiểm chứng, không chỉ có một report hay file schema mới. Một mốc đang chờ kiểm chứng host không bị giả PASS.
 
+### Criteria revision → GOAL impact review (19/10/2026; GOAL layer first)
+
+**Human-approved Criteria:** `f866321da03c2e656499679997b70cfe31807ab6` (C30/C31). Đây là lần đối chiếu sau khi Criteria đã được ghi/readback; ảnh hưởng GOAL được phân loại **trước** khi sửa milestone/Task/test, không tạo Plan mới hoặc tự đổi Criteria.
+
+| Tầng GOAL | Disposition | Nguyên nhân / Criteria |
+|---|---|---|
+| Overall | **ADJUST** | Mandatory Bootstrap trước code, Advisor event-only/receipt, vận hành bình thường sau READY (C30/C31); giữ các yêu cầu trước đó |
+| M0 | **KEEP** | Targeted audit đã hoàn thành; chỉ probe nếu surface C30/C31 thực sự cần (C21/C22) |
+| M1 | **ADJUST** | NEW/EXISTING gồm Criteria có/chưa có; product-theory đối chiếu code/drift, first approval (C26/C30/C31) |
+| M2 | **ADJUST** | Generic/add-in trở thành kiểm tra readiness trước code, không ép add-in rỗng (C25/C30) |
+| M3 | **ADJUST** | No Criteria→No Plan; reviewed Plan + milestones readiness + existing plan reconciliation (C04/C05/C29/C30) |
+| M4 | **ADJUST** | Event-driven Advisor, signed advisory receipt, only Human Criteria intention; existing same-turn loops giữ nguyên (C20/C31) |
+| M5 | **ADJUST** | Hard Gate ở consequential implementation boundary không bị xóa như gate thừa; giữ branch/rights/recovery (C21/C22/C30) |
+| M6 | **ADJUST** | E2E positive/negative new/adopted, advisor and post-bootstrap normal flow (C30/C31) |
+
+**Ranh giới:** No-code khi chưa có APPROVED Criteria; discovery/Criteria draft vẫn được phép. Không tái Bootstrap theo từng Job sau READY; chỉ affected scope chịu reconcile khi Criteria đổi. Kế hoạch M0 lịch sử không bị tuyên bố FAIL/mở lại vô căn cứ.
+
 ### Criteria revision → GOAL impact review (18/10/2026)
 
 **Chỉ sửa GOAL trước khi sửa detail:** Human bổ sung trình tự Advisor/Criteria và GOAL-first review. Đối chiếu Criteria **working** blob `7b6d95c719fa632ef0249925d4795549d6d18402` (C02/C03/C06/C20/C23/C26/C28/C29), Planner kiểm GOAL tổng và từng Phase như sau. Đây là **impact assessment trong cùng Upgrade Plan**, không phải một Criteria phụ và không phải phê duyệt source implementation.
@@ -76,7 +93,7 @@ Từ GSA hiện có, phát triển một **generic coding/project-agent framewor
 
 ### GOAL
 
-Xác định chính xác **cái gì đang có, vì sao tồn tại, cái gì thiếu hoặc trùng** trước khi viết refactor. Bảo vệ hành vi đúng và không nhân bản cơ chế.
+Audit read-only đã hoàn thành và được giữ nguyên làm baseline: phân loại đủ call path/guard liên quan, tránh thay đổi thiếu căn cứ; chỉ khảo sát bổ sung đúng bề mặt có C30/C31 tác động, không mở lại audit lịch sử.
 
 - **JP0 (SMALL/MEDIUM; Planner + Reviewer, source read-only):** chỉ dựng sơ đồ ownership/call chain cho các bề mặt sẽ chạm tới trong M1–M5: project create/open/status, Criteria/AGENTS.md, role/skill loading, Planner/review, AUTO continuation và giao điểm với cursor/checkpoint/Git. Những miền không bị sửa giữ nguyên và chỉ kiểm khi phụ thuộc thật. Đánh dấu MCP-owned vs ChatGPT orchestration vs GitHub external action. L0 tree → L1 selective source; không đọc toàn bộ index.ts hay audit mọi historical gate vô điều kiện.
 - **JP0 audit:** với mỗi cơ chế **sẽ đụng tới hoặc thực sự chặn** luồng mới (đặc biệt NEXT claim/lease, applicability, plan revision, review floor, cursor, SHA readback), chỉ ra rủi ro thật, criterion, owner và oracle âm. Phân loại **KEEP, SIMPLIFY, REMOVE, NEEDS_PROBE**; cơ chế không liên quan mặc định **không làm scope audit phình ra**. Không bỏ cơ chế chỉ vì code dài.
@@ -161,7 +178,7 @@ Xác định chính xác **cái gì đang có, vì sao tồn tại, cái gì thi
 
 ### GOAL
 
-Tiếp nhận **đúng Project/source** bằng setup nhẹ; Planner làm rõ **GOAL, mục đích sử dụng, quy mô thực/tương lai đã cam kết và giới hạn tương xứng**, soạn **một Criteria tương lai**, Advisor generic phản biện **toàn draft trước lần Human duyệt đầu**; Human chốt, `AGENTS.md` generic tối thiểu được tạo. **Admin xác minh và lưu `development_branch`/`release_branch` vào `PROJECT.md` (theo Human), Project READY hiển thị rõ nhánh tích hợp; không tự suy ra từ `main`/GitHub default.** **Mở Project không tạo Job, không sửa source, không truy xét quá khứ.** Criteria đã duyệt là đầu vào để M3 lập Project Plan/milestone.
+Đưa **NEW và EXISTING Project** qua discovery và Criteria product-theory hợp lệ: nếu Existing đã có Criteria thì kiểm tra chất lượng và đối chiếu code để báo Human về drift/thiếu/thừa; nếu chưa có thì tổng kết code thành **một Criteria draft**, xác minh ý muốn thật với Human. Chỉ khi Human muốn chốt mới gọi Advisor, có receipt rồi Human APPROVE; giữ setup/open nhanh nhưng **không nhầm PROJECT READY với BOOTSTRAP READY**; giữ identity/branch/`AGENTS.md` chuẩn.
 
 **Criteria trực tiếp:** C01–C03, C23–C24, C26–C29. **Bảo vệ đang có:** C11–C12 (resume/không lặp write), C15 (đúng quyền), C17 (test thật), C21–C22 (không thêm gate thừa). Những cái này là **giới hạn an toàn**, không tạo GOAL hoặc approval workflow thứ hai.
 
@@ -294,7 +311,7 @@ Tiếp nhận **đúng Project/source** bằng setup nhẹ; Planner làm rõ **G
 
 ### GOAL
 
-Tùy biến **skills và harness chuyên môn** cho Coder/Tester đúng Project, vai và Task, không tạo nhiều framework/role thay thế hoặc làm mất generic coding/testing.
+Bảo đảm **Coder/Tester capability readiness** cho loại dự án và host trước khi cho triển khai: generic đủ thì READY; thiếu knowledge/skills/harness/tools chuyên môn mới add-in lazy theo Project/vai/Task, không giả PASS hoặc tạo cấu hình thừa.
 
 - **JP2 (MEDIUM; one role-aware lazy add-in chain):** load **global Coder/Tester harness + skills** trước; đọc Project `AGENTS.md` đã bind đúng và chỉ nạp **harness instructions và skills add-in** của role đang làm Task. Khai báo minimal paths trong Project Memory, ví dụ tùy chọn `SKILLS/coder/`, `SKILLS/tester/` và references harness chuyên môn; không bắt directory/module khác nếu không dùng. Reuse existing GitHub reads, catalog/skill loader và global role routing; mở rộng đúng phần thiếu theo P0-F04/F05, **không viết engine hay tạo per-source harness thứ hai**. Phân biệt `get_agent_harness` generic với add-in instructions chỉ bổ sung.
 - **JP2 không override:** Planner/Advisor/Reviewer/CR/Orchestrator luôn dùng shared generic; **Admin là chức năng, không phải agent**. Chỉ Coder/Tester có add-in **harness + skills** của đúng Project/vai/Task; không thay ROLE_HARNESSES, workflow `rl`/`crl`, source rights, Criteria, trusted approval, test oracle, policy hay secrets. Bất kỳ câu lệnh `disable security`, override review hoặc role spoof từ add-in là untrusted và bị từ chối.
@@ -306,7 +323,7 @@ Tùy biến **skills và harness chuyên môn** cho Coder/Tester đúng Project,
 
 ### GOAL
 
-Planner tạo Project Plan/GOAL/milestone từ Criteria **đã được Human duyệt**. **Sau mỗi Criteria edit hợp lệ, kiểm và điều chỉnh Overall GOAL + mọi Phase GOAL bị ảnh hưởng trước rồi mới cập nhật detail/milestone/Job/Task/test**, giữ phần không đổi; Reviewer kiểm đúng Criteria revision và không thêm gate/yêu cầu sản phẩm dư.
+Chỉ **sau Approved Criteria**, Planner mới tạo/reconcile **Implementation Plan** có GOAL tổng/Phase GOAL/Task truy vết về Criteria, Reviewer kiểm current revision, milestones/dependencies/acceptance/AUTO-HUMAN hợp lý. Phân biệt **BOOTSTRAP READY** với Project OPEN và yêu cầu Human execution approval trước Coder Run. Khi Criteria thay đổi, kiểm GOAL trước detail và chỉ reconcile affected Jobs, giữ phần hợp lệ.
 
 - **JP3 (MEDIUM; Planner + planning Reviewer):** Project Plan chỉ được lập từ **Criteria đã được Human duyệt**, gồm GOAL, mục đích sử dụng, quy mô hiện tại/tương lai đã cam kết, giới hạn bảo mật/ổn định tương xứng và những phần không làm. Có `## GOAL` ở đầu plan, `### GOAL` ở đầu từng Phase; milestone đủ kết quả, dependency, acceptance và AUTO/Human stop. Không biến ví dụ sản phẩm, Advisor option chưa chọn hoặc dự đoán scale của AI thành yêu cầu bắt buộc; không tạo lifecycle/gate thứ hai.
 - **JP3 Development Branch binding (C14A):** Planner khi lập plan/Job cho source repo có quyền ghi phải lấy `development_branch` từ `PROJECT.md` của đúng Project/repo và gắn Integration Target vào planned Job/merge handoff; không dựa GitHub default, không mượn nhánh repo khác. Nếu thiếu/stale/unconfigured thì chỉ tiếp tục read/discovery/Criteria/plan, không tự cho Coder write hoặc tích hợp code; Admin xác minh Human decision và readback, sau đó rebind affected Job nếu có.
@@ -319,7 +336,7 @@ Planner tạo Project Plan/GOAL/milestone từ Criteria **đã được Human du
 
 ### GOAL
 
-GSA tiếp tục phần đã được duyệt **trong lượt ChatGPT còn sống**, tự chạy milestone `rl`/`crl` đã được ủy quyền (Review sửa tới PASS, CRL có CR độc lập), không dừng sau một lượt FAIL hoặc PASS khi vẫn có bước AUTO. Khi chat dài/lag, `stopchat` tạo handoff đúng Project/Job để phiên sau resume khi có quyền, không hứa chạy nền.
+Điều phối Advisor **chỉ theo Human Criteria-change/finalization intent**, tư vấn read-only và ghi receipt gắn revision/delta **trước Planner ghi approved Criteria**, không gọi lại cho brainstorm/chat/Plan-only/sửa câu chữ; đồng thời tiếp tục các `rl`/`crl`/AUTO/`stopchat` hiện có mà không khiến Advisor trở thành chatbot thường trực.
 
 - **JP4A (MEDIUM; `rl` small loop):** reuse current Job planning/review and GitHub durable readback. Với plan hoặc code Task trong scope được Human duyệt: Planner/Coder → self-check → Reviewer independent → FAIL/CHANGES_REQUIRED ⇒ Planner/Coder sửa đúng findings và **tự gọi lại Reviewer** tới PASS hoặc blocker/no-progress thật. Shortcut `rl`/`planner rl` của Human hoặc milestone ghi sẵn `rl` kích hoạt đúng loop; **không** tự gọi CR. Mỗi lượt cần revision/evidence đúng, không coi PREPARE hay reviewer lời nói là persisted PASS.
 - **JP4B (MEDIUM; `crl` + approved execution):** khi Human gọi `crl` hoặc **milestone đã duyệt ghi `crl`**, chạy `rl` nhỏ tới PASS rồi gọi CR độc lập; **CR FAIL → Planner/Coder internal `rl` tới PASS → CR lại** (không CR rồi dừng sau sửa). CR PASS ⇒ Orchestrator tiếp tục milestone AUTO hợp lệ hoặc trả lời Human nếu mốc/chat cần, không mặc định stop. Loop có bounded progress/real blocker, không cấp CR quyền sửa Criteria/source. Với Task đủ quyền, dispatch Coder/Tester, CI/log self-debug và evidence/readback theo existing Run/Handoff, không tạo background worker/approval gate mới. **Không có preauthorization thì không tự CR.**
@@ -331,7 +348,7 @@ GSA tiếp tục phần đã được duyệt **trong lượt ChatGPT còn sốn
 
 ### GOAL
 
-**Giữ hoặc loại gate theo giá trị bảo vệ được chứng minh**, sửa/gộp những cơ chế gây kẹt workflow không cần thiết; Admin là chức năng quản trị nguồn: **dùng Development Branch được Human cấu hình sẵn ở Project Memory làm integration target**, kiểm tra branch/diff/ancestry trước merge và **merge các gói chức năng/milestone vừa đủ** về đó, không lập agent Admin, không tự thay target hoặc merge lên Release Branch, không đánh đổi quyền, test thật hoặc recovery.
+Enforce **Mandatory Bootstrap Hard Gate đúng tại ranh giới consequential code dispatch/write** và Criteria approval; không phụ thuộc vào lời nhắc prompt hay dễ bypass bằng đường GitHub khác. Giữ quyền, exact SHA/Git/Memory/recovery và branch integration; gộp/bỏ chỉ gate trùng có oracle nhưng **không xóa Bootstrap C30**; không tạo hệ state machine/approval engine thứ hai.
 
 - **JP5A (MEDIUM; focused gate triage):** với gate đang chặn luồng hoặc bị sửa trong M1–M4, đối chiếu Criteria, chứng cứ lỗi/permission/correctness/evidence/recovery: **KEEP** nếu bảo vệ rủi ro thực; **SIMPLIFY/REMOVE** nếu redundant, gây mắc kẹt/false BLOCKED/latency mà oracle chứng minh bỏ/gộp vẫn an toàn; **NEEDS_PROBE** nếu thiếu bằng chứng. Đánh giá trước/sau trên scenarios thực, không quota xóa và không thêm gate để chữa gate; giữ NEXT/V2_STABLE compatibility.
 - **JP5B (MEDIUM; durable safety; CR-01/CR-03):** giữ quyền source/Project, exact SHA/CAS, Git readback, unknown-write resume, trusted Human decisions và evidence/compatibility có giá trị. Kiểm wrong path, stale manifest/approval, duplicate write, bad cursor/checkpoint và tool split PREPARE/write để phát hiện gate nào thật sự bảo vệ rủi ro; chỉ giữ cần thiết, gộp/bỏ duplicate preflight với **same failure oracles**. Không dùng tên gate/record trong legacy làm yêu cầu sản phẩm.
@@ -344,7 +361,7 @@ GSA tiếp tục phần đã được duyệt **trong lượt ChatGPT còn sốn
 
 ### GOAL
 
-Chỉ tuyên bố thành công khi đúng luồng GSA người dùng sử dụng chạy được, không chỉ CI helper GREEN.
+Chứng minh end-to-end **No Criteria → No Plan → No Code** và **Bootstrap READY → Human-authorized normal GSA workflow** cho NEW/EXISTING (có/không Criteria), Advisor event-driven signature/delta, Plan/milestone/capability readiness, no-bypass negative cases, bảo toàn Job hợp lệ, cùng các chức năng đã duyệt trước đó. Chỉ báo PASS với exact source/host evidence, không đồng nhất CI helper GREEN với field acceptance.
 
 - **JP6A (MEDIUM; exact source/release proof):** chạy Deno typecheck cho `supabase/functions/gsa-mcp/index.ts`; các Node test trong `test-lab/` và test âm mới thực sự kiểm lỗi; kiểm tra chính script oracle với known-bad fixture ở các điểm rủi ro. Kiểm thử trên isolated `gsa-mcp-next` và test Memory namespace đúng; proof deployed-source readback phải khớp exact reviewed revision. Không biến Test Lab thành sản phẩm đã phát hành.
 - **JP6B (MEDIUM; real workflow pilot):** 5 kịch bản có mục tiêu riêng:
