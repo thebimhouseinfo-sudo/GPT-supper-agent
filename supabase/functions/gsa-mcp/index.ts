@@ -1171,6 +1171,39 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
     'Prepared readiness only. M5 must independently verify immutable snapshots, source branch and actual Human approval before code; do not repeat Bootstrap on later normal Jobs.')
 }
 
+// C31: one canonical Criteria file, one scoped acknowledgement after actual Advisor advice.
+// This validates scope and document shape, not the origin of chat messages. A caller-supplied
+// signature is not evidence that an Advisor actually advised Human; readback is mandatory.
+function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
+  const reject = (status: string) => ({ status, advisor_required: true, criteria_write_prepared: false, external_advice_check_required: true })
+  const intent = input?.intent
+  if (['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE'].includes(intent))
+    return { status: 'ADVISOR_NOT_REQUIRED', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+  if (intent === 'HUMAN_KEEP_CRITERIA')
+    return { status: 'HUMAN_KEEPS_CRITERIA_NO_WRITE', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+  if (!['INITIAL_APPROVAL','MATERIAL_CHANGE'].includes(intent)) return reject('CRITERIA_INTENT_INVALID')
+  const sha = (v: any) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  if (input?.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
+      !sha(input?.criteria_current_sha) || typeof input?.criteria_text !== 'string')
+    return reject('CRITERIA_BASELINE_INVALID')
+  if (!sha(input?.advisor_baseline_sha) || typeof input?.delta_scope !== 'string' ||
+      !input.delta_scope.trim() || input.delta_scope.length > 200)
+    return reject('ADVISOR_SCOPE_MISSING')
+  // A receipt must already be in the exact current canonical document, not in a
+  // second Criteria file, arbitrary approval log, or a Planner-supplied flag.
+  const receipts = [...input.criteria_text.matchAll(/^ADVISOR SIGNED: ADVISED \| BASELINE=([0-9a-f]{40}) \| SCOPE=([^|\r\n]{1,200}) \| ADVICE_REF=([^|\r\n]{1,300})$/gm)]
+  const relevant = receipts.filter((m: any) => m[1] === input.advisor_baseline_sha &&
+    m[2] === input.delta_scope.trim() && m[3].trim() && m[3].trim() !== 'PENDING')
+  if (relevant.length !== 1 || receipts.length !== 1) return reject('ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  if (input?.human_decision !== 'APPROVE') return reject('HUMAN_DECISION_PENDING')
+  return {
+    status: 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK',
+    advisor_required: true,
+    criteria_write_prepared: false,
+    external_advice_check_required: true,
+  }
+}
+
 const MILESTONE_SCHEMA = z.object({
   milestone_id: z.string().min(1),
   name: z.string().min(1),
@@ -5212,6 +5245,47 @@ function createServer(req: Request) {
           'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
         ],
       }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_criteria_advice_check',
+    {
+      title: 'Verify scoped Advisor advice before approved Criteria write',
+      description: 'C31 READ ONLY. Check whether the same canonical CRITERIA.md contains exactly one matching ADVISOR SIGNED receipt for Human Criteria approval/change. Never treats caller claims or signature text alone as proof of Advisor provenance or Human approval.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        criteria_path: z.string().min(1),
+        criteria_current_sha: z.string(),
+        criteria_text: z.string(),
+        intent: z.enum(['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE','HUMAN_KEEP_CRITERIA','INITIAL_APPROVAL','MATERIAL_CHANGE']),
+        advisor_baseline_sha: z.string().optional(),
+        delta_scope: z.string().optional(),
+        human_decision: z.enum(['PENDING','APPROVE','KEEP']).default('PENDING'),
+      },
+      outputSchema: {
+        status: z.string(), advisor_required: z.boolean(),
+        criteria_write_prepared: z.literal(false), external_advice_check_required: z.boolean(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Criteria advice check.')
+      const check = projectCriteriaAdvisoryDecision(input.project_id, input)
+      const out = { ...check, external_steps: check.advisor_required ? [
+        'Read the exact current CRITERIA.md from configured GitHub Memory Repo; compare path/text/current SHA with tool inputs and confirm it is the ONE canonical Criteria file.',
+        'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, and compare its baseline Criteria SHA, delta scope and advice reference; the text can be forged and is not proof by itself.',
+        'Read back the Advisor baseline SHA from GitHub history and confirm no intervening material Criteria edit or wider final delta. If stale, fake or scope changed, do not approve; reconsult Advisor on the new delta.',
+        'Verify Human decision to approve exact advised scope separately; KEEP means no approved Criteria write.',
+        'Only then use existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS to update this SAME CRITERIA.md; read back. This check never issues write permission.',
+      ] : [
+        'Ordinary discussion, draft-only edits and Plan/Task changes do not call Advisor. Keep existing Memory/Git authorization for any actual draft write.',
+      ] }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
