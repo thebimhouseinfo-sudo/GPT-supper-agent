@@ -4823,6 +4823,7 @@ function createServer(req: Request) {
         reason: z.string(),
         project_id: z.string(),
         project_manifest_sha: z.string(),
+        external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
@@ -4835,7 +4836,8 @@ function createServer(req: Request) {
         const blocked = projectBootstrapExecutionError(project_id, project_manifest_text, bootstrap_evidence,
           target_repository_url ?? null, target_development_branch ?? null)
         if (blocked) {
-          const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha }
+          const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha,
+            external_steps: ['No GSA-controlled source write or Coder dispatch until the named Bootstrap prerequisites are satisfied.'] }
           return { structuredContent: denied, content: [{ type: 'text', text: 'DENY: ' + blocked }] }
         }
       }
@@ -4847,8 +4849,13 @@ function createServer(req: Request) {
         target_memory_path: target_memory_path ?? null,
         user_directed_external_read,
       })
-      const out = { ...decision, project_id, project_manifest_sha }
-      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW: ' : 'DENY: ') + decision.reason }] }
+      const out = { ...decision, project_id, project_manifest_sha,
+        external_steps: operation === 'MUTATE_SOURCE' ? [
+          'This checks Project scope and Bootstrap claim SHAPE only; ALLOW is NOT an attestation that caller-supplied approval, receipt or GitHub snapshots are genuine.',
+          'Independently fetch current PROJECT.md, exact Bootstrap Verification blob, Criteria, reviewed Plan and Human execution authorization from their authoritative sources before any source write. Reject stale, forged or missing evidence.',
+          'Verify live target source HEAD is on the configured Development Branch; do not write or merge to the Release Branch by inference.',
+        ] : [] }
+      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW SCOPE (readback required): ' : 'DENY: ') + decision.reason }] }
     },
   )
 
