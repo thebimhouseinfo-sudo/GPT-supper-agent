@@ -1126,9 +1126,31 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
       plan.planning_review?.reviewed_revision !== plan.planning_revision)
     return result('PLAN_REVIEW_PENDING', 'Independent current revision Reviewer PASS required.')
   const tasks = Array.isArray(plan.tasks) ? plan.tasks : []
-  if (tasks.length === 0 || tasks.some((t: any) => !t.task_id ||
-      !Array.isArray(t.completion_criteria) || t.completion_criteria.length === 0))
+  if (tasks.length === 0 || tasks.some((t: any) => typeof t.task_id !== 'string' || !t.task_id ||
+      !Array.isArray(t.completion_criteria) || t.completion_criteria.length === 0 ||
+      t.completion_criteria.some((condition: any) => typeof condition !== 'string' || !condition.trim())))
     return result('PLAN_TASK_ACCEPTANCE_MISSING', 'Each implementation Task needs a meaningful completion condition.')
+  // Assess the existing reviewed Plan dependencies; no separate lifecycle or approval gate.
+  const taskIds = new Set(tasks.map((t: any) => t.task_id))
+  if (taskIds.size !== tasks.length || tasks.some((t: any) => {
+    const dependencies = t.dependencies ?? []
+    return !Array.isArray(dependencies) || new Set(dependencies).size !== dependencies.length ||
+      dependencies.some((id: any) => typeof id !== 'string' || !taskIds.has(id) || id === t.task_id)
+  })) return result('PLAN_DEPENDENCIES_INVALID', 'Task dependencies must be unique, current, and non-self-referential.')
+  const byTaskId = new Map(tasks.map((t: any) => [t.task_id, t]))
+  const visiting = new Set<string>(), visited = new Set<string>()
+  const hasCycle = (id: string): boolean => {
+    if (visiting.has(id)) return true
+    if (visited.has(id)) return false
+    visiting.add(id)
+    const task: any = byTaskId.get(id)
+    if ((task.dependencies ?? []).some((dep: string) => hasCycle(dep))) return true
+    visiting.delete(id)
+    visited.add(id)
+    return false
+  }
+  if (tasks.some((t: any) => hasCycle(t.task_id)))
+    return result('PLAN_DEPENDENCIES_INVALID', 'Task dependency cycles cannot produce a ready implementation milestone.')
   const capability = Array.isArray(input?.capabilities) ? input.capabilities : []
   if (tasks.some((t: any) => !capability.some((c: any) =>
     c.task_id === t.task_id && (c.readiness === 'GENERIC_READY' ||
@@ -1136,8 +1158,12 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
     return result('CAPABILITY_NOT_READY', 'Generic ready or independently verified domain Task capability required, not only configured paths.')
   const milestones = Array.isArray(plan.milestones) ? plan.milestones : []
   if (milestones.length === 0 ||
-      milestones.some((m: any) => !m.milestone_id || !Array.isArray(m.node_ids) || m.node_ids.length === 0 ||
-        m.node_ids.some((id: string) => !tasks.some((t: any) => t.task_id === id))) ||
+      new Set(milestones.map((m: any) => m.milestone_id)).size !== milestones.length ||
+      milestones.some((m: any) => typeof m.milestone_id !== 'string' || !m.milestone_id ||
+        (m.name !== undefined && (typeof m.name !== 'string' || !m.name.trim())) ||
+        !Array.isArray(m.node_ids) || m.node_ids.length === 0 ||
+        new Set(m.node_ids).size !== m.node_ids.length ||
+        m.node_ids.some((id: string) => !taskIds.has(id))) ||
       tasks.some((t: any) => !milestones.some((m: any) => m.node_ids.includes(t.task_id))))
     return result('MILESTONES_NOT_READY', 'Milestones must cover actual Tasks with coherent dependencies and acceptance.')
   return result(input?.human_execution_approved === true
