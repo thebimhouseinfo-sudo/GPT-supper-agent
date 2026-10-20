@@ -319,6 +319,35 @@ test('C30 M3: official Plan cannot precede Human-approved, current canonical Cri
   assert.equal(claimed.source_write_authorized,false,'self-claimed Human approval is not a code gate')
 })
 
+test('M3: invalid, duplicate and cyclic reviewed Task dependencies cannot certify Bootstrap', () => {
+  const sha = 'a'.repeat(40)
+  const criteria = { criteria_path: 'projects/' + id + '/CRITERIA.md',
+    criteria_blob_sha: sha, approval_status: 'APPROVED' }
+  const a = '01a154b5-1a8c-7c31-ad7e-927e27c658ce'
+  const b = '01a154b5-1a8c-7c31-ad7e-927e27c658cf'
+  const tasks = [
+    { task_id: a, dependencies: [], completion_criteria: ['produce artifact'] },
+    { task_id: b, dependencies: [a], completion_criteria: ['verify artifact'] },
+  ]
+  const plan = { plan_kind: 'PROJECT_PLAN', criteria_binding: criteria,
+    planning_revision: 3, planning_review: { status: 'PASS', reviewed_revision: 3 },
+    tasks, milestones: [{ milestone_id: 'm1', name: 'Outcome', node_ids: [a, b] }] }
+  const input = { criteria, criteria_human_approved: true, criteria_current_blob_sha: sha, plan,
+    capabilities: [a, b].map(task_id => ({ task_id, readiness: 'GENERIC_READY' })) }
+  const status = patch => h.projectBootstrapReadinessDecision(id, { ...input, plan: { ...plan, ...patch } }).status
+  assert.equal(status({}), 'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: ['unknown'] }] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [b] }] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [a, a] }] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: 'bad' }] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [{ ...tasks[0], dependencies: [b] }, tasks[1] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], task_id: a }] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], completion_criteria: ['  '] }] }), 'PLAN_TASK_ACCEPTANCE_MISSING')
+  assert.equal(status({ milestones: [{ milestone_id: 'm1', node_ids: [a, a] }] }), 'MILESTONES_NOT_READY')
+  assert.equal(status({ milestones: [{ milestone_id: 'm1', node_ids: [a, b] }, { milestone_id: 'm1', node_ids: [a] }] }), 'MILESTONES_NOT_READY')
+  assert.equal(h.projectBootstrapReadinessDecision(id, { ...input, human_execution_approved: true }).source_write_authorized, false)
+})
+
 test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job lifecycle', () => {
   const tool=source.slice(source.indexOf("'project_bootstrap_readiness_prepare',"),source.indexOf("'project_branch_policy_prepare',"))
   assert.match(tool,/source_write_authorized: z.literal\(false\)/)
