@@ -290,7 +290,7 @@ test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self
     ' | SCOPE=change intake behavior | ADVICE_REF=advisor-chat-20261020'
   const input = {
     intent: 'MATERIAL_CHANGE', criteria_path: 'projects/' + id + '/CRITERIA.md',
-    criteria_current_sha: 'b'.repeat(40), criteria_text: '# Criteria\\n' + receipt,
+    criteria_current_sha: 'b'.repeat(40), criteria_text: '# Criteria\n' + receipt,
     advisor_baseline_sha: sha, delta_scope: 'change intake behavior', human_decision: 'APPROVE'
   }
   const decide = p => h.projectCriteriaAdvisoryDecision(id, { ...input, ...p })
@@ -305,9 +305,9 @@ test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self
   assert.equal(decide({ human_decision: 'PENDING' }).status, 'HUMAN_DECISION_PENDING')
   assert.equal(decide({ delta_scope: 'change execution permissions' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
   assert.equal(decide({ advisor_baseline_sha: 'c'.repeat(40) }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(decide({ criteria_text: '# Criteria\\nADVISOR SIGNED: PENDING' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(decide({ criteria_text: '# Criteria\\n' + receipt + '\\n' + receipt }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(decide({ criteria_text: '# Criteria\\n' + receipt.replace('advisor-chat-20261020', 'PENDING') }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\nADVISOR SIGNED: PENDING' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\n' + receipt + '\n' + receipt }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\n' + receipt.replace('advisor-chat-20261020', 'PENDING') }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
   assert.equal(decide({ criteria_path: 'projects/' + id + '/CRITERIA-V2.md' }).status, 'CRITERIA_BASELINE_INVALID')
   assert.equal(decide({ criteria_current_sha: 'bad' }).status, 'CRITERIA_BASELINE_INVALID')
   assert.equal(decide({ intent: 'INVALID' }).status, 'CRITERIA_INTENT_INVALID')
@@ -417,7 +417,7 @@ test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job 
   const tool=source.slice(source.indexOf("'project_bootstrap_readiness_prepare',"),source.indexOf("'project_branch_policy_prepare',"))
   assert.match(tool,/source_write_authorized: z.literal\(false\)/)
   assert.match(tool,/readOnlyHint: true/)
-  assert.match(tool,/actual Human approval/)
+  assert.match(tool,/separately verify Human execution approval/)
   assert.match(tool,/Once BOOTSTRAP READY and Human authorization were already verified/)
 })
 
@@ -499,9 +499,9 @@ test('M4 loop: rl never starts CR and Human milestone continuation stops on PASS
 
 test('M5: Coder and source-write boundaries must consume Project Bootstrap evidence', () => {
   const manifest = fixture(
-    'development_branch: upgrade/gsa-refactor\\nrelease_branch: main\\nintegration_target: upgrade/gsa-refactor',
+    'development_branch: upgrade/gsa-refactor\nrelease_branch: main\nintegration_target: upgrade/gsa-refactor',
     '- PRIMARY | OWNED | ' + repo,
-    '\\n## Branch Policy (Human-approved)\\n- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'
+    '\n## Branch Policy (Human-approved)\n- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'
   )
   const sha = 'a'.repeat(40)
   const criteria = { criteria_path: 'projects/' + id + '/CRITERIA.md',
@@ -528,7 +528,7 @@ test('M5: Coder and source-write boundaries must consume Project Bootstrap evide
   assert.match(guard(undefined), /BOOTSTRAP_REQUIRED/)
   assert.match(guard({}), /BOOTSTRAP_PROJECT_INVALID|BOOTSTRAP_PREREQUISITE_BLOCKED/)
   assert.match(guard(evidence, 'main'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
-  assert.match(guard(evidence, 'upgrade/gsa-refactor', 'https:\\/\\/github.com\\/other\\/wrong'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
+  assert.match(guard(evidence, 'upgrade/gsa-refactor', 'https://github.com/other/wrong'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
   assert.match(guard(evidence, 'upgrade/gsa-refactor', repo, ''), /BOOTSTRAP_PROJECT_INVALID/)
   assert.match(guard({ ...evidence, human_execution_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
   assert.match(guard({ ...evidence, criteria_human_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
@@ -549,7 +549,7 @@ test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelat
   const begin = source.slice(source.indexOf("'run_begin',"), source.indexOf("'relationship_knowledge_prepare',"))
   assert.match(begin, /role === 'coder'/)
   assert.match(begin, /projectBootstrapExecutionError/)
-  assert.match(begin, /BOOTSTRAP/)
+  assert.match(begin, /if \(blocked\) return \{ content:/)
   assert.match(begin, /independently GitHub-readback the exact Bootstrap Verification proof/)
   assert.match(begin, /same evidence and target branch immediately before source write/)
   assert.ok(!begin.includes("role === 'tester' && projectBootstrapExecutionError"))
