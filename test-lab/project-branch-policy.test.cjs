@@ -283,6 +283,46 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
 })
 
 
+test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self-authorizes write', () => {
+  const sha = 'a'.repeat(40)
+  const receipt = 'ADVISOR SIGNED: ADVISED | BASELINE=' + sha +
+    ' | SCOPE=change intake behavior | ADVICE_REF=advisor-chat-20261020'
+  const input = {
+    intent: 'MATERIAL_CHANGE', criteria_path: 'projects/' + id + '/CRITERIA.md',
+    criteria_current_sha: 'b'.repeat(40), criteria_text: '# Criteria\\n' + receipt,
+    advisor_baseline_sha: sha, delta_scope: 'change intake behavior', human_decision: 'APPROVE'
+  }
+  const decide = p => h.projectCriteriaAdvisoryDecision(id, { ...input, ...p })
+  const good = decide({})
+  assert.equal(good.status, 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK')
+  assert.equal(good.criteria_write_prepared, false)
+  assert.equal(good.external_advice_check_required, true)
+  assert.equal(decide({ intent: 'DISCUSSION' }).advisor_required, false)
+  assert.equal(decide({ intent: 'DRAFT_EDIT' }).advisor_required, false)
+  assert.equal(decide({ intent: 'PLAN_OR_TASK_CHANGE' }).advisor_required, false)
+  assert.equal(decide({ intent: 'HUMAN_KEEP_CRITERIA' }).status, 'HUMAN_KEEPS_CRITERIA_NO_WRITE')
+  assert.equal(decide({ human_decision: 'PENDING' }).status, 'HUMAN_DECISION_PENDING')
+  assert.equal(decide({ delta_scope: 'change execution permissions' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ advisor_baseline_sha: 'c'.repeat(40) }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\\nADVISOR SIGNED: PENDING' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\\n' + receipt + '\\n' + receipt }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_text: '# Criteria\\n' + receipt.replace('advisor-chat-20261020', 'PENDING') }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  assert.equal(decide({ criteria_path: 'projects/' + id + '/CRITERIA-V2.md' }).status, 'CRITERIA_BASELINE_INVALID')
+  assert.equal(decide({ criteria_current_sha: 'bad' }).status, 'CRITERIA_BASELINE_INVALID')
+  assert.equal(decide({ intent: 'INVALID' }).status, 'CRITERIA_INTENT_INVALID')
+})
+
+test('M4 C31: advice check is read-only and preserves existing Memory CAS', () => {
+  const tool = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
+  assert.match(tool,/readOnlyHint: true/)
+  assert.match(tool,/criteria_write_prepared: z.literal\\(false\\)/)
+  assert.match(tool,/Independently verify the actual Advisor message was delivered/)
+  assert.match(tool,/text can be forged and is not proof by itself/)
+  assert.match(tool,/existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS/)
+  assert.match(tool,/same canonical CRITERIA.md/)
+  assert.ok(!tool.includes('GitHub update_file('))
+})
+
 test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only', () => {
   const roles = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
   const planner = roles.slice(roles.indexOf('  planner: {'), roles.indexOf('  advisor: {'))
