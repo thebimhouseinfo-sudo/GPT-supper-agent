@@ -1204,6 +1204,39 @@ function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
   }
 }
 
+// M5: reuse M3 Bootstrap assessment for the two GSA-owned consequential
+// boundaries. This is a per-write evidence check, not a new Bootstrap lifecycle.
+// GitHub evidence provenance and Human authorization must still be independently
+// read back before the actual external GitHub source write.
+function projectBootstrapExecutionError(projectId: string, manifestText: string, evidence: any,
+  repositoryUrl: string | null, developmentBranch: string | null): string | null {
+  if (!evidence) return 'BOOTSTRAP_REQUIRED: no approved Project Bootstrap evidence supplied.'
+  const project = parseProjectManifest(manifestText)
+  if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
+    return 'BOOTSTRAP_PROJECT_INVALID: exact ACTIVE Project manifest required.'
+  if (!repositoryUrl || !developmentBranch || !validIntegrationBranch(developmentBranch) ||
+      !project.repositories.some((r: any) => r.relation === 'OWNED' &&
+        normalizeGithubRepo(r.url)?.url === normalizeGithubRepo(repositoryUrl)?.url) ||
+      project.branch_policies.find((p: any) => p.repository_url === normalizeGithubRepo(repositoryUrl)?.url)?.development_branch !== developmentBranch)
+    return 'BOOTSTRAP_SOURCE_BRANCH_INVALID: source target must be the Human-configured Development Branch of an OWNED repository.'
+  const readiness = projectBootstrapReadinessDecision(projectId, evidence)
+  if (readiness.status !== 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
+    return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
+  const proof = evidence?.readback_proof
+  if (!proof || proof.path !== 'projects/' + projectId + '/VERIFICATION/' + proof.name ||
+      !/^[-a-zA-Z0-9_.]+\.json$/.test(String(proof.name || '')) ||
+      !/^[0-9a-f]{40}$/.test(String(proof.sha || '')) ||
+      !/^[0-9a-f]{40}$/.test(String(proof.criteria_sha || '')) ||
+      proof.criteria_sha !== evidence.criteria_current_blob_sha ||
+      !/^[0-9a-f]{40}$/.test(String(proof.reviewed_plan_sha || '')) ||
+      typeof proof.human_approval_ref !== 'string' || !proof.human_approval_ref.trim())
+    return 'BOOTSTRAP_READBACK_PROOF_REQUIRED: immutable reviewed Plan, approved Criteria and actual Human approval references are required.'
+  // A supplied proof is not a GitHub readback. The orchestrator must re-fetch
+  // its exact blob and independently establish provenance; do not call this a
+  // completed source-write authorization without that external verification.
+  return null
+}
+
 const MILESTONE_SCHEMA = z.object({
   milestone_id: z.string().min(1),
   name: z.string().min(1),
@@ -4780,6 +4813,8 @@ function createServer(req: Request) {
         target_repository_url: z.string().url().optional(),
         target_memory_path: z.string().min(1).optional(),
         user_directed_external_read: z.boolean().default(false),
+        target_development_branch: z.string().optional(),
+        bootstrap_evidence: z.any().optional(),
       },
       outputSchema: {
         allowed: z.boolean(),
@@ -4793,9 +4828,17 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read }: any) => {
+    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read, target_development_branch, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to authorize Project scope.')
+      if (operation === 'MUTATE_SOURCE') {
+        const blocked = projectBootstrapExecutionError(project_id, project_manifest_text, bootstrap_evidence,
+          target_repository_url ?? null, target_development_branch ?? null)
+        if (blocked) {
+          const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha }
+          return { structuredContent: denied, content: [{ type: 'text', text: 'DENY: ' + blocked }] }
+        }
+      }
       const decision = projectScopeDecision({
         project_manifest_text,
         project_id,
@@ -7411,6 +7454,8 @@ function createServer(req: Request) {
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        project_manifest_text: z.string().optional(),
+        bootstrap_evidence: z.any().optional(),
       },
       outputSchema: {
         run_id: z.string(),
@@ -7430,7 +7475,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -7448,6 +7493,12 @@ function createServer(req: Request) {
       }
       if (owningJob.plan_change_pending) {
         return { content: [{ type:'text', text:'PLAN_CHANGE_PENDING_FENCE: Job is being reconciled with a newer reviewed Plan; do not start another Run.' }], isError:true }
+      }
+      if (role === 'coder') {
+        const blocked = projectBootstrapExecutionError(project_id, project_manifest_text ?? '', bootstrap_evidence,
+          owningJob.repository_context?.working_repository_url ?? null,
+          owningJob.repository_context?.integration_branch ?? null)
+        if (blocked) return { content: [{ type: 'text', text: blocked }], isError: true }
       }
       const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
       if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
@@ -7582,6 +7633,10 @@ function createServer(req: Request) {
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
+          ...(role === 'coder' ? [
+            'M5: independently GitHub-readback the exact Bootstrap Verification proof path/blob SHA, current Criteria SHA and reviewed Plan SHA; check real Human execution authorization and configured Development Branch. Caller-supplied claims are not sufficient.',
+            'Use authorize_project_scope(MUTATE_SOURCE) with the same evidence and target branch immediately before source write; do not bypass this via an alternate GSA-owned write route.',
+          ] : []),
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
