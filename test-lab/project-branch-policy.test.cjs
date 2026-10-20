@@ -405,7 +405,7 @@ test('M3: invalid, duplicate and cyclic reviewed Task dependencies cannot certif
   assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [b] }] }), 'PLAN_DEPENDENCIES_INVALID')
   assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [a, a] }] }), 'PLAN_DEPENDENCIES_INVALID')
   assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: 'bad' }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [{ ...tasks[0], dependencies: [b] }, tasks[1] }), 'PLAN_DEPENDENCIES_INVALID')
+  assert.equal(status({ tasks: [{ ...tasks[0], dependencies: [b] }, tasks[1]] }), 'PLAN_DEPENDENCIES_INVALID')
   assert.equal(status({ tasks: [tasks[0], { ...tasks[1], task_id: a }] }), 'PLAN_DEPENDENCIES_INVALID')
   assert.equal(status({ tasks: [tasks[0], { ...tasks[1], completion_criteria: ['  '] }] }), 'PLAN_TASK_ACCEPTANCE_MISSING')
   assert.equal(status({ milestones: [{ milestone_id: 'm1', node_ids: [a, a] }] }), 'MILESTONES_NOT_READY')
