@@ -17,6 +17,7 @@ const names = [
   'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
   'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment', 'projectBootstrapReadinessDecision',
+  'projectCriteriaAdvisoryDecision', 'projectBootstrapExecutionError',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
@@ -494,6 +495,65 @@ test('M4 loop: rl never starts CR and Human milestone continuation stops on PASS
   assert.equal(h.milestoneLoopDecision({ ...job, milestones: [{ ...job.milestones[0], continuation: 'AUTO' }] }, 'm', 'REVIEWER', 'PASS').next_action, 'CONTINUE_AUTO')
   assert.equal(h.milestoneLoopDecision(job, 'm', 'CR', 'PASS').next_action, 'STOP')
   assert.equal(h.milestoneLoopDecision({ ...job, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 1 } }, 'm', 'BEGIN', 'NONE').next_action, 'STOP')
+})
+
+test('M5: Coder and source-write boundaries must consume Project Bootstrap evidence', () => {
+  const manifest = fixture(
+    'development_branch: upgrade/gsa-refactor\\nrelease_branch: main\\nintegration_target: upgrade/gsa-refactor',
+    '- PRIMARY | OWNED | ' + repo,
+    '\\n## Branch Policy (Human-approved)\\n- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'
+  )
+  const sha = 'a'.repeat(40)
+  const criteria = { criteria_path: 'projects/' + id + '/CRITERIA.md',
+    criteria_blob_sha: sha, approval_status: 'APPROVED' }
+  const task = '01a154b5-1a8c-7c31-ad7e-927e27c658ce'
+  const plan = { plan_kind: 'PROJECT_PLAN', criteria_binding: criteria,
+    planning_revision: 1, planning_review: { status: 'PASS', reviewed_revision: 1 },
+    tasks: [{ task_id: task, dependencies: [], completion_criteria: ['observable acceptance'] }],
+    milestones: [{ milestone_id: 'm1', node_ids: [task] }] }
+  const proof = {
+    path: 'projects/' + id + '/VERIFICATION/bootstrap-proof.json',
+    name: 'bootstrap-proof.json', sha: 'b'.repeat(40),
+    criteria_sha: sha, reviewed_plan_sha: 'c'.repeat(40),
+    human_approval_ref: 'human-reviewed-plan-message'
+  }
+  const evidence = {
+    criteria, criteria_human_approved: true, criteria_current_blob_sha: sha, plan,
+    capabilities: [{ task_id: task, readiness: 'GENERIC_READY' }],
+    human_execution_approved: true, readback_proof: proof
+  }
+  const guard = (e, branch = 'upgrade/gsa-refactor', targetRepo = repo, currentManifest = manifest) =>
+    h.projectBootstrapExecutionError(id, currentManifest, e, targetRepo, branch)
+  assert.equal(guard(evidence), null, 'Prepared only: actual GitHub readback is a separate mandatory step')
+  assert.match(guard(undefined), /BOOTSTRAP_REQUIRED/)
+  assert.match(guard({}), /BOOTSTRAP_PROJECT_INVALID|BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard(evidence, 'main'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
+  assert.match(guard(evidence, 'upgrade/gsa-refactor', 'https:\\/\\/github.com\\/other\\/wrong'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
+  assert.match(guard(evidence, 'upgrade/gsa-refactor', repo, ''), /BOOTSTRAP_PROJECT_INVALID/)
+  assert.match(guard({ ...evidence, human_execution_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard({ ...evidence, criteria_human_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard({ ...evidence, plan: { ...plan, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 1 } } }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard({ ...evidence, capabilities: [] }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard({ ...evidence, plan: { ...plan, milestones: [] } }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
+  assert.match(guard({ ...evidence, readback_proof: null }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
+  assert.match(guard({ ...evidence, readback_proof: { ...proof, criteria_sha: 'd'.repeat(40) } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
+  assert.match(guard({ ...evidence, readback_proof: { ...proof, sha: 'bad' } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
+  assert.match(guard({ ...evidence, readback_proof: { ...proof, human_approval_ref: '' } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
+})
+
+test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelated roles remain intact', () => {
+  const scope = source.slice(source.indexOf("'authorize_project_scope',"), source.indexOf("'authorize_memory_mutation',"))
+  assert.match(scope, /operation === 'MUTATE_SOURCE'/)
+  assert.match(scope, /projectBootstrapExecutionError/)
+  assert.match(scope, /allowed: false, mutation_allowed: false/)
+  const begin = source.slice(source.indexOf("'run_begin',"), source.indexOf("'relationship_knowledge_prepare',"))
+  assert.match(begin, /role === 'coder'/)
+  assert.match(begin, /projectBootstrapExecutionError/)
+  assert.match(begin, /BOOTSTRAP/)
+  assert.match(begin, /independently GitHub-readback the exact Bootstrap Verification proof/)
+  assert.match(begin, /same evidence and target branch immediately before source write/)
+  assert.ok(!begin.includes("role === 'tester' && projectBootstrapExecutionError"))
+  assert.ok(!begin.includes("role === 'planner' && projectBootstrapExecutionError"))
 })
 
 test('M6: isolated staging slugs never inherit production execution or Memory namespace', () => {
