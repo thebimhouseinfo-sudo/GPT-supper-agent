@@ -283,6 +283,30 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
 })
 
 
+test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only', () => {
+  const roles = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+  const planner = roles.slice(roles.indexOf('  planner: {'), roles.indexOf('  advisor: {'))
+  const advisor = roles.slice(roles.indexOf('  advisor: {'), roles.indexOf('  designer: {'))
+  assert.match(planner, /Advisor INACTIVE during brainstorm/)
+  assert.match(planner, /Only explicit Human intent to finalize first Criteria or materially change approved WHAT\/WHY/)
+  assert.match(planner, /actual Advisor advice delivered to Human/)
+  assert.match(planner, /ADVISOR SIGNED/)
+  assert.match(planner, /canonical Criteria baseline SHA and advised delta/)
+  assert.match(planner, /A literal Planner-created signature, missing\/stale advice, or an out-of-scope new material delta never satisfies this gate/)
+  assert.match(planner, /Planner CAS\/reads back only the Human-decided advised change/)
+  assert.match(planner, /not wording, Plan HOW\/WHEN, review or Task/)
+  assert.match(advisor, /after personally delivering advice to Human/)
+  assert.match(advisor, /simple ADVISOR SIGNED acknowledgement/)
+  assert.match(advisor, /Criteria baseline blob SHA and the precise material delta scope/)
+  assert.match(advisor, /It proves advice happened, not approval/)
+  assert.match(advisor, /End Advisor activity immediately/)
+  assert.match(advisor, /No quality verdict, approval, veto or file write by Advisor/)
+  const exposed = source.slice(source.indexOf("'get_agent_harness',"), source.indexOf("'get_skill_catalog',"))
+  assert.match(exposed, /'advisor'/)
+  assert.match(exposed, /renderHarness\(role\)/)
+  assert.equal((roles.match(/advisor: \{/g) || []).length, 1, 'No duplicate Advisor agent')
+})
+
 test('C30 M3: official Plan cannot precede Human-approved, current canonical Criteria', () => {
   const sha = 'a'.repeat(40)
   const criteria = { criteria_path:'projects/' + id + '/CRITERIA.md',
