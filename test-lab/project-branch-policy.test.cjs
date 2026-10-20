@@ -315,7 +315,7 @@ test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self
 test('M4 C31: advice check is read-only and preserves existing Memory CAS', () => {
   const tool = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
   assert.match(tool,/readOnlyHint: true/)
-  assert.match(tool,/criteria_write_prepared: z.literal\\(false\\)/)
+  assert.match(tool,/criteria_write_prepared: z\.literal\(false\)/)
   assert.match(tool,/Independently verify the actual Advisor message was delivered/)
   assert.match(tool,/text can be forged and is not proof by itself/)
   assert.match(tool,/existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS/)
