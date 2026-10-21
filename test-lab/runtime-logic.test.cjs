@@ -65,3 +65,79 @@ test('two-writer CAS model allows one winner and rejects loser (MODEL ONLY)', ()
   assert.equal(tryUpdate(sha,'c'.repeat(40)),false);
   assert.equal(durable,'b'.repeat(40));
 });
+// M1 CRL: test exact runtime helpers, not a hand-written equivalent.
+// These helper-level checks do NOT replace end-to-end persisted Reviewer/CR verification.
+const crlRoute = load('milestoneLoopDecision');
+const crlEvidence = load('milestoneCrlEvidenceError', { validMemoryPath: () => true });
+const crlJob = {
+  project_id: '00000000-0000-0000-0000-000000000001',
+  job_id: '00000000-0000-0000-0000-000000000002',
+  type: 'code', execution_contract: 'NEXT', lifecycle: 'IN_PROGRESS',
+  planning_revision: 5, planning_review: {status:'PASS',reviewed_revision:5},
+  milestones: [{milestone_id:'M1',node_ids:['task-A'],review_loop:'crl',human_pre_authorized:true,continuation:'AUTO'}],
+};
+function crl(stage,verdict,jobOverride=crlJob,noProgress=0) {
+  return crlRoute(jobOverride,'M1',stage,verdict,noProgress);
+}
+test('M1 source TypeScript parses and CRL inner RL truly transitions in both directions', () => {
+  assert.equal(parsed.parseDiagnostics.length,0);
+  assert.equal(crl('BEGIN','NONE').next_action,'RUN_REVIEWER');
+  assert.equal(crl('REVIEWER','FAIL').next_action,'REPAIR_AND_REREVIEW');
+  assert.equal(crl('REVIEWER','PASS').next_action,'VERIFY_REVIEWER_PASS_THEN_CR');
+  assert.equal(crl('CR','FAIL').next_action,'REPAIR_AND_REREVIEW');
+  assert.equal(crl('CR','PASS').next_action,'CONTINUE_AUTO');
+  assert.equal(crl('CR','BLOCKED').next_action,'STOP_BLOCKED');
+  assert.equal(crl('CR','FAIL',crlJob,3).next_action,'STOP_BLOCKED');
+});
+test('M1 Planner-owned repairs go to Planner, Coder-owned repairs to Coder', () => {
+  const plannerJob={...crlJob,type:'plan'};
+  assert.equal(crl('CR','FAIL',plannerJob).next_role,'planner');
+  assert.equal(crl('REVIEWER','FAIL',plannerJob).next_role,'planner');
+  assert.equal(crl('CR','FAIL').next_role,'coder');
+  assert.equal(crl('REVIEWER','FAIL').next_role,'coder');
+});
+test('M1 CRL never admits unapproved milestone or stale planning revision', () => {
+  assert.equal(crl('BEGIN','NONE',{...crlJob,milestones:[]}).next_action,'STOP');
+  assert.equal(crl('BEGIN','NONE',{...crlJob,milestones:[{...crlJob.milestones[0],human_pre_authorized:false}]}).next_action,'STOP');
+  assert.equal(crl('BEGIN','NONE',{...crlJob,planning_review:{status:'PASS',reviewed_revision:4}}).next_action,'STOP');
+});
+function reviewSnapshot(changes={}) {
+  return {path:'projects/'+crlJob.project_id+'/VERIFICATION/v.json',sha,
+    record_text:JSON.stringify({
+      kind:'REVIEW',result:'PASS',producer:'reviewer',project_id:crlJob.project_id,
+      job_id:crlJob.job_id,planning_revision:5,milestone_id:'M1',target_revision:sha,...changes,
+    })};
+}
+test('M1 CRL evidence is exact job/milestone/revision AND source SHA bound', () => {
+  assert.equal(crlEvidence(crlJob,'M1',reviewSnapshot(),sha),null);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot(),undefined),/SOURCE_REVISION_MISMATCH/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({milestone_id:'M2'}),sha),/REVIEW_INVALID/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({planning_revision:4}),sha),/REVIEW_INVALID/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({result:'FAIL'}),sha),/REVIEW_INVALID/);
+});
+test('M1 negative control: removing source SHA comparison makes stale-evidence assertion RED', () => {
+  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
+  assert.ok(node);
+  const good=node.getText(parsed);
+  const mutant=good.replace('review.target_revision !== targetRevision','false');
+  assert.notEqual(mutant,good,'mutation must alter the actual code');
+  const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const broken=vm.runInNewContext(js+'\nmilestoneCrlEvidenceError',{validMemoryPath:()=>true,JSON,String});
+  assert.throws(()=>assert.match(broken(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/),assert.AssertionError);
+});
+test('M1 source CR record routes preauthorized milestone via orchestrator, direct cr to Human', () => {
+  const start=source.indexOf("'critic_review_record'");
+  const end=source.indexOf("'checkpoint_claim_prepare'",start);
+  assert.ok(start>0&&end>start);
+  const route=source.slice(start,end);
+  assert.match(route,/next_role:\s*human_invoked === true \? 'human' : 'orchestrator'/);
+  assert.match(route,/milestone_loop_evaluate\(stage=CR/);
+  assert.match(route,/After immutable CR Verification persistence and exact readback/);
+  const runStart=source.indexOf("'run_begin'");
+  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
+  assert.match(source.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
+  const verifyStart=source.indexOf("'run_verification_record'");
+  const verifyEnd=source.indexOf("'run_complete'",verifyStart);
+  assert.match(source.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
+});
