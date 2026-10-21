@@ -1174,33 +1174,91 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
 // C31: one canonical Criteria file, one scoped acknowledgement after actual Advisor advice.
 // This validates scope and document shape, not the origin of chat messages. A caller-supplied
 // signature is not evidence that an Advisor actually advised Human; readback is mandatory.
+// C31 shared writer/parser. Legacy Markdown is read, not rewritten.
+const ADVISOR_RECEIPT_SCOPE_MAX = 512
+function formatAdvisorAdviceReceipt(baseline: string, scope: string, adviceRef: string): string | null {
+  const valid = (value: string, max: number) => typeof value === 'string' && value.trim() === value &&
+    value.length > 0 && value.length <= max && !/[\r\n|]/.test(value)
+  if (!/^[0-9a-f]{40}$/.test(baseline) || !valid(scope, ADVISOR_RECEIPT_SCOPE_MAX) ||
+      !valid(adviceRef, 300) || adviceRef === 'PENDING') return null
+  return 'ADVISOR SIGNED: ADVISED | BASELINE=' + baseline + ' | SCOPE=' + scope + ' | ADVICE_REF=' + adviceRef
+}
+function parseAdvisorAdviceReceipts(text: string) {
+  const lines = text.split(/\r?\n/)
+  const receipts: Array<{ baseline: string, scope: string, adviceRef: string, format: string }> = []
+  let malformed = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!/^(?:-\s*)?ADVISOR SIGNED:\s*ADVISED\b/.test(line)) continue
+    const oneLine = line.match(/^(?:-\s*)?ADVISOR SIGNED: ADVISED \| BASELINE=([0-9a-f]{40}) \| SCOPE=([^|\r\n]+) \| ADVICE_REF=([^|\r\n]+)$/)
+    if (oneLine) {
+      const [, baseline, scope, adviceRef] = oneLine
+      if (!formatAdvisorAdviceReceipt(baseline, scope, adviceRef)) malformed = true
+      else receipts.push({ baseline, scope, adviceRef, format: 'CANONICAL' })
+      continue
+    }
+    if (!/^(?:-\s*)?ADVISOR SIGNED:\s*ADVISED\s+[—-]\s+\S/.test(line)) {
+      malformed = true
+      continue
+    }
+    const fields: Record<string, string> = {}
+    let cursor = i + 1
+    for (; cursor < lines.length && cursor <= i + 8; cursor++) {
+      const row = lines[cursor]
+      if (!/^\s{2,}-\s+/.test(row)) break
+      const field = row.match(/^\s{2,}-\s+(advisor_baseline_sha|delta_scope|advice_reference):\s*(.+?)\s*$/)
+      if (!field) break
+      if (fields[field[1]] !== undefined) { malformed = true; break }
+      let value = field[2].trim()
+      const tick = String.fromCharCode(96)
+      if (value.startsWith(tick) && value.endsWith(tick)) value = value.slice(1, -1)
+      fields[field[1]] = value
+    }
+    i = cursor - 1
+    if (!fields.advisor_baseline_sha || !fields.delta_scope || !fields.advice_reference ||
+        !formatAdvisorAdviceReceipt(fields.advisor_baseline_sha, fields.delta_scope, fields.advice_reference))
+      malformed = true
+    else receipts.push({ baseline: fields.advisor_baseline_sha, scope: fields.delta_scope,
+      adviceRef: fields.advice_reference, format: 'LEGACY_MARKDOWN' })
+  }
+  return { receipts, malformed }
+}
 function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
-  const reject = (status: string) => ({ status, advisor_required: true, criteria_write_prepared: false, external_advice_check_required: true })
+  const reject = (status: string, receipt?: any) => ({
+    status, advisor_required: true, criteria_write_prepared: false,
+    external_advice_check_required: true,
+    receipt_format: receipt?.format ?? null,
+    receipt_baseline_sha: receipt?.baseline ?? null,
+    receipt_scope: receipt?.scope ?? null,
+  })
   const intent = input?.intent
   if (['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE'].includes(intent))
-    return { status: 'ADVISOR_NOT_REQUIRED', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+    return { ...reject('ADVISOR_NOT_REQUIRED'), advisor_required: false, external_advice_check_required: false }
   if (intent === 'HUMAN_KEEP_CRITERIA')
-    return { status: 'HUMAN_KEEPS_CRITERIA_NO_WRITE', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+    return { ...reject('HUMAN_KEEPS_CRITERIA_NO_WRITE'), advisor_required: false, external_advice_check_required: false }
   if (!['INITIAL_APPROVAL','MATERIAL_CHANGE'].includes(intent)) return reject('CRITERIA_INTENT_INVALID')
-  const sha = (v: any) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   if (input?.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
-      !sha(input?.criteria_current_sha) || typeof input?.criteria_text !== 'string')
-    return reject('CRITERIA_BASELINE_INVALID')
-  if (!sha(input?.advisor_baseline_sha) || typeof input?.delta_scope !== 'string' ||
-      !input.delta_scope.trim() || input.delta_scope.length > 200)
-    return reject('ADVISOR_SCOPE_MISSING')
-  // A receipt must already be in the exact current canonical document, not in a
-  // second Criteria file, arbitrary approval log, or a Planner-supplied flag.
-  const receipts = [...input.criteria_text.matchAll(/^ADVISOR SIGNED: ADVISED \| BASELINE=([0-9a-f]{40}) \| SCOPE=([^|\r\n]{1,200}) \| ADVICE_REF=([^|\r\n]{1,300})$/gm)]
-  const relevant = receipts.filter((m: any) => m[1] === input.advisor_baseline_sha &&
-    m[2] === input.delta_scope.trim() && m[3].trim() && m[3].trim() !== 'PENDING')
-  if (relevant.length !== 1 || receipts.length !== 1) return reject('ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  if (input?.human_decision !== 'APPROVE') return reject('HUMAN_DECISION_PENDING')
+      !/^[0-9a-f]{40}$/.test(String(input?.criteria_current_sha ?? '')) ||
+      typeof input?.criteria_text !== 'string') return reject('CRITERIA_BASELINE_INVALID')
+  const parsed = parseAdvisorAdviceReceipts(input.criteria_text)
+  if (parsed.malformed || parsed.receipts.length !== 1)
+    return reject('ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  const receipt = parsed.receipts[0]
+  const baseline = input.advisor_baseline_sha ?? receipt.baseline
+  const scope = input.delta_scope === undefined ? receipt.scope : input.delta_scope
+  if (baseline === undefined || baseline === null || baseline === '')
+    return reject('ADVISOR_BASELINE_SHA_MISSING', receipt)
+  if (!/^[0-9a-f]{40}$/.test(String(baseline))) return reject('ADVISOR_BASELINE_SHA_INVALID', receipt)
+  if (typeof scope !== 'string' || !scope.trim()) return reject('ADVISOR_SCOPE_MISSING', receipt)
+  if (scope.length > ADVISOR_RECEIPT_SCOPE_MAX) return reject('ADVISOR_SCOPE_TOO_LONG', receipt)
+  if (baseline !== receipt.baseline) return reject('ADVISOR_BASELINE_MISMATCH', receipt)
+  if (scope !== receipt.scope) return reject('ADVISOR_SCOPE_MISMATCH', receipt)
+  if (input?.human_decision !== 'APPROVE') return reject('HUMAN_DECISION_PENDING', receipt)
   return {
     status: 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK',
-    advisor_required: true,
-    criteria_write_prepared: false,
-    external_advice_check_required: true,
+    advisor_required: true, criteria_write_prepared: false,
+    external_advice_check_required: true, receipt_format: receipt.format,
+    receipt_baseline_sha: receipt.baseline, receipt_scope: receipt.scope,
   }
 }
 
@@ -2327,7 +2385,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'ON NEW HUMAN MESSAGE: apply shared LOW REASONING classify/clarify/skeleton before this planning loop. Answer questions directly; only enter L0 for a defined planning objective after required skeleton confirmation.',
       'FRESH START: for NEW/ADOPT/REGISTERED, inspect repository/ownership and baseline minimally, confirm configured development_branch with Human when missing, and create minimal AGENTS.md pointing to optional Coder/Tester addins without duplicating global role rules.',
       'DISCOVER CRITERIA: clarify Human product GOAL, minimum useful result, personal/internal/commercial purpose when known, actual scale and committed future scale, trust/data/host constraints, proportionate stability/security and explicit non-goals. Keep unknowns CHUA_CHOT in ONE Criteria file; do not invent enterprise assumptions.',
-      'ADVISOR/HUMAN: keep Advisor INACTIVE during brainstorm, research and ordinary Criteria drafting. Only explicit Human intent to finalize first Criteria or materially change approved WHAT/WHY activates Advisor. Before an approved Criteria write, require actual Advisor advice delivered to Human and scoped ADVISOR SIGNED acknowledgement tied to exact canonical Criteria baseline SHA and advised delta in the SAME CRITERIA.md. A literal Planner-created signature, missing/stale advice, or an out-of-scope new material delta never satisfies this gate. Human chooses to proceed or keep Criteria; Planner CAS/reads back only the Human-decided advised change. Reconsult only for a new material delta, not wording, Plan HOW/WHEN, review or Task.',
+      'ADVISOR/HUMAN: Advisor remains INACTIVE for brainstorming/drafts/Plan changes. Only explicit Human intent to approve first Criteria or change approved WHAT/WHY activates Advisor. After actual advice record exactly one SAME-file receipt using formatAdvisorAdviceReceipt: ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git blob SHA> | SCOPE=<exact scope> | ADVICE_REF=<actual advice reference>. Existing indented Markdown legacy receipts are accepted unchanged; omit duplicate tool baseline/scope to derive the recorded values. BEFORE approved Criteria CAS verify real Advisor message, current baseline, delta and Human decision independently; receipt text is not provenance or approval. Do not re-ask Human for an identical documented choice.',
       'GOAL FIRST: after Criteria revision check Overall GOAL and every Phase GOAL before changing milestone/Job/Task/test details; Reviewer covers missing/excess and does not convert AI advice into Human requirements.',
       'PLANNED BRANCH: for code tasks bind integration target to OWNED repo development_branch from PROJECT.md; if missing or stale, allow research/plan but do not direct Coder to source write/merge against guessed main/default.',
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
@@ -2362,7 +2420,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'GROUND: Human Criteria WHAT/WHY is authoritative. Read actual architecture/source when needed; Plan proposed by AI is NOT a Human requirement.',
       'ADVISE: distinguish verified facts from uncertainty; explain feasibility, conditions, costs, unnecessary complexity and ripple effects, including changes that may force major redesign.',
       'CHOICES: offer practical alternatives only when useful; do not force fixed tiers.',
-      'HANDOFF: after personally delivering advice to Human, issue a simple ADVISOR SIGNED acknowledgement stating ADVISED, current canonical Criteria baseline blob SHA and the precise material delta scope discussed. It proves advice happened, not approval; do not issue it before advice or on ordinary conversation. Planner may record the acknowledgement in the SAME CRITERIA.md after independently verifying the Advisor handoff. Human then decides accept/adjust/keep; re-consult only if final material delta lies outside advised scope. End Advisor activity immediately. No quality verdict, approval, veto or file write by Advisor.',
+      'HANDOFF: only after delivering actual advice to Human, supply exactly: ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Criteria Git blob SHA> | SCOPE=<exact advised scope> | ADVICE_REF=<actual advice message reference>. Planner verifies real Advisor handoff and writes to SAME CRITERIA.md. Older indented Markdown receipts remain acceptable and need no rewrite. Receipt format alone never proves advice or Human approval. End Advisor activity immediately.',
     ],
     outputs: ['technical advice for Human decision', 'impact/tradeoff and uncertainty explanation', 'ADVISOR SIGNED acknowledgement scoped to Criteria baseline SHA and advised material delta (only after advice delivered)'],
     canonical_refs: ['PROJECT-MEMORY.md', 'PLANNER-SCOPE-AND-UIUX.md', 'EXECUTION-AND-REVIEW.md'],
@@ -5271,7 +5329,7 @@ function createServer(req: Request) {
         '## Approval',
         'Human decision: PENDING',
         'Technical Advisor: INACTIVE until Human requests initial Criteria approval or material approved Criteria change.',
-        'ADVISOR SIGNED: PENDING; only actual advice delivered to Human may sign for a baseline revision and scoped delta.',
+        'ADVISOR SIGNED: PENDING',
         'Planner updates this SAME file on Human choice; do not auto-promote DRAFT, create Criteria V2 or infer approval from SHA.',
         '',
       ].join('\n') : ''
@@ -5291,6 +5349,7 @@ function createServer(req: Request) {
           'Create AGENTS.md only when absent; create canonical Criteria DRAFT only if intake_disposition=CREATE_DRAFT_IF_ABSENT and GitHub independently confirms file absent. Each CREATE requires existing scope+memory authorization and exact readback. Otherwise do not write Criteria.',
           'For EXISTING with Criteria, inspect product-theory fit and compare actual source for achieved/missing/excess/drift; give Human a report, not an automatic Criteria edit. For EXISTING without Criteria, inspect source then draft a product hypothesis marked CHUA_CHOT; no code-derived approval.',
           'If Development Branch is unconfigured, Admin consults Human and prepares PROJECT.md branch configuration before dependent source writes; Project open/chat/discovery may continue.',
+          'Before writing approved Criteria: use canonical ADVISOR SIGNED: ADVISED | BASELINE=<sha> | SCOPE=<exact scope> | ADVICE_REF=<real reference> or accept saved indented Markdown legacy receipt unchanged. Validate structure with project_criteria_advice_check and independently read back Advisor message, Human decision and canonical Criteria SHA; never invent approval.',
           'Advisor stays inactive while brainstorming or editing DRAFT. Activate ONLY on explicit Human intent to finalize first Criteria or material WHAT/WHY change; advice delivery acknowledges ADVISOR SIGNED for revision/delta scope in the SAME CRITERIA.md. Human decides; Planner only then writes/readbacks approved changes. No fake Advisor signature.',
           'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
         ],
@@ -5303,7 +5362,7 @@ function createServer(req: Request) {
     'project_criteria_advice_check',
     {
       title: 'Verify scoped Advisor advice before approved Criteria write',
-      description: 'C31 READ ONLY. Check whether the same canonical CRITERIA.md contains exactly one matching ADVISOR SIGNED receipt for Human Criteria approval/change. Never treats caller claims or signature text alone as proof of Advisor provenance or Human approval.',
+      description: 'C31 READ ONLY. Parse same-file canonical or saved indented Markdown legacy Advisor receipts. Derive exact baseline/scope from receipt when optional caller values are absent. Structural match is not Advisor provenance, Human approval or write authorization.',
       inputSchema: {
         project_id: z.string().uuid(),
         criteria_path: z.string().min(1),
@@ -5317,6 +5376,7 @@ function createServer(req: Request) {
       outputSchema: {
         status: z.string(), advisor_required: z.boolean(),
         criteria_write_prepared: z.literal(false), external_advice_check_required: z.boolean(),
+        receipt_format: z.string().nullable(), receipt_baseline_sha: z.string().nullable(), receipt_scope: z.string().nullable(),
         external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -5329,7 +5389,8 @@ function createServer(req: Request) {
       const check = projectCriteriaAdvisoryDecision(input.project_id, input)
       const out = { ...check, external_steps: check.advisor_required ? [
         'Read the exact current CRITERIA.md from configured GitHub Memory Repo; compare path/text/current SHA with tool inputs and confirm it is the ONE canonical Criteria file.',
-        'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, and compare its baseline Criteria SHA, delta scope and advice reference; the text can be forged and is not proof by itself.',
+        'For new receipts use canonical ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git SHA> | SCOPE=<exact advised scope> | ADVICE_REF=<actual message reference>. Previously saved indented Markdown legacy receipts are valid and need not be rewritten. Omit duplicate baseline/scope inputs when rechecking saved receipts; explicitly provided ones must match exactly.',
+        'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, including its baseline, exact delta scope and advice reference. Text is not proof by itself.',
         'Read back the Advisor baseline SHA from GitHub history and confirm no intervening material Criteria edit or wider final delta. If stale, fake or scope changed, do not approve; reconsult Advisor on the new delta.',
         'Verify Human decision to approve exact advised scope separately; KEEP means no approved Criteria write.',
         'Only then use existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS to update this SAME CRITERIA.md; read back. This check never issues write permission.',
