@@ -1367,10 +1367,10 @@ function milestoneLoopDecision(job: any, milestoneId: string, stage: string, ver
   if (verdict === 'BLOCKED') return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'Reviewer/CR reported a real blocker.' }
   if (stage === 'BEGIN') return { next_action: 'RUN_REVIEWER', next_role: 'reviewer', resume_same_turn: true, reason: 'Begin approved milestone rl.' }
   if (stage === 'REVIEWER' && ['FAIL','CHANGES_REQUIRED'].includes(verdict)) {
-    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: job?.type === 'plan' ? 'planner' : 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
   }
   if (stage === 'CR' && ['FAIL','CHANGES_REQUIRED'].includes(verdict) && milestone.review_loop === 'crl') {
-    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: job?.type === 'plan' ? 'planner' : 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
   }
   if (stage === 'REVIEWER' && verdict === 'PASS' && milestone.review_loop === 'crl') {
     return { next_action: 'VERIFY_REVIEWER_PASS_THEN_CR', next_role: 'orchestrator', resume_same_turn: true, reason: 'Bind exact current Reviewer PASS Verification then invoke CR only for this Human-approved milestone.' }
@@ -1382,7 +1382,7 @@ function milestoneLoopDecision(job: any, milestoneId: string, stage: string, ver
   return stopped('Review stage/verdict is not a valid transition for this milestone.')
 }
 
-function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any): string | null {
+function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any, targetRevision?: string): string | null {
   const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
   if (!milestoneId || !milestone || milestone.review_loop !== 'crl' || milestone.human_pre_authorized !== true) {
     return 'CR_MILESTONE_UNAUTHORIZED: Human must have approved crl on this exact milestone.'
@@ -1401,6 +1401,11 @@ function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewe
       review.planning_revision !== job.planning_revision ||
       review.milestone_id !== milestoneId || review.producer !== 'reviewer') {
     return 'CR_MILESTONE_REVIEW_INVALID: Reviewer PASS must match this Job/milestone/planning revision.'
+  }
+  if (job?.type === 'code' &&
+      (!/^[0-9a-f]{40}$/.test(String(targetRevision ?? '')) ||
+       review.target_revision !== targetRevision)) {
+    return 'CR_MILESTONE_SOURCE_REVISION_MISMATCH: fresh Reviewer PASS must match exact target source revision.'
   }
   return null
 }
@@ -2504,6 +2509,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'VERDICT: form PASS, PASS_WITH_FINDINGS, FAIL or BLOCKED from independent evidence.',
       'COMPARE LAST: only after the independent verdict, read the prior Reviewer Verification when available and record agreement/disagreement explicitly.',
       'RECORD: persist a CRITIC_REVIEW Verification artifact. Do not mutate Job lifecycle or source.',
+      'MILESTONE CRL CONTINUATION: after exact CR verification readback, return through milestone_loop_evaluate and run the inner Reviewer repair loop on CR FAIL; direct Human cr remains one-shot.',
     ],
     outputs: ['CRITIC_REVIEW Verification record', 'independent findings', 'prior-review comparison'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
@@ -6811,7 +6817,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
       const milestoneError = human_invoked === true ? null :
-        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot, target_revision)
       if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       const result = {
         role: 'critic_reviewer',
@@ -6889,7 +6895,7 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
       }
-      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot, target_revision)
       if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
@@ -6899,6 +6905,10 @@ function createServer(req: Request) {
       }
       if (result === 'PASS' && (findings ?? []).length > 0) {
         return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
+      }
+      if (result === 'PASS_WITH_FINDINGS' &&
+          (!(findings ?? []).length || (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity)))) {
+        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_FINDINGS_BLOCKING: important/critical CR findings require FAIL, and PASS_WITH_FINDINGS requires nonblocking findings.' }], isError: true }
       }
       const verificationId = uuidv7()
       const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
@@ -6930,12 +6940,17 @@ function createServer(req: Request) {
         verification_memory_path: memoryPath,
         verification_record_text: prettyJson(verification),
         job_mutated: false,
-        next_role: 'human',
+        next_role: human_invoked === true ? 'human' : 'orchestrator',
         external_steps: [
           ...(human_invoked === true ? [] : ['Re-fetch the exact current Job SHA from GitHub Memory Repo and confirm Human-approved milestone crl, then independently fetch the matching Reviewer PASS snapshot path/SHA before recording CR. Supplied snapshot JSON is not evidence by itself.']),
           'Persist verification_record_text at verification_memory_path after authorize_memory_mutation(create).',
           'Do not update the Job record or lifecycle from CR output.',
-          'Present the independent verdict and any disagreement to Human for the next decision.',
+          ...(human_invoked === true
+            ? ['Present the independent CR verdict to Human. Direct cr remains a one-shot review.']
+            : [
+                'After immutable CR Verification persistence and exact readback, re-fetch current Job and call milestone_loop_evaluate(stage=CR, verdict=' + (result === 'PASS_WITH_FINDINGS' ? 'PASS' : result) + ') on the approved milestone. PASS_WITH_FINDINGS is accepted only with nonblocking MINOR findings.',
+                'Follow returned continuation in the SAME turn: CR FAIL -> correct Planner/Coder owner repairs -> fresh Reviewer PASS at exact source revision -> independent CR again. CR PASS advances only when authorized; BLOCKED/no progress stops. Never reuse old Reviewer PASS.',
+              ]),
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -7649,6 +7664,14 @@ function createServer(req: Request) {
           isError: true,
         }
       }
+      const approvedReviewMilestones = role === 'reviewer' && primary_task_id
+        ? (owningJob.milestones ?? []).filter((m: any) =>
+            (m.node_ids ?? []).includes(primary_task_id) &&
+            ['rl','crl'].includes(m.review_loop) && m.human_pre_authorized === true)
+        : []
+      if (approvedReviewMilestones.length > 1) {
+        return { content: [{ type: 'text', text: 'MILESTONE_REVIEW_AMBIGUOUS: Reviewer Task belongs to more than one approved review milestone.' }], isError: true }
+      }
       const runId = uuidv7()
       const now = new Date().toISOString()
       const record = {
@@ -7659,6 +7682,7 @@ function createServer(req: Request) {
         execution_contract: executionContract,
         ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         primary_task_id: primary_task_id ?? null,
+        ...(role === 'reviewer' && approvedReviewMilestones.length === 1 ? { milestone_id: approvedReviewMilestones[0].milestone_id } : {}),
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
         role,
@@ -8012,6 +8036,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         task_id: run.primary_task_id ?? null,
+        ...(run.role === 'reviewer' && run.milestone_id ? { milestone_id: run.milestone_id } : {}),
         run_id,
         target_ref: run.target_ref ?? null,
         target_revision: run.target_revision ?? null,
