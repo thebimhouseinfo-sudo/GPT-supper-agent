@@ -141,3 +141,91 @@ test('M1 source CR record routes preauthorized milestone via orchestrator, direc
   const verifyEnd=source.indexOf("'run_complete'",verifyStart);
   assert.match(source.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
 });
+
+
+// P0 CadGPT Bootstrap: source-extracted validators and contract regressions.
+// Run against current source; this suite intentionally does NOT attest external GitHub evidence.
+const criteriaBinding = load('projectCriteriaBindingError');
+const bootstrapReadiness = load('projectBootstrapReadinessDecision', { projectCriteriaBindingError: criteriaBinding });
+const cadProjectId='01a0d70c-9683-7324-9d3d-a8231a93c63b';
+const cadPath='projects/'+cadProjectId+'/CRITERIA.md';
+const cadSHA='d43f32b179a46007efb663591d260925f3cbbe06';
+const cadRepo='https://github.com/thebimhouseinfo-sudo/Cadgpt';
+const cadBranch='feature/core-function-v5';
+const cadCriteria={criteria_path:cadPath,criteria_blob_sha:cadSHA,approval_status:'APPROVED'};
+const cadPlan={
+  plan_kind:'PROJECT_PLAN',criteria_binding:cadCriteria,planning_revision:1,
+  planning_review:{status:'PASS',reviewed_revision:1},
+  tasks:[{task_id:'T1',dependencies:[],completion_criteria:['Routing and ownership verified']}],
+  milestones:[{milestone_id:'M2',node_ids:['T1']}]
+};
+const cadEvidence={
+  criteria:cadCriteria,criteria_human_approved:true,criteria_current_blob_sha:cadSHA,
+  plan:cadPlan,capabilities:[{task_id:'T1',readiness:'DOMAIN_READY_VERIFIED',evidence_verified:true}],
+  human_execution_approved:true,
+  readback_proof:{name:'BOOTSTRAP_CURRENT.json',path:'projects/'+cadProjectId+'/VERIFICATION/BOOTSTRAP_CURRENT.json',sha,
+    criteria_sha:cadSHA,reviewed_plan_sha:sha,human_approval_ref:'human approved current reviewed Plan'}
+};
+const bootstrapExecution = load('projectBootstrapExecutionError', {
+  projectBootstrapReadinessDecision: bootstrapReadiness,
+  parseProjectManifest: () => ({project_id:cadProjectId,lifecycle:'ACTIVE',
+    repositories:[{relation:'OWNED',url:cadRepo}],
+    branch_policies:[{repository_url:cadRepo,development_branch:cadBranch}]}),
+  normalizeGithubRepo:u=>({url:u}),validIntegrationBranch:b=>b===cadBranch
+});
+function admission(data) {
+  return bootstrapExecution(cadProjectId,'verified manifest fixture',data,cadRepo,cadBranch);
+}
+test('P0 approved CadGPT Criteria + current replacement Project Plan + T1 capability are ready',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,cadEvidence).status,
+    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED');
+  assert.equal(admission(cadEvidence),null);
+  const cadT1={execution_contract:'NEXT',planning_revision:1,
+    tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
+  assert.equal(dispatch(cadT1,'coder',['T1'],1,sha,sha,[]),null);
+});
+test('P0 canonical Criteria binding, Human confirmation and SHA are separate fail-closed gates',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria:undefined}).status,
+    'CRITERIA_BINDING_MISSING_OR_INVALID');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_human_approved:false}).status,
+    'CRITERIA_HUMAN_APPROVAL_UNVERIFIED');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
+    'CRITERIA_STALE_OR_UNVERIFIED');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,plan:{...cadPlan,plan_kind:'JOB'}}).status,
+    'PLAN_CRITERIA_MISMATCH');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,capabilities:[]}).status,
+    'CAPABILITY_NOT_READY');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,human_execution_approved:false}).status,
+    'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING');
+  assert.match(admission({...cadEvidence,readback_proof:null}),/BOOTSTRAP_READBACK_PROOF_REQUIRED/);
+});
+test('P0 historical M1 capability-only snapshot is NOT accepted as source approval',()=>{
+  const old={type:'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE',
+    status:'M1_CONFIGURED_AND_READBACK_VERIFIED; SOURCE_EXECUTION_NOT_AUTHORIZED',
+    plan:{job_id:'01a15dd5-2189-703a-ab28-a58c4f4b07c5'}};
+  assert.match(admission(old),/BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED/);
+  assert.match(admission(null),/BOOTSTRAP_REQUIRED/);
+});
+test('P0 bootstrap negative control detects removing canonical current SHA check',()=>{
+  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
+  assert.ok(node);
+  const good=node.getText(parsed);
+  const mutant=good.replace('input?.criteria_current_blob_sha !== c.criteria_blob_sha','false');
+  assert.notEqual(good,mutant);
+  const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const broken=vm.runInNewContext(js+'\nprojectBootstrapReadinessDecision',{projectCriteriaBindingError:criteriaBinding,JSON,Array,Set,Map,Number,String});
+  assert.throws(() => assert.equal(broken(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
+    'CRITERIA_STALE_OR_UNVERIFIED'),assert.AssertionError);
+});
+test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
+  const runStart=source.indexOf("'run_begin'");
+  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
+  const runSource=source.slice(runStart,runEnd);
+  assert.match(runSource,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const completionStart=source.indexOf("'run_complete'");
+  const completion=source.slice(completionStart,completionStart+2500);
+  assert.match(completion,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const taskCase={execution_contract:'NEXT',planning_revision:1,tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
+  assert.match(dispatch(taskCase,'coder',['T2'],1,sha,sha,[]),/TASK_INVALID/);
+  assert.match(dispatch(taskCase,'tester',['T1'],1,sha,sha,[]),/WRONG_ROLE/);
+});
