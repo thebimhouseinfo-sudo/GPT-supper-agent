@@ -83,11 +83,14 @@ function edgeFunctionSlug(req: Request) {
   const url = new URL(req.url)
   const parts = url.pathname.split('/').filter(Boolean)
   const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
-  return candidate === 'gsa-mcp-next' ? 'gsa-mcp-next' : 'gsa-mcp'
+  // Only exact gsa-mcp is production. Explicit gsa-mcp-* function slugs are staging.
+  // No arbitrary path may opt into the production NEXT namespace.
+  return candidate === 'gsa-mcp' || (typeof candidate === 'string' && /^gsa-mcp-[a-z0-9-]+$/.test(candidate))
+    ? candidate : 'gsa-mcp-invalid'
 }
 
 function runtimeSurface(req: Request) {
-  return edgeFunctionSlug(req) === 'gsa-mcp-next' ? 'STAGING_NEXT' as const : 'PRODUCTION' as const
+  return edgeFunctionSlug(req) === 'gsa-mcp' ? 'PRODUCTION' as const : 'STAGING_NEXT' as const
 }
 
 function jobCreationExecutionContractDefault(req: Request): ExecutionContract {
@@ -1082,11 +1085,166 @@ const EVIDENCE_REQUIREMENT_SCHEMA = z.object({
   checkpoint_id: z.string().min(1),
 })
 
+const CRITERIA_BINDING_SCHEMA = z.object({
+  criteria_path: z.string().min(1),
+  criteria_blob_sha: z.string().regex(/^[0-9a-f]{40}$/),
+  approval_status: z.literal('APPROVED'),
+})
+
+function projectCriteriaBindingError(projectId: string, planKind: string, binding: any): string | null {
+  if (planKind !== 'PROJECT_PLAN') return null
+  if (!binding || binding.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
+      !/^[0-9a-f]{40}$/.test(String(binding.criteria_blob_sha || '')) ||
+      binding.approval_status !== 'APPROVED') {
+    return 'PROJECT_CRITERIA_NOT_BOUND: a Project Plan requires approved Project CRITERIA.md exact blob SHA, not an AI draft or source default.'
+  }
+  return null
+}
+
+// M3: prepared, reviewable product Bootstrap evidence decision.
+// This is not a second lifecycle or a source-write permission. M5 must check
+// fresh immutable source/Memory snapshots and actual Human approval before dispatch.
+function projectBootstrapReadinessDecision(projectId: string, input: any) {
+  const result = (status: string, detail: string) => ({
+    status, detail, bootstrapped: false, source_write_authorized: false,
+    requires_external_readback: true,
+  })
+  const c = input?.criteria
+  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c) ||
+      input?.criteria_human_approved !== true)
+    return result('CRITERIA_NOT_APPROVED', 'Human-approved canonical product Criteria is required before official Implementation Plan.')
+  if (input?.criteria_current_blob_sha !== c.criteria_blob_sha)
+    return result('CRITERIA_STALE_OR_UNVERIFIED', 'Read and verify current canonical Criteria GitHub SHA before any official Plan.')
+  const plan = input?.plan
+  if (!plan) return result('IMPLEMENTATION_PLAN_MISSING', 'No official Implementation Plan may be inferred from DRAFT or code.')
+  if (plan.plan_kind !== 'PROJECT_PLAN' ||
+      projectCriteriaBindingError(projectId, 'PROJECT_PLAN', plan.criteria_binding) ||
+      plan.criteria_binding?.criteria_blob_sha !== c.criteria_blob_sha)
+    return result('PLAN_CRITERIA_MISMATCH', 'Reviewed Plan must bind the exact current Human-approved Criteria SHA.')
+  if (plan.planning_review?.status !== 'PASS' ||
+      !Number.isInteger(plan.planning_revision) ||
+      plan.planning_review?.reviewed_revision !== plan.planning_revision)
+    return result('PLAN_REVIEW_PENDING', 'Independent current revision Reviewer PASS required.')
+  const tasks = Array.isArray(plan.tasks) ? plan.tasks : []
+  if (tasks.length === 0 || tasks.some((t: any) => typeof t.task_id !== 'string' || !t.task_id ||
+      !Array.isArray(t.completion_criteria) || t.completion_criteria.length === 0 ||
+      t.completion_criteria.some((condition: any) => typeof condition !== 'string' || !condition.trim())))
+    return result('PLAN_TASK_ACCEPTANCE_MISSING', 'Each implementation Task needs a meaningful completion condition.')
+  // Assess the existing reviewed Plan dependencies; no separate lifecycle or approval gate.
+  const taskIds = new Set(tasks.map((t: any) => t.task_id))
+  if (taskIds.size !== tasks.length || tasks.some((t: any) => {
+    const dependencies = t.dependencies ?? []
+    return !Array.isArray(dependencies) || new Set(dependencies).size !== dependencies.length ||
+      dependencies.some((id: any) => typeof id !== 'string' || !taskIds.has(id) || id === t.task_id)
+  })) return result('PLAN_DEPENDENCIES_INVALID', 'Task dependencies must be unique, current, and non-self-referential.')
+  const byTaskId = new Map(tasks.map((t: any) => [t.task_id, t]))
+  const visiting = new Set<string>(), visited = new Set<string>()
+  const hasCycle = (id: string): boolean => {
+    if (visiting.has(id)) return true
+    if (visited.has(id)) return false
+    visiting.add(id)
+    const task: any = byTaskId.get(id)
+    if ((task.dependencies ?? []).some((dep: string) => hasCycle(dep))) return true
+    visiting.delete(id)
+    visited.add(id)
+    return false
+  }
+  if (tasks.some((t: any) => hasCycle(t.task_id)))
+    return result('PLAN_DEPENDENCIES_INVALID', 'Task dependency cycles cannot produce a ready implementation milestone.')
+  const capability = Array.isArray(input?.capabilities) ? input.capabilities : []
+  if (tasks.some((t: any) => !capability.some((c: any) =>
+    c.task_id === t.task_id && (c.readiness === 'GENERIC_READY' ||
+      (c.readiness === 'DOMAIN_READY_VERIFIED' && c.evidence_verified === true)))))
+    return result('CAPABILITY_NOT_READY', 'Generic ready or independently verified domain Task capability required, not only configured paths.')
+  const milestones = Array.isArray(plan.milestones) ? plan.milestones : []
+  if (milestones.length === 0 ||
+      new Set(milestones.map((m: any) => m.milestone_id)).size !== milestones.length ||
+      milestones.some((m: any) => typeof m.milestone_id !== 'string' || !m.milestone_id ||
+        (m.name !== undefined && (typeof m.name !== 'string' || !m.name.trim())) ||
+        !Array.isArray(m.node_ids) || m.node_ids.length === 0 ||
+        new Set(m.node_ids).size !== m.node_ids.length ||
+        m.node_ids.some((id: string) => !taskIds.has(id))) ||
+      tasks.some((t: any) => !milestones.some((m: any) => m.node_ids.includes(t.task_id))))
+    return result('MILESTONES_NOT_READY', 'Milestones must cover actual Tasks with coherent dependencies and acceptance.')
+  return result(input?.human_execution_approved === true
+    ? 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED' : 'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING',
+    'Prepared readiness only. M5 must independently verify immutable snapshots, source branch and actual Human approval before code; do not repeat Bootstrap on later normal Jobs.')
+}
+
+// C31: one canonical Criteria file, one scoped acknowledgement after actual Advisor advice.
+// This validates scope and document shape, not the origin of chat messages. A caller-supplied
+// signature is not evidence that an Advisor actually advised Human; readback is mandatory.
+function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
+  const reject = (status: string) => ({ status, advisor_required: true, criteria_write_prepared: false, external_advice_check_required: true })
+  const intent = input?.intent
+  if (['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE'].includes(intent))
+    return { status: 'ADVISOR_NOT_REQUIRED', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+  if (intent === 'HUMAN_KEEP_CRITERIA')
+    return { status: 'HUMAN_KEEPS_CRITERIA_NO_WRITE', advisor_required: false, criteria_write_prepared: false, external_advice_check_required: false }
+  if (!['INITIAL_APPROVAL','MATERIAL_CHANGE'].includes(intent)) return reject('CRITERIA_INTENT_INVALID')
+  const sha = (v: any) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+  if (input?.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
+      !sha(input?.criteria_current_sha) || typeof input?.criteria_text !== 'string')
+    return reject('CRITERIA_BASELINE_INVALID')
+  if (!sha(input?.advisor_baseline_sha) || typeof input?.delta_scope !== 'string' ||
+      !input.delta_scope.trim() || input.delta_scope.length > 200)
+    return reject('ADVISOR_SCOPE_MISSING')
+  // A receipt must already be in the exact current canonical document, not in a
+  // second Criteria file, arbitrary approval log, or a Planner-supplied flag.
+  const receipts = [...input.criteria_text.matchAll(/^ADVISOR SIGNED: ADVISED \| BASELINE=([0-9a-f]{40}) \| SCOPE=([^|\r\n]{1,200}) \| ADVICE_REF=([^|\r\n]{1,300})$/gm)]
+  const relevant = receipts.filter((m: any) => m[1] === input.advisor_baseline_sha &&
+    m[2] === input.delta_scope.trim() && m[3].trim() && m[3].trim() !== 'PENDING')
+  if (relevant.length !== 1 || receipts.length !== 1) return reject('ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  if (input?.human_decision !== 'APPROVE') return reject('HUMAN_DECISION_PENDING')
+  return {
+    status: 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK',
+    advisor_required: true,
+    criteria_write_prepared: false,
+    external_advice_check_required: true,
+  }
+}
+
+// M5: reuse M3 Bootstrap assessment for the two GSA-owned consequential
+// boundaries. This is a per-write evidence check, not a new Bootstrap lifecycle.
+// GitHub evidence provenance and Human authorization must still be independently
+// read back before the actual external GitHub source write.
+function projectBootstrapExecutionError(projectId: string, manifestText: string, evidence: any,
+  repositoryUrl: string | null, developmentBranch: string | null): string | null {
+  if (!evidence) return 'BOOTSTRAP_REQUIRED: no approved Project Bootstrap evidence supplied.'
+  const project = parseProjectManifest(manifestText)
+  if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
+    return 'BOOTSTRAP_PROJECT_INVALID: exact ACTIVE Project manifest required.'
+  if (!repositoryUrl || !developmentBranch || !validIntegrationBranch(developmentBranch) ||
+      !project.repositories.some((r: any) => r.relation === 'OWNED' &&
+        normalizeGithubRepo(r.url)?.url === normalizeGithubRepo(repositoryUrl)?.url) ||
+      project.branch_policies.find((p: any) => p.repository_url === normalizeGithubRepo(repositoryUrl)?.url)?.development_branch !== developmentBranch)
+    return 'BOOTSTRAP_SOURCE_BRANCH_INVALID: source target must be the Human-configured Development Branch of an OWNED repository.'
+  const readiness = projectBootstrapReadinessDecision(projectId, evidence)
+  if (readiness.status !== 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
+    return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
+  const proof = evidence?.readback_proof
+  if (!proof || proof.path !== 'projects/' + projectId + '/VERIFICATION/' + proof.name ||
+      !/^[-a-zA-Z0-9_.]+\.json$/.test(String(proof.name || '')) ||
+      !/^[0-9a-f]{40}$/.test(String(proof.sha || '')) ||
+      !/^[0-9a-f]{40}$/.test(String(proof.criteria_sha || '')) ||
+      proof.criteria_sha !== evidence.criteria_current_blob_sha ||
+      !/^[0-9a-f]{40}$/.test(String(proof.reviewed_plan_sha || '')) ||
+      typeof proof.human_approval_ref !== 'string' || !proof.human_approval_ref.trim())
+    return 'BOOTSTRAP_READBACK_PROOF_REQUIRED: immutable reviewed Plan, approved Criteria and actual Human approval references are required.'
+  // A supplied proof is not a GitHub readback. The orchestrator must re-fetch
+  // its exact blob and independently establish provenance; do not call this a
+  // completed source-write authorization without that external verification.
+  return null
+}
+
 const MILESTONE_SCHEMA = z.object({
   milestone_id: z.string().min(1),
   name: z.string().min(1),
   node_ids: z.array(z.string().min(1)).min(1),
   gate_checkpoint_ids: z.array(z.string().min(1)).default([]),
+  review_loop: z.enum(['none','rl','crl']).default('none'),
+  human_pre_authorized: z.boolean().default(false),
+  continuation: z.enum(['AUTO','HUMAN']).default('HUMAN'),
 })
 
 const PLANNING_TOPOLOGY_NODE_SCHEMA = z.object({
@@ -1134,6 +1292,57 @@ function validateExecutionTopology(tasks: any[], topology: any[]): string | null
     if (stage.next != null && (!taskIdSet.has(stage.next) || stage.next === task.task_id)) {
       return 'EXECUTION_TOPOLOGY_INVALID: topology next must be null or another current Task ID.'
     }
+  }
+  return null
+}
+
+function milestoneLoopDecision(job: any, milestoneId: string, stage: string, verdict: string, noProgressCycles = 0) {
+  const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
+  const stopped = (reason: string) => ({ next_action: 'STOP', next_role: 'human', resume_same_turn: false, reason })
+  if (!milestone) return stopped('Unknown milestone on the current Job.')
+  if (noProgressCycles >= 3) return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'No progress for three cycles.' }
+  if (!['rl','crl'].includes(milestone.review_loop)) return stopped('No approved review loop on this milestone.')
+  if (milestone.human_pre_authorized !== true) return stopped('Human has not approved this milestone review loop.')
+  if (job?.planning_review?.status !== 'PASS' || job?.planning_review?.reviewed_revision !== job?.planning_revision) {
+    return stopped('Current Job planning revision is not Reviewer PASS.')
+  }
+  if (verdict === 'BLOCKED') return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'Reviewer/CR reported a real blocker.' }
+  if (stage === 'BEGIN') return { next_action: 'RUN_REVIEWER', next_role: 'reviewer', resume_same_turn: true, reason: 'Begin approved milestone rl.' }
+  if (stage === 'REVIEWER' && ['FAIL','CHANGES_REQUIRED'].includes(verdict)) {
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
+  }
+  if (stage === 'CR' && ['FAIL','CHANGES_REQUIRED'].includes(verdict) && milestone.review_loop === 'crl') {
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
+  }
+  if (stage === 'REVIEWER' && verdict === 'PASS' && milestone.review_loop === 'crl') {
+    return { next_action: 'VERIFY_REVIEWER_PASS_THEN_CR', next_role: 'orchestrator', resume_same_turn: true, reason: 'Bind exact current Reviewer PASS Verification then invoke CR only for this Human-approved milestone.' }
+  }
+  if (verdict === 'PASS' && ((stage === 'REVIEWER' && milestone.review_loop === 'rl') || (stage === 'CR' && milestone.review_loop === 'crl'))) {
+    const auto = milestone.continuation === 'AUTO'
+    return { next_action: auto ? 'CONTINUE_AUTO' : 'PRESENT_RESULT', next_role: auto ? 'orchestrator' : 'human', resume_same_turn: auto, reason: auto ? 'Review complete; move to the next authorized milestone.' : 'Human stop configured at milestone.' }
+  }
+  return stopped('Review stage/verdict is not a valid transition for this milestone.')
+}
+
+function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any): string | null {
+  const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
+  if (!milestoneId || !milestone || milestone.review_loop !== 'crl' || milestone.human_pre_authorized !== true) {
+    return 'CR_MILESTONE_UNAUTHORIZED: Human must have approved crl on this exact milestone.'
+  }
+  if (!['READY','IN_PROGRESS'].includes(job?.lifecycle) ||
+      job?.planning_review?.status !== 'PASS' || job?.planning_review?.reviewed_revision !== job?.planning_revision) {
+    return 'CR_MILESTONE_NOT_READY: current Job planning revision must have Reviewer PASS and be READY/IN_PROGRESS.'
+  }
+  if (!reviewerSnapshot?.path || !String(reviewerSnapshot.path).startsWith('projects/' + job.project_id + '/') || !validMemoryPath(reviewerSnapshot.path) || !/^[0-9a-f]{40}$/.test(String(reviewerSnapshot?.sha ?? ''))) {
+    return 'CR_MILESTONE_REVIEW_MISSING: exact Reviewer PASS snapshot is required.'
+  }
+  let review: any
+  try { review = JSON.parse(reviewerSnapshot.record_text) } catch { return 'CR_MILESTONE_REVIEW_INVALID: unreadable Reviewer snapshot.' }
+  if (review.kind !== 'REVIEW' || review.result !== 'PASS' ||
+      review.project_id !== job.project_id || review.job_id !== job.job_id ||
+      review.planning_revision !== job.planning_revision ||
+      review.milestone_id !== milestoneId || review.producer !== 'reviewer') {
+    return 'CR_MILESTONE_REVIEW_INVALID: Reviewer PASS must match this Job/milestone/planning revision.'
   }
   return null
 }
@@ -2008,6 +2217,16 @@ const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
   mutation_authorized: z.literal(false),
 })
 
+// Product Criteria intake only; current GSA execution gates remain unchanged.
+function resolveProjectCriteriaIntake(mode: 'NEW' | 'EXISTING', state: 'PRESENT' | 'ABSENT' | 'UNKNOWN', observedSource: string) {
+  const observed = typeof observedSource === 'string' && observedSource.trim().length > 0
+  if (mode === 'NEW') return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: false, review: 'NEW: ask Human for desired GOAL, WHAT/WHY and acceptance before Criteria approval; do not create an Implementation Plan or code.' }
+  if (state === 'PRESENT') return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: false, review: 'EXISTING with Criteria: validate with Human that the existing Criteria describes the intended product (not just design/code); compare actual source for achieved, missing, excess and drift. Source is evidence, not approval.' + (observed ? ' Source observation (independent read required): ' + observedSource.slice(0, 600) : ' Source comparison UNVERIFIED until inspection.') }
+  if (state === 'UNKNOWN') return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: false, review: 'EXISTING: inspect canonical Criteria in Project Memory before preparing anything. Never overwrite or infer approval.' }
+  if (!observed) return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING without Criteria: first read actual source/docs; derive a tentative product-language hypothesis and ask Human whether source behavior has drifted from intended goals.' }
+  return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: true, review: 'EXISTING without Criteria: source-derived product hypothesis only; ask Human what is correct, missing or excess before approval. Code never approves Criteria.' }
+}
+
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
   '- NEW HUMAN MESSAGE ONLY (not tool results): keep the currently receiving Agent; if none, default to Planner. Explicit Human Direct Agent invocation uses its selected role. Do not switch Agents merely because User sends a new message.',
@@ -2019,6 +2238,13 @@ const BASE_AGENT_HARNESS = [
   '- PLAN GOAL ANCHORS: Every new or materially revised plan file must put ## GOAL immediately after its title/front matter and ### GOAL immediately under every Phase heading, before its tasks. Preserve the Human-approved overall goal and each phase goal through revisions; only an explicit Human decision may change approved goals. Do not infer goal approval from review findings.',
   '- PLANNER RL SHORTCUT: In a planning request, rl means run the existing Planner → role-isolated planning Reviewer → Planner repair → re-review loop on the identified plan until evidence-backed PASS or a genuine Human decision, blocker or no-progress guard. Accept planner rl, planner rl đi, and the common typo planer rl. Use the identified current plan, including a draft discussed in chat, without an extra planning confirmation. Durable Jobs follow exact GitHub/CAS readback; direct/ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification. Clarify only if no target plan is identifiable; a completely new plan still follows normal intake. Do not duplicate Jobs. rl never grants source edits, Job execution, merge or deploy.',
   '- HUMAN EXECUTION APPROVAL: present the reviewed PASS plan and STOP in conversation. Begin source-changing or other consequential Job execution only after the Human explicitly approves that presented plan (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). Skeleton approval permits detailed planning only; a general action request or an ambiguous "ok" outside plan-approval context is not execution authorization. Once approved, continue approved scope without re-asking at each Task.',
+  '- FRESH START / ADOPT: on new or brownfield Project establish minimal source/owner/branch baseline without reconstructing past jobs or approvals. Never auto-resume an old Job on Project open. Planner maintains ONE Project Memory CRITERIA.md for future product GOAL/scale/non-goals/acceptance; Human approves, drafts do not self-promote. AGENTS.md generic is minimal.',
+  '- TECH ADVISOR CHECKPOINTS: activate Advisor ONLY after explicit Human intent to finalize initial Criteria or materially change approved Criteria WHAT/WHY. Not for brainstorming, drafts, ordinary planning, code review or wording-only edits. Advisor reads exact draft/baseline+delta, advises Human then acknowledges ADVISOR SIGNED for the same canonical Criteria revision/scope (proof of advice, not approval). Human decides and Planner writes; never forge Advisor advice.',
+  '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
+  '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
+  '- BRANCH AUTHORITY: Admin stores Human-confirmed Development/Release Branch per source repo in PROJECT.md, READY displays them; Planner/Coder use ONLY configured Development Branch as merge target, never guess main/default. Missing/renamed/stale mapping permits read/chat/planning but blocks source write/merge dependent on the branch. Production merge/deploy require separate Human decisions.',
+  '- STOPCHAT: on Human stopchat or excessive context, stop at a safe boundary; persist/readback only needed durable pending state, then give copyable Project/repo/branch/SHA/Criteria+Plan revision/Job+milestone/approval/blocker/next-action handoff. Chat reopen checks Git and Memory; never promise autonomous background work.',
+  '- REVIEW LOOP: rl = Planner/Coder → Reviewer → repair/re-review boundedly until PASS or real blocker. crl = rl PASS → independent CR → on CR FAIL repeat inner rl and CR until PASS or real blocker. CR only when Human invoked or a particular milestone was approved in advance with crl, never on every Task.',
   '- INTERRUPT / NEW MESSAGE: the current receiving Agent repeats classify/clarify, answers questions directly, and handles clear changes within capability. Handoff only for a real capability/authority mismatch; do not silently change already approved Job scope. Direct Agent commands remain the explicit Human shortcut.',
 
   '- Treat the live source repository as source truth and Project Memory as the durable control plane.',
@@ -2099,6 +2325,11 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     loop: [
       'ON NEW HUMAN MESSAGE: apply shared LOW REASONING classify/clarify/skeleton before this planning loop. Answer questions directly; only enter L0 for a defined planning objective after required skeleton confirmation.',
+      'FRESH START: for NEW/ADOPT/REGISTERED, inspect repository/ownership and baseline minimally, confirm configured development_branch with Human when missing, and create minimal AGENTS.md pointing to optional Coder/Tester addins without duplicating global role rules.',
+      'DISCOVER CRITERIA: clarify Human product GOAL, minimum useful result, personal/internal/commercial purpose when known, actual scale and committed future scale, trust/data/host constraints, proportionate stability/security and explicit non-goals. Keep unknowns CHUA_CHOT in ONE Criteria file; do not invent enterprise assumptions.',
+      'ADVISOR/HUMAN: keep Advisor INACTIVE during brainstorm, research and ordinary Criteria drafting. Only explicit Human intent to finalize first Criteria or materially change approved WHAT/WHY activates Advisor. Before an approved Criteria write, require actual Advisor advice delivered to Human and scoped ADVISOR SIGNED acknowledgement tied to exact canonical Criteria baseline SHA and advised delta in the SAME CRITERIA.md. A literal Planner-created signature, missing/stale advice, or an out-of-scope new material delta never satisfies this gate. Human chooses to proceed or keep Criteria; Planner CAS/reads back only the Human-decided advised change. Reconsult only for a new material delta, not wording, Plan HOW/WHEN, review or Task.',
+      'GOAL FIRST: after Criteria revision check Overall GOAL and every Phase GOAL before changing milestone/Job/Task/test details; Reviewer covers missing/excess and does not convert AI advice into Human requirements.',
+      'PLANNED BRANCH: for code tasks bind integration target to OWNED repo development_branch from PROJECT.md; if missing or stale, allow research/plan but do not direct Coder to source write/merge against guessed main/default.',
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
       'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
@@ -2119,6 +2350,22 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     outputs: ['reviewed durable Job plan', 'progressive repository evidence', 'relationship/precedence assessment', 'Job sizing/context boundary', 'task topology', 'completion/evidence requirements', 'planning review evidence'],
     canonical_refs: ['AGENT-HARNESSES.md', 'JOB-LIFECYCLE.md', 'PROJECT-MEMORY.md', 'PRODUCT-WORKFLOW-CLASSIFICATION.md', 'EXECUTION-AND-REVIEW.md', 'CORE-RECORD-CONTRACTS.md'],
+  },
+  advisor: {
+    authority: [
+      'Generic Technical Advisor for Human product decisions only. Read Criteria draft or approved Criteria plus proposed delta; selectively read existing source for accurate technical context.',
+      'Explain feasibility, prerequisites, direct/cascading technical impact, effort/cost/risk and missing/excess solutions proportionate to actual use/scale.',
+      'Never act as Reviewer/CR, approve/veto requirements, mutate Criteria/Plan/source or issue PASS/FAIL.',
+    ],
+    loop: [
+      'TRIGGER: only Human intent to finalize first Criteria or change approved WHAT/WHY. Do not activate on draft completion, brainstorming, technical questions, Plan HOW/WHEN, wording changes or ordinary Task/chat.',
+      'GROUND: Human Criteria WHAT/WHY is authoritative. Read actual architecture/source when needed; Plan proposed by AI is NOT a Human requirement.',
+      'ADVISE: distinguish verified facts from uncertainty; explain feasibility, conditions, costs, unnecessary complexity and ripple effects, including changes that may force major redesign.',
+      'CHOICES: offer practical alternatives only when useful; do not force fixed tiers.',
+      'HANDOFF: after personally delivering advice to Human, issue a simple ADVISOR SIGNED acknowledgement stating ADVISED, current canonical Criteria baseline blob SHA and the precise material delta scope discussed. It proves advice happened, not approval; do not issue it before advice or on ordinary conversation. Planner may record the acknowledgement in the SAME CRITERIA.md after independently verifying the Advisor handoff. Human then decides accept/adjust/keep; re-consult only if final material delta lies outside advised scope. End Advisor activity immediately. No quality verdict, approval, veto or file write by Advisor.',
+    ],
+    outputs: ['technical advice for Human decision', 'impact/tradeoff and uncertainty explanation', 'ADVISOR SIGNED acknowledgement scoped to Criteria baseline SHA and advised material delta (only after advice delivered)'],
+    canonical_refs: ['PROJECT-MEMORY.md', 'PLANNER-SCOPE-AND-UIUX.md', 'EXECUTION-AND-REVIEW.md'],
   },
   designer: {
     authority: [
@@ -2147,6 +2394,8 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     loop: [
       'OBSERVE L2 EXECUTION CONTEXT: inspect live source, exact target revision, direct callers/consumers, relevant tests/contracts and existing relationship knowledge before writing. Expand to L3 investigation context only when evidence requires it.',
       'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
+      'PROJECT CODER ADDIN: at Task execution only, read active Project Memory AGENTS.md (when present) and lazily load matching optional Coder harness/skills with SHA/readback; generic harness/security/Criteria always outrank addin. Missing optional addin uses generic; missing Task-critical domain skill is BLOCKED/UNVERIFIED.',
+      'DEVELOPMENT BRANCH: verify per-repo PROJECT.md development_branch against live Git; code work branch if used must integrate back to that destination after approved review/test. Do not use main/default or change integration target without Human decision.',
       'IMPLEMENT: make only scope-traceable source changes.',
       'INSPECT RESULT: read the actual diff/changed files; check for scope drift, test weakening, commented-out behavior, accidental generated files, secret leakage and affected recorded relationships.',
       'VERIFY: discover available repository-specific objective checks; safely probe a non-destructive test execution surface if it is discoverable but not yet OBSERVED. Run capability-backed checks bound to the exact source SHA. At high-risk checkpoints prove test oracles detect a known broken state, not merely that CI is green.',
@@ -2171,6 +2420,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'SIZE REVIEW: decide whether one bounded review pass is sufficient. If the target is large, create a small review map of meaningful sections and close each section before consolidation; do not let review scope expand indefinitely.',
       'INSPECT: for code review follow requirements → contract → actual diff → relationship impact → relevant surrounding logic → evidence. When changed tests, escaped regression or release gates apply, selectively inspect the test script and mock boundary once at the checkpoint; never require re-review of unchanged trusted tests on every run. For planning review verify progressive discovery, objective/scope/non-goals, decomposition, Job sizing/context burden, relationships/precedence, topology/gates and acceptance boundary.',
       'PLAN GOAL DRIFT CHECK: For each new or revised plan, independently compare ## GOAL at the start of the file and ### GOAL at the start of each Phase against Human-approved intent, scope/non-goals and every phase Task. Missing anchors, orphan Tasks or unauthorized goal drift require CHANGES_REQUIRED; material changes to an approved goal require HUMAN_REVIEW_REQUIRED, never Reviewer-invented replacement.',
+      'CRITERIA / BRANCH TRACE: independently bind to approved Project CRITERIA.md exact revision, detect missing/excess GOAL/Tasks, check branch integration target comes from the OWNED repo PROJECT.md development_branch rather than GitHub default or production main, and verify no unapproved new gates/roles.',
       'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
@@ -2183,14 +2433,14 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
   },
   critic_reviewer: {
     authority: [
-      'Human-invoked independent peer review only. Orchestrator, Planner, Reviewer, Coder and Tester must never auto-dispatch this role.',
+      'HUMAN AUTHORITY: Critic Reviewer requires direct Human cr/crl OR exact Human-preauthorized milestone crl with persisted current Reviewer PASS. Never auto-dispatch without either grant.',
       'Conversation history is non-authoritative and must not be used as review evidence. Reconstruct the target from durable records and live source truth regardless of which chat invoked CR.',
       'Reconstruct from persisted Project Memory, exact Job/revision, existing Verification references and live source truth only. Do not use unpersisted conversation context.',
       'Source and Job state are read-only. CR may only produce a CRITIC_REVIEW Verification artifact; it never repairs source, rewrites the plan, or changes lifecycle.',
       'Do not inspect the prior Reviewer verdict until after an independent verdict and findings have been formed.',
     ],
     loop: [
-      'HUMAN GATE: confirm this invocation came directly from Human command cr/critic reviewer. Do not gate on chat history; treat conversation context as non-authoritative.',
+      'AUTHORITY: direct Human cr/crl OR exact Human-preauthorized milestone crl with persisted current Reviewer PASS. Never infer automatic CR from ordinary Task; reconstruct and verify Job, milestone approval and Reviewer snapshot before independent review.',
       'GROUND: resolve exact Project, Job, target revision and durable evidence from persisted records.',
       'BLIND REVIEW: independently derive criteria and inspect live source/evidence without reading the prior Reviewer conclusion.',
       'VERDICT: form PASS, PASS_WITH_FINDINGS, FAIL or BLOCKED from independent evidence.',
@@ -2212,6 +2462,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
     ],
     loop: [
       'GROUND: resolve exact target revision/state plus the approved expectation or empirical question.',
+      'PROJECT TESTER ADDIN: read active Project AGENTS.md only for Task-specific test context; load optional Tester harness/skills lazily from verified Project Memory. Domain-host checks without required addin are UNVERIFIED, not generic fake PASS. Never treat addin as higher authority than generic harness, Criteria, role rights or source-readonly boundary.',
       'CLAIM (NEXT only): after the Tester Run exists, call checkpoint_claim_prepare for the current planning_revision/checkpoint. Persist/read back the deterministic claim first, then its append-preserving attempt child. Reuse the same live token on replay; never create a parallel Tester attempt.',
       'PLAN: author the concrete checks and label each VERIFY, MEASURE or PROBE before execution; do not rewrite acceptance after seeing results.',
       'CAPABILITY: assess required execution using global capability truth plus Tester readiness DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET. SURFACE_PRESENT authorizes discovery only: a safe authorized PROBE can advance readiness, but never counts as target PASS. Search connected tool capabilities before concluding no agent-operable test/log retrieval exists.',
@@ -2231,6 +2482,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
 const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
   planner: ['job-planning', 'delegation'],
+  advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
   reviewer: ['review-evidence', 'planning-review'],
@@ -2255,18 +2507,18 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
     ].join('\n'),
   },
   'critic-review': {
-    description: 'Run a Human-invoked stateless second review using durable evidence/source truth, then compare with the prior Reviewer only after forming an independent verdict.',
+    description: 'Run a Human-invoked or Human-preauthorized milestone CR using durable source evidence, then compare with the prior Reviewer only after independently forming a verdict.',
     body: [
       '# Critic Review',
-      'CR is an independent peer-review path, never part of automatic orchestration.',
+      'CR is an independent peer-review path only when Human invokes it OR a milestone explicitly Human-approved for crl is reached with current Reviewer PASS.',
       '',
-      '1. Require explicit Human invocation via cr / critic reviewer.',
+      '1. Require direct Human invocation via cr/crl OR Human-approved current Job milestone marked crl with exact Reviewer PASS Verification; verify durable Job/snapshot readback before CR. No global auto CR.',
       '2. Ignore conversation history as evidence. Reconstruct the review target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
       '3. Reconstruct the target only from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
       '4. Do not read or rely on the prior Reviewer verdict until independent criteria, findings and verdict are already formed.',
       '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
       '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
-      '7. CR result never auto-promotes, blocks, completes or otherwise mutates Job lifecycle; Human decides what to do with it.',
+      '7. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
     ].join('\n'),
   },
   'job-planning': {
@@ -2622,7 +2874,7 @@ function parseProjectManifest(text: string) {
   const purpose = values.purpose ?? ''
   const created_at = values.created_at ?? ''
   const updated_at = values.updated_at ?? ''
-  if (!project_id || !name || !primary_repo_url || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
+  if (!PROJECT_ID_PATTERN.test(project_id) || !name || !normalizeGithubRepo(primary_repo_url) || !['ACTIVE','PAUSED','ARCHIVED'].includes(lifecycle)) return null
 
   const repositories: Array<{ role: string; relation: string; url: string }> = []
   for (const rawLine of text.split('\n')) {
@@ -2633,7 +2885,36 @@ function parseProjectManifest(text: string) {
   const dedup = [...new Map(repositories.map((r) => [r.url.toLowerCase(), r])).values()]
   const repo_mode = values.repo_mode === 'MULTI' || dedup.length > 1 ? 'MULTI' : 'SINGLE'
   const repo_registry_status = values.repo_registry_status || (values.repo_mode ? 'CONFIRMED' : 'LEGACY_UNASSESSED')
+  // The flat fields are the legacy/single-PRIMARY shortcut; section rows support multi-repo Projects.
+  // Unknown/invalid branch values are never replaced with GitHub's default branch.
+  const branchRows = new Map<string, { repository_url: string; development_branch: string | null; release_branch: string | null }>()
+  for (const line of text.split('\n')) {
+    const row = line.match(/^\s*-\s*(?:PRIMARY|DEPENDENCY|SUPPORT|REFERENCE)\s*\|\s*(https:\/\/github\.com\/[^\s|]+)\s*\|\s*development=([^|\s]*)\s*\|\s*release=([^|\s]*)\s*$/i)
+    if (!row) continue
+    const normalized = normalizeGithubRepo(row[1])
+    if (!normalized) continue
+    branchRows.set(normalized.url.toLowerCase(), {
+      repository_url: normalized.url,
+      development_branch: validIntegrationBranch(row[2]) ? row[2] : null,
+      release_branch: validIntegrationBranch(row[3]) ? row[3] : null,
+    })
+  }
+  const branch_policies = dedup.map((repo) => {
+    const key = repo.url.toLowerCase()
+    const stored = branchRows.get(key)
+    const dev = stored?.development_branch ??
+      (repo.role === 'PRIMARY' && validIntegrationBranch(values.development_branch) ? values.development_branch : null)
+    const release = stored?.release_branch ??
+      (repo.role === 'PRIMARY' && validIntegrationBranch(values.release_branch) ? values.release_branch : null)
+    return { repository_url: repo.url, development_branch: dev, release_branch: release,
+      status: repo.relation === 'OWNED' ? (dev ? 'CONFIGURED' : 'UNCONFIGURED') : 'REFERENCE_ONLY' }
+  })
+  const primaryPolicy = branch_policies.find((p) => p.repository_url.toLowerCase() === primary_repo_url.toLowerCase())
   return {
+    development_branch: primaryPolicy?.development_branch ?? null,
+    release_branch: primaryPolicy?.release_branch ?? null,
+    branch_policy_status: primaryPolicy?.status ?? 'UNCONFIGURED',
+    branch_policies,
     project_id,
     name,
     lifecycle,
@@ -2713,10 +2994,93 @@ function transitionProjectManifest(text: string, target: 'ACTIVE' | 'PAUSED' | '
   return { parsed, next: lines.join('\n'), updated_at: now }
 }
 
+const PROJECT_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
+
 function validMemoryPath(path: string) {
-  return /^projects\/[0-9a-fA-F-]{36}\//.test(path)
+  if (typeof path !== 'string' || !path.startsWith('projects/') || path.includes('\\') || path.includes('%')) return false
+  const segments = path.split('/')
+  if (segments.length < 3 || !PROJECT_ID_PATTERN.test(segments[1])) return false
+  return segments.slice(2).every((segment) =>
+    segment !== '.' && segment !== '..' && /^[a-zA-Z0-9_.-]+$/.test(segment))
 }
 
+function validProjectManifestPath(path: string, projectId: string) {
+  return PROJECT_ID_PATTERN.test(projectId) &&
+    path === 'projects/' + projectId + '/PROJECT.md' && validMemoryPath(path)
+}
+
+function validIntegrationBranch(name: string) {
+  return typeof name === 'string' && name.length > 0 && name.length <= 128 &&
+    !name.startsWith('/') && !name.endsWith('/') && !name.endsWith('.lock') &&
+    !name.includes('..') && !name.includes('//') && !name.includes('@{') &&
+    /^[A-Za-z0-9][A-Za-z0-9_.\/-]*$/.test(name) &&
+    name.split('/').every((segment) => segment !== '.' && segment !== '..' && !segment.startsWith('.'))
+}
+
+// C14A: preserve an existing Job branch unless Planner explicitly rebinds it.
+// The caller must independently verify the selected OWNED repository's Human-approved
+// Development Branch and live Git ref against current PROJECT.md before persisting.
+function revisedJobIntegrationBranchError(job: any, contract: ExecutionContract, requested: string | undefined): string | null {
+  const effective = requested === undefined ? job?.repository_context?.integration_branch : requested
+  if (effective != null && !validIntegrationBranch(effective)) {
+    return 'DEVELOPMENT_BRANCH_INVALID: Job integration_branch must be a valid explicit Git ref.'
+  }
+  if (contract === 'NEXT' && (job?.type === 'code' || job?.plan_kind === 'PROJECT_PLAN') && !validIntegrationBranch(effective)) {
+    return 'DEVELOPMENT_BRANCH_REQUIRED: NEXT code/Project Plans must bind the Human-configured Development Branch of the selected OWNED repository; never infer main/default.'
+  }
+  return null
+}
+
+
+function resolveProjectRoleAddins(projectId: string, role: 'coder' | 'tester', agentsText: string) {
+  const expected = role === 'coder' ? '## Coder Add-in (optional)' : '## Tester Add-in (optional)'
+  const lines = agentsText.split('\n')
+  const start = lines.indexOf(expected)
+  if (start < 0) return { status: 'NONE', harness_path: null as string | null, skill_paths: [] as string[], reason: 'No add-in section.' }
+  const section: string[] = []
+  for (let i = start + 1; i < lines.length && !lines[i].startsWith('## '); i++) section.push(lines[i])
+  const read = (field: string) => {
+    const match = section.find((line) => line.startsWith('- ' + field + ':'))
+    return match ? match.slice(('- ' + field + ':').length).trim() : 'none'
+  }
+  const harnessRaw = read('harness')
+  const skillRaw = read('skills')
+  const validate = (v: string) => v.startsWith('projects/' + projectId + '/') && validMemoryPath(v) &&
+    v !== 'projects/' + projectId + '/AGENTS.md' && v !== 'projects/' + projectId + '/CRITERIA.md'
+  const harnessPath = harnessRaw.toLowerCase() === 'none' ? null : harnessRaw
+  const paths = skillRaw.toLowerCase() === 'none' ? [] : skillRaw.split(',').map((x) => x.trim()).filter(Boolean)
+  if ((harnessPath && !validate(harnessPath)) || paths.some((p) => !validate(p))) {
+    return { status: 'DENIED', harness_path: null, skill_paths: [], reason: 'Add-in path escapes active Project or references protected metadata.' }
+  }
+  return {
+    status: harnessPath || paths.length ? 'READY' : 'NONE',
+    harness_path: harnessPath, skill_paths: [...new Set(paths)],
+    reason: harnessPath || paths.length ? 'Read-only Project add-in references; global harness retains authority.' : 'No optional Project add-in.',
+  }
+}
+
+// M2: configured add-in paths are discovery evidence, never proof a Task is functional.
+function projectTaskCapabilityAssessment(projectId: string, role: 'coder' | 'tester', taskId: string | undefined,
+  requiresDomain: boolean, resolved: any, evidence: any[] = []) {
+  if (!requiresDomain) return { readiness: 'GENERIC_READY', ready_for_task: true, matched_evidence_refs: [] as string[] }
+  const paths = [...(resolved.harness_path ? [resolved.harness_path] : []), ...(resolved.skill_paths ?? [])]
+  if (resolved.status === 'DENIED' || !paths.length) return {
+    readiness: 'BLOCKED_REQUIRED_ADDIN', ready_for_task: false, matched_evidence_refs: [] as string[],
+  }
+  // A caller-supplied test result is not an authenticated, independently read-back Verification.
+  // Keep the state non-ready even if all claims match. Orchestrator must read back actual
+  // skill files and functional probe evidence before M3/M5 may accept capability readiness.
+  const matches = taskId && paths.every((path: string) => evidence.some((e: any) =>
+    e.project_id === projectId && e.role === role && e.task_id === taskId &&
+    e.path === path && /^[0-9a-f]{40}$/.test(String(e.file_sha ?? '')) &&
+    e.result === 'FUNCTIONAL' && typeof e.verification_ref === 'string' &&
+    e.verification_ref.startsWith('projects/' + projectId + '/VERIFICATION/')))
+  return {
+    readiness: matches ? 'EVIDENCE_PRESENT_UNVERIFIED' : 'CONFIGURED_UNVERIFIED',
+    ready_for_task: false,
+    matched_evidence_refs: matches ? [...new Set(paths.map((p: string) => evidence.find((e: any) => e.path === p && e.project_id === projectId && e.role === role && e.task_id === taskId)?.verification_ref).filter(Boolean))] : [],
+  }
+}
 
 function projectScopeDecision(args: {
   project_manifest_text: string
@@ -2780,6 +3144,7 @@ function createServer(req: Request) {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
         'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
+        'STOPCHAT shortcut: stop at a safe Job/cursor boundary, persist only needed durable state/readback, then call stopchat_handoff_prepare for an accurate concise copyable resume handoff. No background work.',
         'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
         'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'PLAN GOAL ANCHORS: write ## GOAL at the top of each new/revised plan file and ### GOAL immediately inside each Phase before Tasks; Reviewer checks all phase goals and Tasks against original Human-approved overall goal on every planning revision. No silent goal changes.',
@@ -2787,6 +3152,8 @@ function createServer(req: Request) {
         'Supabase is config-only: authenticated GSA user -> one configured GitHub Memory Repo.',
         'The configured GitHub Memory Repo is the sole durable Project Memory/control plane.',
         'A GSA Project may own or reference multiple source repositories. PROJECT.md repository registry is the durable source of truth for Project repo topology.',
+        'For Project Fresh Start/adoption, Planner maintains one canonical future-goal Criteria and minimal AGENTS.md; Human owns requirements, Technical Advisor gives independent read-only advice at Criteria approval/change checkpoints only, and Project READY never auto starts coding.',
+        'ADMIN BRANCH POLICY: PROJECT.md persists per-repo Human-approved development_branch and release_branch; Project READY must display both or UNCONFIGURED. Planner/Coder may not infer source integration target from main/default. Use project_branch_policy_prepare, exact GitHub verification and CAS/readback before updating policy. Source writes/merges dependent on an unconfigured or stale branch are blocked; ordinary discussion/read/planning is not.',
         'For brownfield discovery, if live evidence suggests additional dependent/owned repos that are not registered, stop at a Human Gate and ask the user to confirm the Project repo set before finalizing planning.',
         'Every executable Job must identify one working repository. Even when only one repo is modified, Planner/Reviewer must inspect the registered Project repo map for cross-repo impact and record that assessment.',
         'Project source repositories remain separate source-code truth and are never silently used as the Memory Repo.',
@@ -2797,9 +3164,9 @@ function createServer(req: Request) {
         'Use GitHub blob SHA optimistic concurrency for updates/deletes: fetch current file first, then update/delete with that exact SHA. Stale SHA must fail and trigger refetch/reconcile.',
         'User-facing fake CLI root is authoritative: PROJECT / DIRECT AGENT / SETTING / HELP. Root groups have no shortcuts.',
         'When user types gsa/ call get_cli_root and copy menu_text verbatim as the entire answer.',
-        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
+        'Stable aliases: PROJECT list=ls, open=op, create=new, status=st, pause=pa, resume=rs, archive=ar, delete=rm; DIRECT AGENT planner=pl, advisor=advisor, designer=ds, coder=cd, reviewer=rv, critic reviewer=cr, tester=ts; SETTING GSA Account=acct, Memory Repo=repo; HELP instruction=guide, command help=help.',
         'Routing: ls/list->project_list; op/open->project_open; new/create->project_create; st/status->project_status; pa/pause->project_pause; rs/resume->project_resume; ar/archive->project_archive; rm/delete->project_delete.',
-        'Direct Agent routing: pl/planner, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. Human-only CR routing: cr/critic reviewer -> start_critic_review; never auto-dispatch CR.',
+        'Direct Agent routing: pl/planner, advisor, ds/designer, cd/coder, rv/reviewer, ts/tester -> start_direct_agent. CR via explicit Human cr/crl OR preauthorized milestone crl with current Reviewer PASS; never globally auto CR.',
         'Durable Project work uses the Job runtime spine: Planner -> L0 orientation -> L1 decision context -> brownfield relationship/logic review when applicable -> meaningful Job sizing/context boundary -> job_prepare(DRAFT) -> automatic context-isolated planning review -> Planner revise/re-review loop until PASS or Human Gate -> job_transition(DRAFT->READY) -> present reviewed PASS plan -> await explicit Human execution approval -> execution Runs. Never stop the automatic review/repair loop before the plan is PASS; stop before execution until User authorizes it. Coder must self-review/repair ordinary in-scope findings and persist exact GOAL_RECHECK verification before a success handoff.',
         'Before any role execution in a durable Job, call get_agent_harness for that role and follow the returned harness_text as the runtime role contract. Critic Reviewer is HUMAN-INVOKED ONLY. It must operate stateless-by-contract: ignore conversation history as evidence and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
         'Run records are stored under projects/<project-id>/WORK/RUNS/, Job records under WORK/JOBS/, Handoffs under WORK/HANDOFFS/, Verification under VERIFICATION/, and durable relationship/contract knowledge under KNOWLEDGE/. Use relationship_knowledge_prepare for evidence-backed precedence/reread relationships instead of inventing a new record family.',
@@ -2850,6 +3217,7 @@ function createServer(req: Request) {
         '  • delete [rm] — Delete Project Memory after confirmation.\n\n' +
         'DIRECT AGENT — Call a specialist role directly.\n' +
         '  • planner [pl] — Plan scope, tasks and gates (rl = review/repair loop).\n' +
+        '  • advisor — Technical advice to Human before Criteria approval/change.\n' +
         '  • designer [ds] — Define UI/UX and assets.\n' +
         '  • coder [cd] — Implement approved changes.\n' +
         '  • reviewer [rv] — Run context-isolated review.\n' +
@@ -4445,6 +4813,8 @@ function createServer(req: Request) {
         target_repository_url: z.string().url().optional(),
         target_memory_path: z.string().min(1).optional(),
         user_directed_external_read: z.boolean().default(false),
+        target_development_branch: z.string().optional(),
+        bootstrap_evidence: z.any().optional(),
       },
       outputSchema: {
         allowed: z.boolean(),
@@ -4453,14 +4823,24 @@ function createServer(req: Request) {
         reason: z.string(),
         project_id: z.string(),
         project_manifest_sha: z.string(),
+        external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read }: any) => {
+    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read, target_development_branch, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to authorize Project scope.')
+      if (operation === 'MUTATE_SOURCE') {
+        const blocked = projectBootstrapExecutionError(project_id, project_manifest_text, bootstrap_evidence,
+          target_repository_url ?? null, target_development_branch ?? null)
+        if (blocked) {
+          const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha,
+            external_steps: ['No GSA-controlled source write or Coder dispatch until the named Bootstrap prerequisites are satisfied.'] }
+          return { structuredContent: denied, content: [{ type: 'text', text: 'DENY: ' + blocked }] }
+        }
+      }
       const decision = projectScopeDecision({
         project_manifest_text,
         project_id,
@@ -4469,8 +4849,13 @@ function createServer(req: Request) {
         target_memory_path: target_memory_path ?? null,
         user_directed_external_read,
       })
-      const out = { ...decision, project_id, project_manifest_sha }
-      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW: ' : 'DENY: ') + decision.reason }] }
+      const out = { ...decision, project_id, project_manifest_sha,
+        external_steps: operation === 'MUTATE_SOURCE' ? [
+          'This checks Project scope and Bootstrap claim SHAPE only; ALLOW is NOT an attestation that caller-supplied approval, receipt or GitHub snapshots are genuine.',
+          'Independently fetch current PROJECT.md, exact Bootstrap Verification blob, Criteria, reviewed Plan and Human execution authorization from their authoritative sources before any source write. Reject stale, forged or missing evidence.',
+          'Verify live target source HEAD is on the configured Development Branch; do not write or merge to the Release Branch by inference.',
+        ] : [] }
+      return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW SCOPE (readback required): ' : 'DENY: ') + decision.reason }] }
     },
   )
 
@@ -4657,7 +5042,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: String(err) }], isError: true }
       }
       const parsed = parseProjectManifest(updated)
-      if (!parsed) return { content: [{ type: 'text', text: 'Updated PROJECT.md would be invalid.' }], isError: true }
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Updated PROJECT.md path/identity would be invalid.' }], isError: true }
       const result = {
         repository_mode: parsed.repo_mode,
         registered_repositories: parsed.repositories,
@@ -4673,6 +5058,468 @@ function createServer(req: Request) {
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'milestone_loop_evaluate',
+    {
+      title: 'Evaluate bounded milestone rl/crl next step',
+      description: 'Read-only routing decision for Human-approved milestone review loops. Never performs source writes, invokes CR without independent evidence, creates a background task or replaces Job/Run Verifications.',
+      inputSchema: {
+        job_record_text: z.string().min(2),
+        milestone_id: z.string().min(1),
+        stage: z.enum(['BEGIN','REVIEWER','CR']),
+        verdict: z.enum(['NONE','PASS','FAIL','CHANGES_REQUIRED','BLOCKED']).default('NONE'),
+        no_progress_cycles: z.number().int().min(0).default(0),
+      },
+      outputSchema: {
+        next_action: z.string(),
+        next_role: z.string(),
+        resume_same_turn: z.boolean(),
+        reason: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ job_record_text, milestone_id, stage, verdict, no_progress_cycles }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for milestone routing.')
+      let job: any
+      try { job = JSON.parse(job_record_text) } catch {
+        return { content: [{ type: 'text', text: 'Invalid Job record.' }], isError: true }
+      }
+      const decision = milestoneLoopDecision(job, milestone_id, stage, verdict, no_progress_cycles)
+      const out = {
+        ...decision,
+        external_steps: [
+          'Re-fetch exact current Job/Plan from Project Memory and confirm planning revision plus Human milestone approval; this read-only helper does not prove caller-provided Job/Review evidence.',
+          decision.next_action === 'VERIFY_REVIEWER_PASS_THEN_CR'
+            ? 'Read back exact current Reviewer PASS Verification; call start_critic_review with Human-approved milestone + matching durable snapshot. Do not infer CR authority from planning PASS alone.'
+            : 'Read back any required Reviewer/CR Verification and source revision before acting on a continuation; a response is not a persisted Verification or source-write permission.',
+          decision.next_action === 'REPAIR_AND_REREVIEW'
+            ? 'Coder/Planner repairs within approved scope, then reruns independent Reviewer. On CR FAIL the next CR may run only after new Reviewer PASS.'
+            : 'Continue only when milestone AUTO is Human-approved and all related safety/permission gates are met; no background execution.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'stopchat_handoff_prepare',
+    {
+      title: 'Prepare a concise GSA stopchat handoff',
+      description: 'Read-only presentation helper for an intentional stopchat. Does not save unverified progress or schedule background work. Reconcile pending writes/cursors and persist only actually necessary durable state BEFORE using the prepared handoff.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        selected_job_id: z.string().uuid().nullable().optional(),
+        selected_milestone: z.string().nullable().optional(),
+        source_commit_sha: z.string().regex(/^[0-9a-f]{40}$/).nullable().optional(),
+        criteria_revision: z.string().nullable().optional(),
+        plan_revision: z.string().nullable().optional(),
+        verified_progress: z.array(z.string()).default([]),
+        uncertain_writes: z.array(z.string()).default([]),
+        human_approvals: z.array(z.string()).default([]),
+        blockers: z.array(z.string()).default([]),
+        next_action: z.string().min(1),
+      },
+      outputSchema: {
+        project_id: z.string(),
+        handoff_text: z.string(),
+        pending_reconciliation: z.boolean(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, selected_job_id, selected_milestone, source_commit_sha, criteria_revision, plan_revision, verified_progress, uncertain_writes, human_approvals, blockers, next_action }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for stopchat handoff.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) {
+        return { content: [{ type: 'text', text: 'STOPCHAT_PROJECT_MISMATCH: exact active PROJECT.md is required.' }], isError: true }
+      }
+      const clean = (v: any) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500)
+      const items = (values: any[], fallback: string) =>
+        (values?.length ? values.map((v: any) => '- ' + clean(v)).join('\n') : '- ' + fallback)
+      const pending = (uncertain_writes ?? []).length > 0
+      const text = [
+        'GSA stopchat — resume handoff (not execution authorization)', '',
+        'Project: ' + clean(parsed.name) + ' [' + parsed.project_id + ']',
+        'Source repository: ' + parsed.primary_repo_url,
+        'Development Branch: ' + (parsed.development_branch ?? 'UNCONFIGURED'),
+        'Release Branch: ' + (parsed.release_branch ?? 'NOT_CONFIGURED'),
+        'Source commit (verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
+        'Project Memory: ' + memory_path + ' @ ' + project_manifest_sha,
+        'Criteria revision: ' + clean(criteria_revision || 'UNVERIFIED'),
+        'Plan revision: ' + clean(plan_revision || 'UNVERIFIED'),
+        'Selected Job: ' + clean(selected_job_id || 'NONE'),
+        'Milestone: ' + clean(selected_milestone || 'NONE'), '',
+        'Verified progress:', items(verified_progress, 'none supplied'), '',
+        'Uncertain writes / reconcile before retry:', items(uncertain_writes, 'none reported'), '',
+        'Human approvals already in force:', items(human_approvals, 'none supplied; do not infer approval'), '',
+        'Blockers:', items(blockers, 'none reported'), '',
+        'NEXT ACTION: ' + clean(next_action), '',
+        'To resume in a fresh chat: open this GSA Project, read exact Project Memory and live source HEAD/Job evidence; confirm the requested next action and applicable Human scope. Never auto-run merely because a chat opened.',
+      ].join('\n')
+      const out = {
+        project_id: parsed.project_id,
+        handoff_text: text,
+        pending_reconciliation: pending,
+        external_steps: [
+          'Stop at a safe boundary. When an active Job/pending source write exists, persist/read back only necessary cursor/Job/Verification state before sharing this handoff.',
+          'Re-fetch current PROJECT.md from the configured Memory Repo and compare blob SHA=' + project_manifest_sha + ', source HEAD and any active Job/cursor before treating details as verified.',
+          pending
+            ? 'Uncertain writes exist. Re-read source blob/HEAD and durable cursor; never retry the write blindly. Clearly label any unresolved result UNVERIFIED.'
+            : 'No uncertain writes were supplied; do not create a redundant checkpoint solely for stopchat.',
+          'This tool is read-only; it does not save state, close ChatGPT, create a Job, trigger a background worker or grant execution authority.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_setup_prepare',
+    {
+      title: 'Prepare minimal Project AGENTS and Criteria draft',
+      description: 'Fresh Start/Adopt. PREPARE ONLY: create one generic AGENTS.md and one Criteria DRAFT in the active Project Memory. This does not approve Criteria, create a Job or change source.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        intake_mode: z.enum(['NEW','EXISTING']).default('NEW'),
+        existing_criteria_state: z.enum(['PRESENT','ABSENT','UNKNOWN']).default('UNKNOWN'),
+        observed_source_summary: z.string().optional(),
+        source_criteria_drift: z.string().optional(),
+        goal: z.string().optional(),
+        use_class: z.enum(['PERSONAL','INTERNAL','COMMERCIAL','UNDECIDED']).default('UNDECIDED'),
+        current_scale: z.string().optional(),
+        committed_future_scale: z.string().optional(),
+        environment: z.string().optional(),
+        boundaries: z.array(z.string()).default([]),
+      },
+      outputSchema: {
+        project_id: z.string(),
+        agents_path: z.string(),
+        criteria_path: z.string(),
+        intake_disposition: z.enum(['CREATE_DRAFT_IF_ABSENT','READ_EXISTING_NO_WRITE','INSPECT_FIRST_NO_WRITE']),
+        intake_review_text: z.string(),
+        advisor_activation: z.literal('HUMAN_CRITERIA_INTENT_ONLY'),
+        agents_template_text: z.string(),
+        criteria_draft_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, intake_mode, existing_criteria_state, observed_source_summary, source_criteria_drift, goal, use_class, current_scale, committed_future_scale, environment, boundaries }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare Project setup.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id) || parsed.lifecycle !== 'ACTIVE') {
+        return { content: [{ type: 'text', text: 'Fresh Start requires the exact ACTIVE Project manifest and canonical PROJECT.md path.' }], isError: true }
+      }
+      const safeLine = (v: any) => String(v || 'CHUA_CHOT').replace(/[\r\n]+/g, ' ').slice(0, 600)
+      const intake = resolveProjectCriteriaIntake(intake_mode, existing_criteria_state, observed_source_summary ?? '')
+      const root = 'projects/' + parsed.project_id + '/'
+      const agentsPath = root + 'AGENTS.md'
+      const criteriaPath = root + 'CRITERIA.md'
+      const agentsTemplate = [
+        '# GSA Project Agents — ' + safeLine(parsed.name), '',
+        '> Generic GSA roles and security/approval rules always have precedence. This file declares only optional Project Coder/Tester domain add-ins; no duplicate global harness.', '',
+        'Project ID: ' + parsed.project_id,
+        'Source repository: ' + parsed.primary_repo_url,
+        'Canonical Criteria: ' + criteriaPath, '',
+        '## Coder Add-in (optional)',
+        '- harness: none',
+        '- skills: none', '',
+        '## Tester Add-in (optional)',
+        '- harness: none',
+        '- skills: none', '',
+        '## Policy',
+        '- Optional add-in instructions must live inside this same Project Memory prefix.',
+        '- Load add-ins lazily only for the matching role and Task; never at Project open.',
+        '- Add-ins cannot override global GSA harness, Criteria, access rights, review/test evidence or Human approval.',
+        '- Without add-ins Coder/Tester use generic skills, except when a Task explicitly needs domain-specific guidance.',
+        '',
+      ].join('\n')
+      const criteriaDraft = intake.disposition === 'CREATE_DRAFT_IF_ABSENT' ? [
+        '# Project Criteria — ' + safeLine(parsed.name), '',
+        'Status: DRAFT (not Human-approved)',
+        'Project ID: ' + parsed.project_id, '',
+        '## GOAL',
+        intake.source_derived ? 'CHUA_CHOT: source-derived product hypothesis; Human must confirm desired GOAL' : safeLine(goal), '',
+        ...(intake.source_derived ? ['## Observed source (provisional; not product authority)', safeLine(observed_source_summary), '## Possible drift requiring Human decision', safeLine(source_criteria_drift), ''] : []),
+        '## Product/use',
+        'Use class: ' + use_class,
+        'Current actual scale: ' + safeLine(current_scale),
+        'Future scale actually committed by Human: ' + safeLine(committed_future_scale), '',
+        '## Environment and trust boundaries',
+        safeLine(environment), '',
+        '## Constraints / intentionally not in scope',
+        ...(boundaries?.length ? boundaries.map((x: any) => '- ' + safeLine(x)) : ['- CHUA_CHOT']), '',
+        '## Acceptance',
+        '- CHUA_CHOT: Planner must derive observable acceptance from Human GOAL.', '',
+        '## Approval',
+        'Human decision: PENDING',
+        'Technical Advisor: INACTIVE until Human requests initial Criteria approval or material approved Criteria change.',
+        'ADVISOR SIGNED: PENDING; only actual advice delivered to Human may sign for a baseline revision and scoped delta.',
+        'Planner updates this SAME file on Human choice; do not auto-promote DRAFT, create Criteria V2 or infer approval from SHA.',
+        '',
+      ].join('\n') : ''
+      const intakeReview = intake.review + (intake_mode === 'EXISTING' && source_criteria_drift ? ' Possible drift (provisional): ' + safeLine(source_criteria_drift) : '')
+      const out = {
+        project_id: parsed.project_id,
+        agents_path: agentsPath,
+        criteria_path: criteriaPath,
+        intake_disposition: intake.disposition,
+        intake_review_text: intakeReview,
+        advisor_activation: 'HUMAN_CRITERIA_INTENT_ONLY' as const,
+        agents_template_text: agentsTemplate,
+        criteria_draft_text: criteriaDraft,
+        external_steps: [
+          'First re-read the exact PROJECT.md path from configured GitHub Memory Repo; SHA must match project_manifest_sha. This tool does not attest caller-provided manifest bytes.',
+          'Independently read current canonical CRITERIA.md and source. Never trust caller-supplied ABSENT or source observations without checking GitHub; if Criteria exists, no setup Criteria write regardless of supplied state.',
+          'Create AGENTS.md only when absent; create canonical Criteria DRAFT only if intake_disposition=CREATE_DRAFT_IF_ABSENT and GitHub independently confirms file absent. Each CREATE requires existing scope+memory authorization and exact readback. Otherwise do not write Criteria.',
+          'For EXISTING with Criteria, inspect product-theory fit and compare actual source for achieved/missing/excess/drift; give Human a report, not an automatic Criteria edit. For EXISTING without Criteria, inspect source then draft a product hypothesis marked CHUA_CHOT; no code-derived approval.',
+          'If Development Branch is unconfigured, Admin consults Human and prepares PROJECT.md branch configuration before dependent source writes; Project open/chat/discovery may continue.',
+          'Advisor stays inactive while brainstorming or editing DRAFT. Activate ONLY on explicit Human intent to finalize first Criteria or material WHAT/WHY change; advice delivery acknowledges ADVISOR SIGNED for revision/delta scope in the SAME CRITERIA.md. Human decides; Planner only then writes/readbacks approved changes. No fake Advisor signature.',
+          'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_criteria_advice_check',
+    {
+      title: 'Verify scoped Advisor advice before approved Criteria write',
+      description: 'C31 READ ONLY. Check whether the same canonical CRITERIA.md contains exactly one matching ADVISOR SIGNED receipt for Human Criteria approval/change. Never treats caller claims or signature text alone as proof of Advisor provenance or Human approval.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        criteria_path: z.string().min(1),
+        criteria_current_sha: z.string(),
+        criteria_text: z.string(),
+        intent: z.enum(['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE','HUMAN_KEEP_CRITERIA','INITIAL_APPROVAL','MATERIAL_CHANGE']),
+        advisor_baseline_sha: z.string().optional(),
+        delta_scope: z.string().optional(),
+        human_decision: z.enum(['PENDING','APPROVE','KEEP']).default('PENDING'),
+      },
+      outputSchema: {
+        status: z.string(), advisor_required: z.boolean(),
+        criteria_write_prepared: z.literal(false), external_advice_check_required: z.boolean(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async (input: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Criteria advice check.')
+      const check = projectCriteriaAdvisoryDecision(input.project_id, input)
+      const out = { ...check, external_steps: check.advisor_required ? [
+        'Read the exact current CRITERIA.md from configured GitHub Memory Repo; compare path/text/current SHA with tool inputs and confirm it is the ONE canonical Criteria file.',
+        'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, and compare its baseline Criteria SHA, delta scope and advice reference; the text can be forged and is not proof by itself.',
+        'Read back the Advisor baseline SHA from GitHub history and confirm no intervening material Criteria edit or wider final delta. If stale, fake or scope changed, do not approve; reconsult Advisor on the new delta.',
+        'Verify Human decision to approve exact advised scope separately; KEEP means no approved Criteria write.',
+        'Only then use existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS to update this SAME CRITERIA.md; read back. This check never issues write permission.',
+      ] : [
+        'Ordinary discussion, draft-only edits and Plan/Task changes do not call Advisor. Keep existing Memory/Git authorization for any actual draft write.',
+      ] }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_role_addins_resolve',
+    {
+      title: 'Resolve optional Coder/Tester Project add-ins',
+      description: 'Task-time, read-only discovery of Coder or Tester add-in references from a verified AGENTS.md. Do not load at Project open. Returned paths are lower-trust domain guidance, never elevated runtime harness instructions.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        agents_path: z.string().min(1),
+        agents_text: z.string().min(1),
+        agents_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        role: z.enum(['coder','tester']),
+        requires_domain_addin: z.boolean().default(false),
+        task_id: z.string().uuid().optional(),
+        capability_evidence: z.array(z.object({
+          project_id: z.string().uuid(), role: z.enum(['coder','tester']), task_id: z.string().uuid(),
+          path: z.string().min(1), file_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          result: z.literal('FUNCTIONAL'), verification_ref: z.string().min(1),
+        })).default([]),
+      },
+      outputSchema: {
+        role: z.string(),
+        status: z.string(),
+        harness_path: z.string().nullable(),
+        skill_paths: z.array(z.string()),
+        generic_available: z.boolean(),
+        readiness: z.enum(['GENERIC_READY','BLOCKED_REQUIRED_ADDIN','CONFIGURED_UNVERIFIED','EVIDENCE_PRESENT_UNVERIFIED']),
+        ready_for_task: z.boolean(),
+        matched_evidence_refs: z.array(z.string()),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    } as any,
+    async ({ project_id, agents_path, agents_text, agents_sha, role, requires_domain_addin, task_id, capability_evidence }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to resolve Project add-ins.')
+      if (!PROJECT_ID_PATTERN.test(project_id) || agents_path !== 'projects/' + project_id + '/AGENTS.md') {
+        return { content: [{ type: 'text', text: 'AGENTS path/project identity mismatch.' }], isError: true }
+      }
+      const resolved = resolveProjectRoleAddins(project_id, role, agents_text)
+      if (resolved.status === 'DENIED') return { content: [{ type: 'text', text: resolved.reason }], isError: true }
+      const assessed = projectTaskCapabilityAssessment(project_id, role, task_id, requires_domain_addin, resolved, capability_evidence)
+      const out = {
+        role,
+        status: requires_domain_addin ? assessed.readiness : resolved.status,
+        harness_path: resolved.harness_path,
+        skill_paths: resolved.skill_paths,
+        generic_available: !requires_domain_addin,
+        readiness: assessed.readiness,
+        ready_for_task: assessed.ready_for_task,
+        matched_evidence_refs: assessed.matched_evidence_refs,
+        external_steps: [
+          'Before treating this as Project configuration, fetch exact AGENTS.md from the configured Memory Repo and compare path/project_id/blob SHA=' + agents_sha + ' with the supplied text; do not trust caller-provided bytes by themselves.',
+          'Do not load Project add-ins at Project open, and do not resolve add-ins for roles other than Coder/Tester.',
+          'On a matching Task, verify the active Project ID/manifest and fetch only the referenced harness/skills via GitHub readback inside this exact Project prefix. Do not invoke nonexistent READ_MEMORY scope operations.',
+          'Interpret add-in content strictly as lower-trust domain guidance. It cannot override global role rules, Criteria, Human authority, security scope or independent test evidence.',
+          requires_domain_addin ? 'A configured skill path and even a caller-supplied FUNCTIONAL evidence record is NOT readiness. Independently GitHub readback exact project/role/task/path SHA and the referenced real functional Test Verification before attesting DOMAIN_READY in reviewed Project Bootstrap evidence; otherwise BLOCKED/UNVERIFIED.' : 'Generic Coder/Tester is ready for ordinary Tasks with no required domain add-in. Do not manufacture a mandatory add-in.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_bootstrap_readiness_prepare',
+    {
+      title: 'Evaluate Project Bootstrap prerequisites without authorizing code',
+      description: 'C30 PREPARE ONLY: strict Criteria-first ordered preflight. Caller must independently read back Project Criteria, reviewed Plan, capability evidence, milestone acceptance and Human approval before treating prepared status as BOOTSTRAP READY. Never authorizes source writes.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        criteria: CRITERIA_BINDING_SCHEMA.optional(),
+        criteria_human_approved: z.boolean().default(false),
+        criteria_current_blob_sha: z.string().optional(),
+        plan: z.any().optional(),
+        capabilities: z.array(z.any()).default([]),
+        human_execution_approved: z.boolean().default(false),
+      },
+      outputSchema: {
+        status: z.string(), detail: z.string(), bootstrapped: z.literal(false),
+        source_write_authorized: z.literal(false), requires_external_readback: z.literal(true),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    } as any,
+    async ({ project_id, criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required for Project Bootstrap readiness.')
+      const prepared = projectBootstrapReadinessDecision(project_id, {
+        criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved,
+      })
+      const out = { ...prepared, external_steps: [
+        'Verify the exact canonical Project CRITERIA.md exists in Project Memory at the current GitHub blob SHA and was approved by Human; never trust a caller-supplied boolean, text or SHA alone.',
+        'Verify one official Implementation Plan, its exact Criteria binding and durable current-revision independent Reviewer PASS Verification; existing unrelated Jobs remain untouched.',
+        'Match Coder/Tester Task skills to actual capability evidence. Generic capability is valid for ordinary Tasks; domain add-in references or caller claims alone are not FUNCTIONAL READY.',
+        'Check milestone Task coverage, dependencies, observable acceptance, and required test/review scopes from current reviewed Plan.',
+        'Only after actual prerequisites can an authorized GSA consequential dispatch/write apply M5 guard and separately verify Human execution approval; this tool never permits code.',
+        'Once BOOTSTRAP READY and Human authorization were already verified for this Project revision, continue ordinary later Job workflow without re-Bootstrap per Task.',
+      ] }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
+    },
+  )
+
+  server.registerTool(
+    'project_branch_policy_prepare',
+    {
+      title: 'Prepare Human-approved Project Development Branch configuration',
+      description: 'Admin function. PREPARE ONLY: update one OWNED repository branch policy in PROJECT.md. Callers must verify live Git branches, authorize Memory scope, write with exact SHA and read back. No GitHub branch is selected by default.',
+      inputSchema: {
+        memory_path: z.string().min(1),
+        project_manifest_text: z.string().min(1),
+        project_manifest_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        repository_url: z.string().url(),
+        development_branch: z.string().min(1),
+        release_branch: z.string().nullable().optional(),
+        human_confirmed: z.literal(true),
+      },
+      outputSchema: {
+        memory_path: z.string(),
+        expected_sha: z.string(),
+        repository_url: z.string(),
+        development_branch: z.string(),
+        release_branch: z.string().nullable(),
+        updated_manifest_text: z.string(),
+        external_steps: z.array(z.string()),
+      },
+      securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    } as any,
+    async ({ memory_path, project_manifest_text, project_manifest_sha, repository_url, development_branch, release_branch, human_confirmed }: any) => {
+      const auth = await authContext(req)
+      if (!auth) return authError(req, 'Authentication required to prepare branch policy.')
+      const parsed = parseProjectManifest(project_manifest_text)
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id) || !human_confirmed)
+        return { content: [{ type: 'text', text: 'Invalid Project identity/path or missing Human confirmation.' }], isError: true }
+      const repo = normalizeGithubRepo(repository_url)
+      const owned = parsed.repositories.find((r: any) => r.url.toLowerCase() === repo?.url.toLowerCase() && r.relation === 'OWNED')
+      if (!repo || !owned || !validIntegrationBranch(development_branch) || (release_branch && !validIntegrationBranch(release_branch)))
+        return { content: [{ type: 'text', text: 'Branch policy must target an OWNED repository with valid Git ref names.' }], isError: true }
+      const policies = parsed.branch_policies.map((p: any) => p.repository_url.toLowerCase() === repo.url.toLowerCase()
+        ? { ...p, development_branch, release_branch: release_branch ?? null } : p)
+      const header = project_manifest_text.split('\n')
+      const frontEnd = header.indexOf('---', 1)
+      if (frontEnd < 0) return { content: [{ type: 'text', text: 'Malformed Project front matter.' }], isError: true }
+      // Keep one canonical branch mapping section; root fields are PRIMARY convenience only.
+      let next = project_manifest_text.replace(/\n## Branch Policy[^\n]*\n[\s\S]*?(?=\n## |$)/, '')
+      const primary = policies.find((p: any) => p.repository_url.toLowerCase() === parsed.primary_repo_url.toLowerCase())
+      const lines = next.split('\n').filter((line: string) => !/^(development_branch|release_branch|integration_target|branch_policy_owner):/.test(line))
+      const yamlEnd = lines.indexOf('---', 1)
+      if (yamlEnd < 0) return { content: [{ type: 'text', text: 'Malformed Project front matter.' }], isError: true }
+      lines.splice(yamlEnd, 0,
+        'development_branch: ' + (primary?.development_branch ?? ''),
+        'release_branch: ' + (primary?.release_branch ?? ''),
+        'integration_target: ' + (primary?.development_branch ?? ''),
+        'branch_policy_owner: HUMAN_CONFIRMED')
+      next = lines.join('\n').trimEnd() +
+        '\n\n## Branch Policy (Human-approved)\n' +
+        policies.map((p: any) => {
+          const entry = parsed.repositories.find((r: any) => r.url.toLowerCase() === p.repository_url.toLowerCase())
+          if (!entry) throw new Error('Branch policy references an unregistered repository.')
+          return '- ' + entry.role + ' | ' + p.repository_url + ' | development=' + (p.development_branch ?? '') +
+            ' | release=' + (p.release_branch ?? '')
+        }).join('\n') + '\n'
+      const out = {
+        memory_path, expected_sha: project_manifest_sha,
+        repository_url: repo.url, development_branch, release_branch: release_branch ?? null,
+        updated_manifest_text: next,
+        external_steps: [
+          'Verify this PROJECT.md was freshly fetched from the configured Memory Repo and SHA matches expected_sha; an input manifest/SHA is not trustworthy without GitHub readback.',
+          'Verify the selected source repository belongs to this Project and both nonempty configured Git branches exist on live GitHub; never infer default/main.',
+          'Verify Human actually approved this exact repo+branch change, not merely caller-supplied human_confirmed; reconcile affected active Jobs before switching integration target.',
+          'Call authorize_project_scope(MUTATE_MEMORY) and authorize_memory_mutation(update) for this exact Project path.',
+          'GitHub Memory Repo: update_file with expected_sha (CAS), then independently fetch/readback and compare exact selected branch policy.',
+          'Never merge, deploy or write source merely because this configuration was prepared.',
+        ],
+      }
+      return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
 
@@ -4695,6 +5542,13 @@ function createServer(req: Request) {
         repository_mode: z.string(),
         repo_registry_status: z.string(),
         registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
+        branch_policy_status: z.string(),
+        development_branch: z.string().nullable(),
+        release_branch: z.string().nullable(),
+        branch_policies: z.array(z.object({
+          repository_url: z.string(), development_branch: z.string().nullable(),
+          release_branch: z.string().nullable(), status: z.string(),
+        })),
         memory_path: z.string(),
         project_manifest_sha: z.string(),
         openable: z.boolean(),
@@ -4706,9 +5560,8 @@ function createServer(req: Request) {
     async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to open a Project.')
-      if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
       const parsed = parseProjectManifest(project_manifest_text)
-      if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+      if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
       const result = {
         project_id: parsed.project_id,
         handle: projectHandle(parsed.project_id),
@@ -4718,6 +5571,10 @@ function createServer(req: Request) {
         repository_mode: parsed.repo_mode,
         repo_registry_status: parsed.repo_registry_status,
         registered_repositories: parsed.repositories,
+        development_branch: parsed.development_branch,
+        release_branch: parsed.release_branch,
+        branch_policy_status: parsed.branch_policy_status,
+        branch_policies: parsed.branch_policies,
         memory_path,
         project_manifest_sha,
         openable: parsed.lifecycle !== 'ARCHIVED',
@@ -4741,6 +5598,13 @@ function createServer(req: Request) {
         repository_mode: z.string(),
         repo_registry_status: z.string(),
         registered_repositories: z.array(z.object({ role: z.string(), relation: z.string(), url: z.string() })),
+        branch_policy_status: z.string(),
+        development_branch: z.string().nullable(),
+        release_branch: z.string().nullable(),
+        branch_policies: z.array(z.object({
+          repository_url: z.string(), development_branch: z.string().nullable(),
+          release_branch: z.string().nullable(), status: z.string(),
+        })),
         project_manifest_sha: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -4761,6 +5625,10 @@ function createServer(req: Request) {
         repository_mode: parsed.repo_mode,
         repo_registry_status: parsed.repo_registry_status,
         registered_repositories: parsed.repositories,
+        development_branch: parsed.development_branch,
+        release_branch: parsed.release_branch,
+        branch_policy_status: parsed.branch_policy_status,
+        branch_policies: parsed.branch_policies,
         project_manifest_sha,
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -4798,9 +5666,8 @@ function createServer(req: Request) {
       async ({ memory_path, project_manifest_text, project_manifest_sha }: any) => {
         const auth = await authContext(req)
         if (!auth) return authError(req, 'Authentication required to change Project lifecycle.')
-        if (!validMemoryPath(memory_path)) return { content: [{ type: 'text', text: 'Invalid Project Memory path.' }], isError: true }
         const parsed = parseProjectManifest(project_manifest_text)
-        if (!parsed) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
+        if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) return { content: [{ type: 'text', text: 'Invalid PROJECT.md contract.' }], isError: true }
         if (!allowedFrom.includes(parsed.lifecycle)) {
           return { content: [{ type: 'text', text: 'Lifecycle transition blocked from ' + parsed.lifecycle + ' to ' + target + '.' }], isError: true }
         }
@@ -4881,7 +5748,7 @@ function createServer(req: Request) {
       title: 'Load a GSA role harness',
       description: 'Load shared GSA operating rules plus one role contract. Then load only the returned suggested skills that are relevant to the current Run.',
       inputSchema: {
-        role: z.enum(['orchestrator','planner','designer','coder','reviewer','critic_reviewer','tester']),
+        role: z.enum(['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']),
         mode: z.enum(['JOB','DIRECT_AGENT']).default('JOB'),
       },
       outputSchema: {
@@ -4977,6 +5844,9 @@ function createServer(req: Request) {
         scope: z.array(z.string()).min(1),
         non_goals: z.array(z.string()).default([]),
         execution_contract: z.enum(['V2_STABLE','NEXT']).default(jobCreationExecutionContractDefault(req)),
+        plan_kind: z.enum(['PROJECT_PLAN','JOB']).default('JOB'),
+        integration_branch: z.string().optional(),
+        criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
         work_context: z.enum(['NEW','BROWNFIELD']),
         phase: z.string().min(1),
         milestone: z.string().min(1),
@@ -5057,7 +5927,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -5117,6 +5987,16 @@ function createServer(req: Request) {
         }
         replacement = { intent, predecessor, item }
       }
+      if (((type === 'code') || (plan_kind === 'PROJECT_PLAN')) &&
+          resolveExecutionContract(execution_contract) === 'NEXT' &&
+          !validIntegrationBranch(integration_branch)) {
+        return { content: [{ type: 'text', text: 'DEVELOPMENT_BRANCH_REQUIRED: new NEXT code/Project Plans must bind the Human-configured Development Branch for the selected OWNED repository; read PROJECT.md, never infer default/main.' }], isError: true }
+      }
+      const criteriaError = projectCriteriaBindingError(project_id, plan_kind, criteria_binding)
+      if (criteriaError) return { content: [{ type: 'text', text: criteriaError }], isError: true }
+      if (criteria_binding && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', criteria_binding)) {
+        return { content: [{ type: 'text', text: 'Provided Criteria binding is invalid for this Project.' }], isError: true }
+      }
       const jobId = replacement?.item?.replacement?.job_id ?? uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
@@ -5154,6 +6034,8 @@ function createServer(req: Request) {
         } : {}),
         project_id,
         type,
+        plan_kind: plan_kind ?? 'JOB',
+        criteria_binding: criteria_binding ?? null,
         objective,
         scope,
         non_goals,
@@ -5176,6 +6058,7 @@ function createServer(req: Request) {
           project_repository_mode,
           registered_repositories: normalizedRegistered,
           working_repository_url: normalizedWorking,
+          integration_branch: integration_branch ?? null,
           cross_repo_impact: cross_repo_impact ?? [],
         },
         product_workflow: product_workflow ?? null,
@@ -5212,6 +6095,11 @@ function createServer(req: Request) {
       const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        ...(integration_branch ? ['Verify this Job integration_branch equals the registered working repository Development Branch in exact current PROJECT.md, and that GitHub live branch exists. Readback must be independent of caller-provided input; do not use GitHub default.'] : []),
+        ...(criteria_binding ? [
+          'Fetch exact Project CRITERIA.md from the configured Memory Repo at criteria_binding.criteria_path; verify blob SHA=' + criteria_binding.criteria_blob_sha + ' and actual Human APPROVED content. An input approval_status flag is not reliable evidence by itself.',
+          'Before Reviewer PASS or dependent code execution, re-read current Criteria/Project Memory and reconcile if revision has changed; only Human may change approved WHAT/WHY.',
+        ] : []),
         'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path). Continue only on ALLOW.',
         'GitHub Memory Repo: create_file at memory_path with job_record_text.',
         'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
@@ -5476,6 +6364,8 @@ function createServer(req: Request) {
         completion_requirements: z.array(z.string()).optional(),
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
+        criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
+        integration_branch: z.string().optional(),
         revision_reason: z.string().min(1),
         superseding_verification_record_text: z.string().min(2).optional(),
         superseding_verification_ref: z.string().min(1).optional(),
@@ -5494,7 +6384,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -5551,6 +6441,15 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && tasks !== undefined && topology === undefined) {
         return { content: [{ type: 'text', text: 'NEXT_EXECUTION_TOPOLOGY_REBIND_REQUIRED: revising Tasks must resupply execution topology for the same planning revision.' }], isError: true }
       }
+      const effectiveCriteria = criteria_binding ?? current.criteria_binding
+      const criteriaErr = projectCriteriaBindingError(project_id, current.plan_kind ?? 'JOB', effectiveCriteria)
+      if (criteriaErr) return { content: [{ type: 'text', text: criteriaErr }], isError: true }
+      if (effectiveCriteria && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', effectiveCriteria)) {
+        return { content: [{ type: 'text', text: 'Current Criteria binding is malformed or belongs to another Project.' }], isError: true }
+      }
+      const branchError = revisedJobIntegrationBranchError(current, executionContract, integration_branch)
+      if (branchError) return { content: [{ type: 'text', text: branchError }], isError: true }
+      const effectiveIntegrationBranch = integration_branch === undefined ? current.repository_context?.integration_branch ?? null : integration_branch
       const nextRevision = Number(current.planning_revision ?? 0) + 1
       const hasCurrentNextPlanning = ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology'].some((key) => (current[key] ?? []).length)
       const allNextPlanningSupplied = evidence_needs !== undefined && test_checkpoints !== undefined && evidence_requirements !== undefined && milestones !== undefined && planning_topology !== undefined
@@ -5572,6 +6471,11 @@ function createServer(req: Request) {
       if (nextPlanningError) return { content: [{ type: 'text', text: nextPlanningError }], isError: true }
       const next = {
         ...current,
+        criteria_binding: effectiveCriteria ?? null,
+        repository_context: {
+          ...current.repository_context,
+          integration_branch: effectiveIntegrationBranch,
+        },
         objective: objective ?? current.objective,
         scope: scope ?? current.scope,
         non_goals: non_goals ?? current.non_goals,
@@ -5614,10 +6518,14 @@ function createServer(req: Request) {
         planning_revision: nextRevision,
         continuation: planningLoopContinuationDecision('PLAN_REVISED', next.lifecycle, nextRevision),
         external_steps: [
+          ...(effectiveIntegrationBranch ? [
+            'C14A branch binding: independently re-read exact current PROJECT.md. Verify the selected working repository is OWNED and its Human-configured Development Branch equals repository_context.integration_branch=' + effectiveIntegrationBranch + '; reject implicit main/default, wrong repository or unconfigured policy.',
+            'C14A branch binding: verify live GitHub branch ' + effectiveIntegrationBranch + ' exists in the exact selected working repository before any Job Memory mutation.',
+          ] : []),
           'Fetch current Job immediately before update and require blob SHA equals expected_job_sha.',
           'Call authorize_memory_mutation(operation=update, repository_full_name=configured Memory Repo, path=memory_path).',
           'Update Job with next_job_record_text using expected_job_sha exactly; stale SHA requires refetch/reconcile.',
-          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING.',
+          'Read back the Job and verify the incremented planning_revision plus planning_review=PENDING, and repository_context.integration_branch equals the independently confirmed Development Branch (no fallback).',
           inProgressNextRevision
             ? 'The Job remains IN_PROGRESS but all further NEXT dispatch/checkpoint claims are blocked until Reviewer PASS binds to this exact superseding planning_revision. For first runtime supersession, read back the originating Verification and terminal claim (exact claim SHA) before updating the Job.'
             : 'The DRAFT Job remains non-executable until Reviewer PASS and READY transition.',
@@ -5692,6 +6600,12 @@ function createServer(req: Request) {
       if (current.planning_context?.work_context === 'BROWNFIELD' && !(current.planning_context?.brownfield_logic_review ?? []).length) {
         return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: brownfield logic review evidence is required before planning review.' }], isError: true }
       }
+      if (current.repository_context?.integration_branch &&
+          !validIntegrationBranch(current.repository_context.integration_branch)) {
+        return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: configured Job integration branch is malformed.' }], isError: true }
+      }
+      const criteriaErr = projectCriteriaBindingError(project_id, current.plan_kind ?? 'JOB', current.criteria_binding)
+      if (criteriaErr) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + criteriaErr }], isError: true }
       if (executionContract === 'NEXT') {
         const executionTopologyError = validateExecutionTopology(current.tasks ?? [], current.topology ?? [])
         if (executionTopologyError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + executionTopologyError }], isError: true }
@@ -5724,6 +6638,7 @@ function createServer(req: Request) {
         repository_structure_evidence: current.repository_discovery.structure_evidence,
         selected_source_evidence: current.repository_discovery.selected_source_evidence ?? [],
         planning_context: current.planning_context ?? null,
+        criteria_binding: current.criteria_binding ?? null,
         created_at: new Date().toISOString(),
       }
       const reviewedJob = {
@@ -5739,6 +6654,12 @@ function createServer(req: Request) {
       const continuation = planningLoopContinuationDecision('REVIEW_RECORDED', current.lifecycle, planning_revision, result)
       const nextRole = continuation.next_role
       const steps = [
+        ...(current.repository_context?.integration_branch ? [
+          'Reviewer verifies current Project Memory Development Branch for the working repository equals the bound Job integration_branch, and the live GitHub branch exists. No implicit main/default or cross-repo branch.',
+        ] : []),
+        ...(current.criteria_binding ? [
+          'Reviewer independently fetches approved Criteria revision at exact configured path/blob SHA and compares Overall/Phase GOAL coverage before accepting a Project Plan. Historical source code alone is not Criteria approval.',
+        ] : []),
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
         'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',
         'Read back persisted planning-review Verification by exact path/SHA and require project, Job, planning_revision and result match before changing Job.',
@@ -5784,14 +6705,16 @@ function createServer(req: Request) {
   server.registerTool(
     'start_critic_review',
     {
-      title: 'Start Human-only Critic Reviewer',
-      description: 'Human-invoked CR entrypoint for an independent second review. Same-chat invocation is allowed. Conversation history is non-authoritative and must be ignored as review evidence; reconstruct from durable records and live source truth. Never call automatically.',
+      title: 'Start authorized Critic Reviewer',
+      description: 'Independent CR after direct Human request OR Human-approved milestone crl after exact Reviewer PASS. Never trigger CR without either scope-bound authority.',
       inputSchema: {
         project_id: z.string().uuid(),
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         job_record_sha: z.string().min(7),
-        human_invoked: z.literal(true),
+        human_invoked: z.boolean().default(false),
+        approved_milestone_id: z.string().optional(),
+        milestone_reviewer_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
         prior_review_verification_ref: z.string().optional(),
@@ -5808,13 +6731,14 @@ function createServer(req: Request) {
         target_revision: z.string().nullable(),
         prior_review_verification_ref: z.string().nullable(),
         durable_inputs_only: z.boolean(),
+        authorization_source: z.enum(['HUMAN_COMMAND','APPROVED_MILESTONE']),
         next_step: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, human_invoked, target_ref, target_revision, prior_review_verification_ref }: any) => {
+    async ({ project_id, job_id, job_record_text, human_invoked, approved_milestone_id, milestone_reviewer_snapshot, target_ref, target_revision, prior_review_verification_ref }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to start Critic Reviewer.')
       let current: any
@@ -5825,13 +6749,13 @@ function createServer(req: Request) {
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
-      if (human_invoked !== true) {
-        return { content: [{ type: 'text', text: 'HUMAN_INVOCATION_REQUIRED: CR can only be started by an explicit Human command.' }], isError: true }
-      }
+      const milestoneError = human_invoked === true ? null :
+        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       const result = {
         role: 'critic_reviewer',
         allowed: true,
-        status: 'READY_FOR_STATELESS_REVIEW',
+        status: human_invoked === true ? 'READY_FOR_STATELESS_REVIEW' : 'PENDING_MILESTONE_EVIDENCE_READBACK',
         context_policy: 'Same-chat invocation is explicitly allowed. Ignore all conversation history, including Planner/Reviewer reasoning visible in this chat, as review evidence. Reconstruct the target only from persisted Project/Job/Verification records plus live source truth. Form the independent verdict before reading prior Reviewer verdict.',
         project_id,
         job_id,
@@ -5840,7 +6764,10 @@ function createServer(req: Request) {
         target_revision: target_revision ?? null,
         prior_review_verification_ref: prior_review_verification_ref ?? current.planning_review?.verification_ref ?? null,
         durable_inputs_only: true,
-        next_step: 'Proceed now even if Planner/Reviewer ran earlier in this same chat. Load critic_reviewer harness + critic-review skill, disregard chat-history reasoning, reconstruct from durable records/live source, perform blind review, then compare prior Reviewer last and persist with critic_review_record.',
+        authorization_source: human_invoked === true ? 'HUMAN_COMMAND' : 'APPROVED_MILESTONE',
+        next_step: human_invoked === true
+          ? 'Proceed with independent CR on the Human target; read durable evidence before verdict and compare prior Reviewer only afterwards.'
+          : 'BEFORE CR: re-fetch current approved Job blob and confirm matching SHA/planning revision plus Human milestone crl authorization, re-fetch the supplied Reviewer PASS Verification by exact path/SHA and compare all matching fields. A supplied JSON snapshot alone does not authorize CR. Then execute independent CR and record its APPROVED_MILESTONE source, not human_invoked.',
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
     },
@@ -5856,7 +6783,9 @@ function createServer(req: Request) {
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         planning_revision: z.number().int().positive().optional(),
-        human_invoked: z.literal(true),
+        human_invoked: z.boolean().default(false),
+        approved_milestone_id: z.string().optional(),
+        milestone_reviewer_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         result: z.enum(['PASS','PASS_WITH_FINDINGS','FAIL','BLOCKED']),
         findings: z.array(z.object({
           severity: z.enum(['CRITICAL','IMPORTANT','MINOR']),
@@ -5886,12 +6815,9 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
+    async ({ project_id, job_id, job_record_text, planning_revision, human_invoked, approved_milestone_id, milestone_reviewer_snapshot, result, findings, limitations, prior_review_verification_ref, prior_review_comparison, target_ref, target_revision }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to record Critic Review.')
-      if (human_invoked !== true) {
-        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: explicit Human invocation is mandatory.' }], isError: true }
-      }
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
@@ -5902,6 +6828,8 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
       }
+      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
@@ -5922,7 +6850,10 @@ function createServer(req: Request) {
         producer: 'critic_reviewer',
         execution_contract: executionContract,
         ...(executionContract === 'NEXT' ? { memory_namespace: nextMemoryNamespace } : {}),
-        human_invoked: true,
+        human_invoked: human_invoked === true,
+        authorization_source: human_invoked === true ? 'HUMAN_COMMAND' : 'APPROVED_MILESTONE',
+        approved_milestone_id: human_invoked === true ? null : approved_milestone_id,
+        milestone_reviewer_snapshot_ref: human_invoked === true ? null : milestone_reviewer_snapshot?.path,
         target_ref: target_ref ?? current.repository_context?.working_repository_url ?? null,
         target_revision: target_revision ?? null,
         result,
@@ -5940,6 +6871,7 @@ function createServer(req: Request) {
         job_mutated: false,
         next_role: 'human',
         external_steps: [
+          ...(human_invoked === true ? [] : ['Re-fetch the exact current Job SHA from GitHub Memory Repo and confirm Human-approved milestone crl, then independently fetch the matching Reviewer PASS snapshot path/SHA before recording CR. Supplied snapshot JSON is not evidence by itself.']),
           'Persist verification_record_text at verification_memory_path after authorize_memory_mutation(create).',
           'Do not update the Job record or lifecycle from CR output.',
           'Present the independent verdict and any disagreement to Human for the next decision.',
@@ -6529,6 +7461,8 @@ function createServer(req: Request) {
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        project_manifest_text: z.string().optional(),
+        bootstrap_evidence: z.any().optional(),
       },
       outputSchema: {
         run_id: z.string(),
@@ -6548,7 +7482,7 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -6566,6 +7500,12 @@ function createServer(req: Request) {
       }
       if (owningJob.plan_change_pending) {
         return { content: [{ type:'text', text:'PLAN_CHANGE_PENDING_FENCE: Job is being reconciled with a newer reviewed Plan; do not start another Run.' }], isError:true }
+      }
+      if (role === 'coder') {
+        const blocked = projectBootstrapExecutionError(project_id, project_manifest_text ?? '', bootstrap_evidence,
+          owningJob.repository_context?.working_repository_url ?? null,
+          owningJob.repository_context?.integration_branch ?? null)
+        if (blocked) return { content: [{ type: 'text', text: blocked }], isError: true }
       }
       const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
       if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
@@ -6700,6 +7640,10 @@ function createServer(req: Request) {
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
+          ...(role === 'coder' ? [
+            'M5: independently GitHub-readback the exact Bootstrap Verification proof path/blob SHA, current Criteria SHA and reviewed Plan SHA; check real Human execution authorization and configured Development Branch. Caller-supplied claims are not sufficient.',
+            'Use authorize_project_scope(MUTATE_SOURCE) with the same evidence and target branch immediately before source write; do not bypass this via an alternate GSA-owned write route.',
+          ] : []),
         ],
       }
       return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] }
@@ -7320,9 +8264,9 @@ function createServer(req: Request) {
     'start_direct_agent',
     {
       title: 'Start a Direct Agent',
-      description: 'Handler for pl/ds/cd/rv/ts. CR uses the separate Human-only start_critic_review path. Direct work is ephemeral by default.',
+      description: 'Handler for pl/advisor/ds/cd/rv/ts. CR uses the separate Human-only start_critic_review path. Direct work is ephemeral by default.',
       inputSchema: {
-        role: z.enum(['planner','designer','coder','reviewer','tester']),
+        role: z.enum(['planner','advisor','designer','coder','reviewer','tester']),
         objective: z.string().optional(),
         target_url: z.string().url().optional(),
       },
@@ -7346,6 +8290,7 @@ function createServer(req: Request) {
       if (!auth) return authError(req, 'Authentication required to start a Direct Agent.')
       const contracts: Record<string, { purpose: string; source_write: boolean; output: string }> = {
         planner: { purpose: 'Plan scope, tasks, dependencies and gates.', source_write: false, output: 'Plan / Project or Job proposal' },
+        advisor: { purpose: 'Advise Human on feasibility and technical effects before Criteria approval/change.', source_write: false, output: 'Read-only technical advice' },
         designer: { purpose: 'Define UI/UX and asset requirements.', source_write: false, output: 'Design / Asset Requirement' },
         coder: { purpose: 'Implement approved source changes.', source_write: true, output: 'Source diff + Goal Recheck + evidence' },
         reviewer: { purpose: 'Run context-isolated review.', source_write: false, output: 'Findings + review result' },
@@ -8268,9 +9213,9 @@ app.get('/selftest', (c) => {
     tester_readiness_ladder_present: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET')),
     tester_failure_classes_present: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP, PLAN_GAP')),
     tester_retest_revision_bound: Boolean(RUNTIME_SKILLS['testing-evidence']?.body.includes('Bind Retest evidence to the exact target revision/state')),
-    critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN GATE')),
+    critic_harness_present: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN AUTHORITY:')),
     critic_skill_suggested: (ROLE_SKILLS.critic_reviewer ?? []).includes('critic-review'),
-    critic_is_human_only: Boolean(renderHarness('critic_reviewer')?.includes('Human-invoked independent peer review only')),
+    critic_human_authority_scoped: Boolean(renderHarness('critic_reviewer')?.includes('HUMAN AUTHORITY:') && renderHarness('critic_reviewer')?.includes('Human-preauthorized milestone crl')),
     critic_stateless_contract: Boolean(renderHarness('critic_reviewer')?.includes('Conversation history is non-authoritative')),
     ux_first_temp_ui_defaults_to_gate:
       uxFirstTemporaryUiGateRequired({ product_workflow: 'UX_FIRST', ui_strategy: { temporary_ui: [{ kind: 'temporary' }], temporary_ui_human_approval: 'REQUIRED_PENDING' } }, 'coder') &&
@@ -8404,4 +9349,5 @@ app.all('/mcp', async (c) => {
 
 root.route('/gsa-mcp', app)
 root.route('/gsa-mcp-next', app)
+root.route('/:slug{gsa-mcp-[a-z0-9-]+}', app) // Hono constrained first-segment parameter admits isolated staging slugs only
 Deno.serve(root.fetch)

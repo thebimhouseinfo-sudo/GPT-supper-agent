@@ -75,6 +75,14 @@ PROJECT.md is:
 
 Structured identity/ownership fields must not exist only as prose.
 
+### Human-managed branch policy and Fresh Start
+
+For each writable OWNED source repository, the active `PROJECT.md` records the **Human-confirmed** `development_branch` (the only default integration target) and optional `release_branch`; PRIMARY may use flat front-matter fields plus per-repo `## Branch Policy` mappings. GitHub `default_branch` or `main` is **not** an implicit development target. Project READY displays the source repo and these exact values (or UNCONFIGURED). A missing, renamed, stale or contradictory branch does not stop opening/discussing/planning a Project, but prevents dependent source writes/merge until Admin verifies Git and Human confirms the mapping. Never open parallel primary integration branches merely to bypass missing config. Separate Human decisions govern production merge/deploy.
+
+Fresh Start / Adopt Existing Project observes a minimal source baseline and preserves pre-existing history; it never auto-resumes old Jobs on Project open. One canonical `projects/<project-id>/CRITERIA.md` stores future product goals/use/scale/constraints/acceptance and Human approval; proposals remain draft until Human chooses after generic Technical Advisor consultation. A minimal `AGENTS.md` stores **optional** Coder/Tester harness and skills references under the same Project prefix. Generic roles always exist without these add-ins, which are loaded lazily only for matching Tasks and may not elevate permissions. Baseline source revision is a point-in-time fact and must not be confused with the persistent development branch setting.
+
+For new NEXT code and Project Plan Jobs, bind the configured development branch to the exact working repository; Project Plan additionally pins approved Criteria path/blob SHA. GitHub Memory Repo CAS/readback verifies all writes. Legacy Jobs lacking these new fields are not silently migrated or marked invalid solely due to Fresh Start.
+
 ## 5. Repository claims
 
 Each repo relationship is structured.

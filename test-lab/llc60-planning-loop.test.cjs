@@ -59,7 +59,7 @@ const skills = constantBody('RUNTIME_SKILLS');
 test('Plan GOAL anchors are served to Planner and planning Reviewer and documented for every Phase', () => {
   const plan = roles.planner.loop.join('\n');
   const review = roles.reviewer.loop.join('\n');
-  const all = [shared.join('\n'), plan, review, skills['job-planning'].body, skills['planning-review'].body];
+  const all = [String(shared), plan, review, skills['job-planning'].body, skills['planning-review'].body];
   for (const contract of all) {
     assert.match(contract, /## GOAL/, 'global goal anchor in runtime role or skill');
     assert.match(contract, /### GOAL/, 'per-Phase goal anchor in runtime role or skill');
@@ -77,7 +77,7 @@ test('Plan GOAL anchors are served to Planner and planning Reviewer and document
 });
 
 test('rl is a Planner review-loop modifier, never a source or merge authorization', () => {
-  const rules = shared.join('\n');
+  const rules = String(shared);
   assert.match(rules, /PLANNER RL SHORTCUT/);
   for (const example of ['planner rl', 'planner rl đi', 'planer rl']) assert.ok(rules.includes(example));
   assert.match(rules, /rl never grants source edits, Job execution, merge or deploy/);
@@ -168,7 +168,7 @@ test('LLC60 role-isolated planning Reviewer same turn does not become a new Huma
   const reviewer = roles.reviewer.loop.join('\n');
   const planSkill = skills['job-planning'].body;
   const reviewSkill = skills['planning-review'].body;
-  for (const text of [shared.join('\n'),orchestrator,planner,reviewer,planSkill,reviewSkill]) {
+  for (const text of [String(shared),orchestrator,planner,reviewer,planSkill,reviewSkill]) {
     assert.match(text,/SAME USER TURN|SAME USER TURN|same Human chat\/turn|same Human chat/);
   }
   assert.match(orchestrator,/next_action_after_readback/);
@@ -231,7 +231,7 @@ test('LLC60 negative control: removing PASS→READY route fails the oracle', () 
 });
 
 test('Shared intake contracts: discussion and skeleton approval cannot authorize source write', () => {
-  const rules = shared.join('\n');
+  const rules = String(shared);
   const keys = [
     'NO REASONING / FIXED STEPS',
     'LOW REASONING / CLASSIFY',
