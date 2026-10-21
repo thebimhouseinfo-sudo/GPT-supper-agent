@@ -1110,9 +1110,10 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
     requires_external_readback: true,
   })
   const c = input?.criteria
-  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c) ||
-      input?.criteria_human_approved !== true)
-    return result('CRITERIA_NOT_APPROVED', 'Human-approved canonical product Criteria is required before official Implementation Plan.')
+  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c))
+    return result('CRITERIA_BINDING_MISSING_OR_INVALID', 'Provide criteria: { criteria_path, criteria_blob_sha, approval_status: APPROVED } bound to this Project canonical CRITERIA.md. A prior capability-only Bootstrap snapshot is not this binding.')
+  if (input?.criteria_human_approved !== true)
+    return result('CRITERIA_HUMAN_APPROVAL_UNVERIFIED', 'Independently confirm existing Human Criteria approval; do not ask for a new approval merely because the caller omitted this confirmation field.')
   if (input?.criteria_current_blob_sha !== c.criteria_blob_sha)
     return result('CRITERIA_STALE_OR_UNVERIFIED', 'Read and verify current canonical Criteria GitHub SHA before any official Plan.')
   const plan = input?.plan
@@ -1269,6 +1270,10 @@ function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
 function projectBootstrapExecutionError(projectId: string, manifestText: string, evidence: any,
   repositoryUrl: string | null, developmentBranch: string | null): string | null {
   if (!evidence) return 'BOOTSTRAP_REQUIRED: no approved Project Bootstrap evidence supplied.'
+  if (evidence?.type === 'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE' &&
+      String(evidence?.status ?? '').includes('SOURCE_EXECUTION_NOT_AUTHORIZED')) {
+    return 'BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED: historical capability evidence is not a source-execution grant. Bind current approved Criteria, current reviewed Project Plan and compatible capabilities to new independently read-back proof of existing Human execution approval; preserve the old artifact as read-only evidence.'
+  }
   const project = parseProjectManifest(manifestText)
   if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
     return 'BOOTSTRAP_PROJECT_INVALID: exact ACTIVE Project manifest required.'
@@ -7528,7 +7533,7 @@ function createServer(req: Request) {
         planning_revision: z.number().int().positive().optional(),
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         scope_claim: z.array(z.string()).min(1),
-        primary_task_id: z.string().uuid().optional(),
+        primary_task_id: z.string().min(1).optional(),
         affected_task_refs: z.array(z.string()).default([]),
         parent_run_id: z.string().uuid().optional(),
         target_ref: z.string().optional(),
@@ -8093,7 +8098,7 @@ function createServer(req: Request) {
         run_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
-          primary_task_id: z.string().uuid().optional(),
+          primary_task_id: z.string().min(1).optional(),
           target_ref: z.string().optional(),
           target_revision: z.string().optional(),
           completed_summary: z.string().min(1),
