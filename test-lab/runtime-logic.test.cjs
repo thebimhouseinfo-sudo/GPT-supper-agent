@@ -229,3 +229,40 @@ test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-
   assert.match(dispatch(taskCase,'coder',['T2'],1,sha,sha,[]),/TASK_INVALID/);
   assert.match(dispatch(taskCase,'tester',['T1'],1,sha,sha,[]),/WRONG_ROLE/);
 });
+
+
+// M2 Planner harness: source-backed prompt contract, not a model-level behavioral guarantee.
+function plannerHarnessSlice(text=source) {
+  const h=text.indexOf('const ROLE_HARNESSES');
+  const start=text.indexOf('  planner: {',h),end=text.indexOf('  advisor: {',start);
+  assert.ok(start>h&&end>start,'role-bounded Planner harness must exist');
+  return text.slice(start,end);
+}
+function validatePlannerContract(text=source) {
+  const planner=plannerHarnessSlice(text);
+  assert.match(planner,/CRITICAL CHALLENGE: before agreeing with a Human-proposed/);
+  assert.match(planner,/underlying goal, test assumptions, challenge incorrect premises/);
+  assert.match(planner,/CONFIRMED POSSIBLE/);
+  assert.match(planner,/CONFIRMED IMPOSSIBLE/);
+  assert.match(planner,/UNKNOWN is NOT impossible/);
+  assert.match(planner,/possible does not mean implemented/);
+  assert.match(planner,/Reject invented commands \(for example gsa\/clear\)/);
+  assert.match(planner,/Keep ordinary answers concise without forced three-label boilerplate/);
+  assert.match(planner,/Never awaken Technical Advisor for normal challenge/);
+  assert.match(planner,/Only explicit Human intent to approve first Criteria or change approved WHAT\/WHY activates Advisor/);
+}
+test('M2 Planner guidance covers evidence, impossible versus unknown and no Advisor overtrigger',()=>{
+  validatePlannerContract();
+});
+test('M2 negative control: remove scoped feasibility check and contract test must RED',()=>{
+  const broken=source.replace("CONFIRMED IMPOSSIBLE only with evidence proving impossibility","CONFIRMED IMPOSSIBLE with no evidence");
+  assert.notEqual(broken,source,'mutation must actually hit source');
+  assert.throws(()=>validatePlannerContract(broken),assert.AssertionError);
+});
+test('M2 Planner-only instructions do not leak into Advisor role',()=>{
+  const src=source,index=src.indexOf('const ROLE_HARNESSES');
+  const start=src.indexOf('  advisor: {',index);
+  const end=src.indexOf('  designer: {',start);
+  assert.ok(end>start);
+  assert.doesNotMatch(src.slice(start,end),/CRITICAL CHALLENGE: before agreeing/);
+});
