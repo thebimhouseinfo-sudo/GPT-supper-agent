@@ -243,7 +243,7 @@ function validatePlannerContract(text=source) {
   assert.match(planner,/CRITICAL CHALLENGE: before agreeing with a Human-proposed/);
   assert.match(planner,/underlying goal, test assumptions, challenge incorrect premises/);
   assert.match(planner,/CONFIRMED POSSIBLE/);
-  assert.match(planner,/CONFIRMED IMPOSSIBLE/);
+  assert.match(planner,/CONFIRMED IMPOSSIBLE only with evidence proving impossibility/);
   assert.match(planner,/UNKNOWN is NOT impossible/);
   assert.match(planner,/possible does not mean implemented/);
   assert.match(planner,/Reject invented commands \(for example gsa\/clear\)/);
