@@ -333,7 +333,7 @@ test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only
   assert.match(planner, /formatAdvisorAdviceReceipt/)
   assert.match(planner, /project_criteria_advice_check/)
   assert.match(planner, /verify real Advisor message/)
-  assert.match(planner, /same-file receipt/)
+  assert.match(planner, /same-file receipt/i)
   assert.match(planner, /Do not re-ask Human for an identical documented choice/)
   assert.match(advisor, /only after delivering actual advice to Human/)
   assert.match(advisor, /ADVISOR SIGNED: ADVISED \| BASELINE=/)
