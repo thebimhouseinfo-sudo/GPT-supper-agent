@@ -359,9 +359,9 @@ test('C30 M3: official Plan cannot precede Human-approved, current canonical Cri
   const cap=[{task_id:task,readiness:'GENERIC_READY'}]
   const input={criteria,criteria_human_approved:true,criteria_current_blob_sha:sha,plan,capabilities:cap}
   const status=x=>h.projectBootstrapReadinessDecision(id,x).status
-  assert.equal(status({}), 'CRITERIA_NOT_APPROVED')
-  assert.equal(status({...input,criteria_human_approved:false}), 'CRITERIA_NOT_APPROVED')
-  assert.equal(status({...input,criteria:{...criteria,criteria_path:'projects/' + id + '/NOT-CRITERIA.md'}}),'CRITERIA_NOT_APPROVED')
+  assert.equal(status({}), 'CRITERIA_BINDING_MISSING_OR_INVALID')
+  assert.equal(status({...input,criteria_human_approved:false}), 'CRITERIA_HUMAN_APPROVAL_UNVERIFIED')
+  assert.equal(status({...input,criteria:{...criteria,criteria_path:'projects/' + id + '/NOT-CRITERIA.md'}}),'CRITERIA_BINDING_MISSING_OR_INVALID')
   assert.equal(status({...input,criteria_current_blob_sha:'b'.repeat(40)}),'CRITERIA_STALE_OR_UNVERIFIED')
   assert.equal(status({...input,plan:undefined}),'IMPLEMENTATION_PLAN_MISSING')
   assert.equal(status({...input,plan:{...plan,criteria_binding:{...criteria,criteria_blob_sha:'b'.repeat(40)}}}),'PLAN_CRITERIA_MISMATCH')
