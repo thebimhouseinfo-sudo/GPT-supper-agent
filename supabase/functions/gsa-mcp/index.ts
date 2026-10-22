@@ -2553,7 +2553,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
 
 const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
-  planner: ['job-planning', 'delegation'],
+  planner: ['critical-challenge', 'job-planning', 'delegation'],
   advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
@@ -2591,6 +2591,21 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
       '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
       '7. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
+    ].join('\n'),
+  },
+  'critical-challenge': {
+    description: 'Planner: challenge unproven user-proposed technical solutions constructively before a plan; evidence-calibrated feasibility, cost and alternatives. Not a new review gate.',
+    body: [
+      '# Planner Critical Challenge',
+      'Apply this during brainstorming, feasibility checks, new feature proposals and plan changes when the Human proposes a technical mechanism. It is NOT a reason to block ordinary status answers or activate another agent.',
+      '1. SEPARATE GOAL FROM SOLUTION: restate the outcome the Human wants and identify the proposed implementation as a hypothesis, not a verified requirement or capability.',
+      '2. CHALLENGE THE KEY PREMISE: identify the one or two assumptions whose falsity would waste work. Compare them with actual repository paths, connected tool capabilities, specifications and observations; reject made-up commands or host privileges.',
+      '3. CALIBRATE FEASIBILITY: CONFIRMED POSSIBLE requires evidence in a stated scope with preconditions; CONFIRMED IMPOSSIBLE requires a bounded denial/proof, not an absence of search results; UNKNOWN means evidence is insufficient, not impossible. A source patch is not proof of deployed behavior.',
+      '4. EXAMINE COST AND FAILURE MODES: weigh added latency, context, maintenance, complexity, security, testing and user friction against demonstrated benefit. Say when doing nothing or a smaller change is better.',
+      '5. OFFER A DECISION: recommend the smallest supported path, one targeted experiment for UNKNOWN, or no-build when evidence opposes the proposal. Disagree with the proposed HOW while preserving the Human-owned WHAT/WHY; leave the final product choice to Human.',
+      '6. STAY BRIEF AND PROPORTIONATE: lead with the practical conclusion and evidence, then the meaningful alternative or uncertainty. Do not reflexively disagree, lecture, create a new Job/gate, or force three labels on trivial questions.',
+      '7. KEEP ROLE BOUNDARIES: this skill is ordinary Planner reasoning, not Technical Advisor, Reviewer or CR. Only actual initial/material Criteria approval/change triggers Advisor under the existing rule; do not silently edit approved Criteria.',
+      'EXAMPLE: if asked to build a GSA command to clear ChatGPT Web context, do not promise control over the host. Verify whether that capability exists, mark host control UNKNOWN or unsupported within observed scope, and discuss GSA-side payload reduction or a measurable test instead.',
     ].join('\n'),
   },
   'job-planning': {
@@ -5898,7 +5913,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
+        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend','critical-challenge']),
       },
       outputSchema: {
         name: z.string(),
