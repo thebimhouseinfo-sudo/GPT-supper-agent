@@ -1109,6 +1109,22 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
     status, detail, bootstrapped: false, source_write_authorized: false,
     requires_external_readback: true,
   })
+  // Brownfield and new projects share four semantic readiness checks.
+  // The caller must inspect original documents and capabilities; this PREPARE
+  // result is not independent verification or source-write permission.
+  // No duplicate Criteria, Project Plan Job or SHA registration is required.
+  if (input?.assessment !== undefined) {
+    const a = input.assessment
+    if (a?.criteria !== 'APPROVED')
+      return result('CRITERIA_NOT_READY', 'Criteria must reflect the Human-approved product intent. Existing approved source Criteria may be used in place.')
+    if (a?.plan !== 'PASS')
+      return result('PLAN_NOT_READY', 'Reviewer must confirm the existing or new Plan aligns with Criteria.')
+    if (a?.milestones !== 'PASS')
+      return result('MILESTONES_NOT_READY', 'Milestones must be coherent with the Plan and cover its intended outcomes.')
+    if (a?.coder !== 'READY' || a?.tester !== 'READY')
+      return result('CAPABILITY_NOT_READY', 'Coder and Tester need relevant skills, knowledge and usable implementation/test paths for upcoming work; unfinished product features are not prerequisites.')
+    return result('BOOTSTRAP_READY', 'Four readiness checks passed as caller-provided assessment. Independently verify actual documents and capabilities before implementation; Human execution approval is separate.')
+  }
   const c = input?.criteria
   if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c))
     return result('CRITERIA_BINDING_MISSING_OR_INVALID', 'Provide criteria: { criteria_path, criteria_blob_sha, approval_status: APPROVED } bound to this Project canonical CRITERIA.md. A prior capability-only Bootstrap snapshot is not this binding.')
@@ -1282,6 +1298,16 @@ function projectBootstrapExecutionError(projectId: string, manifestText: string,
         normalizeGithubRepo(r.url)?.url === normalizeGithubRepo(repositoryUrl)?.url) ||
       project.branch_policies.find((p: any) => p.repository_url === normalizeGithubRepo(repositoryUrl)?.url)?.development_branch !== developmentBranch)
     return 'BOOTSTRAP_SOURCE_BRANCH_INVALID: source target must be the Human-configured Development Branch of an OWNED repository.'
+  if (evidence?.assessment !== undefined) {
+    const readiness = projectBootstrapReadinessDecision(projectId, evidence)
+    if (readiness.status !== 'BOOTSTRAP_READY')
+      return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
+    if (evidence.human_execution_approved !== true)
+      return 'SOURCE_EXECUTION_HUMAN_APPROVAL_REQUIRED: Bootstrap readiness does not approve source execution.'
+    // This tool validates input/scope only. Caller must independently read
+    // source or Project Memory documents and Human execution approval.
+    return null
+  }
   const readiness = projectBootstrapReadinessDecision(projectId, evidence)
   if (readiness.status !== 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
     return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
@@ -2291,9 +2317,11 @@ function resolveProjectCriteriaIntake(mode: 'NEW' | 'EXISTING', state: 'PRESENT'
   if (mode === 'NEW') return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: false, review: 'NEW: ask Human for desired GOAL, WHAT/WHY and acceptance before Criteria approval; do not create an Implementation Plan or code.' }
   if (state === 'PRESENT') return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: false, review: 'EXISTING with Criteria: validate with Human that the existing Criteria describes the intended product (not just design/code); compare actual source for achieved, missing, excess and drift. Source is evidence, not approval.' + (observed ? ' Source observation (independent read required): ' + observedSource.slice(0, 600) : ' Source comparison UNVERIFIED until inspection.') }
   if (state === 'UNKNOWN') return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: false, review: 'EXISTING: inspect canonical Criteria in Project Memory before preparing anything. Never overwrite or infer approval.' }
-  if (!observed) return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING without Criteria: first read actual source/docs; derive a tentative product-language hypothesis and ask Human whether source behavior has drifted from intended goals.' }
-  return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: true, review: 'EXISTING without Criteria: source-derived product hypothesis only; ask Human what is correct, missing or excess before approval. Code never approves Criteria.' }
+  if (!observed) return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING without Criteria: first read actual source/docs; draft Criteria only if none exists.' }
+  if (/CRITERIA(?:\.md)?/i.test(observedSource)) return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: true, review: 'EXISTING with source Criteria: independently inspect it and actual Human approval. Reuse an approved source document without duplicate Project Memory registration; if draft or unapproved, use the existing approval process.' }
+  return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING source code is not evidence that a Criteria file exists. Inspect project documents first; create a Criteria draft only if genuinely absent, then obtain Human approval.' }
 }
+
 
 const BASE_AGENT_HARNESS = [
   'SHARED GSA OPERATING RULES',
@@ -2306,7 +2334,8 @@ const BASE_AGENT_HARNESS = [
   '- PLAN GOAL ANCHORS: Every new or materially revised plan file must put ## GOAL immediately after its title/front matter and ### GOAL immediately under every Phase heading, before its tasks. Preserve the Human-approved overall goal and each phase goal through revisions; only an explicit Human decision may change approved goals. Do not infer goal approval from review findings.',
   '- PLANNER RL SHORTCUT: In a planning request, rl means run the existing Planner → role-isolated planning Reviewer → Planner repair → re-review loop on the identified plan until evidence-backed PASS or a genuine Human decision, blocker or no-progress guard. Accept planner rl, planner rl đi, and the common typo planer rl. Use the identified current plan, including a draft discussed in chat, without an extra planning confirmation. Durable Jobs follow exact GitHub/CAS readback; direct/ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification. Clarify only if no target plan is identifiable; a completely new plan still follows normal intake. Do not duplicate Jobs. rl never grants source edits, Job execution, merge or deploy.',
   '- HUMAN EXECUTION APPROVAL: present the reviewed PASS plan and STOP in conversation. Begin source-changing or other consequential Job execution only after the Human explicitly approves that presented plan (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). Skeleton approval permits detailed planning only; a general action request or an ambiguous "ok" outside plan-approval context is not execution authorization. Once approved, continue approved scope without re-asking at each Task.',
-  '- FRESH START / ADOPT: on new or brownfield Project establish minimal source/owner/branch baseline without reconstructing past jobs or approvals. Never auto-resume an old Job on Project open. Planner maintains ONE Project Memory CRITERIA.md for future product GOAL/scale/non-goals/acceptance; Human approves, drafts do not self-promote. AGENTS.md generic is minimal.',
+  '- FRESH START / ADOPT: on new or brownfield Project establish minimal source/owner/branch baseline without reconstructing past jobs or approvals. Reuse existing approved Criteria, reviewed Plan and Milestones from source or Project Memory; do not duplicate or register them merely for Bootstrap. Only draft missing or inadequate documents. Never auto-resume an old Job on Project open.',
+  '- BOOTSTRAP: only four independent readiness questions: Human-approved Criteria; reviewed Plan aligned with Criteria; coherent Milestones aligned with Plan; Coder and Tester equipped with relevant skills, knowledge and paths to begin work. No compulsory PROJECT_PLAN Job, memory copies, SHA bindings, topology registration or already implemented product functions as extra Bootstrap gates. Review actual documents; preserve real Human/Advisor approvals and independent Planner review. Bootstrap READY is separate from execution authorization and Git/source security.',
   '- TECH ADVISOR CHECKPOINTS: activate Advisor ONLY after explicit Human intent to finalize initial Criteria or materially change approved Criteria WHAT/WHY. Not for brainstorming, drafts, ordinary planning, code review or wording-only edits. Advisor reads exact draft/baseline+delta, advises Human then acknowledges ADVISOR SIGNED for the same canonical Criteria revision/scope (proof of advice, not approval). Human decides and Planner writes; never forge Advisor advice.',
   '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
   '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
@@ -4939,7 +4968,7 @@ function createServer(req: Request) {
       const out = { ...decision, project_id, project_manifest_sha,
         external_steps: operation === 'MUTATE_SOURCE' ? [
           'This checks Project scope and Bootstrap claim SHAPE only; ALLOW is NOT an attestation that caller-supplied approval, receipt or GitHub snapshots are genuine.',
-          'Independently fetch current PROJECT.md, exact Bootstrap Verification blob, Criteria, reviewed Plan and Human execution authorization from their authoritative sources before any source write. Reject stale, forged or missing evidence.',
+          'Independently inspect existing Criteria, Plan, Milestones and Coder/Tester readiness in the source or Project Memory, and verify actual Human execution authorization. The four-check assessment is caller-supplied, not server attestation; legacy proof records must still be read back when used.',
           'Verify live target source HEAD is on the configured Development Branch; do not write or merge to the Release Branch by inference.',
         ] : [] }
       return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW SCOPE (readback required): ' : 'DENY: ') + decision.reason }] }
@@ -5510,13 +5539,18 @@ function createServer(req: Request) {
     'project_bootstrap_readiness_prepare',
     {
       title: 'Evaluate Project Bootstrap prerequisites without authorizing code',
-      description: 'C30 PREPARE ONLY: strict Criteria-first ordered preflight. Caller must independently read back Project Criteria, reviewed Plan, capability evidence, milestone acceptance and Human approval before treating prepared status as BOOTSTRAP READY. Never authorizes source writes.',
+      description: 'C30 PREPARE ONLY: assess four project-readiness conditions from existing documents: approved Criteria, reviewed aligned Plan, aligned Milestones, and Coder/Tester skills plus knowledge. No duplicate registration or Project Plan Job required. Independently verify evidence; never authorizes source writes.',
       inputSchema: {
         project_id: z.string().uuid(),
         criteria: CRITERIA_BINDING_SCHEMA.optional(),
         criteria_human_approved: z.boolean().default(false),
         criteria_current_blob_sha: z.string().optional(),
         plan: z.any().optional(),
+        // Minimal four-part assessment; existing legacy Plan-shaped input remains supported.
+        assessment: z.object({
+          criteria: z.string(), plan: z.string(), milestones: z.string(),
+          coder: z.string(), tester: z.string(),
+        }).optional(),
         capabilities: z.array(z.any()).default([]),
         human_execution_approved: z.boolean().default(false),
       },
@@ -5529,19 +5563,19 @@ function createServer(req: Request) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved }: any) => {
+    async ({ project_id, criteria, criteria_human_approved, criteria_current_blob_sha, plan, assessment, capabilities, human_execution_approved }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for Project Bootstrap readiness.')
       const prepared = projectBootstrapReadinessDecision(project_id, {
-        criteria, criteria_human_approved, criteria_current_blob_sha, plan, capabilities, human_execution_approved,
+        criteria, criteria_human_approved, criteria_current_blob_sha, plan, assessment, capabilities, human_execution_approved,
       })
       const out = { ...prepared, external_steps: [
-        'Verify the exact canonical Project CRITERIA.md exists in Project Memory at the current GitHub blob SHA and was approved by Human; never trust a caller-supplied boolean, text or SHA alone.',
-        'Verify one official Implementation Plan, its exact Criteria binding and durable current-revision independent Reviewer PASS Verification; existing unrelated Jobs remain untouched.',
-        'Match Coder/Tester Task skills to actual capability evidence. Generic capability is valid for ordinary Tasks; domain add-in references or caller claims alone are not FUNCTIONAL READY.',
-        'Check milestone Task coverage, dependencies, observable acceptance, and required test/review scopes from current reviewed Plan.',
+        'Read existing Criteria from source repository or Project Memory. If already Human-approved, reuse without duplication or Advisor. Draft/approve only when missing or inadequate.',
+        'Independently review the existing or new Plan against Criteria. Do not demand a duplicate PROJECT_PLAN Job, SHA binding or topology registration solely for Bootstrap.',
+        'Check that existing Milestones align with the reviewed Plan and form an actionable implementation sequence.',
+        'Assess relevant Coder and Tester skills, knowledge and usable tools for the next work. An unfinished feature of the product is not a missing implementer skill; missing genuine capability remains NOT READY.',
         'Only after actual prerequisites can an authorized GSA consequential dispatch/write apply M5 guard and separately verify Human execution approval; this tool never permits code.',
-        'Once BOOTSTRAP READY and Human authorization were already verified for this Project revision, continue ordinary later Job workflow without re-Bootstrap per Task.',
+        'After the four checks reach READY, proceed to normal planned work with existing Human execution approval and source-scope safeguards. Do not repeat Bootstrap per Task.',
       ] }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
@@ -7761,7 +7795,7 @@ function createServer(req: Request) {
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
           ...(role === 'coder' ? [
-            'M5: independently GitHub-readback the exact Bootstrap Verification proof path/blob SHA, current Criteria SHA and reviewed Plan SHA; check real Human execution authorization and configured Development Branch. Caller-supplied claims are not sufficient.',
+            'M5: independently read existing Criteria, reviewed Plan, Milestones and Coder/Tester readiness, as well as actual Human execution approval and configured Development Branch. Legacy proof readback applies only to legacy evidence; caller-supplied claims are not sufficient.',
             'Use authorize_project_scope(MUTATE_SOURCE) with the same evidence and target branch immediately before source write; do not bypass this via an alternate GSA-owned write route.',
           ] : []),
         ],

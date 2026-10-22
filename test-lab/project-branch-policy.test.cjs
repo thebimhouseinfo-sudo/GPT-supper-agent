@@ -257,9 +257,9 @@ test('C30: EXISTING without Criteria must inspect code before a provisional draf
   assert.equal(noEvidence.disposition, 'INSPECT_FIRST_NO_WRITE')
   assert.match(noEvidence.review, /actual source/)
   const withEvidence = h.resolveProjectCriteriaIntake('EXISTING', 'ABSENT', 'Functional MVP implements X')
-  assert.equal(withEvidence.disposition, 'CREATE_DRAFT_IF_ABSENT')
+  assert.equal(withEvidence.disposition, 'INSPECT_FIRST_NO_WRITE')
   assert.equal(withEvidence.source_derived, true)
-  assert.match(withEvidence.review, /source-derived product hypothesis/)
+  assert.match(withEvidence.review, /source code/)
   assert.match(withEvidence.review, /Human/)
 })
 
@@ -417,7 +417,7 @@ test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job 
   assert.match(tool,/source_write_authorized: z.literal\(false\)/)
   assert.match(tool,/readOnlyHint: true/)
   assert.match(tool,/separately verify Human execution approval/)
-  assert.match(tool,/Once BOOTSTRAP READY and Human authorization were already verified/)
+  assert.match(tool,/After the four checks reach READY/)
 })
 
 test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
@@ -624,7 +624,7 @@ test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelat
   assert.match(begin, /role === 'coder'/)
   assert.match(begin, /projectBootstrapExecutionError/)
   assert.match(begin, /if \(blocked\) return \{ content:/)
-  assert.match(begin, /independently GitHub-readback the exact Bootstrap Verification proof/)
+  assert.match(begin, /independently read existing Criteria/)
   assert.match(begin, /same evidence and target branch immediately before source write/)
   assert.ok(!begin.includes("role === 'tester' && projectBootstrapExecutionError"))
   assert.ok(!begin.includes("role === 'planner' && projectBootstrapExecutionError"))
@@ -678,4 +678,35 @@ test('M4: Critic harness and selftest recognize milestone Human preauthorization
   assert.ok(source.includes('critic_human_authority_scoped:'))
   assert.ok(source.includes('critic_harness_present:'))
   assert.ok(source.includes('Orchestrator may continue an approved AUTO milestone'))
+})
+
+test('Brownfield four-check Bootstrap adopts approved existing source docs without registration gates', () => {
+  const assessment = {criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
+  const ready = h.projectBootstrapReadinessDecision(id,{assessment})
+  assert.equal(ready.status,'BOOTSTRAP_READY')
+  assert.equal(ready.bootstrapped,false,'PREPARE is not independent verification')
+  assert.equal(ready.source_write_authorized,false)
+  for(const [key,value,status] of [
+    ['criteria','DRAFT','CRITERIA_NOT_READY'],
+    ['plan','PENDING','PLAN_NOT_READY'],
+    ['milestones','MISSING','MILESTONES_NOT_READY'],
+    ['coder','UNVERIFIED','CAPABILITY_NOT_READY'],
+    ['tester','UNVERIFIED','CAPABILITY_NOT_READY'],
+  ]) assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,[key]:value}}).status,status)
+  const sourceReview = h.resolveProjectCriteriaIntake('EXISTING','ABSENT','docs/CRITERIA.md approved')
+  assert.equal(sourceReview.disposition,'READ_EXISTING_NO_WRITE','no duplicate Project Memory Criteria')
+  const missing = h.resolveProjectCriteriaIntake('EXISTING','ABSENT','')
+  assert.equal(missing.disposition,'INSPECT_FIRST_NO_WRITE')
+})
+
+test('M5 four-check ready is separate from Human execution and branch scope', () => {
+  const assessment = {criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
+  const evidence={assessment,human_execution_approved:true}
+  const manifest = fixture(['development_branch: upgrade/gsa-refactor','release_branch: main','integration_target: upgrade/gsa-refactor'].join(String.fromCharCode(10)), '- PRIMARY | OWNED | ' + repo, ['', '## Branch Policy (Human-approved)', '- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'].join(String.fromCharCode(10)))
+  const g=(x,branch='upgrade/gsa-refactor')=>h.projectBootstrapExecutionError(id,manifest,x,repo,branch)
+  assert.equal(g(evidence),null,'shape/scope only, external readback remains mandatory')
+  assert.match(g({...evidence,human_execution_approved:false}),/SOURCE_EXECUTION_HUMAN_APPROVAL_REQUIRED/)
+  assert.match(g({...evidence,assessment:{...assessment,coder:'UNVERIFIED'}}),/CAPABILITY_NOT_READY/)
+  assert.match(g(evidence,'main'),/BOOTSTRAP_SOURCE_BRANCH_INVALID/)
+  assert.match(g(undefined),/BOOTSTRAP_REQUIRED/)
 })
