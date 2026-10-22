@@ -357,7 +357,7 @@ If coordinated changes are required in more than one repo, Planner should normal
 
 ## Critic Reviewer (CR)
 
-Critic Reviewer is an independent, Human-invoked second-review role.
+Critic Reviewer is an independent second-review role. It is activated either by a direct Human `cr` request (one-shot) or by an exact Human-preauthorized milestone `crl` after independently read-back, fresh Reviewer PASS evidence.
 
 Command alias:
 
@@ -367,14 +367,14 @@ cr
 
 Contract:
 
-- CR is never automatically dispatched by Orchestrator, Planner, Reviewer, Coder or Tester.
+- CR is never automatically dispatched for ordinary Tasks or ordinary `rl`. The Orchestrator may advance to CR only inside a Human-preauthorized milestone `crl` with exact fresh Reviewer PASS Verification and matching current source revision; direct Human `cr` remains one-shot.
 - CR is **stateless-by-contract**: conversation history is non-authoritative and must not be used as review evidence.
 - CR does not block based on which chat invokes it. **Same-chat invocation is explicitly valid**, even when Planner/Reviewer/Coder reasoning is visible earlier in that conversation. CR must disregard that conversation reasoning and reconstruct the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.
 - CR reconstructs the target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth only.
 - CR forms its own criteria, findings and verdict before reading the prior Reviewer verdict.
 - Only after the independent verdict exists may CR compare it with the prior Reviewer and record agreement/disagreement.
 - CR is read-only for source and Job state. It writes only a `CRITIC_REVIEW` Verification artifact.
-- CR never changes Job lifecycle. Human decides what to do with CR findings.
+- CR never changes Job lifecycle or edits source. A directly invoked `cr` returns findings to Human. In an approved `crl`, after CR Verification is durably persisted/read back, Orchestrator routes CR FAIL into the inner Planner/Coder → Reviewer loop and requires a new Reviewer PASS before CR re-entry; critical/important findings cannot be passed as nonblocking.
 
 Verdicts:
 
@@ -385,7 +385,7 @@ FAIL
 BLOCKED
 ```
 
-CR is a peer-review backstop, not part of the normal automatic planning-review loop.
+CR is a peer-review backstop, not part of the normal automatic planning-review loop; the only automatic outer CR loop is an explicitly Human-preauthorized milestone `crl` with current-review evidence.
 
 
 ## CP4 — NEXT empirical planning contract

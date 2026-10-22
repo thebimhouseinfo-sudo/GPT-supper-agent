@@ -317,28 +317,32 @@ Run completes
 ```
 
 
-## 16. Human-invoked Critic Reviewer
+## 16. Critic Reviewer — direct `cr` and authorized milestone `crl`
 
-The normal Reviewer remains topology-driven and may be automatically used by the planning loop.
-
-Critic Reviewer (CR) is separate:
+The ordinary Planner/Coder → Reviewer `rl` continues independently and does not invoke CR by default. CR has exactly two authority routes:
 
 ```text
-Human invokes cr
-→ ignore conversation history as evidence
-→ reconstruct from durable records + live source
-→ independent blind review
-→ independent verdict
-→ read prior Reviewer result last
-→ record CRITIC_REVIEW
-→ Human decides next action
+Direct Human invokes cr (one-shot)
+→ stateless independent CR on immutable target
+→ persist CRITIC_REVIEW and read back
+→ report verdict to Human
 ```
 
-CR must not be auto-dispatched.
+```text
+Human preauthorizes this exact milestone with review_loop=crl
+→ Planner/Coder finishes target → independent Reviewer
+→ Reviewer FAIL → owner repairs → new Reviewer review (inner rl)
+→ Reviewer PASS → independently verify fresh matching target/source revision
+→ independent CR (read prior Reviewer decision only after CR verdict)
+→ persist CRITIC_REVIEW and read back
+→ CR FAIL → original Planner/Coder owner repairs → NEW Reviewer PASS → CR again
+→ CR PASS (or nonblocking MINOR findings) → approved AUTO/HUMAN continuation
+→ BLOCKED/no-progress → stop with evidence (never infinite spinning)
+```
 
-CR is stateless-by-contract. Conversation history is non-authoritative and must not be used as review evidence. **Same-chat invocation is valid**, including after Planner/Reviewer/Coder work in that conversation; CR never blocks merely because the invoking chat previously discussed the target.
+Before automatic CR entry, independently re-fetch current Job/milestone preauthorization, source HEAD and a matching persisted Reviewer PASS Verification. The `rl/crl` milestone needs a properly Reviewer-owned Task/Run so `run_begin` role/Task protections are not bypassed; Reviewer Verification must have matching `milestone_id` and applicable exact `target_revision`. Do not reuse stale Reviewer PASS after any repair.
 
-CR does not repair source, revise the plan, promote/block/complete the Job, or otherwise mutate Job lifecycle.
+CR is stateless-by-contract: previous conversation reasoning is non-authoritative. Same-chat invocation is valid, but independent CR reconstructs from exact Job/revision, persisted records and live source before comparing Reviewer findings. CR never edits source, revises Plan or changes Job lifecycle. Its Verification result only guides an authorized Orchestrator continuation; direct Human `cr` never becomes a global automatic loop.
 
 
 ## 17. CP4 NEXT empirical planning model

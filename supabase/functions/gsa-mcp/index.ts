@@ -1110,9 +1110,10 @@ function projectBootstrapReadinessDecision(projectId: string, input: any) {
     requires_external_readback: true,
   })
   const c = input?.criteria
-  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c) ||
-      input?.criteria_human_approved !== true)
-    return result('CRITERIA_NOT_APPROVED', 'Human-approved canonical product Criteria is required before official Implementation Plan.')
+  if (!c || projectCriteriaBindingError(projectId, 'PROJECT_PLAN', c))
+    return result('CRITERIA_BINDING_MISSING_OR_INVALID', 'Provide criteria: { criteria_path, criteria_blob_sha, approval_status: APPROVED } bound to this Project canonical CRITERIA.md. A prior capability-only Bootstrap snapshot is not this binding.')
+  if (input?.criteria_human_approved !== true)
+    return result('CRITERIA_HUMAN_APPROVAL_UNVERIFIED', 'Independently confirm existing Human Criteria approval; do not ask for a new approval merely because the caller omitted this confirmation field.')
   if (input?.criteria_current_blob_sha !== c.criteria_blob_sha)
     return result('CRITERIA_STALE_OR_UNVERIFIED', 'Read and verify current canonical Criteria GitHub SHA before any official Plan.')
   const plan = input?.plan
@@ -1269,6 +1270,10 @@ function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
 function projectBootstrapExecutionError(projectId: string, manifestText: string, evidence: any,
   repositoryUrl: string | null, developmentBranch: string | null): string | null {
   if (!evidence) return 'BOOTSTRAP_REQUIRED: no approved Project Bootstrap evidence supplied.'
+  if (evidence?.type === 'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE' &&
+      String(evidence?.status ?? '').includes('SOURCE_EXECUTION_NOT_AUTHORIZED')) {
+    return 'BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED: historical capability evidence is not a source-execution grant. Bind current approved Criteria, current reviewed Project Plan and compatible capabilities to new independently read-back proof of existing Human execution approval; preserve the old artifact as read-only evidence.'
+  }
   const project = parseProjectManifest(manifestText)
   if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
     return 'BOOTSTRAP_PROJECT_INVALID: exact ACTIVE Project manifest required.'
@@ -1367,10 +1372,10 @@ function milestoneLoopDecision(job: any, milestoneId: string, stage: string, ver
   if (verdict === 'BLOCKED') return { next_action: 'STOP_BLOCKED', next_role: 'orchestrator', resume_same_turn: false, reason: 'Reviewer/CR reported a real blocker.' }
   if (stage === 'BEGIN') return { next_action: 'RUN_REVIEWER', next_role: 'reviewer', resume_same_turn: true, reason: 'Begin approved milestone rl.' }
   if (stage === 'REVIEWER' && ['FAIL','CHANGES_REQUIRED'].includes(verdict)) {
-    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: job?.type === 'plan' ? 'planner' : 'coder', resume_same_turn: true, reason: 'Repair scoped findings, then rerun Reviewer on new evidence; do not stop after repair.' }
   }
   if (stage === 'CR' && ['FAIL','CHANGES_REQUIRED'].includes(verdict) && milestone.review_loop === 'crl') {
-    return { next_action: 'REPAIR_AND_REREVIEW', next_role: 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
+    return { next_action: 'REPAIR_AND_REREVIEW', next_role: job?.type === 'plan' ? 'planner' : 'coder', resume_same_turn: true, reason: 'CR FAIL returns to the small rl before another independent CR.' }
   }
   if (stage === 'REVIEWER' && verdict === 'PASS' && milestone.review_loop === 'crl') {
     return { next_action: 'VERIFY_REVIEWER_PASS_THEN_CR', next_role: 'orchestrator', resume_same_turn: true, reason: 'Bind exact current Reviewer PASS Verification then invoke CR only for this Human-approved milestone.' }
@@ -1382,7 +1387,7 @@ function milestoneLoopDecision(job: any, milestoneId: string, stage: string, ver
   return stopped('Review stage/verdict is not a valid transition for this milestone.')
 }
 
-function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any): string | null {
+function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any, targetRevision?: string): string | null {
   const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)
   if (!milestoneId || !milestone || milestone.review_loop !== 'crl' || milestone.human_pre_authorized !== true) {
     return 'CR_MILESTONE_UNAUTHORIZED: Human must have approved crl on this exact milestone.'
@@ -1401,6 +1406,11 @@ function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewe
       review.planning_revision !== job.planning_revision ||
       review.milestone_id !== milestoneId || review.producer !== 'reviewer') {
     return 'CR_MILESTONE_REVIEW_INVALID: Reviewer PASS must match this Job/milestone/planning revision.'
+  }
+  if (job?.type === 'code' &&
+      (!/^[0-9a-f]{40}$/.test(String(targetRevision ?? '')) ||
+       review.target_revision !== targetRevision)) {
+    return 'CR_MILESTONE_SOURCE_REVISION_MISMATCH: fresh Reviewer PASS must match exact target source revision.'
   }
   return null
 }
@@ -2301,7 +2311,7 @@ const BASE_AGENT_HARNESS = [
   '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
   '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
   '- BRANCH AUTHORITY: Admin stores Human-confirmed Development/Release Branch per source repo in PROJECT.md, READY displays them; Planner/Coder use ONLY configured Development Branch as merge target, never guess main/default. Missing/renamed/stale mapping permits read/chat/planning but blocks source write/merge dependent on the branch. Production merge/deploy require separate Human decisions.',
-  '- STOPCHAT: on Human stopchat or excessive context, stop at a safe boundary; persist/readback only needed durable pending state, then give copyable Project/repo/branch/SHA/Criteria+Plan revision/Job+milestone/approval/blocker/next-action handoff. Chat reopen checks Git and Memory; never promise autonomous background work.',
+  '- STOPCHAT: on Human stopchat or excessive context, first inspect current Project/Job/Run/cursor and independently read Git/Memory; stop at a safe boundary, reconcile uncertain writes, persist/readback ONLY necessary durable pending state. Then call stopchat_handoff_prepare; its caller-supplied values and approvals are NOT independently verified by that helper. Clearly mark unknowns, include Project/repo/branch/SHA/Criteria+Plan revision/Job+milestone/blocker/next action, and re-read Git/Memory on fresh chat before authorized resume. Never auto-run, fabricate approval or promise background work.',
   '- REVIEW LOOP: rl = Planner/Coder → Reviewer → repair/re-review boundedly until PASS or real blocker. crl = rl PASS → independent CR → on CR FAIL repeat inner rl and CR until PASS or real blocker. CR only when Human invoked or a particular milestone was approved in advance with crl, never on every Task.',
   '- INTERRUPT / NEW MESSAGE: the current receiving Agent repeats classify/clarify, answers questions directly, and handles clear changes within capability. Handoff only for a real capability/authority mismatch; do not silently change already approved Job scope. Direct Agent commands remain the explicit Human shortcut.',
 
@@ -2391,6 +2401,9 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
       'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
+      'CRITICAL CHALLENGE: before agreeing with a Human-proposed tool or implementation, identify the underlying goal, test assumptions, challenge incorrect premises, consider cost/benefit and simpler or no-build alternatives. Do not rubber-stamp a proposal just because the Human requested it; do not disagree reflexively.',
+      'SCOPED FEASIBILITY: for material technical feasibility use CONFIRMED POSSIBLE only with relevant observed test/spec and explicit preconditions; CONFIRMED IMPOSSIBLE only with evidence proving impossibility inside a stated boundary; UNKNOWN where evidence is missing, conflicting or untested. UNKNOWN is NOT impossible and possible does not mean implemented.',
+      'TRACE AND BREVITY: ground consequential claims in actual tool observations, exact source paths/revisions or authoritative docs; label assumptions and distinguish PREPARED vs OBSERVED. Reject invented commands (for example gsa/clear) and propose workable alternatives or do-not-build. Keep ordinary answers concise without forced three-label boilerplate. Never awaken Technical Advisor for normal challenge; only existing Criteria approval/change checkpoints.',
       'BROWNFIELD REVIEW: map relevant callers/consumers/contracts and inspect enough existing logic to classify important behavior as CANONICAL, LEGACY, ACCIDENTAL, INCORRECT or UNKNOWN. Existing code is evidence, not authority.',
       'AUTHORITY/PRECEDENCE: when repositories/subsystems relate, identify direction (for example A > B) from contracts/evidence. Read related repos for impact without expanding WRITE scope automatically.',
       'CLASSIFY PRODUCT WORKFLOW: determine UI_FIRST or UX_FIRST before planning UI-bearing work. Preserve an existing explicit classification unless Planner has evidence and Human approval to change it.',
@@ -2504,6 +2517,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'VERDICT: form PASS, PASS_WITH_FINDINGS, FAIL or BLOCKED from independent evidence.',
       'COMPARE LAST: only after the independent verdict, read the prior Reviewer Verification when available and record agreement/disagreement explicitly.',
       'RECORD: persist a CRITIC_REVIEW Verification artifact. Do not mutate Job lifecycle or source.',
+      'MILESTONE CRL CONTINUATION: after exact CR verification readback, return through milestone_loop_evaluate and run the inner Reviewer repair loop on CR FAIL; direct Human cr remains one-shot.',
     ],
     outputs: ['CRITIC_REVIEW Verification record', 'independent findings', 'prior-review comparison'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
@@ -2539,7 +2553,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
 
 const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
-  planner: ['job-planning', 'delegation'],
+  planner: ['critical-challenge', 'job-planning', 'delegation'],
   advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
@@ -2577,6 +2591,21 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
       '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
       '7. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
+    ].join('\n'),
+  },
+  'critical-challenge': {
+    description: 'Planner: challenge unproven user-proposed technical solutions constructively before a plan; evidence-calibrated feasibility, cost and alternatives. Not a new review gate.',
+    body: [
+      '# Planner Critical Challenge',
+      'Apply this during brainstorming, feasibility checks, new feature proposals and plan changes when the Human proposes a technical mechanism. It is NOT a reason to block ordinary status answers or activate another agent.',
+      '1. SEPARATE GOAL FROM SOLUTION: restate the outcome the Human wants and identify the proposed implementation as a hypothesis, not a verified requirement or capability.',
+      '2. CHALLENGE THE KEY PREMISE: identify the one or two assumptions whose falsity would waste work. Compare them with actual repository paths, connected tool capabilities, specifications and observations; reject made-up commands or host privileges.',
+      '3. CALIBRATE FEASIBILITY: CONFIRMED POSSIBLE requires evidence in a stated scope with preconditions; CONFIRMED IMPOSSIBLE requires a bounded denial/proof, not an absence of search results; UNKNOWN means evidence is insufficient, not impossible. A source patch is not proof of deployed behavior.',
+      '4. EXAMINE COST AND FAILURE MODES: weigh added latency, context, maintenance, complexity, security, testing and user friction against demonstrated benefit. Say when doing nothing or a smaller change is better.',
+      '5. OFFER A DECISION: recommend the smallest supported path, one targeted experiment for UNKNOWN, or no-build when evidence opposes the proposal. Disagree with the proposed HOW while preserving the Human-owned WHAT/WHY; leave the final product choice to Human.',
+      '6. STAY BRIEF AND PROPORTIONATE: lead with the practical conclusion and evidence, then the meaningful alternative or uncertainty. Do not reflexively disagree, lecture, create a new Job/gate, or force three labels on trivial questions.',
+      '7. KEEP ROLE BOUNDARIES: this skill is ordinary Planner reasoning, not Technical Advisor, Reviewer or CR. Only actual initial/material Criteria approval/change triggers Advisor under the existing rule; do not silently edit approved Criteria.',
+      'EXAMPLE: if asked to build a GSA command to clear ChatGPT Web context, do not promise control over the host. Verify whether that capability exists, mark host control UNKNOWN or unsupported within observed scope, and discuss GSA-side payload reduction or a measurable test instead.',
     ].join('\n'),
   },
   'job-planning': {
@@ -3202,7 +3231,7 @@ function createServer(req: Request) {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
         'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
-        'STOPCHAT shortcut: stop at a safe Job/cursor boundary, persist only needed durable state/readback, then call stopchat_handoff_prepare for an accurate concise copyable resume handoff. No background work.',
+        'STOPCHAT shortcut: independently re-read live Project, Job/Run/cursor and Git head; reconcile uncertain writes before safe stop, persist/readback only necessary state, then call stopchat_handoff_prepare. Its input is caller-reported, not verified by the helper; mark unresolved values UNVERIFIED. Fresh chat rechecks exact Git/Memory before authorized resume. No auto-run or background work.',
         'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
         'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'PLAN GOAL ANCHORS: write ## GOAL at the top of each new/revised plan file and ### GOAL immediately inside each Phase before Tasks; Reviewer checks all phase goals and Tasks against original Human-approved overall goal on every planning revision. No silent goal changes.',
@@ -5199,6 +5228,18 @@ function createServer(req: Request) {
     async ({ memory_path, project_manifest_text, project_manifest_sha, selected_job_id, selected_milestone, source_commit_sha, criteria_revision, plan_revision, verified_progress, uncertain_writes, human_approvals, blockers, next_action }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for stopchat handoff.')
+      // Validate the Git blob identity of supplied bytes BEFORE trusting manifest branch or approvals.
+      // This is an integrity check only, not a substitute for independent GitHub readback.
+      const manifestBytes = new TextEncoder().encode(project_manifest_text)
+      const gitPrefix = new TextEncoder().encode('blob ' + manifestBytes.length + '\0')
+      const gitBlob = new Uint8Array(gitPrefix.length + manifestBytes.length)
+      gitBlob.set(gitPrefix)
+      gitBlob.set(manifestBytes, gitPrefix.length)
+      const actualManifestSha = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', gitBlob)))
+        .map((byte) => byte.toString(16).padStart(2, '0')).join('')
+      if (actualManifestSha !== project_manifest_sha) {
+        return { content: [{ type: 'text', text: 'STOPCHAT_MANIFEST_SHA_MISMATCH: caller-provided PROJECT.md bytes do not match claimed Git blob SHA.' }], isError: true }
+      }
       const parsed = parseProjectManifest(project_manifest_text)
       if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) {
         return { content: [{ type: 'text', text: 'STOPCHAT_PROJECT_MISMATCH: exact active PROJECT.md is required.' }], isError: true }
@@ -5208,21 +5249,21 @@ function createServer(req: Request) {
         (values?.length ? values.map((v: any) => '- ' + clean(v)).join('\n') : '- ' + fallback)
       const pending = (uncertain_writes ?? []).length > 0
       const text = [
-        'GSA stopchat — resume handoff (not execution authorization)', '',
+        'GSA stopchat — resume handoff (not execution authorization)', 'Evidence status: caller-supplied; independently re-check before relying on any field.', '',
         'Project: ' + clean(parsed.name) + ' [' + parsed.project_id + ']',
         'Source repository: ' + parsed.primary_repo_url,
         'Development Branch: ' + (parsed.development_branch ?? 'UNCONFIGURED'),
         'Release Branch: ' + (parsed.release_branch ?? 'NOT_CONFIGURED'),
-        'Source commit (verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
-        'Project Memory: ' + memory_path + ' @ ' + project_manifest_sha,
-        'Criteria revision: ' + clean(criteria_revision || 'UNVERIFIED'),
-        'Plan revision: ' + clean(plan_revision || 'UNVERIFIED'),
+        'Source commit (caller-reported; verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
+        'Project Memory reference (caller-reported; recheck blob): ' + memory_path + ' @ ' + project_manifest_sha,
+        'Criteria revision (caller-reported): ' + clean(criteria_revision || 'UNVERIFIED'),
+        'Plan revision (caller-reported): ' + clean(plan_revision || 'UNVERIFIED'),
         'Selected Job: ' + clean(selected_job_id || 'NONE'),
         'Milestone: ' + clean(selected_milestone || 'NONE'), '',
-        'Verified progress:', items(verified_progress, 'none supplied'), '',
+        'Progress reported (not independently verified):', items(verified_progress, 'none supplied'), '',
         'Uncertain writes / reconcile before retry:', items(uncertain_writes, 'none reported'), '',
-        'Human approvals already in force:', items(human_approvals, 'none supplied; do not infer approval'), '',
-        'Blockers:', items(blockers, 'none reported'), '',
+        'Human approvals reported (NOT verified; do not infer authority):', items(human_approvals, 'none supplied; do not infer approval'), '',
+        'Blockers reported:', items(blockers, 'none reported'), '',
         'NEXT ACTION: ' + clean(next_action), '',
         'To resume in a fresh chat: open this GSA Project, read exact Project Memory and live source HEAD/Job evidence; confirm the requested next action and applicable Human scope. Never auto-run merely because a chat opened.',
       ].join('\n')
@@ -5235,8 +5276,8 @@ function createServer(req: Request) {
           'Re-fetch current PROJECT.md from the configured Memory Repo and compare blob SHA=' + project_manifest_sha + ', source HEAD and any active Job/cursor before treating details as verified.',
           pending
             ? 'Uncertain writes exist. Re-read source blob/HEAD and durable cursor; never retry the write blindly. Clearly label any unresolved result UNVERIFIED.'
-            : 'No uncertain writes were supplied; do not create a redundant checkpoint solely for stopchat.',
-          'This tool is read-only; it does not save state, close ChatGPT, create a Job, trigger a background worker or grant execution authority.',
+            : 'No uncertain writes were supplied; absence is caller-reported. Do not create a redundant checkpoint solely for stopchat.',
+          'This tool is read-only; it does not validate caller-provided progress, approval, source HEAD or state. Verify actual Human authority and Git/Memory readback independently; it does not save state, close ChatGPT, create a Job, trigger background work or grant execution authority.',
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -5872,7 +5913,7 @@ function createServer(req: Request) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend']),
+        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','ui-coder-frontend','critical-challenge']),
       },
       outputSchema: {
         name: z.string(),
@@ -6811,7 +6852,7 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
       }
       const milestoneError = human_invoked === true ? null :
-        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+        milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot, target_revision)
       if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       const result = {
         role: 'critic_reviewer',
@@ -6889,7 +6930,7 @@ function createServer(req: Request) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'CRITIC_REVIEW_REJECTED: NEXT Job memory_namespace is invalid.' }], isError: true }
       }
-      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot)
+      const milestoneError = human_invoked === true ? null : milestoneCrlEvidenceError(current, approved_milestone_id ?? null, milestone_reviewer_snapshot, target_revision)
       if (milestoneError) return { content: [{ type: 'text', text: milestoneError }], isError: true }
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Critic review target does not match the supplied Job.' }], isError: true }
@@ -6899,6 +6940,10 @@ function createServer(req: Request) {
       }
       if (result === 'PASS' && (findings ?? []).length > 0) {
         return { content: [{ type: 'text', text: 'Use PASS_WITH_FINDINGS when CR has findings.' }], isError: true }
+      }
+      if (result === 'PASS_WITH_FINDINGS' &&
+          (!(findings ?? []).length || (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity)))) {
+        return { content: [{ type: 'text', text: 'CRITIC_REVIEW_FINDINGS_BLOCKING: important/critical CR findings require FAIL, and PASS_WITH_FINDINGS requires nonblocking findings.' }], isError: true }
       }
       const verificationId = uuidv7()
       const memoryPath = verificationPath(project_id, verificationId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
@@ -6930,12 +6975,17 @@ function createServer(req: Request) {
         verification_memory_path: memoryPath,
         verification_record_text: prettyJson(verification),
         job_mutated: false,
-        next_role: 'human',
+        next_role: human_invoked === true ? 'human' : 'orchestrator',
         external_steps: [
           ...(human_invoked === true ? [] : ['Re-fetch the exact current Job SHA from GitHub Memory Repo and confirm Human-approved milestone crl, then independently fetch the matching Reviewer PASS snapshot path/SHA before recording CR. Supplied snapshot JSON is not evidence by itself.']),
           'Persist verification_record_text at verification_memory_path after authorize_memory_mutation(create).',
           'Do not update the Job record or lifecycle from CR output.',
-          'Present the independent verdict and any disagreement to Human for the next decision.',
+          ...(human_invoked === true
+            ? ['Present the independent CR verdict to Human. Direct cr remains a one-shot review.']
+            : [
+                'After immutable CR Verification persistence and exact readback, re-fetch current Job and call milestone_loop_evaluate(stage=CR, verdict=' + (result === 'PASS_WITH_FINDINGS' ? 'PASS' : result) + ') on the approved milestone. PASS_WITH_FINDINGS is accepted only with nonblocking MINOR findings.',
+                'Follow returned continuation in the SAME turn: CR FAIL -> correct Planner/Coder owner repairs -> fresh Reviewer PASS at exact source revision -> independent CR again. CR PASS advances only when authorized; BLOCKED/no progress stops. Never reuse old Reviewer PASS.',
+              ]),
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
@@ -7513,7 +7563,7 @@ function createServer(req: Request) {
         planning_revision: z.number().int().positive().optional(),
         role: z.enum(['planner','designer','coder','reviewer','tester']),
         scope_claim: z.array(z.string()).min(1),
-        primary_task_id: z.string().uuid().optional(),
+        primary_task_id: z.string().min(1).optional(),
         affected_task_refs: z.array(z.string()).default([]),
         parent_run_id: z.string().uuid().optional(),
         target_ref: z.string().optional(),
@@ -7649,6 +7699,14 @@ function createServer(req: Request) {
           isError: true,
         }
       }
+      const approvedReviewMilestones = role === 'reviewer' && primary_task_id
+        ? (owningJob.milestones ?? []).filter((m: any) =>
+            (m.node_ids ?? []).includes(primary_task_id) &&
+            ['rl','crl'].includes(m.review_loop) && m.human_pre_authorized === true)
+        : []
+      if (approvedReviewMilestones.length > 1) {
+        return { content: [{ type: 'text', text: 'MILESTONE_REVIEW_AMBIGUOUS: Reviewer Task belongs to more than one approved review milestone.' }], isError: true }
+      }
       const runId = uuidv7()
       const now = new Date().toISOString()
       const record = {
@@ -7659,6 +7717,7 @@ function createServer(req: Request) {
         execution_contract: executionContract,
         ...(executionContract === 'NEXT' ? { planning_revision: owningJob.planning_revision, memory_namespace: nextMemoryNamespace } : {}),
         primary_task_id: primary_task_id ?? null,
+        ...(role === 'reviewer' && approvedReviewMilestones.length === 1 ? { milestone_id: approvedReviewMilestones[0].milestone_id } : {}),
         affected_task_refs: affected_task_refs ?? [],
         parent_run_id: parent_run_id ?? null,
         role,
@@ -8012,6 +8071,7 @@ function createServer(req: Request) {
         project_id,
         job_id,
         task_id: run.primary_task_id ?? null,
+        ...(run.role === 'reviewer' && run.milestone_id ? { milestone_id: run.milestone_id } : {}),
         run_id,
         target_ref: run.target_ref ?? null,
         target_revision: run.target_revision ?? null,
@@ -8068,7 +8128,7 @@ function createServer(req: Request) {
         run_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
-          primary_task_id: z.string().uuid().optional(),
+          primary_task_id: z.string().min(1).optional(),
           target_ref: z.string().optional(),
           target_revision: z.string().optional(),
           completed_summary: z.string().min(1),

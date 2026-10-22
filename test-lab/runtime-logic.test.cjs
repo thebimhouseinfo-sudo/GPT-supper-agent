@@ -65,3 +65,204 @@ test('two-writer CAS model allows one winner and rejects loser (MODEL ONLY)', ()
   assert.equal(tryUpdate(sha,'c'.repeat(40)),false);
   assert.equal(durable,'b'.repeat(40));
 });
+// M1 CRL: test exact runtime helpers, not a hand-written equivalent.
+// These helper-level checks do NOT replace end-to-end persisted Reviewer/CR verification.
+const crlRoute = load('milestoneLoopDecision');
+const crlEvidence = load('milestoneCrlEvidenceError', { validMemoryPath: () => true });
+const crlJob = {
+  project_id: '00000000-0000-0000-0000-000000000001',
+  job_id: '00000000-0000-0000-0000-000000000002',
+  type: 'code', execution_contract: 'NEXT', lifecycle: 'IN_PROGRESS',
+  planning_revision: 5, planning_review: {status:'PASS',reviewed_revision:5},
+  milestones: [{milestone_id:'M1',node_ids:['task-A'],review_loop:'crl',human_pre_authorized:true,continuation:'AUTO'}],
+};
+function crl(stage,verdict,jobOverride=crlJob,noProgress=0) {
+  return crlRoute(jobOverride,'M1',stage,verdict,noProgress);
+}
+test('M1 source TypeScript parses and CRL inner RL truly transitions in both directions', () => {
+  assert.equal(parsed.parseDiagnostics.length,0);
+  assert.equal(crl('BEGIN','NONE').next_action,'RUN_REVIEWER');
+  assert.equal(crl('REVIEWER','FAIL').next_action,'REPAIR_AND_REREVIEW');
+  assert.equal(crl('REVIEWER','PASS').next_action,'VERIFY_REVIEWER_PASS_THEN_CR');
+  assert.equal(crl('CR','FAIL').next_action,'REPAIR_AND_REREVIEW');
+  assert.equal(crl('CR','PASS').next_action,'CONTINUE_AUTO');
+  assert.equal(crl('CR','BLOCKED').next_action,'STOP_BLOCKED');
+  assert.equal(crl('CR','FAIL',crlJob,3).next_action,'STOP_BLOCKED');
+});
+test('M1 Planner-owned repairs go to Planner, Coder-owned repairs to Coder', () => {
+  const plannerJob={...crlJob,type:'plan'};
+  assert.equal(crl('CR','FAIL',plannerJob).next_role,'planner');
+  assert.equal(crl('REVIEWER','FAIL',plannerJob).next_role,'planner');
+  assert.equal(crl('CR','FAIL').next_role,'coder');
+  assert.equal(crl('REVIEWER','FAIL').next_role,'coder');
+});
+test('M1 CRL never admits unapproved milestone or stale planning revision', () => {
+  assert.equal(crl('BEGIN','NONE',{...crlJob,milestones:[]}).next_action,'STOP');
+  assert.equal(crl('BEGIN','NONE',{...crlJob,milestones:[{...crlJob.milestones[0],human_pre_authorized:false}]}).next_action,'STOP');
+  assert.equal(crl('BEGIN','NONE',{...crlJob,planning_review:{status:'PASS',reviewed_revision:4}}).next_action,'STOP');
+});
+function reviewSnapshot(changes={}) {
+  return {path:'projects/'+crlJob.project_id+'/VERIFICATION/v.json',sha,
+    record_text:JSON.stringify({
+      kind:'REVIEW',result:'PASS',producer:'reviewer',project_id:crlJob.project_id,
+      job_id:crlJob.job_id,planning_revision:5,milestone_id:'M1',target_revision:sha,...changes,
+    })};
+}
+test('M1 CRL evidence is exact job/milestone/revision AND source SHA bound', () => {
+  assert.equal(crlEvidence(crlJob,'M1',reviewSnapshot(),sha),null);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot(),undefined),/SOURCE_REVISION_MISMATCH/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({milestone_id:'M2'}),sha),/REVIEW_INVALID/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({planning_revision:4}),sha),/REVIEW_INVALID/);
+  assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({result:'FAIL'}),sha),/REVIEW_INVALID/);
+});
+test('M1 negative control: removing source SHA comparison makes stale-evidence assertion RED', () => {
+  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
+  assert.ok(node);
+  const good=node.getText(parsed);
+  const mutant=good.replace('review.target_revision !== targetRevision','false');
+  assert.notEqual(mutant,good,'mutation must alter the actual code');
+  const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const broken=vm.runInNewContext(js+'\nmilestoneCrlEvidenceError',{validMemoryPath:()=>true,JSON,String});
+  assert.throws(()=>assert.match(broken(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/),assert.AssertionError);
+});
+test('M1 source CR record routes preauthorized milestone via orchestrator, direct cr to Human', () => {
+  const start=source.indexOf("'critic_review_record'");
+  const end=source.indexOf("'checkpoint_claim_prepare'",start);
+  assert.ok(start>0&&end>start);
+  const route=source.slice(start,end);
+  assert.match(route,/next_role:\s*human_invoked === true \? 'human' : 'orchestrator'/);
+  assert.match(route,/milestone_loop_evaluate\(stage=CR/);
+  assert.match(route,/After immutable CR Verification persistence and exact readback/);
+  const runStart=source.indexOf("'run_begin'");
+  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
+  assert.match(source.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
+  const verifyStart=source.indexOf("'run_verification_record'");
+  const verifyEnd=source.indexOf("'run_complete'",verifyStart);
+  assert.match(source.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
+});
+
+
+// P0 CadGPT Bootstrap: source-extracted validators and contract regressions.
+// Run against current source; this suite intentionally does NOT attest external GitHub evidence.
+const criteriaBinding = load('projectCriteriaBindingError');
+const bootstrapReadiness = load('projectBootstrapReadinessDecision', { projectCriteriaBindingError: criteriaBinding });
+const cadProjectId='01a0d70c-9683-7324-9d3d-a8231a93c63b';
+const cadPath='projects/'+cadProjectId+'/CRITERIA.md';
+const cadSHA='d43f32b179a46007efb663591d260925f3cbbe06';
+const cadRepo='https://github.com/thebimhouseinfo-sudo/Cadgpt';
+const cadBranch='feature/core-function-v5';
+const cadCriteria={criteria_path:cadPath,criteria_blob_sha:cadSHA,approval_status:'APPROVED'};
+const cadPlan={
+  plan_kind:'PROJECT_PLAN',criteria_binding:cadCriteria,planning_revision:1,
+  planning_review:{status:'PASS',reviewed_revision:1},
+  tasks:[{task_id:'T1',dependencies:[],completion_criteria:['Routing and ownership verified']}],
+  milestones:[{milestone_id:'M2',node_ids:['T1']}]
+};
+const cadEvidence={
+  criteria:cadCriteria,criteria_human_approved:true,criteria_current_blob_sha:cadSHA,
+  plan:cadPlan,capabilities:[{task_id:'T1',readiness:'DOMAIN_READY_VERIFIED',evidence_verified:true}],
+  human_execution_approved:true,
+  readback_proof:{name:'BOOTSTRAP_CURRENT.json',path:'projects/'+cadProjectId+'/VERIFICATION/BOOTSTRAP_CURRENT.json',sha,
+    criteria_sha:cadSHA,reviewed_plan_sha:sha,human_approval_ref:'human approved current reviewed Plan'}
+};
+const bootstrapExecution = load('projectBootstrapExecutionError', {
+  projectBootstrapReadinessDecision: bootstrapReadiness,
+  parseProjectManifest: () => ({project_id:cadProjectId,lifecycle:'ACTIVE',
+    repositories:[{relation:'OWNED',url:cadRepo}],
+    branch_policies:[{repository_url:cadRepo,development_branch:cadBranch}]}),
+  normalizeGithubRepo:u=>({url:u}),validIntegrationBranch:b=>b===cadBranch
+});
+function admission(data) {
+  return bootstrapExecution(cadProjectId,'verified manifest fixture',data,cadRepo,cadBranch);
+}
+test('P0 approved CadGPT Criteria + current replacement Project Plan + T1 capability are ready',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,cadEvidence).status,
+    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED');
+  assert.equal(admission(cadEvidence),null);
+  const cadT1={execution_contract:'NEXT',planning_revision:1,
+    tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
+  assert.equal(dispatch(cadT1,'coder',['T1'],1,sha,sha,[]),null);
+});
+test('P0 canonical Criteria binding, Human confirmation and SHA are separate fail-closed gates',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria:undefined}).status,
+    'CRITERIA_BINDING_MISSING_OR_INVALID');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_human_approved:false}).status,
+    'CRITERIA_HUMAN_APPROVAL_UNVERIFIED');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
+    'CRITERIA_STALE_OR_UNVERIFIED');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,plan:{...cadPlan,plan_kind:'JOB'}}).status,
+    'PLAN_CRITERIA_MISMATCH');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,capabilities:[]}).status,
+    'CAPABILITY_NOT_READY');
+  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,human_execution_approved:false}).status,
+    'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING');
+  assert.match(admission({...cadEvidence,readback_proof:null}),/BOOTSTRAP_READBACK_PROOF_REQUIRED/);
+});
+test('P0 historical M1 capability-only snapshot is NOT accepted as source approval',()=>{
+  const old={type:'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE',
+    status:'M1_CONFIGURED_AND_READBACK_VERIFIED; SOURCE_EXECUTION_NOT_AUTHORIZED',
+    plan:{job_id:'01a15dd5-2189-703a-ab28-a58c4f4b07c5'}};
+  assert.match(admission(old),/BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED/);
+  assert.match(admission(null),/BOOTSTRAP_REQUIRED/);
+});
+test('P0 bootstrap negative control detects removing canonical current SHA check',()=>{
+  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
+  assert.ok(node);
+  const good=node.getText(parsed);
+  const mutant=good.replace('input?.criteria_current_blob_sha !== c.criteria_blob_sha','false');
+  assert.notEqual(good,mutant);
+  const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const broken=vm.runInNewContext(js+'\nprojectBootstrapReadinessDecision',{projectCriteriaBindingError:criteriaBinding,JSON,Array,Set,Map,Number,String});
+  assert.throws(() => assert.equal(broken(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
+    'CRITERIA_STALE_OR_UNVERIFIED'),assert.AssertionError);
+});
+test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
+  const runStart=source.indexOf("'run_begin'");
+  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
+  const runSource=source.slice(runStart,runEnd);
+  assert.match(runSource,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const completionStart=source.indexOf("'run_complete'");
+  const completion=source.slice(completionStart,completionStart+2500);
+  assert.match(completion,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const taskCase={execution_contract:'NEXT',planning_revision:1,tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
+  assert.match(dispatch(taskCase,'coder',['T2'],1,sha,sha,[]),/TASK_INVALID/);
+  assert.match(dispatch(taskCase,'tester',['T1'],1,sha,sha,[]),/WRONG_ROLE/);
+});
+
+
+// M2 Planner harness: source-backed prompt contract, not a model-level behavioral guarantee.
+function plannerHarnessSlice(text=source) {
+  const h=text.indexOf('const ROLE_HARNESSES');
+  const start=text.indexOf('  planner: {',h),end=text.indexOf('  advisor: {',start);
+  assert.ok(start>h&&end>start,'role-bounded Planner harness must exist');
+  return text.slice(start,end);
+}
+function validatePlannerContract(text=source) {
+  const planner=plannerHarnessSlice(text);
+  assert.match(planner,/CRITICAL CHALLENGE: before agreeing with a Human-proposed/);
+  assert.match(planner,/underlying goal, test assumptions, challenge incorrect premises/);
+  assert.match(planner,/CONFIRMED POSSIBLE/);
+  assert.match(planner,/CONFIRMED IMPOSSIBLE only with evidence proving impossibility/);
+  assert.match(planner,/UNKNOWN is NOT impossible/);
+  assert.match(planner,/possible does not mean implemented/);
+  assert.match(planner,/Reject invented commands \(for example gsa\/clear\)/);
+  assert.match(planner,/Keep ordinary answers concise without forced three-label boilerplate/);
+  assert.match(planner,/Never awaken Technical Advisor for normal challenge/);
+  assert.match(planner,/Only explicit Human intent to approve first Criteria or change approved WHAT\/WHY activates Advisor/);
+}
+test('M2 Planner guidance covers evidence, impossible versus unknown and no Advisor overtrigger',()=>{
+  validatePlannerContract();
+});
+test('M2 negative control: remove scoped feasibility check and contract test must RED',()=>{
+  const broken=source.replace("CONFIRMED IMPOSSIBLE only with evidence proving impossibility","CONFIRMED IMPOSSIBLE with no evidence");
+  assert.notEqual(broken,source,'mutation must actually hit source');
+  assert.throws(()=>validatePlannerContract(broken),assert.AssertionError);
+});
+test('M2 Planner-only instructions do not leak into Advisor role',()=>{
+  const src=source,index=src.indexOf('const ROLE_HARNESSES');
+  const start=src.indexOf('  advisor: {',index);
+  const end=src.indexOf('  designer: {',start);
+  assert.ok(end>start);
+  assert.doesNotMatch(src.slice(start,end),/CRITICAL CHALLENGE: before agreeing/);
+});
