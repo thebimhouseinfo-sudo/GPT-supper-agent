@@ -2311,7 +2311,7 @@ const BASE_AGENT_HARNESS = [
   '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
   '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
   '- BRANCH AUTHORITY: Admin stores Human-confirmed Development/Release Branch per source repo in PROJECT.md, READY displays them; Planner/Coder use ONLY configured Development Branch as merge target, never guess main/default. Missing/renamed/stale mapping permits read/chat/planning but blocks source write/merge dependent on the branch. Production merge/deploy require separate Human decisions.',
-  '- STOPCHAT: on Human stopchat or excessive context, stop at a safe boundary; persist/readback only needed durable pending state, then give copyable Project/repo/branch/SHA/Criteria+Plan revision/Job+milestone/approval/blocker/next-action handoff. Chat reopen checks Git and Memory; never promise autonomous background work.',
+  '- STOPCHAT: on Human stopchat or excessive context, first inspect current Project/Job/Run/cursor and independently read Git/Memory; stop at a safe boundary, reconcile uncertain writes, persist/readback ONLY necessary durable pending state. Then call stopchat_handoff_prepare; its caller-supplied values and approvals are NOT independently verified by that helper. Clearly mark unknowns, include Project/repo/branch/SHA/Criteria+Plan revision/Job+milestone/blocker/next action, and re-read Git/Memory on fresh chat before authorized resume. Never auto-run, fabricate approval or promise background work.',
   '- REVIEW LOOP: rl = Planner/Coder → Reviewer → repair/re-review boundedly until PASS or real blocker. crl = rl PASS → independent CR → on CR FAIL repeat inner rl and CR until PASS or real blocker. CR only when Human invoked or a particular milestone was approved in advance with crl, never on every Task.',
   '- INTERRUPT / NEW MESSAGE: the current receiving Agent repeats classify/clarify, answers questions directly, and handles clear changes within capability. Handoff only for a real capability/authority mismatch; do not silently change already approved Job scope. Direct Agent commands remain the explicit Human shortcut.',
 
@@ -3216,7 +3216,7 @@ function createServer(req: Request) {
       instructions: [
         'GPT Super Agent (GSA) runtime.',
         'BOOTSTRAP: follow fixed minimal steps with NO REASONING until Project READY; do not load planning or source context during Project open.',
-        'STOPCHAT shortcut: stop at a safe Job/cursor boundary, persist only needed durable state/readback, then call stopchat_handoff_prepare for an accurate concise copyable resume handoff. No background work.',
+        'STOPCHAT shortcut: independently re-read live Project, Job/Run/cursor and Git head; reconcile uncertain writes before safe stop, persist/readback only necessary state, then call stopchat_handoff_prepare. Its input is caller-reported, not verified by the helper; mark unresolved values UNVERIFIED. Fresh chat rechecks exact Git/Memory before authorized resume. No auto-run or background work.',
         'NEW HUMAN MESSAGE: current receiving Agent handles it, default Planner if none. LOW REASONING classify question vs action; answer questions; clarify missing material User decisions and confirm a thin skeleton before full planning. Explicit Direct Agent commands retain their routing.',
         'PLAN APPROVAL: automatically repair and re-review detailed planning until PASS, then present the plan and WAIT for explicit Human execution approval. Skeleton approval only permits planning; never auto-start new Job execution from READY.',
         'PLAN GOAL ANCHORS: write ## GOAL at the top of each new/revised plan file and ### GOAL immediately inside each Phase before Tasks; Reviewer checks all phase goals and Tasks against original Human-approved overall goal on every planning revision. No silent goal changes.',
@@ -5213,6 +5213,18 @@ function createServer(req: Request) {
     async ({ memory_path, project_manifest_text, project_manifest_sha, selected_job_id, selected_milestone, source_commit_sha, criteria_revision, plan_revision, verified_progress, uncertain_writes, human_approvals, blockers, next_action }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for stopchat handoff.')
+      // Validate the Git blob identity of supplied bytes BEFORE trusting manifest branch or approvals.
+      // This is an integrity check only, not a substitute for independent GitHub readback.
+      const manifestBytes = new TextEncoder().encode(project_manifest_text)
+      const gitPrefix = new TextEncoder().encode('blob ' + manifestBytes.length + '\0')
+      const gitBlob = new Uint8Array(gitPrefix.length + manifestBytes.length)
+      gitBlob.set(gitPrefix)
+      gitBlob.set(manifestBytes, gitPrefix.length)
+      const actualManifestSha = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', gitBlob)))
+        .map((byte) => byte.toString(16).padStart(2, '0')).join('')
+      if (actualManifestSha !== project_manifest_sha) {
+        return { content: [{ type: 'text', text: 'STOPCHAT_MANIFEST_SHA_MISMATCH: caller-provided PROJECT.md bytes do not match claimed Git blob SHA.' }], isError: true }
+      }
       const parsed = parseProjectManifest(project_manifest_text)
       if (!parsed || !validProjectManifestPath(memory_path, parsed.project_id)) {
         return { content: [{ type: 'text', text: 'STOPCHAT_PROJECT_MISMATCH: exact active PROJECT.md is required.' }], isError: true }
@@ -5222,21 +5234,21 @@ function createServer(req: Request) {
         (values?.length ? values.map((v: any) => '- ' + clean(v)).join('\n') : '- ' + fallback)
       const pending = (uncertain_writes ?? []).length > 0
       const text = [
-        'GSA stopchat — resume handoff (not execution authorization)', '',
+        'GSA stopchat — resume handoff (not execution authorization)', 'Evidence status: caller-supplied; independently re-check before relying on any field.', '',
         'Project: ' + clean(parsed.name) + ' [' + parsed.project_id + ']',
         'Source repository: ' + parsed.primary_repo_url,
         'Development Branch: ' + (parsed.development_branch ?? 'UNCONFIGURED'),
         'Release Branch: ' + (parsed.release_branch ?? 'NOT_CONFIGURED'),
-        'Source commit (verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
-        'Project Memory: ' + memory_path + ' @ ' + project_manifest_sha,
-        'Criteria revision: ' + clean(criteria_revision || 'UNVERIFIED'),
-        'Plan revision: ' + clean(plan_revision || 'UNVERIFIED'),
+        'Source commit (caller-reported; verify live): ' + (source_commit_sha ?? 'UNVERIFIED'),
+        'Project Memory reference (caller-reported; recheck blob): ' + memory_path + ' @ ' + project_manifest_sha,
+        'Criteria revision (caller-reported): ' + clean(criteria_revision || 'UNVERIFIED'),
+        'Plan revision (caller-reported): ' + clean(plan_revision || 'UNVERIFIED'),
         'Selected Job: ' + clean(selected_job_id || 'NONE'),
         'Milestone: ' + clean(selected_milestone || 'NONE'), '',
-        'Verified progress:', items(verified_progress, 'none supplied'), '',
+        'Progress reported (not independently verified):', items(verified_progress, 'none supplied'), '',
         'Uncertain writes / reconcile before retry:', items(uncertain_writes, 'none reported'), '',
-        'Human approvals already in force:', items(human_approvals, 'none supplied; do not infer approval'), '',
-        'Blockers:', items(blockers, 'none reported'), '',
+        'Human approvals reported (NOT verified; do not infer authority):', items(human_approvals, 'none supplied; do not infer approval'), '',
+        'Blockers reported:', items(blockers, 'none reported'), '',
         'NEXT ACTION: ' + clean(next_action), '',
         'To resume in a fresh chat: open this GSA Project, read exact Project Memory and live source HEAD/Job evidence; confirm the requested next action and applicable Human scope. Never auto-run merely because a chat opened.',
       ].join('\n')
@@ -5249,8 +5261,8 @@ function createServer(req: Request) {
           'Re-fetch current PROJECT.md from the configured Memory Repo and compare blob SHA=' + project_manifest_sha + ', source HEAD and any active Job/cursor before treating details as verified.',
           pending
             ? 'Uncertain writes exist. Re-read source blob/HEAD and durable cursor; never retry the write blindly. Clearly label any unresolved result UNVERIFIED.'
-            : 'No uncertain writes were supplied; do not create a redundant checkpoint solely for stopchat.',
-          'This tool is read-only; it does not save state, close ChatGPT, create a Job, trigger a background worker or grant execution authority.',
+            : 'No uncertain writes were supplied; absence is caller-reported. Do not create a redundant checkpoint solely for stopchat.',
+          'This tool is read-only; it does not validate caller-provided progress, approval, source HEAD or state. Verify actual Human authority and Git/Memory readback independently; it does not save state, close ChatGPT, create a Job, trigger background work or grant execution authority.',
         ],
       }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
