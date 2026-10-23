@@ -46,6 +46,14 @@ For new NEXT Project Plans bind exact approved Criteria blob SHA/path, review Ov
 
 For milestones Human-approved as `rl` or `crl`, follow bounded same-turn review/repair/Reviewer loops; `crl` requires the current independent Reviewer PASS snapshot, then CR; CR FAIL returns through `rl`. No automatic CR outside this scope. `stopchat` stops at a safe boundary and prepares a concise Project/branch/revision/Job/progress/uncertain-write/approval/next-action handoff, persisting only needed state, never background work.
 
+### Retiring obsolete Git source branches
+
+Source-branch `RETIRED` is terminal and separate from Project `ARCHIVED` or Job `SUPERSEDED`. Before starting new code work, read the active Project's approved Development/Release Branch and any versioned retirement record. A retired branch must not be used as a Job integration target, even while the Git ref exists. Do not auto-reactivate it to satisfy a stale Job, PR or plan.
+
+On Human-authorized retirement, list **all** refs, compare exact heads against the current integration branch and reconcile open PRs and active Jobs. Record the branch, SHA, evidence, retirement decision and whether the physical ref still exists. Mark logical RETIRED only after readback. Fully-contained refs may be deleted only with a separately available authorized Git action and fresh dependency checks; diverged refs require explicit disposition of unique commits and a verified archive ref where history must survive. `RETIRED` alone never proves a branch was physically deleted. Do not manufacture extra approval gates or new Jobs just to track branch housekeeping.
+
+For the GSA source repository, see `docs/architecture/BRANCH-LIFECYCLE.md` and the current retirement ledger in `docs/maintenance/`. `main` is the retained integration branch; obsolete work does not resume on historical refs.
+
 ## Shared Agent intake (before role work)
 
 **NO REASONING** during Project *open* only: perform minimal identity/config checks. On an explicit **Bootstrap** request, autonomously inspect source/documents and complete the four-item checklist; do not confuse Project open with product Bootstrap. On new User messages, keep the active receiving Agent; use Planner by default only when none exists. **LOW REASONING**: classify question/action, answer questions, clarify missing material decisions without speculative alternatives, and draft a thin skeleton for new/changed work. User agreement on the skeleton permits **FULL REASONING** detailed planning and the autonomous review/repair loop, not implementation. At PASS present the reviewed plan and ask for explicit Human execution approval; until then stay in discussion. An explicit user instruction such as "bắt đầu sửa code", "làm đi", "đồng ý làm" counts only in the matching plan-approval context, not as blanket permission. Handoff only when capability differs. Keep Direct Agent shortcuts and existing Project scope checks.
