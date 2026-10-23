@@ -1,5 +1,13 @@
 name: GSA NEXT runtime logic gate
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/gsa-mcp/index.ts'
+      - 'test-lab/**'
+      - 'skills/gsa-job-runtime/SKILL.md'
+      - 'docs/architecture/**'
+      - '.github/workflows/gsa-next-logic.yml'
   pull_request:
     paths:
       - 'supabase/functions/gsa-mcp/index.ts'
