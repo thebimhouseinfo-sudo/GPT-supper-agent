@@ -669,9 +669,10 @@ actions[] {
   action_key
   predecessor_job_id, predecessor_job_sha, predecessor_lifecycle
   predecessor_planning_revision, predecessor_execution_contract
-  decision = KEEP | REVALIDATE | REPLACE
+  decision = KEEP | REVALIDATE | REPLACE | RETIRE
   reason, initial_next_action
-  replacement? { job_id, handle }   # minted once at intent CREATE
+  retired_task_ids?   # Task IDs explicitly no longer needed; only REPLACE/RETIRE
+  replacement? { job_id, handle }   # required only for REPLACE; null for RETIRE   # minted once at intent CREATE
   old_evidence_applicable_to_new_job = false
 }
 created_at
@@ -679,8 +680,14 @@ created_at
 
 The `job_plan_change_assess` tool is read-only. `job_plan_change_prepare` requires an exact PASS `PLANNING_REVIEW` Verification bound to the reviewing plan Job revision and prepares an immutable CREATE. The external orchestrator must authorize the actual Memory Repo path, confirm exact current Plan/Job/Verification blob SHAs, CREATE with collision detection, and independently read back the intent. If the CREATE already exists, read/reconcile it; never overwrite it or mint another replacement ID.
 
-`job_plan_change_resume_evaluate` derives the next action from the immutable intent and freshly read Job snapshots; tool output **never authorizes a mutation**. A pending source cursor must be reconciled and active Runs settled before a predecessor transitions to `SUPERSEDED`. The replacement is created using `job_prepare(replacement_context)` only with the existing reserved ID and verified `SUPERSEDED` predecessor; on collision read the existing Job rather than creating another ID.
+`job_plan_change_resume_evaluate` derives the next action from the immutable intent and freshly read Job snapshots; tool output **never authorizes a mutation**. A pending source cursor must be reconciled and active Runs settled before a predecessor transitions to `SUPERSEDED` or `RETIRED`. A `RETIRE` action transitions its fenced predecessor to `RETIRED` with no replacement ID, with preserved historical evidence. A `REPLACE` action creates the replacement using `job_prepare(replacement_context)` only with the existing reserved ID and verified `SUPERSEDED` predecessor; on collision read the existing Job rather than creating another ID.
 
 Replacement Jobs get `replacement_of_job_id`, `plan_change_id`, `linked_job_ids=[predecessor_id]` and `display_name` containing their **full canonical UUID**, so names do not collide even if short handles do. They begin `DRAFT` and require ordinary planning review. Prior PASS/Review/TEST/Retest evidence stays attached to the predecessor, not silently transferred.
 
 **Partial transaction reality:** independent GitHub record writes are not atomic across Jobs. Intent-first, exact-SHA CAS, readback and idempotent resume are required. There is no background controller, no global freeze of every already-running chat, and no claim that a plan is fully applied until dependencies are rebound and field validation passes. Existing Job transition/dispatch auth and scope remain mandatory. Reconciliation helper PASS is *not* evidence of completed replacement.
+
+### Retirement compatibility and safety (LLC58)
+
+Old v1 intent records with only KEEP/REVALIDATE/REPLACE continue to work unchanged. The current parser accepts RETIRE as an additive decision. For RETIRE, `replacement=null` is mandatory. Job transition requires the matching immutable intent, exact Job SHA, persisted `plan_change_pending` fence and settled Run/cursor state; terminal Job becomes `RETIRED` and `result=RETIRED`. Record `retired_by_plan_change_id`, `retired_reason`, `retired_at`, and `retired_by_replacement_job_id=null`.
+
+All unfinished Tasks on retired Job are `RETIRED`. For REPLACE, the planner can identify `retired_task_ids` and that subset is marked RETIRED in the historical predecessor. A current Task with `lifecycle=RETIRED` is never dispatchable. Run lifecycle remains unchanged: a settled active Run is `CANCELLED` rather than RETIRED. Unfinished mutations require real recovery rather than a fabricated terminal state.
