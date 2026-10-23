@@ -247,3 +247,94 @@ test('LLC58: tool surface includes prepare, resume and governed replacement Job 
   assert.match(source,/replacement_context: z\.object\(/);
   assert.match(source,/replacement_of_job_id: replacement\.predecessor\.job_id/);
 });
+
+
+// RETIRED is a real LLC58 decision (no replacement ID or child Job), not a Git branch status.
+const retiredImpact = {...impacted,decision:'RETIRE',reason:'Reviewed Plan no longer needs this Job'};
+const retirePrepared = () => prepare({...input,job_snapshots:[retiredImpact]});
+const retireInput = (job=old,jobSha=sha) => {
+  const prepared=retirePrepared();
+  return {project_id:uid,job_id:oldId,job_record_text:JSON.stringify(job),
+    job_record_sha:jobSha,intent_record_text:prepared.intent_record_text,
+    intent_record_sha:sha,intent_memory_path:prepared.intent_memory_path};
+};
+const retireResume = (intent,jobs,activity=[]) => resume({
+  project_id:uid,intent_memory_path:retirePrepared().intent_memory_path,
+  intent_record_text:JSON.stringify(intent),intent_record_sha:sha,
+  current_job_snapshots:jobs.map(j=>snap(j)),activity,
+});
+test('LLC58 RETIRE intent has no replacement and preserves reviewed Plan lineage',()=>{
+  const p=retirePrepared();
+  assert.equal(p.allowed,true);
+  const intent=JSON.parse(p.intent_record_text);
+  assert.equal(intent.actions.length,1);
+  assert.equal(intent.actions[0].decision,'RETIRE');
+  assert.equal(intent.actions[0].replacement,null);
+  assert.equal(intent.actions[0].reason,retiredImpact.reason);
+  assert.equal(intent.actions[0].old_evidence_applicable_to_new_job,false);
+});
+test('LLC58 RETIRE fence is exact-SHA, idempotent and carries null replacement',()=>{
+  const p=retirePrepared();
+  const fenced=prepareFence(retireInput());
+  assert.equal(fenced.allowed,true);
+  assert.equal(fenced.operation,'UPDATE');
+  assert.equal(fenced.record.plan_change_pending.replacement_job_id,null);
+  assert.equal(prepareFence(retireInput(fenced.record,'b'.repeat(40))).operation,'NONE');
+  assert.equal(prepareFence(retireInput(old,'b'.repeat(40))).allowed,false);
+  const i=JSON.parse(p.intent_record_text);
+  assert.equal(retireResume(i,[old]).actions[0].next_action,'FENCE_PREDECESSOR_BY_EXACT_SHA');
+  assert.equal(retireResume(i,[fenced.record],[{job_id:oldId,cursor_state:'PENDING',active_run_state:'NONE'}])
+    .actions[0].next_action,'RECONCILE_PENDING_SOURCE_CURSOR');
+  assert.equal(retireResume(i,[fenced.record],[{job_id:oldId,cursor_state:'STABLE',active_run_state:'ACTIVE'}])
+    .actions[0].next_action,'SETTLE_ACTIVE_RUN');
+  assert.equal(retireResume(i,[fenced.record],[{job_id:oldId,cursor_state:'ABSENT',active_run_state:'NONE'}])
+    .actions[0].next_action,'RETIRE_PREDECESSOR_BY_EXACT_SHA');
+});
+test('LLC58 RETIRE cannot terminalize with pending cursor, active Run, missing fence or forged successor',()=>{
+  const p=retirePrepared();
+  const baseline={project_id:uid,intent_record_text:p.intent_record_text,intent_record_sha:sha,
+    intent_memory_path:p.intent_memory_path,predecessor_job:prepareFence(retireInput()).record,
+    predecessor_job_sha:'b'.repeat(40),cursor_state:'ABSENT',active_run_state:'NONE'};
+  const matched=validateSupersession(baseline);
+  assert.equal(matched.allowed,true);
+  assert.equal(matched.action.decision,'RETIRE');
+  assert.equal(matched.action.replacement,null);
+  for(const bad of [
+    {...baseline,cursor_state:'PENDING'},
+    {...baseline,cursor_state:'UNKNOWN'},
+    {...baseline,active_run_state:'ACTIVE'},
+    {...baseline,active_run_state:'UNKNOWN'},
+    {...baseline,predecessor_job:old},
+    {...baseline,predecessor_job:{...baseline.predecessor_job,planning_revision:3}},
+    {...baseline,predecessor_job:{...baseline.predecessor_job,lifecycle:'COMPLETED'}},
+  ]) assert.equal(validateSupersession(bad).allowed,false);
+  const forged=JSON.parse(p.intent_record_text);
+  forged.actions[0].replacement={job_id:newId,handle:getHandle(newId)};
+  assert.equal(validateSupersession({...baseline,intent_record_text:JSON.stringify(forged)}).allowed,false);
+});
+test('LLC58 RETIRED is terminal, resumes without creating replacement and checks matching reason',()=>{
+  const i=JSON.parse(retirePrepared().intent_record_text);
+  const closed={...prepareFence(retireInput()).record,lifecycle:'RETIRED',result:'RETIRED',
+    retired_by_plan_change_id:i.change_id,retired_reason:retiredImpact.reason,
+    retired_by_replacement_job_id:null};
+  assert.equal(retireResume(i,[closed]).actions[0].next_action,'RETIRED_NO_REPLACEMENT');
+  assert.equal(retireResume(i,[{...closed,retired_reason:'different'}]).allowed,false);
+  assert.equal(retireResume(i,[{...closed,result:'PASS'}]).allowed,false);
+  assert.equal(retireResume(i,[{...old,lifecycle:'COMPLETED'}]).allowed,false);
+  assert.match(source,/target_lifecycle === 'RETIRED' \? 'RETIRED'/);
+  assert.match(source,/RETIRE_REQUIRES_REVIEWED_PLAN_INTENT_AND_SETTLED_ACTIVITY/);
+  assert.match(source,/NEXT_DISPATCH_TASK_RETIRED/);
+});
+test('LLC58 validates retirement Task scope, preserves existing REPLACE path',()=>{
+  const work={...old,tasks:[{task_id:'A',lifecycle:'READY'},{task_id:'B',lifecycle:'IN_PROGRESS'}]};
+  const payload={...impacted,job_record_text:JSON.stringify(work),
+    retired_task_ids:['A']};
+  const replaced=prepare({...input,job_snapshots:[payload]});
+  assert.equal(replaced.allowed,true);
+  assert.deepEqual(Array.from(JSON.parse(replaced.intent_record_text).actions[0].retired_task_ids),['A']);
+  for(const taskIds of [['A','A'],['NOT_A_TASK']]){
+    const blocked=prepare({...input,job_snapshots:[{...payload,retired_task_ids:taskIds}]});
+    assert.equal(blocked.allowed,false);
+  }
+  assert.equal(prepare({...input,job_snapshots:[{...payload,decision:'KEEP'}]}).allowed,false);
+});
