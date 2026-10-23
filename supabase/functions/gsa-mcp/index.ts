@@ -398,6 +398,7 @@ function nextDispatchPreflightError(
     const task = (job.tasks ?? []).find((item: any) => item.task_id === taskId)
     const stage = (job.topology ?? []).find((item: any) => item.task_id === taskId)
     if (!task || !stage) return 'NEXT_DISPATCH_TASK_INVALID: dispatch Task is missing from the current Job/topology.'
+    if (task.lifecycle === 'RETIRED') return 'NEXT_DISPATCH_TASK_RETIRED: Task ' + taskId + ' is not actionable after Plan change.'
     if (stage.handler !== role) return 'NEXT_DISPATCH_WRONG_ROLE: Task ' + taskId + ' belongs to ' + String(stage.handler) + ', not ' + role + '.'
     for (const dependencyId of task.dependencies ?? []) {
       if (!completedState.completed.has(dependencyId)) {
@@ -1725,6 +1726,11 @@ function assessHumanPlanChangeJobs(input: any) {
         typeof item.reason !== 'string' || !item.reason.trim())
       return reject('PLAN_CHANGE_DECISION_AND_REASON_REQUIRED')
     const lifecycle = job.lifecycle
+    const retiredTaskIds = item.retired_task_ids ?? []
+    if (!Array.isArray(retiredTaskIds) || retiredTaskIds.some((id: any) => typeof id !== 'string' || !id || !(job.tasks ?? []).some((task: any) => task.task_id === id)) ||
+        new Set(retiredTaskIds).size !== retiredTaskIds.length ||
+        (item.decision !== 'REPLACE' && item.decision !== 'RETIRE' && retiredTaskIds.length))
+      return reject('PLAN_CHANGE_RETIRED_TASK_SCOPE_INVALID')
     if (!['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(lifecycle))
       return reject('PLAN_CHANGE_JOB_LIFECYCLE_INVALID')
     const oldContract = jobExecutionContract(job)
@@ -1753,6 +1759,7 @@ function assessHumanPlanChangeJobs(input: any) {
       planning_revision: job.planning_revision, lifecycle,
       execution_contract: oldContract, decision: item.decision,
       reason: item.reason, next_action: nextAction,
+      retired_task_ids: retiredTaskIds,
       old_evidence_applicable_to_new_job: false,
     })
   }
@@ -1854,6 +1861,7 @@ function prepareHumanPlanChangeIntent(input: any) {
       predecessor_planning_revision: row.planning_revision,
       predecessor_execution_contract: row.execution_contract,
       decision: row.decision, reason: row.reason,
+      retired_task_ids: row.retired_task_ids,
       initial_next_action: row.next_action,
       replacement,
       old_evidence_applicable_to_new_job: false,
@@ -1972,6 +1980,10 @@ function validatePlanChangeSupersession(input: any) {
   if (matching.length !== 1) return invalid('PLAN_CHANGE_TERMINAL_ACTION_NOT_UNIQUE')
   const a = matching[0]
   const fence=old.plan_change_pending
+  if (!Array.isArray(a.retired_task_ids ?? []) || (a.retired_task_ids ?? []).some((id: any) =>
+      typeof id !== 'string' || !(old.tasks ?? []).some((task: any) => task.task_id === id)) ||
+      new Set(a.retired_task_ids ?? []).size !== (a.retired_task_ids ?? []).length)
+    return invalid('PLAN_CHANGE_RETIRED_TASK_SCOPE_INVALID')
   if (!fence || fence.change_id !== intent.change_id ||
       fence.intent_memory_path !== input.intent_memory_path ||
       fence.intent_record_sha !== input.intent_record_sha ||
@@ -3671,6 +3683,7 @@ function createServer(req: Request) {
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
           decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
           reason: z.string().min(1),
+          retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
         })).min(1),
@@ -3709,6 +3722,7 @@ function createServer(req: Request) {
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
           decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
           reason: z.string().min(1),
+          retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
         })).min(1),
@@ -6643,6 +6657,15 @@ function createServer(req: Request) {
           retired_at: new Date().toISOString(),
           retired_by_replacement_job_id: null,
         } : {}),
+        ...(['SUPERSEDED','RETIRED'].includes(target_lifecycle) && planSupersession?.allowed ? {
+          tasks: (current.tasks ?? []).map((task: any) => {
+            const retire = target_lifecycle === 'RETIRED' || (planSupersession.action.retired_task_ids ?? []).includes(task.task_id)
+            return retire && !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(task.lifecycle)
+              ? { ...task, lifecycle: 'RETIRED', retired_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+                  retired_reason: planSupersession.action.reason }
+              : task
+          }),
+        } : {}),
         lifecycle: target_lifecycle,
         result: result ?? current.result ?? null,
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
@@ -7893,7 +7916,7 @@ function createServer(req: Request) {
           owningJob.repository_context?.integration_branch ?? null)
         if (blocked) return { content: [{ type: 'text', text: blocked }], isError: true }
       }
-      const currentTaskIds = new Set<string>((owningJob.tasks ?? []).map((item: any) => item.task_id))
+      const currentTaskIds = new Set<string>((owningJob.tasks ?? []).filter((item: any) => item.lifecycle !== 'RETIRED').map((item: any) => item.task_id))
       if (executionContract === 'NEXT' && primary_task_id && !currentTaskIds.has(primary_task_id)) {
         return { content: [{ type: 'text', text: 'NEXT_TASK_BINDING_REJECTED: primary_task_id is not a Task in the current planning revision.' }], isError: true }
       }
