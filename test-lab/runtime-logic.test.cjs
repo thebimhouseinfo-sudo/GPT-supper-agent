@@ -266,3 +266,53 @@ test('M2 Planner-only instructions do not leak into Advisor role',()=>{
   assert.ok(end>start);
   assert.doesNotMatch(src.slice(start,end),/CRITICAL CHALLENGE: before agreeing/);
 });
+
+
+
+// Branch retirement: executable regressions against source helpers, not a fabricated local reimplementation.
+const validBranchName = (s) => typeof s === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.\\/-]*$/.test(s) && !s.includes('..');
+const normalizeRepoForRetirementTest = (url) => /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(url) ? {url} : null;
+const parseRetiredBranchRows = load('parseRetiredBranchRows', {
+  validIntegrationBranch: validBranchName,
+  normalizeGithubRepo: normalizeRepoForRetirementTest,
+});
+const isRetiredSourceBranch = load('isRetiredSourceBranch');
+const parseProjectManifestWithRetirement = load('parseProjectManifest', {
+  PROJECT_ID_PATTERN: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  normalizeGithubRepo: normalizeRepoForRetirementTest,
+  validIntegrationBranch: validBranchName,
+  parseRetiredBranchRows,
+  isRetiredSourceBranch,
+});
+const retirementRepo = 'https://github.com/org/repo';
+const retirementRecord = '- ' + retirementRepo + ' | branch=old-feature | sha=' + sha + ' | status=RETIRED';
+const retirementManifest = (branch='main', rows=retirementRecord) => [
+  '---',
+  'project_id: 00000000-0000-0000-0000-000000000001',
+  'name: Branch retirement test',
+  'lifecycle: ACTIVE',
+  'repo_url: ' + retirementRepo,
+  'development_branch: ' + branch,
+  '---',
+  '## Retired Branches (Human-approved)',
+  rows,
+].join('\\n');
+
+test('RETIRED is durable and cannot be selected as configured Development Branch', () => {
+  const parsedOld = parseProjectManifestWithRetirement(retirementManifest('old-feature'));
+  assert.equal(parsedOld.branch_policy_status, 'RETIRED_BRANCH_CONFIGURED');
+  assert.equal(parsedOld.retired_branches.length, 1);
+  assert.equal(isRetiredSourceBranch(parsedOld.retired_branches, retirementRepo, 'old-feature'), true);
+  const parsedCurrent = parseProjectManifestWithRetirement(retirementManifest());
+  assert.equal(parsedCurrent.branch_policy_status, 'CONFIGURED');
+  assert.equal(isRetiredSourceBranch(parsedCurrent.retired_branches, retirementRepo, 'main'), false);
+  const legacy = parseProjectManifestWithRetirement(retirementManifest().split('## Retired Branches')[0]);
+  assert.equal(legacy.retired_branches.length, 0);
+});
+
+test('retirement record parser rejects duplicate or malformed rows instead of ignoring them', () => {
+  assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\\n' + retirementRecord)), null);
+  assert.equal(parseRetiredBranchRows(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
+  assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
+  assert.match(source, /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
+});
