@@ -2516,6 +2516,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'Choose the next role from durable topology/state rather than chat-memory inference.',
       'Do not duplicate specialist work once it has been delegated.',
       'Own same-turn continuation after tool results until a real stop condition; Human execution approval for a completed PASS plan is an explicit stop, not permission to start an execution Run.',
+      'SCENARIO TEST-REPAIR OWNER: after authorized implementation, coordinate Tester scenario discovery → Coder root-cause repair/Goal Recheck → independent Tester RETEST repeatedly until acceptance and applicable regression scenarios PASS or a genuine blocker. This is normal execution work, never an extra Bootstrap checklist gate.',
     ],
     loop: [
       'Resolve Project, active Job and durable current state.',
@@ -2533,6 +2534,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'NEXT FAILURE ROUTING: PRODUCT_FAILURE routes to owning Coder repair → exact Goal Recheck → RETEST; PLAN_GAP/SPEC_GAP routes to evidence-backed Planner revision + Reviewer before dispatch resumes; stale/expired claim tokens never finalize evidence.',
       'LLC59 CI FAILURE ROUTING: when a code/check/CI result is RED or unclear, self-fetch exact GitHub checks, runner/steps and available logs; classify real command failure versus runner-not-started/log-unavailable. Do not ask Human to paste logs until tool retrieval and safe alternatives have been attempted. If source/test is defective, dispatch owning Coder to repair and rerun, then Tester/Reviewer at meaningful gates; if runner is unavailable, try one authorized source-bound internal check when capability can be safely established and mark hosted CI UNVERIFIED.',
       'LLC59 SAME-TURN CONTINUATION: CI error or missing logs is not by itself a stop condition. Continue bounded diagnosis and eligible verification within the same turn. If genuine Human-only access is needed, state why self-service was insufficient and ask only for that dependency; do not promise a background retry.',
+      'SCENARIO TEST-REPAIR LOOP: after each authorized Coder result dispatch Tester; request host-managed scenario-tester by its name from suggested_host_skills, never via GSA load_skill or an invented markdown substitute. If the ChatGPT skill cannot be loaded, record NOT_LOADED without claiming its checks executed. Use scenario discovery for high-risk flows; record concrete failures, invoke owning Coder repair and Goal Recheck on a changed revision, then Tester reruns failed plus impacted regression scenarios and searches for new failures. Continue after every tool/result in SAME TURN while evidence changes, not just one retest. Do not claim done on a simulated-only PASS, and never code outside approved scope. If new failures are within scope, repair again; if tests cannot execute, report UNVERIFIED; if repeated unchanged failures, PAUSED_NO_PROGRESS, not endless retries.',
       'STOP only when: (a) explicit Human decision/approval is required, (b) required capability/evidence is unavailable AFTER checking an available authorized diagnostic/probe/alternative execution surface, (c) a true blocker/conflict prevents progress, or (d) the current requested objective has reached its defined terminal/ready state.',
       'Reconstruct current status from durable records when CONTROL is absent or stale.',
       'For active NEXT source Jobs after interruption, inspect the single Job-owned durable cursor; execution_cursor_resume_evaluate decides last checkpoint or pending mutation. Do not reconstruct from chat claims. Before each reconciled source retry, persist RECORD_RETRY and stop after 2 retries.',
@@ -2632,6 +2634,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'CI RED/GREEN SELF-REPAIR: for failing source/test checks, fetch GitHub run/job/step/log evidence yourself. Distinguish real executed test failures from missing runner/logs; do not ask Human to relay CI logs already retrievable by tools. TEST_FAILURE in test scripts/config is repairable by owning Coder within approved scope, without transferring source-write permission to Tester. Repair in authorized Coder scope, inspect the exact diff and rerun checks; if hosted runner is unavailable, use an independently authorized internal execution surface only as separately labeled evidence, not a fake CI GREEN.',
       'SELF-REVIEW CLOSURE: re-read the original Job objective and active Task criteria, inspect the actual diff and affected relationships, and identify ordinary correctness/coverage findings before handoff.',
       'REPAIR: fix ordinary within-scope findings and changed-test defects autonomously, then repeat INSPECT → VERIFY and fetch fresh check evidence. A failed retest after a hotfix triggers root-cause investigation of the full affected call chain; never run an unbounded patch/test loop. Material scope/contract/authority changes route instead of being invented away; downstream work is recorded without drifting into another Job.',
+      'SCENARIO REPAIR: when Tester discovers a concrete new within-scope failure, reproduce from the supplied scenario, add a regression oracle, fix the root cause and all affected callers, self-test; hand back exact NEW target revision and Goal Recheck. Await independent Tester retest of failed AND impacted previously passing scenarios. Repeat for newly discovered in-scope failures; do not suppress tests or widen Criteria.',
       'GOAL RECHECK: only after repair, map every approved completion criterion in the current Run Task scope, with its exact task_id, to MET/PARTIAL/NOT_MET/UNVERIFIED using actual diff/evidence. NEXT Goal Recheck must consume the current Job snapshot; missing/extra criteria are rejected.',
       'HANDOFF/COMPLETE: persist Goal Recheck/evidence and any required Handoff first; terminal Run update is last and must validate the Goal Recheck for this exact Run.',
     ],
@@ -2702,6 +2705,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'CLASSIFY: route evidence as PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP or PLAN_GAP before proposing next action. runner_id=0/steps=[] or CI logs absent without executed failure evidence means ENVIRONMENT_FAILURE or UNVERIFIED, NOT PRODUCT_FAILURE; a defective test oracle/runner config is TEST_FAILURE.',
       'REPORT: for NEXT checkpoint execution, use checkpoint_verification_prepare to create append-preserving TEST/RETEST evidence and the terminal claim update. For a non-checkpoint attributed Tester Run, call run_verification_record and persist/read back the exact TEST Verification before successful run_complete. Evidence is revision/target-bound.',
       'RETEST: bind evidence to the exact target revision/state; relevant changes invalidate prior coverage. PRODUCT_FAILURE Retest requires a repaired target revision plus its exact Coder Goal Recheck; blocked environment/test conditions may Retest only when ready.',
+      'SCENARIO DISCOVERY: prefer the ChatGPT-installed scenario-tester named in suggested_host_skills (not GSA load_skill). Activate/read the actual host skill through an available ChatGPT Skills surface and confirm availability before claiming it was loaded. If not exposed, mark SCENARIO_SKILL_NOT_LOADED, use available testing-evidence only for supported checks and report any uncovered scenario testing as UNVERIFIED. Every repaired revision requires independent Tester rerun of the failing scenario plus impacted passing regressions; look for newly exposed defects, then repeat Tester → Coder → Goal Recheck → Tester until truly PASS or blocked.',
       'ROUTE: PRODUCT_FAILURE → owning Coder repair → Goal Recheck → RETEST; TEST_FAILURE within scope → owning Coder repairs test/config then reruns; SPEC_GAP/PLAN_GAP → Planner superseding revision + Reviewer. ENVIRONMENT_FAILURE first attempts a safe authorized alternate test surface; inaccessible evidence remains UNVERIFIED and Human Retest is fallback only if no agent-operable path exists.',
       'GATE: PASS_RETEST_REQUIRED is non-blocking coverage only; it never satisfies a mandatory EvidenceRequirement/checkpoint prerequisite.',
     ],
@@ -2719,6 +2723,12 @@ const ROLE_SKILLS: Record<string, string[]> = {
   reviewer: ['review-evidence', 'planning-review'],
   critic_reviewer: ['review-evidence', 'critic-review'],
   tester: ['testing-evidence'],
+}
+
+// Host-managed ChatGPT Skills are references, not executable GSA skill bodies.
+// A suggested name does not attest that the ChatGPT session can load it.
+const ROLE_HOST_SKILLS: Record<string, string[]> = {
+  tester: ['scenario-tester'],
 }
 
 const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
@@ -2940,7 +2950,7 @@ const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
       '',
       'RETEST / ROUTE',
       '- Bind Retest evidence to the exact target revision/state.',
-      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected.',
+      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected. Tester reruns the failing case and impacted regression matrix. For renewed scenario discovery, invoke the *real* ChatGPT-installed scenario-tester when host availability is confirmed; otherwise mark that coverage UNVERIFIED. Repeat repairs for every within-scope new defect until complete or genuinely blocked.',
       '- PLAN_GAP/SPEC_GAP: route to Planner superseding planning_revision; old revision claim/evidence becomes non-applicable.',
       '- TEST_FAILURE: owning Coder repairs faulty test/config within scope; rerun and obtain independent Tester evidence. ENVIRONMENT_FAILURE / INTEGRATION_NOT_READY: try an authorized safe alternative execution surface before issuing Human Retest, while keeping blocked hosted evidence UNVERIFIED.',
       '- PASS_RETEST_REQUIRED cannot satisfy a mandatory EvidenceRequirement/checkpoint gate.',
@@ -6070,6 +6080,7 @@ function createServer(req: Request) {
         harness_text: z.string(),
         canonical_refs: z.array(z.string()),
         suggested_skills: z.array(z.string()),
+        suggested_host_skills: z.array(z.string()),
         context_policy: z.string(),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -6087,6 +6098,7 @@ function createServer(req: Request) {
         harness_text: harness,
         canonical_refs: ROLE_HARNESSES[role].canonical_refs,
         suggested_skills: ROLE_SKILLS[role] ?? [],
+        suggested_host_skills: ROLE_HOST_SKILLS[role] ?? [],
         context_policy: role === 'critic_reviewer'
           ? 'STATELESS_REVIEW_HUMAN_ONLY; ignore conversation history as evidence, reconstruct from durable records and live source only, and compare prior Reviewer verdict last.'
           : role === 'reviewer'
@@ -7709,7 +7721,7 @@ function createServer(req: Request) {
             : route === 'PLANNER_REVISION_SUPERSEDE'
               ? 'Route to Planner. A later reviewed planning_revision uses a different deterministic claim namespace and makes this revision non-applicable.'
               : route === 'CODER_REPAIR_GOAL_RECHECK_RETEST'
-                ? 'Route to owning Coder repair. After exact Goal Recheck, claim RETEST against the repaired target revision.'
+                ? 'Route to owning Coder repair. After exact Goal Recheck, claim RETEST against the repaired target revision; Tester must rerun original failing scenario plus impacted regressions, discover new defects, and repeat repair/retest for each reproducible within-scope failure until evidence-backed PASS or genuine blocker.'
                 : 'Retest only after the blocking test/environment/integration condition is ready.',
         ],
       }

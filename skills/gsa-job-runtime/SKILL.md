@@ -165,6 +165,17 @@ resolve exact acceptance behavior
 
 SURFACE_PRESENT is not PASS evidence.
 
+### Tester scenario discovery and repair loop
+
+The fourth Bootstrap checklist item is **Coder/Tester capability readiness**, not a requirement for all product features to be already implemented. The scenario test → repair loop belongs to **authorized implementation execution after Bootstrap**, not an extra Bootstrap gate.
+
+- Tester receives GSA-native `suggested_skills=['testing-evidence']` and external `suggested_host_skills=['scenario-tester']`. ChatGPT, not GSA, owns the **installed** `scenario-tester` skill content. When needed, select that host skill by its exact name through an available ChatGPT Skills surface; confirm the skill instructions really became accessible before calling it LOADED. Never use GSA `load_skill('scenario-tester')`, invent a minimal substitute, or claim the skill was executed merely because its name was returned. If the host skill cannot be accessed, record `SCENARIO_SKILL_NOT_LOADED` and report any unsupported scenario coverage as UNVERIFIED. This does not block unrelated work that can be independently tested.
+- Tester freezes observable scenario expectations from approved Criteria/Task/acceptance, explores high-risk real flows plus negative/boundary/state-change and regression conditions, and reports exact target revision and reproducible evidence. Tester does **not** modify source.
+- On PRODUCT_FAILURE: owning Coder reproduces, adds regression check, repairs within the already-authorized scope, self-tests, produces **new target revision and Goal Recheck**. Orchestrator hands it to independent Tester for RETEST of failing scenario, impacted previously passing cases and fresh scenario discovery.
+- If another reproducible in-scope defect surfaces: repeat Tester → Coder → Goal Recheck → Tester automatically without asking Human `tiếp tục`. PASS requires applicable frozen acceptance and regression coverage, not simply one previously failing scenario passing.
+- A real SPEC_GAP/PLAN_GAP goes to Planner/Reviewer and Human only for missing product decisions. A non-operable host/integration remains **UNVERIFIED**, not PASS. For repeated attempts without new revisions or evidence, use PAUSED_NO_PROGRESS and a precise blocker report rather than infinite repair or fake success.
+- Respect NEXT checkpoint lease/verification/retarget evidence. Use existing checkpoint's `CODER_REPAIR_GOAL_RECHECK_RETEST` route; do not create a duplicate Job or registration just for scenario testing. No merge/deploy permission follows from test PASS.
+
 ## LLC59 — Autonomous CI evidence and Coder red/green repair
 
 When an authorized coding/test Run sees CI RED or an inconclusive hosted check, **GSA owns diagnosis before Human escalation**:
