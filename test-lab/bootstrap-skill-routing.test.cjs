@@ -1,0 +1,20 @@
+'use strict'
+const {test}=require('node:test')
+const assert=require('node:assert/strict')
+const fs=require('node:fs')
+const platform=fs.readFileSync('skills/gsa-bootstrap/SKILL.md','utf8')
+const runtime=fs.readFileSync('skills/gsa-job-runtime/SKILL.md','utf8')
+test('platform bootstrap routes Project Bootstrap to the four-item runtime checklist',()=>{
+ assert.match(platform,/platform connection/)
+ assert.match(platform,/skills\/gsa-job-runtime\/SKILL\.md/)
+ assert.match(platform,/Autonomous Bootstrap checklist/)
+ assert.match(platform,/project_bootstrap_checklist_prepare/)
+ assert.match(platform,/Human-approved Criteria, Plan aligned with Criteria, Milestones aligned with Plan, and relevant Coder\/Tester skills\/knowledge/)
+ assert.match(runtime,/### Autonomous Bootstrap checklist/)
+})
+test('no redundant Project Bootstrap source/metadata gates introduced by the platform skill',()=>{
+ assert.match(platform,/not another Bootstrap gate/)
+ assert.match(platform,/Preserve already valid brownfield artifacts/)
+ assert.match(platform,/only for Criteria approval\/changes or genuinely irreconcilable/)
+ assert.match(platform,/Product code execution and release still require/)
+})
