@@ -63,6 +63,7 @@ IN_PROGRESS
 COMPLETED
 CANCELLED
 SUPERSEDED
+RETIRED
 ```
 
 WAITING/BLOCKED are derived conditions.
@@ -84,6 +85,7 @@ IN_PROGRESS
 COMPLETED
 CANCELLED
 SUPERSEDED
+RETIRED
 ```
 
 WAITING/BLOCKED are derived.
@@ -230,7 +232,7 @@ After the revised Plan passes independent planning review, the orchestrator uses
 - `DRAFT/READY` with materially obsolete scope: transition to `SUPERSEDED` with exact current SHA, then create a new unique Job from a durable intent.
 - `IN_PROGRESS` with obsolete scope: first read/settle active Run(s), pending source cursor, current branch/parent/target; transition to `SUPERSEDED` only after all unresolved activity is reconciled. Never revert source just because a Job is superseded.
 - `COMPLETED`: preserve historical result/evidence; create a new linked remediation/follow-up Job if the new Plan needs more work.
-- `CANCELLED/SUPERSEDED`: remain terminal, never reopen or overwrite.
+- `CANCELLED/SUPERSEDED/RETIRED`: remain terminal, never reopen or overwrite.
 - Unaffected Jobs remain `KEEP`; dependent Jobs are `REVALIDATE` or blocked until dependency and evidence applicability can be proved.
 
 `SUPERSEDE Run` is not `SUPERSEDE Job`. `SUPERSEDE Job` is not `SUPERSEDE cursor`. An unavailable or inconsistent source readback is a stop condition, not permission to bypass the control plane.
@@ -238,3 +240,13 @@ After the revised Plan passes independent planning review, the orchestrator uses
 A replacement Job uses a fresh globally collision-resistant canonical ID, a distinct display label containing full ID and immutable `replacement_of_job_id`/`plan_change_id` lineage. It begins `DRAFT`, requires planning review, and cannot inherit predecessor PASS evidence. Use the same persisted Plan reconciliation intent for interrupted retries; an existing replacement path is checked/read back, never overwritten.
 
 Plan-change reconciliation is invoked on relevant Human changes and resumed pending decisions, not on normal tool reads or on every Run action.
+
+## 17. LLC58 RETIRE — no successor
+
+A Human-approved, Reviewer-PASS Plan revision may declare `RETIRE` for any nonterminal Job that is no longer needed, without inventing a replacement Job. It is different from `CANCELLED` (explicit interruption) and `SUPERSEDED` (replacement exists). The Planner impact matrix includes KEEP/REVALIDATE/REPLACE/RETIRE/HUMAN_DECISION. Intent is immutable, per reviewed Plan revision, and records reasons and optional retired Task IDs.
+
+- Create/read back the exact immutable Plan reconciliation intent; place a Job fence with exact GitHub blob SHA before new execution. The fence blocks Run dispatch, cursor writes and normal plan changes.
+- If `IN_PROGRESS`, settle active Runs with `CANCELLED` and explicit Plan-change result, and reconcile the source cursor and Git HEAD/tree. `PENDING` or `UNKNOWN` blocks RETIRED; never claim remote in-flight writes were stopped asynchronously.
+- `job_transition(RETIRED)` must match the exact intent action `RETIRE`, have settled activity, and persist `retired_by_plan_change_id`, `retired_reason`, `retired_at` with no replacement. All nonterminal Tasks are marked RETIRED with the same plan attribution.
+- For `REPLACE`, only explicit retired_task_ids in the predecessor are marked RETIRED; remaining historical Tasks are preserved. Further active-scope changes require a reviewed successor Job. Task retirement is terminal and must never be dispatched as work.
+- `COMPLETED` Jobs and completed Tasks retain historical PASS/evidence. Retirement never rolls back Git source or transfers prior PASS to another Job.
