@@ -1989,7 +1989,7 @@ function validatePlanChangeSupersession(input: any) {
       fence.intent_memory_path !== input.intent_memory_path ||
       fence.intent_record_sha !== input.intent_record_sha ||
       fence.original_job_sha !== a.predecessor_job_sha ||
-      fence.replacement_job_id !== a.replacement?.job_id)
+      fence.replacement_job_id !== (a.decision === 'RETIRE' ? null : a.replacement?.job_id))
     return invalid('PLAN_CHANGE_REQUIRED_FENCE_MISSING_OR_CONFLICTED')
   if (a.predecessor_lifecycle !== old.lifecycle ||
       a.predecessor_planning_revision !== old.planning_revision ||
