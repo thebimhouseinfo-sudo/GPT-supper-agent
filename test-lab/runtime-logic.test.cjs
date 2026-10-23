@@ -316,3 +316,17 @@ test('retirement record parser rejects duplicate or malformed rows instead of ig
   assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.match(source, /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
 });
+
+
+test('every advertised runtime skill can pass the public load_skill input schema', () => {
+  const skillObject = source.match(/const RUNTIME_SKILLS:[\s\S]*?=\s*\{([\s\S]*?)\n\}\n\n/);
+  assert.ok(skillObject, 'runtime skill registry exists');
+  const knownNames = [...skillObject[1].matchAll(/^\s{2}'?([a-z][a-z0-9-]+)'?:\s*\{\s*$/gm)].map(x=>x[1]);
+  assert.ok(knownNames.includes('tester-lab'), 'tester-lab is a published runtime skill');
+  const loaderBlock = source.split("server.registerTool(\n    'load_skill',")[1]?.split("server.registerTool(")[0];
+  assert.ok(loaderBlock, 'load_skill is registered');
+  const allowed = loaderBlock.match(/name:\s*z\.enum\(\[([^\]]+)\]\)/);
+  assert.ok(allowed, 'load_skill has a finite enum');
+  const exposed = [...allowed[1].matchAll(/'([^']+)'/g)].map(x=>x[1]);
+  assert.deepEqual(knownNames.filter(n=>!exposed.includes(n)), [], 'catalog/load_skill must have identical names');
+});
