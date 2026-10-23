@@ -1,12 +1,12 @@
 ---
 id: STATE-MACHINE
-version: 1.2
+version: 1.3
 status: DEFINED
 depends_on:
   - FOUNDATION
 ---
 
-# State Model v1.2
+# State Model v1.3
 
 ## 1. Principle
 
@@ -29,6 +29,14 @@ ARCHIVED
 ```
 
 Delete is operation, not state.
+
+## 2A. Source branch lifecycle
+
+```text
+ACTIVE → RETIRED
+```
+
+`RETIRED` is a terminal, durable repository-branch decision. It forbids choosing that branch for new work, but **does not delete the Git ref**, merge commits, or alter Project/Job lifecycle. Retirement is recorded with exact repository/branch/head SHA and Human authorization. Git ref deletion is a separately verified destructive action, never inferred from RETIRED. A retired branch is never silently reactivated; new work starts from the current authorized integration branch. See [BRANCH-LIFECYCLE.md](BRANCH-LIFECYCLE.md).
 
 ## 3. Job lifecycle
 
