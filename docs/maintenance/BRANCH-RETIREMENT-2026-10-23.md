@@ -44,8 +44,8 @@ Retire obsolete historical development lines before opening a new GSA Context Op
 
 ## PR disposition
 
-- [PR #26](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/pull/26): DRAFT test-only PR; head `upgrade/gsa-refactor`, base `verify/c14a-j4922-baseline`. Its own description explicitly says **do not merge**. Close as obsolete without merging.
-- [PR #16](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/pull/16): DRAFT historical staging OAuth PR; head `fix/p5-oauth-discovery-staging`, base `upgrade/gsa-next`. Do not merge old integration line. Close for archival; unique commits remain at their branch ref until separately preserved/reconciled.
+- [PR #26](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/pull/26): **CLOSED, NOT MERGED** (verified 2026-10-23). Historical test-only PR; head `upgrade/gsa-refactor`, base `verify/c14a-j4922-baseline`.
+- [PR #16](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/pull/16): **CLOSED, NOT MERGED** (verified 2026-10-23). Historical staging OAuth PR; head `fix/p5-oauth-discovery-staging`, base `upgrade/gsa-next`. Its unmatched commits remain at the branch ref, not yet deleted or archived under an independent ref.
 
 ## Outstanding cleanup
 
