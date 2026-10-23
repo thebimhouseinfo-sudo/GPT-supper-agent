@@ -75,6 +75,10 @@ PROJECT.md is:
 
 Structured identity/ownership fields must not exist only as prose.
 
+### Source branch retirement
+
+The `ACTIVE → RETIRED` source-branch lifecycle is separate from Project `ACTIVE/PAUSED/ARCHIVED`, Job lifecycle and physical Git ref deletion. Do not choose a retired branch as a new Development/Release Branch even if it is still visible on GitHub. Persist the retirement decision with exact repository, branch and observed head SHA in authorized Project Memory or a versioned, explicitly scoped repository ledger; verify the record after write. Source retirement does not silently cancel active Jobs or import unmerged commits. See `BRANCH-LIFECYCLE.md`.
+
 ### Human-managed branch policy and Fresh Start
 
 For each writable OWNED source repository, the active `PROJECT.md` records the **Human-confirmed** `development_branch` (the only default integration target) and optional `release_branch`; PRIMARY may use flat front-matter fields plus per-repo `## Branch Policy` mappings. GitHub `default_branch` or `main` is **not** an implicit development target. Project READY displays the source repo and these exact values (or UNCONFIGURED). A missing, renamed, stale or contradictory branch does not stop opening/discussing/planning a Project, but prevents dependent source writes/merge until Admin verifies Git and Human confirms the mapping. Never open parallel primary integration branches merely to bypass missing config. Separate Human decisions govern production merge/deploy.
