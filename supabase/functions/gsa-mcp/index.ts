@@ -1979,6 +1979,7 @@ function validatePlanChangeSupersession(input: any) {
     ['REPLACE','RETIRE'].includes(a.decision) && a.predecessor_job_id === old.job_id)
   if (matching.length !== 1) return invalid('PLAN_CHANGE_TERMINAL_ACTION_NOT_UNIQUE')
   const a = matching[0]
+  if (typeof a.reason !== 'string' || !a.reason.trim()) return invalid('PLAN_CHANGE_ACTION_REASON_REQUIRED')
   const fence=old.plan_change_pending
   if (!Array.isArray(a.retired_task_ids ?? []) || (a.retired_task_ids ?? []).some((id: any) =>
       typeof id !== 'string' || !(old.tasks ?? []).some((task: any) => task.task_id === id)) ||
@@ -2058,7 +2059,7 @@ function resumeHumanPlanChangeIntent(input: any) {
       if (!retiring) seenNew.add(id)
       const replacement = retiring ? null : jobs.get(id)?.job
       if (retiring && old.lifecycle === 'RETIRED') {
-        if (old.retired_by_plan_change_id !== intent.change_id || old.retired_reason !== a.reason ||
+        if (old.result !== 'RETIRED' || old.retired_by_plan_change_id !== intent.change_id || old.retired_reason !== a.reason ||
             old.retired_by_replacement_job_id != null) return stop('PLAN_CHANGE_RETIREMENT_LINEAGE_CONFLICT')
         next = 'RETIRED_NO_REPLACEMENT'
       } else if (!retiring && old.lifecycle === 'SUPERSEDED') {
@@ -2272,7 +2273,7 @@ function resumeExecutionCursorDecision(input: any) {
       !['STABLE','PENDING'].includes(cursor.state) ||
       input.cursor_memory_path !== executionCursorPath(job.project_id, job.job_id, cursor.memory_namespace))
     return stop('CURSOR_IDENTITY_OR_REVISION_MISMATCH')
-  if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)) return stop('TERMINAL_JOB')
+  if (['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(job.lifecycle)) return stop('TERMINAL_JOB')
   if (cursor.state === 'STABLE') {
     if (cursor.pending_action != null || input.current_head_sha !== cursor.last_good_sha)
       return stop('SOURCE_ADVANCED_WITHOUT_DURABLE_INTENT')
@@ -6639,6 +6640,9 @@ function createServer(req: Request) {
       if (planSupersession && !planSupersession.allowed) {
         return { content: [{ type: 'text', text: planSupersession.reason }], isError: true }
       }
+      if (target_lifecycle === 'RETIRED' && result != null && result !== 'RETIRED') {
+        return { content: [{ type: 'text', text: 'RETIRE_RESULT_MUST_MATCH_LIFECYCLE.' }], isError: true }
+      }
       if (target_lifecycle === 'RETIRED' && (!planSupersession?.allowed || planSupersession.action.decision !== 'RETIRE')) {
         return { content: [{ type: 'text', text: 'RETIRE_REQUIRES_REVIEWED_PLAN_INTENT_AND_SETTLED_ACTIVITY.' }], isError: true }
       }
@@ -6667,7 +6671,7 @@ function createServer(req: Request) {
           }),
         } : {}),
         lifecycle: target_lifecycle,
-        result: result ?? current.result ?? null,
+        result: target_lifecycle === 'RETIRED' ? 'RETIRED' : result ?? current.result ?? null,
         completion_evidence_refs: completion_evidence_refs ?? current.completion_evidence_refs ?? [],
         updated_at: new Date().toISOString(),
       }
