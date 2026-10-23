@@ -16,6 +16,7 @@ File names are stable semantic names. Git history is the version authority; no v
 | PROJECT-MEMORY.md | durable GitHub Memory Repo model |
 | CORE-RECORD-CONTRACTS.md | semantic record contracts |
 | JOB-LIFECYCLE.md | Job semantics/lifecycle |
+| BRANCH-LIFECYCLE.md | source-branch ACTIVE/RETIRED lifecycle, history preservation and separate remote-ref deletion |
 | STATE-MACHINE.md | lifecycle/result/condition model |
 | GOVERNANCE-AND-ARTIFACT-LIFECYCLE.md | governance and artifact validity |
 | SECURITY-AND-TRUST-BOUNDARIES.md | trust, authority and sensitive paths |
