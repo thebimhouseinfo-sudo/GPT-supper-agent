@@ -6505,8 +6505,8 @@ function createServer(req: Request) {
         job_id: z.string().uuid(),
         job_record_text: z.string().min(2),
         job_record_sha: z.string().min(7),
-        target_lifecycle: z.enum(['READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED']),
-        result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED']).optional(),
+        target_lifecycle: z.enum(['READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED']),
+        result: z.enum(['PASS','PASS_RETEST_REQUIRED','CANCELLED','SUPERSEDED','RETIRED']).optional(),
         completion_evidence_refs: z.array(z.string()).default([]),
         planning_review_verification_ref: z.string().optional(),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
@@ -6549,13 +6549,13 @@ function createServer(req: Request) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
       const allowed =
-        (current.lifecycle === 'DRAFT' && ['READY','CANCELLED','SUPERSEDED'].includes(target_lifecycle)) ||
-        (current.lifecycle === 'READY' && ['IN_PROGRESS','CANCELLED','SUPERSEDED'].includes(target_lifecycle)) ||
-        (current.lifecycle === 'IN_PROGRESS' && ['COMPLETED','CANCELLED','SUPERSEDED'].includes(target_lifecycle))
+        (current.lifecycle === 'DRAFT' && ['READY','CANCELLED','SUPERSEDED','RETIRED'].includes(target_lifecycle)) ||
+        (current.lifecycle === 'READY' && ['IN_PROGRESS','CANCELLED','SUPERSEDED','RETIRED'].includes(target_lifecycle)) ||
+        (current.lifecycle === 'IN_PROGRESS' && ['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(target_lifecycle))
       if (!allowed) {
         return { content: [{ type: 'text', text: 'Invalid Job lifecycle transition: ' + current.lifecycle + ' → ' + target_lifecycle }], isError: true }
       }
-      if (current.plan_change_pending && !(target_lifecycle === 'SUPERSEDED' && plan_change_context)) {
+      if (current.plan_change_pending && !(['SUPERSEDED','RETIRED'].includes(target_lifecycle) && plan_change_context)) {
         return { content:[{ type:'text',text:'PLAN_CHANGE_PENDING_FENCE: only intent-bound SUPERSEDED is allowed.' }],isError:true }
       }
       if (target_lifecycle === 'READY') {
@@ -6614,8 +6614,8 @@ function createServer(req: Request) {
           }
         }
       }
-      if (plan_change_context && target_lifecycle !== 'SUPERSEDED') {
-        return { content: [{ type: 'text', text: 'PLAN_CHANGE_CONTEXT_ONLY_FOR_SUPERSEDED.' }], isError: true }
+      if (plan_change_context && !['SUPERSEDED','RETIRED'].includes(target_lifecycle)) {
+        return { content: [{ type: 'text', text: 'PLAN_CHANGE_CONTEXT_ONLY_FOR_SUPERSEDED_OR_RETIRED.' }], isError: true }
       }
       const planSupersession = plan_change_context ? validatePlanChangeSupersession({
         ...plan_change_context,
@@ -6625,11 +6625,23 @@ function createServer(req: Request) {
       if (planSupersession && !planSupersession.allowed) {
         return { content: [{ type: 'text', text: planSupersession.reason }], isError: true }
       }
+      if (target_lifecycle === 'RETIRED' && (!planSupersession?.allowed || planSupersession.action.decision !== 'RETIRE')) {
+        return { content: [{ type: 'text', text: 'RETIRE_REQUIRES_REVIEWED_PLAN_INTENT_AND_SETTLED_ACTIVITY.' }], isError: true }
+      }
+      if (planSupersession?.allowed && planSupersession.action.decision !== (target_lifecycle === 'RETIRED' ? 'RETIRE' : 'REPLACE')) {
+        return { content: [{ type: 'text', text: 'PLAN_CHANGE_TERMINAL_DECISION_MISMATCH.' }], isError: true }
+      }
       const next = {
         ...current,
-        ...(planSupersession?.allowed ? {
+        ...(planSupersession?.allowed && target_lifecycle === 'SUPERSEDED' ? {
           superseded_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
           superseded_by_replacement_job_id: planSupersession.action.replacement.job_id,
+        } : {}),
+        ...(planSupersession?.allowed && target_lifecycle === 'RETIRED' ? {
+          retired_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+          retired_reason: planSupersession.action.reason,
+          retired_at: new Date().toISOString(),
+          retired_by_replacement_job_id: null,
         } : {}),
         lifecycle: target_lifecycle,
         result: result ?? current.result ?? null,
@@ -6646,7 +6658,7 @@ function createServer(req: Request) {
           'Independently read exact persisted Plan Change intent, require its blob SHA equals plan_change_context.intent_record_sha and bytes match before ANY Job transition.',
           'Independently enumerate active Runs and Job cursor; require no ACTIVE/UNKNOWN Runs and no PENDING/UNKNOWN source mutation.',
           'Independently confirm current source HEAD/tree and dependencies are consistent with the reviewed Plan; do not trust cursor_state/active_run_state caller assertions.',
-          'After SUPERSEDED transition, read back both Job lifecycle and superseded_by_plan_change_id/superseded_by_replacement_job_id.',
+          'After terminal transition, read back lifecycle and Plan Change lineage; RETIRED must have a reason and no successor.',
         )
       }
       if (target_lifecycle === 'COMPLETED') {
