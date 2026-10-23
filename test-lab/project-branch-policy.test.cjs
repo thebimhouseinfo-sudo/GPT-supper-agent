@@ -14,7 +14,7 @@ const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.Diagnosti
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
 
 const names = [
-  'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
+  'parseRetiredBranchRows', 'isRetiredSourceBranch', 'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
   'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment', 'projectBootstrapReadinessDecision',
   'formatAdvisorAdviceReceipt', 'parseAdvisorAdviceReceipts', 'projectCriteriaAdvisoryDecision', 'projectBootstrapExecutionError',
