@@ -1914,16 +1914,16 @@ function prepareHumanPlanChangeFenceDecision(input: any) {
     intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   if (input.intent_memory_path !== root+'/WORK/PLAN_RECONCILIATIONS/'+intent.change_id+'.json')
     return reject('PLAN_CHANGE_FENCE_INTENT_PATH_MISMATCH')
-  const matching=intent.actions.filter((a: any) => a.decision === 'REPLACE' &&
+  const matching=intent.actions.filter((a: any) => ['REPLACE','RETIRE'].includes(a.decision) &&
     a.predecessor_job_id === job.job_id)
   if (matching.length !== 1) return reject('PLAN_CHANGE_FENCE_ACTION_NOT_UNIQUE')
   const action=matching[0]
   if (action.predecessor_planning_revision !== job.planning_revision ||
       action.predecessor_lifecycle !== job.lifecycle ||
       action.predecessor_execution_contract !== jobExecutionContract(job) ||
-      !action.replacement?.job_id ||
+      (action.decision === 'REPLACE' ? (!action.replacement?.job_id ||
       action.replacement.job_id === job.job_id ||
-      action.replacement.handle !== jobHandle(action.replacement.job_id) ||
+      action.replacement.handle !== jobHandle(action.replacement.job_id)) : action.replacement != null) ||
       !['DRAFT','READY','IN_PROGRESS'].includes(job.lifecycle))
     return reject('PLAN_CHANGE_FENCE_JOB_OR_REPLACEMENT_DRIFT')
   const expectedFence={
@@ -1931,7 +1931,7 @@ function prepareHumanPlanChangeFenceDecision(input: any) {
     intent_memory_path:input.intent_memory_path,
     intent_record_sha:input.intent_record_sha,
     original_job_sha:action.predecessor_job_sha,
-    replacement_job_id:action.replacement.job_id,
+    replacement_job_id:action.replacement?.job_id ?? null,
   }
   if (job.plan_change_pending) {
     const existing=job.plan_change_pending
@@ -1968,8 +1968,8 @@ function validatePlanChangeSupersession(input: any) {
   if (input.intent_memory_path !== expected)
     return invalid('PLAN_CHANGE_SUPERSESSION_INTENT_PATH_INVALID')
   const matching = intent.actions.filter((a: any) =>
-    a.decision === 'REPLACE' && a.predecessor_job_id === old.job_id)
-  if (matching.length !== 1) return invalid('PLAN_CHANGE_REPLACE_ACTION_NOT_UNIQUE')
+    ['REPLACE','RETIRE'].includes(a.decision) && a.predecessor_job_id === old.job_id)
+  if (matching.length !== 1) return invalid('PLAN_CHANGE_TERMINAL_ACTION_NOT_UNIQUE')
   const a = matching[0]
   const fence=old.plan_change_pending
   if (!fence || fence.change_id !== intent.change_id ||
@@ -1981,8 +1981,8 @@ function validatePlanChangeSupersession(input: any) {
   if (a.predecessor_lifecycle !== old.lifecycle ||
       a.predecessor_planning_revision !== old.planning_revision ||
       a.predecessor_execution_contract !== jobExecutionContract(old) ||
-      !a.replacement?.job_id || a.replacement.job_id === old.job_id ||
-      a.replacement?.handle !== jobHandle(a.replacement.job_id))
+      (a.decision === 'REPLACE' ? (!a.replacement?.job_id || a.replacement.job_id === old.job_id ||
+        a.replacement?.handle !== jobHandle(a.replacement.job_id)) : a.replacement != null))
     return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
   if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
     return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
@@ -2027,7 +2027,7 @@ function resumeHumanPlanChangeIntent(input: any) {
   const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
   for (const a of intent.actions) {
     if (!a?.predecessor_job_id || seenOld.has(a.predecessor_job_id) ||
-        !['KEEP','REVALIDATE','REPLACE'].includes(a.decision))
+        !['KEEP','REVALIDATE','REPLACE','RETIRE'].includes(a.decision))
       return stop('PLAN_CHANGE_ACTION_INVALID_OR_DUPLICATE')
     seenOld.add(a.predecessor_job_id)
     const oldSnapshot = jobs.get(a.predecessor_job_id)
@@ -2038,13 +2038,18 @@ function resumeHumanPlanChangeIntent(input: any) {
       return stop('PLAN_CHANGE_PREDECESSOR_REVISION_OR_CONTRACT_DRIFT')
     let next = a.decision === 'KEEP' ? 'KEEP_UNCHANGED' :
       a.decision === 'REVALIDATE' ? 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE' : ''
-    if (a.decision === 'REPLACE') {
+    if (a.decision === 'REPLACE' || a.decision === 'RETIRE') {
+      const retiring = a.decision === 'RETIRE'
       const id = a.replacement?.job_id
-      if (!id || id === a.predecessor_job_id || seenNew.has(id))
+      if (retiring ? a.replacement != null : (!id || id === a.predecessor_job_id || seenNew.has(id)))
         return stop('PLAN_CHANGE_REPLACEMENT_ID_INVALID_OR_DUPLICATE')
-      seenNew.add(id)
-      const replacement = jobs.get(id)?.job
-      if (old.lifecycle === 'SUPERSEDED') {
+      if (!retiring) seenNew.add(id)
+      const replacement = retiring ? null : jobs.get(id)?.job
+      if (retiring && old.lifecycle === 'RETIRED') {
+        if (old.retired_by_plan_change_id !== intent.change_id || old.retired_reason !== a.reason ||
+            old.retired_by_replacement_job_id != null) return stop('PLAN_CHANGE_RETIREMENT_LINEAGE_CONFLICT')
+        next = 'RETIRED_NO_REPLACEMENT'
+      } else if (!retiring && old.lifecycle === 'SUPERSEDED') {
         if (old.superseded_by_plan_change_id !== intent.change_id ||
             old.superseded_by_replacement_job_id !== id)
           return stop('PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT')
@@ -2056,7 +2061,7 @@ function resumeHumanPlanChangeIntent(input: any) {
         else if (['READY','IN_PROGRESS','COMPLETED'].includes(replacement.lifecycle))
           next = 'REVALIDATE_DEPENDENCIES_BEFORE_DISPATCH'
         else return stop('PLAN_CHANGE_REPLACEMENT_TERMINAL_CONFLICT')
-      } else if (['COMPLETED','CANCELLED'].includes(old.lifecycle)) {
+      } else if (['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(old.lifecycle)) {
         return stop('PLAN_CHANGE_PREDECESSOR_TERMINAL_CONFLICT')
       } else {
         const fence=old.plan_change_pending
@@ -2069,7 +2074,7 @@ function resumeHumanPlanChangeIntent(input: any) {
               fence.intent_memory_path !== input.intent_memory_path ||
               fence.intent_record_sha !== input.intent_record_sha ||
               fence.original_job_sha !== a.predecessor_job_sha ||
-              fence.replacement_job_id !== id)
+              fence.replacement_job_id !== (retiring ? null : id)
             return stop('PLAN_CHANGE_PREDECESSOR_FENCE_CONFLICT')
           const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
         if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
@@ -2079,7 +2084,7 @@ function resumeHumanPlanChangeIntent(input: any) {
           next = 'RECONCILE_PENDING_SOURCE_CURSOR'
         else if (['ACTIVE','UNKNOWN'].includes(live.active_run_state))
           next = 'SETTLE_ACTIVE_RUN'
-        else next = 'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA'
+        else next = retiring ? 'RETIRE_PREDECESSOR_BY_EXACT_SHA' : 'SUPERSEDE_PREDECESSOR_BY_EXACT_SHA'
         }
       }
     }
@@ -3602,7 +3607,7 @@ function createServer(req: Request) {
         external_steps:decision.allowed ? [
           'Read back exact immutable reviewed Plan intent and current Job SHA; authorize both paths under current PROJECT.md.',
           'If UPDATE, authorize_memory_mutation and write Job fence using the exact expected_job_sha; independently read back bytes/SHA.',
-          'Only after fence readback, reconcile pending cursor, Run, Git HEAD/tree; then use intent-bound job_transition(SUPERSEDED).',
+          'Only after fence readback, reconcile pending cursor, Run, Git HEAD/tree; then use intent-bound job_transition(SUPERSEDED or RETIRED).',
           'Do not dispatch or write source under a fenced Job in any chat; no background stop is implied.',
         ]:[],
       }
