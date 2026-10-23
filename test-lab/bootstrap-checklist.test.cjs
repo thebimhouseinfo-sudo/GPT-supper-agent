@@ -101,6 +101,12 @@ test('complete checklist prepares READY, but never source authorization',()=>{
  assert.equal(x.source_write_authorized,false)
  assert.equal(x.requires_external_readback,true)
 })
+test('approved Criteria revision resumes after actual approved write instead of looping',()=>{
+ const updated=b(complete,{criteria_intake:{existing_approved:true,human_update_choice:'UPDATE',revision_completed:true}})
+ assert.equal(updated.next_action,'BOOTSTRAP_READY')
+ const pending=b(complete,{criteria_intake:{existing_approved:true,human_update_choice:'UPDATE'}})
+ assert.equal(pending.next_action,'PREPARE_CRITERIA_REVISION')
+})
 test('runtime exposes coordinator tool and self-driving bootstrap harness',()=>{
  assert.match(source,/'project_bootstrap_checklist_prepare'/)
  assert.match(source,/follow next_action immediately in the SAME TURN/)

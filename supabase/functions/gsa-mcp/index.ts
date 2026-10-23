@@ -1149,7 +1149,7 @@ function projectBootstrapChecklistDecision(input: any) {
     return output('criteria', 'ASK_HUMAN', 'human',
       'Do not modify or reformat existing approved Criteria while awaiting its owner.',
       'Criteria hiện có đã được kiểm tra. Bạn có muốn cập nhật hoặc bổ sung gì không? Nếu không, tôi giữ nguyên và tự tiếp tục Bootstrap.')
-  if (list[0].status === 'PASS' && confirmedExisting && choice === 'UPDATE')
+  if (list[0].status === 'PASS' && confirmedExisting && choice === 'UPDATE' && criterion.revision_completed !== true)
     return output('criteria', 'PREPARE_CRITERIA_REVISION', 'planner',
       'Human requested a Criteria update. Draft changes grounded in current Criteria and source; discuss scope with Human. Activate Technical Advisor only after Human intends to finalize, before writing; then resume checklist automatically.')
 
@@ -5646,6 +5646,7 @@ function createServer(req: Request) {
         criteria_intake: z.object({
           existing_approved: z.boolean().optional(),
           human_update_choice: z.enum(['NOT_ASKED','KEEP','UPDATE','NOT_APPLICABLE']).optional(),
+          revision_completed: z.boolean().optional(),
         }).optional(),
         conflicts: z.array(z.object({
           item: z.enum(['criteria','plan','milestones','capabilities']),
