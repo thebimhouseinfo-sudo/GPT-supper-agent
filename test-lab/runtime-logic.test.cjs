@@ -296,7 +296,7 @@ const retirementManifest = (branch='main', rows=retirementRecord) => [
   '---',
   '## Retired Branches (Human-approved)',
   rows,
-].join('\\n');
+].join('\n');
 
 test('RETIRED is durable and cannot be selected as configured Development Branch', () => {
   const parsedOld = parseProjectManifestWithRetirement(retirementManifest('old-feature'));
@@ -311,7 +311,7 @@ test('RETIRED is durable and cannot be selected as configured Development Branch
 });
 
 test('retirement record parser rejects duplicate or malformed rows instead of ignoring them', () => {
-  assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\\n' + retirementRecord)), null);
+  assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\n' + retirementRecord)), null);
   assert.equal(parseRetiredBranchRows(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.match(source, /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
