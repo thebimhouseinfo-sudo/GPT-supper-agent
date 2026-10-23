@@ -102,3 +102,31 @@ test('LLC58 negative-control: assessment NEVER authorizes mutation',()=>{
   }
   assert.match(src,/server\.registerTool\(\s*'job_plan_change_assess'/);
 });
+
+
+test('LLC58 RETIRE decommissions READY Job without replacement',()=>{
+  const out=one(row(idA,'READY','RETIRE'));
+  assert.equal(out.allowed,true);
+  assert.equal(out.decisions[0].decision,'RETIRE');
+  assert.equal(out.decisions[0].next_action,'RETIRE_WITHOUT_REPLACEMENT');
+  assert.equal(out.mutation_authorized,false);
+});
+test('LLC58 RETIRE of IN_PROGRESS obeys Run and cursor guard just like REPLACE',()=>{
+  const cases=[
+    ['PENDING','NONE','RECONCILE_PENDING_CURSOR_BEFORE_SUPERSEDE'],
+    ['UNKNOWN','TERMINAL','RECONCILE_PENDING_CURSOR_BEFORE_SUPERSEDE'],
+    ['STABLE','ACTIVE','SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE'],
+    ['ABSENT','UNKNOWN','SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE'],
+    ['STABLE','TERMINAL','RETIRE_WITHOUT_REPLACEMENT'],
+    ['ABSENT','NONE','RETIRE_WITHOUT_REPLACEMENT'],
+  ];
+  for(const [cursor,run,expected] of cases){
+    const out=one(row(idA,'IN_PROGRESS','RETIRE',{cursor_state:cursor,active_run_state:run}));
+    assert.equal(out.allowed,true);
+    assert.equal(out.decisions[0].next_action,expected);
+  }
+  for(const lifecycle of ['COMPLETED','CANCELLED','SUPERSEDED','RETIRED']){
+    assert.equal(one(row(idA,lifecycle,'RETIRE')).allowed,false);
+    assert.equal(one(row(idA,lifecycle,'KEEP')).allowed,true);
+  }
+});
