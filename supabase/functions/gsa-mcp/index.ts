@@ -1123,26 +1123,54 @@ function projectBootstrapChecklistDecision(input: any) {
     return {
       id: phase.id, label: phase.label,
       status: statuses.has(item?.status) ? item.status : 'PENDING',
-      observation: typeof item?.observation === 'string' ? item.observation.slice(0, 1000) : '',
+      observation: typeof item?.observation === 'string' ? item.observation.trim().slice(0, 1000) : '',
     }
   })
   const criterion = input?.criteria_intake ?? {}
+  const last = input?.previous_attempt ?? {}
+  // This signature covers the observed checklist, not a manufactured Job/metadata registry.
+  const signature = JSON.stringify({
+    checklist: list.map(i => [i.id, i.status, i.observation]),
+    choice: criterion.human_update_choice ?? null,
+    revised: criterion.revision_completed === true,
+    approved: criterion.existing_approved ?? null,
+    conflicts: (input?.conflicts ?? []).map((c: any) => [c.item, c.unresolved, c.investigated, c.candidates]),
+  })
   const confirmedExisting = mode === 'BROWNFIELD' && criterion.existing_approved === true
   const choice = criterion.human_update_choice ?? 'NOT_ASKED'
   const conflicts = Array.isArray(input?.conflicts) ? input.conflicts : []
   const next = list.find((item) => item.status !== 'PASS')
   const total = list.filter((item) => item.status === 'PASS').length
   const output = (active: string | null, action: string, owner: string,
-    instruction: string, question: string | null = null) => ({
-    checklist: list, completed: total, total: list.length,
-    status: action === 'BOOTSTRAP_READY' ? 'BOOTSTRAP_READY' :
-      question ? 'NEED_HUMAN' : 'IN_PROGRESS',
-    next_item: active, next_action: action, next_owner: owner, instruction,
-    human_question: question, continue_same_turn: !question && action !== 'BOOTSTRAP_READY',
-    assessment_only: true, source_write_authorized: false,
-    // A PASS is a caller report; the agent still checks original sources.
-    requires_external_readback: true,
-  })
+    instruction: string, question: string | null = null) => {
+    // A second attempt at exactly the same action with exactly the same
+    // observations means no verified progress; stop, report the technical blocker,
+    // and never invent a Human decision or spin through tool calls indefinitely.
+    const stalled = action !== 'ASK_HUMAN' && action !== 'BOOTSTRAP_READY' &&
+      last.action === action && last.signature === signature
+    return {
+      checklist: list, completed: total, total: list.length,
+      status: stalled ? 'PAUSED_NO_PROGRESS' : action === 'BOOTSTRAP_READY'
+        ? 'BOOTSTRAP_READY' : question ? 'NEED_HUMAN' : 'IN_PROGRESS',
+      next_item: active, next_action: stalled ? 'REPORT_BLOCKER' : action,
+      next_owner: stalled ? 'orchestrator' : owner,
+      instruction: stalled
+        ? 'This exact action produced no observed progress. Report the tool failure or inaccessible source; preserve PASS work. Do not ask Human to perform routine agent work or create an extra gate.'
+        : instruction,
+      human_question: stalled ? null : question,
+      continue_same_turn: !stalled && !question && action !== 'BOOTSTRAP_READY',
+      assessment_only: true, source_write_authorized: false,
+      requires_external_readback: true, progress_signature: signature,
+    }
+  }
+  // A missing intake assessment must not silently mean Human said KEEP.
+  // Inspect the source evidence first; that is ordinary Bootstrap work.
+  if (mode === 'BROWNFIELD' && list[0].status === 'PASS' && criterion.existing_approved === undefined)
+    return output('criteria', 'INSPECT_CRITERIA_INTAKE', 'planner',
+      'Read actual Criteria and approval to determine whether existing Human-approved Criteria is present. Do not assume KEEP, invent an approval or make Human register a reference.')
+  if (mode === 'BROWNFIELD' && list[0].status === 'PASS' && criterion.existing_approved === false)
+    return output('criteria', 'RECHECK_CRITERIA', 'planner',
+      'A Criteria cannot be PASS and unapproved: inspect source and actual Human decision, then draft/review as necessary.')
   // Reuse approved brownfield Criteria without rewriting it, but ask its owner
   // ONCE about desired updates. KEEP permits legacy formatting without a gate.
   if (list[0].status === 'PASS' && confirmedExisting && choice === 'NOT_ASKED')
@@ -1153,21 +1181,29 @@ function projectBootstrapChecklistDecision(input: any) {
     return output('criteria', 'PREPARE_CRITERIA_REVISION', 'planner',
       'Human requested a Criteria update. Draft changes grounded in current Criteria and source; discuss scope with Human. Activate Technical Advisor only after Human intends to finalize, before writing; then resume checklist automatically.')
 
-  if (!next) return output(null, 'BOOTSTRAP_READY', 'orchestrator',
-    'All four items have evidence-backed PASS; announce readiness. This does not authorize product code execution.')
-
-  const conflict = conflicts.find((c: any) => c && c.item === next.id &&
+  // Never announce READY with unexamined, conflicting source-of-truth evidence.
+  const conflict = conflicts.find((c: any) => c && (c.item === next?.id || !next || list.some(item => item.id === c.item && item.status === 'PASS')) &&
     Array.isArray(c.candidates) && c.candidates.length >= 2 && c.unresolved === true)
   if (conflict) {
     if (conflict.investigated !== true)
-      return output(next.id, 'INVESTIGATE_SOURCES', 'planner',
+      return output(conflict.item, 'INVESTIGATE_SOURCES', 'planner',
         'Inspect the conflicting original files, approved decisions, Git ancestry and related code. Do not guess which source is authoritative and do not ask Human until self-verification is exhausted.')
     const candidates = conflict.candidates.map((s: any) => String(s).slice(0, 120)).join(' / ')
     const question = typeof conflict.question === 'string' && conflict.question.trim() ?
       conflict.question.trim() : 'Không thể xác minh nguồn chuẩn giữa: ' + candidates + '. Bạn chọn nguồn nào làm chuẩn?'
-    return output(next.id, 'ASK_HUMAN', 'human',
+    return output(conflict.item, 'ASK_HUMAN', 'human',
       'Summarize competing sources and verification attempts; preserve all sources until Human decides.', question)
   }
+
+  // PASS without any concrete observation is not evidence. Reread the source
+  // as a normal checklist Task (not a new mandatory receipt, SHA or approval).
+  const unverified = list.find(item => item.status === 'PASS' && !item.observation)
+  if (unverified)
+    return output(unverified.id, 'VERIFY_EVIDENCE', 'orchestrator',
+      'Independently reread the actual Criteria/Plan/Milestones or role capability for ' + unverified.label +
+      ' and describe the observed source or test result; no special format or registration is required.')
+  if (!next) return output(null, 'BOOTSTRAP_READY', 'orchestrator',
+    'All four items have PASS with described observations. Caller reports are not independent verification; reread actual sources before announcing READY. Product source write still needs Human approval.')
 
   if (next.id === 'criteria') {
     if (next.status === 'NEED_HUMAN')
@@ -1184,13 +1220,13 @@ function projectBootstrapChecklistDecision(input: any) {
   }
   if (next.status === 'NEED_HUMAN')
     return output(next.id, 'VERIFY_BLOCKER', 'planner',
-      'Recheck conflicting/missing evidence autonomously before asking Human. Only verified, irresolvable alternative sources warrant a Human decision.')
+      'Investigate the specific missing source or tool evidence once. Provide real conflicting candidate sources if Human must decide; otherwise report a technical blocker. Repeated unchanged VERIFY_BLOCKER becomes PAUSED_NO_PROGRESS, not an infinite loop.')
   if (next.id === 'plan')
     return output('plan', 'PLAN_CRL', 'planner',
-      'Inspect existing Plan; keep it if reviewed and aligned with Criteria. Otherwise repair/create only necessary Plan sections and autonomously run Planner → Reviewer → Critic Reviewer CRL until PASS or a real irreconcilable conflict. No Human approval/metadata registry gate.')
+      'Inspect existing Plan; keep it if reviewed and aligned with Criteria. Otherwise repair/create only necessary sections and run independent Reviewer and Critic Reviewer CRL until PASS. Human explicitly requested Bootstrap with CRL; this grants review of Plan/Milestones, NOT product code writes. When there is a valid Job use existing human_invoked CR for that Human-directed scope; without a Job run role-isolated DIRECT_AGENT reviews of real documents, without fabricating durable receipts or a duplicate Job.')
   if (next.id === 'milestones')
     return output('milestones', 'MILESTONES_CRL', 'planner',
-      'Inspect existing Milestones against PASS Plan; keep valid ones. Otherwise repair/create milestones and autonomously run CRL until PASS or an irresolvable source conflict. No duplicate Job or format gate.')
+      'Inspect Milestones against PASS Plan and keep valid ones; otherwise repair then Reviewer → Critic Reviewer CRL until PASS. Human Bootstrap request authorizes this review, not code execution. Without an existing Job use independent DIRECT_AGENT Critic Reviewer on actual documents; do not create a Job just to satisfy CR tooling or fabricate signed review evidence.')
   return output('capabilities', 'PREPARE_CODER_TESTER', 'orchestrator',
     'Inspect repository languages, existing skills, knowledge and working tools; add/test only genuinely missing Coder/Tester capability. Do not require product features to already exist. Do not invent a capability registration gate.')
 }
@@ -2429,7 +2465,7 @@ const BASE_AGENT_HARNESS = [
   '- PLANNER RL SHORTCUT: In a planning request, rl means run the existing Planner → role-isolated planning Reviewer → Planner repair → re-review loop on the identified plan until evidence-backed PASS or a genuine Human decision, blocker or no-progress guard. Accept planner rl, planner rl đi, and the common typo planer rl. Use the identified current plan, including a draft discussed in chat, without an extra planning confirmation. Durable Jobs follow exact GitHub/CAS readback; direct/ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification. Clarify only if no target plan is identifiable; a completely new plan still follows normal intake. Do not duplicate Jobs. rl never grants source edits, Job execution, merge or deploy.',
   '- HUMAN EXECUTION APPROVAL: for PRODUCT IMPLEMENTATION, present the reviewed PASS plan and STOP until Human explicitly approves execution (e.g. "ok", "làm đi", "đồng ý làm" in that plan-approval context). The Human-requested Bootstrap checklist already covers reading/reviewing/repairing its Plan and Milestones and preparing role skills/knowledge, using normal file write permissions and readback; do not turn each item into a new product-implementation approval gate. Criteria approval and Technical Advisor remain explicit. No product source-changing Coder Run from Bootstrap alone. Skeleton approval permits detailed planning only. Begin source-changing or other consequential Job execution only after the Human explicitly approves the relevant product implementation Plan. Ordinary Bootstrap planning files and Coder/Tester skill preparation are already within the Human-requested Bootstrap scope, subject to ordinary write permissions.',
   '- FRESH START / ADOPT: on new or brownfield Project establish minimal source/owner/branch baseline without reconstructing past jobs or approvals. Reuse existing approved Criteria, reviewed Plan and Milestones from source or Project Memory; do not duplicate or register them merely for Bootstrap. Only draft missing or inadequate documents. Never auto-resume an old Job on Project open.',
-  '- BOOTSTRAP CHECKLIST COORDINATOR: on Human bootstrap request, read existing Criteria, Plan, Milestones and source. Call project_bootstrap_checklist_prepare with four evidence-grounded statuses; follow next_action immediately in the SAME TURN and repeat until all PASS or a genuine NEED_HUMAN decision. PASS items are reused unchanged; no compulsory PROJECT_PLAN Job, Memory copy, SHA binding, reference registry, topology or product implementation as extra gate. For greenfield collaborate with Human on Criteria; for brownfield reuse approved Criteria even in usable legacy format, ask once whether to update, and preserve it on KEEP. If updating/finalizing Criteria, Technical Advisor consults BEFORE official write. Autonomously create/repair Plan and Milestones using CRL (Planner, Reviewer, Critic Reviewer), prepare Coder/Tester skills and knowledge, and test actual capability. Ambiguous Git branches, conflicting Criteria or overlapping Plans require attempted independent reconciliation first; only ask Human for genuinely irresolvable authoritative source decisions, and show competing evidence. No guessed source of truth. Human answer resumes the remaining checklist without restart. Technical tool readback/security is a TASK operation, never an additional Bootstrap gate. Bootstrap READY is separate from Human approval to implement product code.',
+  '- BOOTSTRAP CHECKLIST COORDINATOR: on Human bootstrap request, read existing Criteria, Plan, Milestones and source. Call project_bootstrap_checklist_prepare with four evidence-grounded statuses; follow next_action immediately in the SAME TURN and repeat until all PASS or a genuine NEED_HUMAN decision. PASS items are reused unchanged; no compulsory PROJECT_PLAN Job, Memory copy, SHA binding, reference registry, topology or product implementation as extra gate. For greenfield collaborate with Human on Criteria; for brownfield reuse approved Criteria even in usable legacy format, ask once whether to update, and preserve it on KEEP. If updating/finalizing Criteria, Technical Advisor consults BEFORE official write. Autonomously create/repair Plan and Milestones using CRL (Planner, Reviewer, Critic Reviewer), prepare Coder/Tester skills and knowledge, and test actual capability. Ambiguous Git branches, conflicting Criteria or overlapping Plans require attempted independent reconciliation first; only ask Human for genuinely irresolvable authoritative source decisions, and show competing evidence. After each action reread the changed source/real tool output and update its checklist observation, passing { action: previous next_action, signature: previous progress_signature } as previous_attempt; if unchanged the coordinator reports PAUSED_NO_PROGRESS instead of looping. Four PASS statuses alone do not prove readiness: verify observations directly. Human-approved Bootstrap including CRL authorizes Plan/Milestone independent reviews without a second CR decision: use an existing Job CR tool when appropriate or read-only role-isolated DIRECT_AGENT reviewer/critic for source documents without an existing Job, never forge a durable Job verification. No guessed source of truth. Human answer resumes the remaining checklist without restart. Technical tool readback/security is a TASK operation, never an additional Bootstrap gate. Bootstrap READY is separate from Human approval to implement product code.',
   '- TECH ADVISOR CHECKPOINTS: activate Advisor ONLY after explicit Human intent to finalize initial Criteria or materially change approved Criteria WHAT/WHY. Not for brainstorming, drafts, ordinary planning, code review or wording-only edits. Advisor reads exact draft/baseline+delta, advises Human then acknowledges ADVISOR SIGNED for the same canonical Criteria revision/scope (proof of advice, not approval). Human decides and Planner writes; never forge Advisor advice.',
   '- CRITERIA CHANGE ORDER: Human decision → same-file Criteria CAS/readback → Planner rechecks Overall GOAL and every Phase GOAL against exact Criteria revision → only then updates affected milestone/Job/Task/test detail → independent Reviewer checks exact-revision drift and coverage. Keep unaffected parts unchanged.',
   '- PROJECT ADDINS: Coder/Tester may load optional Task-specific harness instructions and skills referenced by AGENTS.md in Project Memory only after exact active-Project/readback verification; generic harness remains authoritative. Do not bulk load at Project open; missing domain-required addin is BLOCKED/UNVERIFIED, not falsely PASS by generic fallback.',
@@ -5634,7 +5670,7 @@ function createServer(req: Request) {
     'project_bootstrap_checklist_prepare',
     {
       title: 'Continue the four-item autonomous Bootstrap checklist',
-      description: 'PREPARE ONLY: select the NEXT Bootstrap action, not another gate. Inspect original Criteria/Plan/Milestones/capabilities, skip completed work, run Plan/Milestone CRL autonomously and ask Human only for Criteria decisions or irreconcilable sources. No Job/metadata registration or write authorization.',
+      description: 'PREPARE ONLY: select the NEXT Bootstrap action, not another gate. Inspect original Criteria/Plan/Milestones/capabilities, skip completed work, run Plan/Milestone CRL autonomously and ask Human only for Criteria decisions or irreconcilable sources. No Job/metadata registration or write authorization. Pass previous_attempt to detect non-progress; bare PASS without observations triggers ordinary verification Task.',
       inputSchema: {
         project_context: z.enum(['GREENFIELD','BROWNFIELD']),
         checklist: z.object({
@@ -5648,6 +5684,7 @@ function createServer(req: Request) {
           human_update_choice: z.enum(['NOT_ASKED','KEEP','UPDATE','NOT_APPLICABLE']).optional(),
           revision_completed: z.boolean().optional(),
         }).optional(),
+        previous_attempt: z.object({ action: z.string(), signature: z.string() }).optional(),
         conflicts: z.array(z.object({
           item: z.enum(['criteria','plan','milestones','capabilities']),
           candidates: z.array(z.string()).min(2),
@@ -5660,7 +5697,7 @@ function createServer(req: Request) {
         checklist: z.array(z.any()), completed: z.number(), total: z.number(),
         status: z.string(), next_item: z.string().nullable(), next_action: z.string(),
         next_owner: z.string(), instruction: z.string(), human_question: z.string().nullable(),
-        continue_same_turn: z.boolean(), assessment_only: z.literal(true),
+        continue_same_turn: z.boolean(), progress_signature: z.string(), assessment_only: z.literal(true),
         source_write_authorized: z.literal(false), requires_external_readback: z.literal(true),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],

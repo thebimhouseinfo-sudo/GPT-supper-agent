@@ -11,7 +11,7 @@ const f=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='pro
 assert.ok(f,'bootstrap coordinator exists in runtime')
 const fn=ts.transpileModule(f.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
 const route=vm.runInNewContext(fn+'\nprojectBootstrapChecklistDecision')
-const PASS={status:'PASS'}
+const PASS={status:'PASS',observation:'Verified existing document or role capability'}
 const IN_PROGRESS={status:'IN_PROGRESS'}
 const NEED_HUMAN={status:'NEED_HUMAN'}
 const complete={criteria:PASS,plan:PASS,milestones:PASS,capabilities:PASS}
@@ -106,6 +106,61 @@ test('approved Criteria revision resumes after actual approved write instead of 
  assert.equal(updated.next_action,'BOOTSTRAP_READY')
  const pending=b(complete,{criteria_intake:{existing_approved:true,human_update_choice:'UPDATE'}})
  assert.equal(pending.next_action,'PREPARE_CRITERIA_REVISION')
+})
+
+test('bare PASS statuses never establish READY without real observations',()=>{
+ const x=b({criteria:{status:'PASS'},plan:PASS,milestones:PASS,capabilities:PASS},{criteria_intake:keep})
+ assert.equal(x.next_action,'VERIFY_EVIDENCE')
+ assert.equal(x.next_item,'criteria')
+ assert.equal(x.status,'IN_PROGRESS')
+})
+test('all four bare PASS statuses get verification work rather than fabricated READY',()=>{
+ const x=g({criteria:{status:'PASS'},plan:{status:'PASS'},milestones:{status:'PASS'},capabilities:{status:'PASS'}})
+ assert.equal(x.next_action,'VERIFY_EVIDENCE')
+})
+test('missing brownfield Criteria intake cannot silently imply Human KEEP',()=>{
+ const x=b(complete)
+ assert.equal(x.next_action,'INSPECT_CRITERIA_INTAKE')
+ assert.equal(x.human_question,null)
+})
+test('brownfield contradictory approval cannot certify Criteria PASS',()=>{
+ const x=b(complete,{criteria_intake:{existing_approved:false}})
+ assert.equal(x.next_action,'RECHECK_CRITERIA')
+})
+test('same action and snapshot pauses rather than loops',()=>{
+ const x=b({criteria:PASS,plan:IN_PROGRESS},{criteria_intake:keep})
+ const replay=b({criteria:PASS,plan:IN_PROGRESS},{criteria_intake:keep,
+   previous_attempt:{action:x.next_action,signature:x.progress_signature}})
+ assert.equal(replay.next_action,'REPORT_BLOCKER')
+ assert.equal(replay.status,'PAUSED_NO_PROGRESS')
+ assert.equal(replay.human_question,null)
+ assert.equal(replay.continue_same_turn,false)
+})
+test('capability NEED_HUMAN without concrete conflict pauses on unchanged retry',()=>{
+ const input={criteria_intake:keep}
+ const c={criteria:PASS,plan:PASS,milestones:PASS,capabilities:NEED_HUMAN}
+ const d=b(c,input)
+ assert.equal(d.next_action,'VERIFY_BLOCKER')
+ const second=b(c,{...input,previous_attempt:{action:d.next_action,signature:d.progress_signature}})
+ assert.equal(second.next_action,'REPORT_BLOCKER')
+ assert.equal(second.human_question,null)
+})
+test('unresolved source conflict cannot claim all-PASS READY',()=>{
+ const conflict={item:'criteria',candidates:['approved source Criteria A','approved source Criteria B'],unresolved:true,investigated:true}
+ const x=b(complete,{criteria_intake:keep,conflicts:[conflict]})
+ assert.equal(x.next_action,'ASK_HUMAN')
+ assert.match(x.human_question,/Criteria A/)
+})
+test('Plan conflict remains unresolved even if all checklist items claim PASS',()=>{
+ const conflict={item:'plan',candidates:['source PLAN-A','source PLAN-B'],unresolved:true,investigated:true}
+ const x=b(complete,{criteria_intake:keep,conflicts:[conflict]})
+ assert.equal(x.next_action,'ASK_HUMAN')
+ assert.match(x.human_question,/PLAN-A/)
+})
+test('CRL action identifies independent reviewer path without requiring a duplicate Job',()=>{
+ const x=b({criteria:PASS,plan:IN_PROGRESS},{criteria_intake:keep})
+ assert.match(x.instruction,/DIRECT_AGENT/)
+ assert.match(x.instruction,/human_invoked/)
 })
 test('runtime exposes coordinator tool and self-driving bootstrap harness',()=>{
  assert.match(source,/'project_bootstrap_checklist_prepare'/)
