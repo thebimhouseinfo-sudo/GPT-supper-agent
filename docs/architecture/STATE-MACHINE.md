@@ -1,12 +1,12 @@
 ---
 id: STATE-MACHINE
-version: 1.3
+version: 1.4
 status: DEFINED
 depends_on:
   - FOUNDATION
 ---
 
-# State Model v1.3
+# State Model v1.4
 
 ## 1. Principle
 
@@ -47,6 +47,7 @@ IN_PROGRESS
 COMPLETED
 CANCELLED
 SUPERSEDED
+RETIRED
 ```
 
 Derived:
@@ -70,6 +71,7 @@ IN_PROGRESS
 COMPLETED
 CANCELLED
 SUPERSEDED
+RETIRED
 ```
 
 WAITING/BLOCKED are derived.
@@ -189,9 +191,9 @@ ARCHIVED → ACTIVE | PAUSED
 ## 13. Job legal transitions
 
 ```text
-DRAFT → READY | CANCELLED | SUPERSEDED
-READY → IN_PROGRESS | CANCELLED | SUPERSEDED
-IN_PROGRESS → COMPLETED | CANCELLED | SUPERSEDED
+DRAFT → READY | CANCELLED | SUPERSEDED | RETIRED
+READY → IN_PROGRESS | CANCELLED | SUPERSEDED | RETIRED
+IN_PROGRESS → COMPLETED | CANCELLED | SUPERSEDED | RETIRED
 ```
 
 WAITING/BLOCKED are display/work conditions based on durable causes.
@@ -199,7 +201,7 @@ WAITING/BLOCKED are display/work conditions based on durable causes.
 ## 14. Smaller-domain safety
 
 Task:
-- terminal CANCELLED/SUPERSEDED do not reactivate;
+- terminal CANCELLED/SUPERSEDED/RETIRED do not reactivate;
 - COMPLETED does not reopen under terminal parent Job.
 
 Run:
@@ -295,3 +297,9 @@ IN_PROGRESS reviewed revision
 ```
 
 This is a planning validity suspension inside `IN_PROGRESS`, not a new lifecycle state.
+
+## 22. Plan-change retirement (LLC58)
+
+`RETIRED` for a Job means the reviewed new Plan no longer needs it and no successor Job is created; `SUPERSEDED` requires a replacement. Both are terminal. A reviewed `PLAN_RECONCILIATION_INTENT` with `decision=RETIRE` and exact active Job SHA is required, followed by a persisted Job fence, settlement of active Runs and pending source cursor, and exact-SHA terminal transition/readback. `COMPLETED` Jobs are historical and are not retired retroactively. A retiring Run uses `CANCELLED` with Plan-change provenance; Run does not gain RETIRED.
+
+Task `RETIRED` means a Task no longer needs work under the reviewed Plan. At parent Job retirement, all unfinished Tasks become RETIRED. Under `REPLACE`, individually listed obsolete Task IDs become RETIRED in predecessor history. An active Job whose partial scope changes is replaced using the existing review workflow; no retired Task may dispatch again. Dependencies/evidence must be revalidated independently and prior PASS evidence is not transferred to a successor.
