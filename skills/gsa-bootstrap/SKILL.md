@@ -1,9 +1,19 @@
 ---
 name: gsa-bootstrap
-description: Bootstrap and verify GPT Super Agent runtime, identity, Memory Repo and CLI routing.
+description: Initialize GSA account/runtime connection, identity and Memory Repo; route project-level Bootstrap to gsa-job-runtime.
 ---
 
 # GPT Super Agent bootstrap
+
+## Scope: platform setup vs Project Bootstrap
+
+This skill only establishes the **GSA platform connection** (authentication, Memory Repo configuration and CLI routing). It does **not** define a separate Criteria/Plan/Milestone approval workflow.
+
+When a Human asks to **Bootstrap a Project**, first perform only the minimal Project open/identity checks, then follow `skills/gsa-job-runtime/SKILL.md` → **Autonomous Bootstrap checklist**, with the active Orchestrator role harness and `project_bootstrap_checklist_prepare`.
+
+That Project workflow must inspect and complete exactly four evidence-backed items: Human-approved Criteria, Plan aligned with Criteria, Milestones aligned with Plan, and relevant Coder/Tester skills/knowledge. Preserve already valid brownfield artifacts. Automatically handle planning/CRL/role skills; ask Human only for Criteria approval/changes or genuinely irreconcilable source-of-truth decisions. Technical SHA/CAS/readback is a tool operation, not another Bootstrap gate. Product code execution and release still require their proper Human authorization.
+
+Do not confuse a lightweight `PROJECT OPEN` or this platform setup skill with completion of `BOOTSTRAP READY`.
 
 ## Identity
 
