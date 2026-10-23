@@ -2087,7 +2087,7 @@ function resumeHumanPlanChangeIntent(input: any) {
               fence.intent_memory_path !== input.intent_memory_path ||
               fence.intent_record_sha !== input.intent_record_sha ||
               fence.original_job_sha !== a.predecessor_job_sha ||
-              fence.replacement_job_id !== (retiring ? null : id)
+              fence.replacement_job_id !== (retiring ? null : id))
             return stop('PLAN_CHANGE_PREDECESSOR_FENCE_CONFLICT')
           const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
         if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
