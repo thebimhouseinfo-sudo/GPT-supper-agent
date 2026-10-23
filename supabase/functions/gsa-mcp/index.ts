@@ -1701,7 +1701,7 @@ function isRecognizedJobRecordShape(job: any): boolean {
     typeof job.project_id === 'string' && typeof job.job_id === 'string' &&
     jobExecutionContract(job) !== null &&
     Number.isInteger(job.planning_revision) && job.planning_revision >= 1 &&
-    ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(job.lifecycle)
+    ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(job.lifecycle)
 }
 
 function assessHumanPlanChangeJobs(input: any) {
@@ -1721,23 +1721,23 @@ function assessHumanPlanChangeJobs(input: any) {
         !sha(item.job_record_sha)) return reject('PLAN_CHANGE_JOB_IDENTITY_OR_SHA_INVALID')
     if (ids.has(job.job_id)) return reject('PLAN_CHANGE_DUPLICATE_JOB')
     ids.add(job.job_id)
-    if (!['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION'].includes(item.decision) ||
+    if (!['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION'].includes(item.decision) ||
         typeof item.reason !== 'string' || !item.reason.trim())
       return reject('PLAN_CHANGE_DECISION_AND_REASON_REQUIRED')
     const lifecycle = job.lifecycle
-    if (!['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle))
+    if (!['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(lifecycle))
       return reject('PLAN_CHANGE_JOB_LIFECYCLE_INVALID')
     const oldContract = jobExecutionContract(job)
     if (!oldContract) return reject('PLAN_CHANGE_JOB_CONTRACT_INVALID')
     // Historical finished work is immutable. New follow-up work must use
     // a new Job, not reactivation or retrospective PASS reassignment.
-    if (['COMPLETED','CANCELLED','SUPERSEDED'].includes(lifecycle) &&
+    if (['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(lifecycle) &&
         !['KEEP','REVALIDATE'].includes(item.decision))
       return reject('PLAN_CHANGE_TERMINAL_JOB_CANNOT_BE_REPLACED')
     let nextAction = 'KEEP_UNCHANGED'
     if (item.decision === 'HUMAN_DECISION') nextAction = 'STOP_FOR_HUMAN_DECISION'
     else if (item.decision === 'REVALIDATE') nextAction = 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE'
-    else if (item.decision === 'REPLACE') {
+    else if (item.decision === 'REPLACE' || item.decision === 'RETIRE') {
       // A cursor/Run state is a readback claim, not an authorization. Any
       // unfinished or unknown activity blocks replacement until reconciled.
       if (lifecycle === 'IN_PROGRESS' &&
@@ -1746,7 +1746,7 @@ function assessHumanPlanChangeJobs(input: any) {
       else if (lifecycle === 'IN_PROGRESS' &&
           !['NONE','TERMINAL'].includes(item.active_run_state))
         nextAction = 'SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE'
-      else nextAction = 'SUPERSEDE_AND_CREATE_NEW_UNIQUE_JOB'
+      else nextAction = item.decision === 'RETIRE' ? 'RETIRE_WITHOUT_REPLACEMENT' : 'SUPERSEDE_AND_CREATE_NEW_UNIQUE_JOB'
     }
     rows.push({
       job_id: job.job_id, job_sha: item.job_record_sha,
@@ -1882,8 +1882,8 @@ function prepareHumanPlanChangeIntent(input: any) {
       'Authorize exact active Project and target Memory Repo path for CREATE.',
       'GitHub CREATE intent at deterministic path; on collision READ existing path and reconcile, NEVER overwrite.',
       'Independently read back exact intent bytes/blob SHA before any Run/Job lifecycle or replacement writes.',
-      'Before SUPERSEDED, settle active Run and cursor PENDING with authoritative Git readback; use exact Job SHA CAS.',
-      'Before creating reserved replacement Job, use job_prepare with this same immutable intent and exact readback; never mint another ID.',
+      'Before SUPERSEDED or RETIRED, settle active Run and cursor PENDING with authoritative Git readback; use exact Job SHA CAS.',
+      'RETIRE creates no replacement Job. Only REPLACE creates a reserved successor with the same immutable intent and exact readback.',
     ],
   }
 }
@@ -2343,7 +2343,7 @@ function orchestrationProgressDecision(input: {
   stalled_cycles: number
   mutation_retry_count: number
 }) {
-  const jobTerminals = ['COMPLETED','CANCELLED','SUPERSEDED']
+  const jobTerminals = ['COMPLETED','CANCELLED','SUPERSEDED','RETIRED']
   const runTerminals = ['COMPLETED','FAILED','CANCELLED','SUPERSEDED']
   const jobStates = ['DRAFT','READY','IN_PROGRESS',...jobTerminals]
   const runStates = ['IN_PROGRESS',...runTerminals]
@@ -3664,7 +3664,7 @@ function createServer(req: Request) {
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
           reason: z.string().min(1),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
@@ -3694,7 +3694,7 @@ function createServer(req: Request) {
     'job_plan_change_assess',
     {
       title: 'Assess Jobs affected by a Human-reviewed Plan change',
-      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
+      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE, RETIRE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
       inputSchema: {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
@@ -3702,7 +3702,7 @@ function createServer(req: Request) {
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','HUMAN_DECISION']),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
           reason: z.string().min(1),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
