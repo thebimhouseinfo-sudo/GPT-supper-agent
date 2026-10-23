@@ -3113,6 +3113,33 @@ function buildProjectManifest(args: {
   ].join('\n')
 }
 
+// An optional, additive Project Memory contract. Branch retirement is not Git ref deletion.
+function parseRetiredBranchRows(text: string): Array<{ repository_url: string; branch: string; sha: string }> | null {
+  const rows: Array<{ repository_url: string; branch: string; sha: string }> = []
+  const seen = new Set<string>()
+  let inSection = false
+  for (const line of text.split('\n')) {
+    if (/^## /.test(line)) {
+      inSection = /^## Retired Branches(?:\s|$)/.test(line)
+      continue
+    }
+    if (!inSection || !/^\s*-\s*/.test(line)) continue
+    const match = line.match(/^\s*-\s*(https:\/\/github\.com\/[^\s|]+)\s*\|\s*branch=([^\s|]+)\s*\|\s*sha=([a-f0-9]{40})\s*\|\s*status=RETIRED\s*$/i)
+    if (!match || !validIntegrationBranch(match[2])) return null
+    const repo = normalizeGithubRepo(match[1])
+    if (!repo) return null
+    const key = repo.url.toLowerCase() + '|' + match[2]
+    if (seen.has(key)) return null
+    seen.add(key)
+    rows.push({ repository_url: repo.url, branch: match[2], sha: match[3].toLowerCase() })
+  }
+  return rows
+}
+
+function isRetiredSourceBranch(rows: Array<{ repository_url: string; branch: string }>, repositoryUrl: string, branch: string | null | undefined): boolean {
+  return !!branch && rows.some((row) => row.repository_url.toLowerCase() === repositoryUrl.toLowerCase() && row.branch === branch)
+}
+
 function parseProjectManifest(text: string) {
   const values: Record<string, string> = {}
   for (const rawLine of text.split('\n')) {
@@ -3141,6 +3168,8 @@ function parseProjectManifest(text: string) {
   const dedup = [...new Map(repositories.map((r) => [r.url.toLowerCase(), r])).values()]
   const repo_mode = values.repo_mode === 'MULTI' || dedup.length > 1 ? 'MULTI' : 'SINGLE'
   const repo_registry_status = values.repo_registry_status || (values.repo_mode ? 'CONFIRMED' : 'LEGACY_UNASSESSED')
+  const retired_branches = parseRetiredBranchRows(text)
+  if (retired_branches === null) return null // malformed retirement rows fail closed
   // The flat fields are the legacy/single-PRIMARY shortcut; section rows support multi-repo Projects.
   // Unknown/invalid branch values are never replaced with GitHub's default branch.
   const branchRows = new Map<string, { repository_url: string; development_branch: string | null; release_branch: string | null }>()
@@ -3162,8 +3191,10 @@ function parseProjectManifest(text: string) {
       (repo.role === 'PRIMARY' && validIntegrationBranch(values.development_branch) ? values.development_branch : null)
     const release = stored?.release_branch ??
       (repo.role === 'PRIMARY' && validIntegrationBranch(values.release_branch) ? values.release_branch : null)
+    const retiredConfigured = isRetiredSourceBranch(retired_branches, repo.url, dev) ||
+      isRetiredSourceBranch(retired_branches, repo.url, release)
     return { repository_url: repo.url, development_branch: dev, release_branch: release,
-      status: repo.relation === 'OWNED' ? (dev ? 'CONFIGURED' : 'UNCONFIGURED') : 'REFERENCE_ONLY' }
+      status: repo.relation === 'OWNED' ? (retiredConfigured ? 'RETIRED_BRANCH_CONFIGURED' : dev ? 'CONFIGURED' : 'UNCONFIGURED') : 'REFERENCE_ONLY' }
   })
   const primaryPolicy = branch_policies.find((p) => p.repository_url.toLowerCase() === primary_repo_url.toLowerCase())
   return {
@@ -3171,6 +3202,7 @@ function parseProjectManifest(text: string) {
     release_branch: primaryPolicy?.release_branch ?? null,
     branch_policy_status: primaryPolicy?.status ?? 'UNCONFIGURED',
     branch_policies,
+    retired_branches,
     project_id,
     name,
     lifecycle,
@@ -5805,6 +5837,9 @@ function createServer(req: Request) {
       const owned = parsed.repositories.find((r: any) => r.url.toLowerCase() === repo?.url.toLowerCase() && r.relation === 'OWNED')
       if (!repo || !owned || !validIntegrationBranch(development_branch) || (release_branch && !validIntegrationBranch(release_branch)))
         return { content: [{ type: 'text', text: 'Branch policy must target an OWNED repository with valid Git ref names.' }], isError: true }
+      if (isRetiredSourceBranch(parsed.retired_branches, repo.url, development_branch) ||
+          isRetiredSourceBranch(parsed.retired_branches, repo.url, release_branch))
+        return { content: [{ type: 'text', text: 'BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch.' }], isError: true }
       const policies = parsed.branch_policies.map((p: any) => p.repository_url.toLowerCase() === repo.url.toLowerCase()
         ? { ...p, development_branch, release_branch: release_branch ?? null } : p)
       const header = project_manifest_text.split('\n')
