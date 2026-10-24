@@ -2,7 +2,7 @@
 
 ## GOAL
 
-Upgrade GSA with the **missing, GSA-applicable functional rules** from the current Bootstrap v7 plan while using those real implementation Job Packs to estimate whether **GSA-controlled context efficiency** improves. First build a small context meter. For each context-reduction group, compare the retained GSA and candidate GSA1/GSA2/... by performing the **same full Bootstrap update Job** in **exactly two auxiliary Git branches**, both starting at the same source commit. Review both produced code outputs and context estimates. If the candidate needs a GSA runtime repair, invalidate that Job's context sample and use a subsequent clean whole Job/repeat. Select/integrate the better output code, **delete the inferior auxiliary branch after comparison**, and independently KEEP or REVERT the candidate's context changes. Each KEEP candidate becomes the next rolling baseline. Preserve complete accepted decisions, role independence, authorization, real-world user behavior, and current deployed GSA while developing on a separate source branch. No exact ChatGPT-Web input-token or productivity claim.
+Upgrade GSA with the **missing, GSA-applicable functional rules** from the current Bootstrap v7 plan while using those real implementation Job Packs to estimate whether **GSA-controlled context efficiency** improves. First build a small context meter. First use a source-grounded **Technical Detail Proposal + whole-proposal design review** to select the best cohesive grouping. **GSA1 is mandatory source modularization** (index.ts becomes a thin entrypoint; no user-visible logic change) and is retained after behavioral parity even if practical read/context cost initially increases. **GSA2** tackles actual harness duplication, **GSA3** excess tool/skill result payload and **GSA4** proven Role/Task/Phase scoping; these later groups are reversible. Each version is exercised against its retained parent on the **same full Bootstrap update Job** in exactly two auxiliary feature-output Git branches from one source commit. Review both produced code outputs and context estimates. If the candidate needs a GSA runtime repair, invalidate that Job's context sample and use a subsequent clean whole Job/repeat. Select/integrate the better output code, **delete the inferior auxiliary branch after comparison**, and independently decide the candidate's context fate: **GSA1 KEEP after parity regardless of efficiency**, but **GSA2–GSA4 KEEP/REVERT** by actual measured quality and context. Each retained version becomes the next rolling baseline. Preserve complete accepted decisions, role independence, authorization, real-world user behavior, and current deployed GSA while developing on a separate source branch. No exact ChatGPT-Web input-token or productivity claim.
 
 **Status:** DRAFT FOR PLANNER/REVIEWER AND HUMAN — *proposed scope and schedule, no runtime implementation authorized here*.
 **Date:** 2026-10-24.
@@ -15,7 +15,7 @@ Upgrade GSA with the **missing, GSA-applicable functional rules** from the curre
 ### Current decision, historical continuity and conflicts
 
 1. This is **one integrated upgrade plan**, replacing the sequence previously described in this file (original M1–M4 research/replay-only plan), not adding another competing Project Plan or multiplying Job records. Old revisions remain in Git history. Existing Project Memory Job ownership must be reconciled with the latest reviewed plan only when authorized execution begins; do not duplicate J-94B4 or J-02E2 just to implement this document.
-2. **Human's latest two-branch milestone workflow (2026-10-24; supersedes prior A-then-B-then-C shakeout scheduling):** CT-00 meter first. In each optimization milestone, create exactly TWO auxiliary branches from one common code SHA and **record those two branch refs in the milestone**. The retained GSA (initial GSA0) runs Job A on CONTROL; candidate GSA1 (GSA0 + CX-01) runs **the same Job A** independently on CANDIDATE. If GSA1 has no runtime/harness/tool-flow bugs, measure A-vs-A immediately. If GSA1 fails, repair it, **discard the candidate A context sample** and obtain a clean paired sample by repeating A safely or using the next whole Job. Independently review both code outputs, integrate only the superior result onto the dev branch, **delete the inferior auxiliary branch** after verified selection/integration, and log both branch cleanup and context KEEP/REVERT. The retained GSA runtime SHA and valid context sample become the **rolling baseline**. GSA2 is developed from last retained GSA1 (or GSA0 if GSA1 rejected), then repeats this same two-branch procedure. Do not split Job Packs merely to supply measurements.
+2. **Human's corrected technical sequencing (2026-10-24):** CT-00 meter → GSA1 source modularization proposal, logical whole-module review, exact function/call graph and gradual behavior-parity implementation → GSA2 Harness → GSA3 Tool/Skill response → GSA4 Role/Task/Phase when evidence justifies it. GSA1 is a **mandatory architectural foundation** and KEEP after equivalent behavior even if practical read/context cost is worse; optimization candidates GSA2–GSA4 separately KEEP/REVERT. For each comparison milestone, run the same substantive Bootstrap Job twice from one identical source commit in exactly **TWO auxiliary feature-output branches**; retained and candidate **GSA runners** are independently source-pinned. If candidate GSA bugs require repair, discard that run's context measurement and use the next clean whole-Pack attempt. Independently review two code outputs, integrate the better implementation, then delete the poorer auxiliary branch after verified integration and actual branch-ref delete/readback. Never split Jobs artificially for measurement.
 3. **Explicit Criteria alignment needed before runtime work:** existing approved GSA Criteria B1–B3 says read-only research/estimate/value decision **before creating a benchmark tool**. The newly directed meter-first sequence conflicts with that order. Adding Bootstrap functional behavior is also new substantive scope beyond A/B/C. This file records the proposed Human direction but does **not silently revise Criteria** or claim existing approval. Use the *existing* Human/Technical-Advisor Criteria-change procedure only when Human authorizes formal Criteria update; do not create another approval gate or ask for Advisor during ordinary plan drafting. Until aligned, the new code-work scope is PLANNED / NOT AUTHORIZED, not already READY.
 4. **Runtime and source branch are different:** GSA Jobs call the already deployed plugin/MCP and the configured Project Memory. They do **not execute GitHub source branches**. The dev branch is the code target; simply editing it does not change GSA production. Never infer that a production tool response is the optimized dev-runtime response. Compare old/new source behavior through source-pinned isolated executable tests, then if supported an isolated staging endpoint/client. No merge to `main` and no production deploy while experimenting. Do not relabel global Project Memory Development Branch solely to run a benchmark or move unrelated Jobs.
 5. **Bootstrap v7 is a proposed upstream specification:** treat its exact sections, accepted-decision table, examples and negative cases as references; implementation requires GSA-specific code-fit and the proper approved scope. Only adopt the *GSA-owned* portions. Do not clone Bootstrap installer or introduce a separate lifecycle control plane.
@@ -57,30 +57,28 @@ Produce the lightest useful **per-command/per-Job-Pack** estimate of GSA-produce
 ### GOAL
 Implement missing GSA-specific Bootstrap behavior in dependency order, using completed Packs to measure context **before versus after** bounded context optimizations and preserve meaningful work outcomes throughout.
 
-### Execution order — two auxiliary branches per milestone; same Job, two GSA versions
+### Execution order — reviewed GSA1 foundation and rolling CX candidates
 
-**Milestone workspaces: exactly TWO auxiliary branches**, created from one identical pinned source base commit, e.g. \`<milestone>-control\` and \`<milestone>-candidate\`. Record their **actual branch names** in the milestone before dispatch. There is no third auxiliary branch for a test, a Task, a re-run, a Reviewer or a CX adjustment. Source branch names are illustrative until milestone preparation. Each GSA runner owns only its branch. Git branches hold two competing **feature-code outputs**, while GSA0/GSA1/GSA2... are **separately pinned executable runtime/source versions**, not the same thing as the output branches.
+**The Technical Detail Proposal and design review are the canonical architecture references for implementation planning:**
+- \`docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-PROPOSAL.md\` — current GSA1–GSA4 module grouping, 55-tool ownership mapping, functions/callers, operations, tests and real-world measurement
+- \`docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-REVIEW.md\` — source-grounded comparison of monolith / context-only extraction / cohesive domains; remaining exact dependency/import and runtime verification requirements
 
-**One milestone workflow:** choose one coherent full Bootstrap functional Job Pack (BP requirements below may be bundled; do not fragment a useful Job); freeze common base, Criteria and Job scope; create exactly two branches. The **retained GSA** executes the Job on CONTROL; the new GSA candidate (one CX group added to retained version) executes the **same** Job on CANDIDATE. If both behave correctly, immediately compare measured GSA payload/calls **on the same Job**, plus independent code output quality (acceptance, tests, maintainability, complexity and preserved Human decisions).
+**First phase after CT-00 is mandatory GSA1**, not a separate PREP and not the first reversible Harness optimization. Review actual source and proposed function grouping **before source implementation**; index.ts becomes a thin entrypoint/registration map; verify no missing tool/role/route/Job contract after each extracted cohort. The final grouping is judged on functional cohesion, how many files must be read together, dependency direction and real workflow, not on the sheer count of files. The first code change happens only after approved execution scope and reviewed architecture. **GSA1 KEEP once its functionality is equivalent**, even if the early efficiency result is worse, because it supplies the structure for later improvements. A functional regression must be fixed before GSA1 baseline promotion.
 
-**Candidate bug:** if GSA candidate itself fails tool routing, role/skill/context or lifecycle, fix candidate and **INVALIDATE its affected Job context measurement**. Preserve feature/debugging evidence. Repeat full Job safely on the same two auxiliary branches with equivalent initial source/snapshot, or use the next substantial Job under that same paired milestone; if two resulting sources are no longer equivalent, explicitly reset to an evidenced common starting state or mark the comparison incomparable. No third branch just to obtain a cleaner metric. When no new feature Job remains, rerun the **last complete Pack**, not a tiny manufactured Job. A functionality replay without new source edits has LOC normalization N/A.
+**Subsequent phases:** GSA2 = reduce proven delivered Harness repetition; GSA3 = reduce redundant Tool/Skill response payload; GSA4 = select context by trustworthy Role/Task/Phase inputs when feasible. If no real improvement is supported, mark an optional candidate SKIP/REVERT, never invent a feature to fill the version number.
 
-**Two different selections at close:**
-1. **Code quality:** pick the superior reviewed feature-code implementation from the two auxiliary branches; integrate **only that output** into the dev integration branch \`upgrade/gsa-context-efficiency\` with correct source review/tests. Record output SHA, integration SHA and a short comparison. **DELETE the inferior auxiliary branch** after selected code is integrated and verified, and record actual Git branch-deletion evidence. The losing branch does not remain in the queue for future merge or extra check. Do not delete a protected/shared/default/main branch, or erase unreviewed source before making the selection.
-2. **Context version:** KEEP the CX group's GSA runtime candidate **only when correct and measurably preferable**, otherwise REVERT that CX group while preserving accepted Bootstrap feature implementation. If KEEP, the **candidate GSA revision and its valid clean measurement become the next baseline**. For the next CX build GSA2 from last retained winner (GSA1 if KEEP, else GSA0). Independently repeat the process for GSA3/GSA4. A superior code output need not have been produced by the more context-efficient runtime.
+**Exactly two auxiliary branches** per comparison milestone from one common feature-source SHA, one for the retained GSA runner and one for the candidate GSA runner. Names finalized and recorded in the milestone. They contain independently implemented **same full Bootstrap functional Job** outputs. A clean first attempt is measurable immediately; a candidate GSA bug invalidates its context result, then repair and re-run a full safe Pack on equivalent inputs. Review both outputs, integrate best code into dev, then delete inferior auxiliary branch with readback (branch deletion capability currently unverified, not a fake DONE). Choose GSA runtime/context winner independently from code winner. No other auxiliary branch for retries or Tasks.
 
-| Milestone | GSA runtime comparison | Same full feature Job on two auxiliary branches | Close |
-|---|---|---|---|
-| **M-00** | Meter setup | No auxiliary feature branches until first comparison | Confirm repeatable context estimate |
-| **M-01 / CX-01** | **GSA0 vs GSA1** | Job A, same pinned base → \`M01-control\` + \`M01-candidate\` (example names) | Compare code and clean context; integrate best code; delete poorer code branch; KEEP GSA1 or REVERT to GSA0 |
-| **M-02 / CX-02** | **retained winner vs GSA2** | Next complete Job B, new **pair of exactly two** auxiliary branches from then-current integrated base | Same steps; next retained winner and clean metric |
-| **M-03 / CX-03** | **retained winner vs GSA3** | Next complete Job C, or replay last complete Pack; exactly two branches | Same steps, independent candidate verdict |
-| **M-04 / CX-04 (conditional)** | **retained winner vs GSA4** | Next substantive Job or full-Pack repeat; exactly two branches | Skip if no credible safe optimization; otherwise same verdict |
-| **Final** | Last retained GSA | Selected feature outputs already integrated into dev branch | Full regression, release recommendation only; no merge to \`main\` |
+| Sequence | Runner and goal | Same-Job/two-branch work | Close decision |
+| --- | --- | --- | --- |
+| CT-00 | Compact context + source-navigation meter | No feature branches yet | Verified estimation method |
+| **M-01 / GSA1** | **GSA0 vs mandatory GSA1 modularization** | One substantial Bootstrap Job A done twice on identical feature base via CONTROL/CANDIDATE | Compare code and practical code navigation; **GSA1 KEEP after behavior parity regardless of initial speed/context**, integrate better code, delete inferior auxiliary branch |
+| **M-02 / GSA2** | Last retained GSA1 vs candidate Harness deduplication | Next complete Job B, two branches | KEEP GSA2 only if safe net benefit; otherwise REVERT to GSA1 |
+| **M-03 / GSA3** | Current retained winner vs tool/skill payload candidate | Job C (or final whole-Pack redo), two branches | KEEP/REVERT GSA3 independently |
+| **M-04 / GSA4** | Current retained winner vs phase/task-scoped selection **only when grounded** | Job D (or whole-Pack redo), two branches | KEEP/REVERT or NO_BUILD, never assume task metadata exists |
+| Integration | Last retained winner | Actual Bootstrap M7 regression | Record code-quality winner, GSA runtime winner, eligible/invalid metrics; no auto main merge/deploy |
 
-**Required milestone fields:** Goal; CX group and parent retained GSA SHA; candidate GSA SHA + isolated runner identity; Bootstrap Job Pack scope, common base SHA; **two exact auxiliary branch names**; output commits/test evidence on each; per-branch context estimate and \`VALID/INVALID\` with reason; review of both code results; **selected branch and deleted inferior branch confirmation**; verified code integration commit; CX KEEP/REVERT and next retained runtime SHA / clean measurement.
-
-**Hard isolation:** both auxiliary branches are **source-code workspaces**, not additional production GSA plugins or Project Memory databases. To run GSA1/GSA2, an actual dev build/runtime/staging entrypoint must be verified; simply committing dev source will not alter the connected production MCP. Never merge context experiments into \`main\` or deploy production automatically.
+**Practical measurement:** GSA1 compares actual source bytes/text read, number of files opened, searches and cross-file hops, rereads, rework and code quality; GSA2–GSA4 additionally measure GSA-owned MCP payload/calls. A design reviewer can pass or reject a proposed module boundary based on source/call graph, but **cannot PASS real speed/context efficiency without executed paired work**. GSA0's observed figures remain historical reference after GSA1 is kept.
 
 ### BP-01 — Discussion Job and Secretary (Bootstrap M2, §6A/E1/E2)
 
@@ -95,14 +93,16 @@ Tasks:
 
 **PASS:** One long, multi-step expert procedure survives accepted recording, correction and later retrieval with exceptions intact; no extra mandatory gate.
 
-### CX-01 — First context reduction: proven harness duplication
+### CX-01 / GSA1 — Mandatory cohesive source modularization
 
 #### GOAL
-Reduce genuine GSA-produced repetition without losing an applicable mandatory instruction on any role/tool entrypoint.
+Make \`index.ts\` a thin actual MCP/Hono assembly entrypoint and group the source's existing functions, tool registrations and tests by **cohesive read/edit/test responsibility**. No business logic change. Mandatory KEEP after regression-free parity, independent of any initially higher read/context cost.
 
-Tasks: use measured command frequencies; identify duplication among `createServer` instructions, `BASE_AGENT_HARNESS`, role loops and `get_agent_harness`. Keep precise Human approval, branch, CAS/readback, stopping and independent-role requirements. Patch only text/structure whose remaining delivery is verified; do not assume earlier chats are cached. Re-run the meter on the same dev source measurement surface before/after patch. Keep independent regression.
+**Technical Proposal → Reviewer first:** use actual code/dependency map of all 55 MCP registrations, role/skill, Project/Bootstrap/Planning/Execution/Evidence/Browser and the large selftest; review three alternatives, group related code together, reject excessive splitting and giant mixed files. Determine best source file matrix and call hierarchy **before implementing**, not by making arbitrary files then trying to merge them later.
 
-**PASS:** Observed GSA payload decrease for at least one relevant measured command and no applicable contract loss; otherwise REVERT/SKIP.
+**CREATE/MODIFY/KEEP per-task detail:** the verified candidate file matrix, symbols, callers, function ownership, proposed \`register…Tools(server,req)\` wiring, \`index.ts\` import/export boundary, conditional shared contracts and diagnostic tests are documented in \`TECHNICAL-DETAIL-PROPOSAL.md\`. After source-writing authorization move → link → run parity tests **one coherent group at a time**. Preserve public tool list/schema, role/skill strings, secure GitHub/Run state, HTTP responses and existing negative tests.
+
+**PASS:** functional/source/host equivalence at the demonstrated test surface, coherent navigation and no orphaned route/function/tool; practical source-navigation costs are **MEASURED, NOT GUARANTEED**. Repair regressions rather than REVERT merely because GSA1 measures worse. Maintain GSA1 as GSA2 baseline after parity.
 
 ### BP-02 — Planner Decision Fidelity (Bootstrap M2, §6A/E3)
 
@@ -132,14 +132,14 @@ Tasks:
 
 **PASS:** Changed scope safely fenced/retired and freshly reconstructed; unchanged work continues; no false old PASS, no old READY/IN_PROGRESS zombie; real-host effects clearly verified or UNVERIFIED. Treat this large Pack as a **comparison outlier** if necessary, not a reason to game a context chart.
 
-### CX-02 — Bounded skill/tool relevance experiment
+### CX-02 / GSA2 — Reversible Harness duplication optimization
 
 #### GOAL
-Stop sending observed irrelevant GSA instructions during commands without breaking the protocol.
+Measure and remove actual repeated **delivered** shared-role or MCP initialization guidance without removing mandatory instructions on independently entered tool surfaces.
 
-Tasks: inspect actual `get_skill_catalog`→`load_skill` usage and measured duplicate noncritical `external_steps`. If possible on the verified test surface, retain full mandatory active-role/task guidance while suppressing unrelated descriptions/metadata; beware ChatGPT host-injected tool schemas outside GSA's control. Never drop blockers, exact IDs, action instructions, CAS proof, error reason or `structuredContent`/`content` fallback by guess. Use same-source before/after meter and negative tests.
+**MODIFY:** GSA1's actual reviewed Agent/Harness module and startup instruction producer, selected only after runtime evidence; **REUSE_AS_IS:** established role/skill mapping, public request contracts and meter. A mere duplicate sentence in source does not prove redundant host-delivered model context. Preserve Advisor, Human authorization, CAS/readback, correct role independence, error and stopchat behavior. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section C.
 
-**PASS:** Measured safe reduction, or documented SKIP.
+**PASS:** safe GSA-owned payload/call reduction and equivalent behavior; otherwise **REVERT/SKIP GSA2** while retaining modularized GSA1 baseline.
 
 ### BP-04 — Coder knowledge, solution clarification and DEV/OPERATION file semantics (Bootstrap M4, §6B/E4/6I)
 
@@ -168,14 +168,14 @@ Tasks:
 
 **PASS:** Brownfield proposal names real existing call sites and accurately marks proposed symbols; no application source files created in Pre-Code; coverage complete for each affected Task.
 
-### CX-03 — Role/task/phase-specific context experiment
+### CX-03 / GSA3 — Reversible tool and skill response optimization
 
 #### GOAL
-Reduce measured irrelevant role/phase content without weakening a single active Role's complete contract.
+Reduce observed unnecessary instructions/metadata **inside actual GSA-owned tool output**, not redesign progressive catalog/loading already implemented.
 
-Tasks: review current role harness assembly and suggested skills. Prefer scoped disclosure for active role/phase and on-demand detailed skill text, not a new context manager. Context required for independent Reviewer/Tester cannot rely on Coder's previous chat. Host-managed skill/tool schema limitations stay UNKNOWN. Re-run same dev source meter and chosen isolated role tests before/after.
+**MODIFY:** chosen high-frequency tool handler(s) in their real GSA1 owning domain modules and/or skill metadata when evidenced. Preserve exact \`structuredContent\`/\`content\` compatibility, \`external_steps\`, validation errors, permissions and follow-up. **CREATE** one reusable formatter only if actual repeated consumer needs justify the extra file. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section D.
 
-**PASS:** Reduced GSA-controlled active-pack payload with unchanged capability/authority; otherwise revert.
+**PASS:** verified net reduced response payload without lost workflow or extra rereads; otherwise **REVERT/SKIP GSA3**.
 
 ### BP-06 — Whole-related-Task Reviewer, disproportional complexity (Bootstrap M5, §6C/E8–E10)
 
@@ -205,12 +205,14 @@ Tasks:
 
 **PASS:** Tester evidence starts from actual user entrypoint, covers expected vs actual all child flows, and accurately separates mock vs host verification. Ordinary small tests need not load this skill.
 
-### CX-04 — Final selective context experiment (conditional)
+### CX-04 / GSA4 — Reversible context selection by Role/Task/Phase (conditional)
 
 #### GOAL
-Confirm whether another **small** safe context reduction is still valuable after Tester/Reviewer skill additions; avoid overengineering when prior reductions already suffice.
+Reduce irrelevant detailed guidance for a *verified* active Job scope without breaking an Agent's complete mandatory role contract.
 
-Tasks: sample new skill/harness response sizes; avoid preloading out-of-scope Tester scenario references or advanced debugging into every session. If no safe measurable opportunity exists, **SKIP** without architectural changes.
+**REUSE_AS_IS:** current GSA1 agent module and role-specific \`renderHarness(role)\`. \`get_agent_harness\` currently accepts **only \`role\` and \`mode\`**; do not invent task/phase inputs or new context stores. **CREATE/MODIFY conditional:** a small pure selector only after a real authorized caller can provide trusted task/phase evidence; otherwise **NO_BUILD**. Test Reviewer isolation, Tester simulate, Direct Agent, missing/stale metadata and role permissions. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section E.
+
+**PASS:** safe reduction at actual source-pinned runtime vs retained baseline; otherwise **REVERT/SKIP GSA4**.
 
 ### BP-08 — Three full repair/retest cycles and advanced causal debugging (Bootstrap M6, §6H H4–H6)
 
@@ -270,23 +272,18 @@ Deliver a compact `BEFORE-AFTER.md` with **two-branch milestone source selection
 
 **Never merge into main or trigger production/Vercel/Supabase deployment merely for these experiments.** GitHub development-branch writes do not change production tools. Release is an explicit later Human decision and requires then-current source, permissions and independent evidence.
 
-## Code structure proposal — small GSA changes, no second control plane
+## Technical code structure authority — detailed proposal and review
 
 ### GOAL
-Provide a source-level responsibility guide *without* presuming every proposed module needs to be created.
+Define a coherent, source-validated implementation architecture **before assigning final milestone files/Tasks**, without producing placeholder application code or assuming splitting itself saves model context.
 
-| Current/possible surface | Owner | Planned changes only when verified necessary | Prohibitions |
-|---|---|---|---|
-| `supabase/functions/gsa-mcp/index.ts`: `BASE_AGENT_HARNESS`, `ROLE_HARNESSES`, `ROLE_SKILLS`, `RUNTIME_SKILLS`, `renderHarness`, `get_agent_harness`, `load_skill` | GSA MCP | Selective new feature skill hints/bodies, tool output slimming, existing request flow | No general context DB/proxy/global loader; do not strip mandatory rules |
-| Existing project-backed Decision/Job Plan tooling + GSA Project Memory | Existing durable ownership | Small focused discussion decision refs / Plan links / reviewed retirement coordination using verified current write routes | No duplicate Criteria DB, Secretary daemon, parallel GSA Job lifecycle or mutation of unrelated Jobs |
-| Existing GSA Plan-change/job dispatch/branch retirement | GSA lifecycle | Minimal scope-wide RETIRED integration when existing intent/fence insufficient | No unsafe Run kill, no invented Run.RETIRED, no physical branch delete, no blanket dev-branch migration |
-| Existing Coder and Reviewer role harness + existing skills mechanism | GSA role contracts | Focused solution-clarification, full decision on demand, descriptive proposal + whole-related design review | No separate Technical Plan, global component Registry or requirement for Human to choose internals |
-| Existing Tester + debugging skill, related tools | GSA Tester | Scoped simulate references, 3-cycle counter/evidence and optional deep diagnosis on escalation | No Simulator Job, source writes by Tester, or native-host PASS on mocks |
-| `test-lab/` and existing `evals/` | Test/evidence | Meter script, small synthetic fixtures, behavior oracles, aggregate results | No live private transcript telemetry, no heavyweight benchmark service |
-| `.github/workflows/gsa-next-logic.yml` | CI | Register new test file invocation only when tests are actually added | No assumed auto-discovery; no auto production deployment |
-| `docs/plans/gsa-context-efficiency/` | Planning/evidence | This single integrated plan, minimal meter note, comparison report; keep upstream source links | No alternate competing canonical Project Plan/Criteria |
+The detailed design, including **GSA1 candidate cohesive-domain module file paths**, actions \`CREATE/MODIFY/KEEP\`, all 55 existing MCP tool owners, actual function/handler names, callers and import edges, thin \`index.ts\` wiring, 932-line selftest extraction, test migration, and GSA2–GSA4 targeted changes, is in \`TECHNICAL-DETAIL-PROPOSAL.md\`. The alternative comparison, review refinements and remaining execution evidence are in \`TECHNICAL-DETAIL-REVIEW.md\`.
 
-**Each assigned Coder Task** later follows Bootstrap §E5 Pre-Code Proposal: exact `CREATE/MODIFY/REUSE/KEEP/REMOVE` paths, functions, callers, inputs/outputs, tests and exclusions, based on actual source inspection. That is **per-Task implementation design after authorization**, not a requirement to create all listed files or code now.
+**Design stage:** Review whether closely coupled files should be grouped into one coherent module; verify actual references, callers, input/output types and circular-import risk. The agreed structure can be adjusted before code based on source evidence, not code-line quotas. Reviewer approves logical architecture; no speculative declaration of saved tokens or time.
+
+**Implementation stage (only after source authorization):** migrate each coherent module, reconnect actual imports/exports to entrypoint, run typecheck/CI/negative oracles and real isolated runtime compatibility; fix lost registrations before the next module. No full source-history control plane or additional Agent/Job registry.
+
+**Measurement:** GSA0→GSA1 source-navigation and tool measurements on **actual paired Bootstrap development work**. GSA1 remains required if correct even when early measurements are worse. Subsequent GSA2–GSA4 are optional and reversible; later co-change evidence may justify local merge/split of GSA1 modules within a reviewed optimization.
 
 ## Ownership, sequencing, acceptance and STOP rules
 
@@ -298,7 +295,7 @@ Keep implementation bounded and safe while ensuring all Bootstrap behavior, not 
 - **Reviewer:** independent planning/source/design review, whole-related-Task check, error/authority negative testing, proportionate solution and fidelity; Reviewer does not code. Do not start Critic Reviewer by default unless direct Human `cr/crl` or preauthorized milestone.
 - **Tester:** independently construct user-entrypoint oracles and test actual flows; run on-demand `simulate`; separate MOCK / SOURCE / LIVE HOST and RETIRED/ACTIVE evidence. Tester cannot substitute a PASS by repeating Coder assertions.
 - **User:** decides material WHAT/WHY/operational scope, chooses a manual verification alternative if appropriate, separately authorizes implementation and later release. Technical Advisor only at its existing approved Criteria-change trigger.
-- **Dependencies:** BP-02 depends on BP-01 DEC records; BP-03 on current Plan/Run lifecycle evidence and BP-02 decision links; BP-05 on BP-04 correct engineering/operational boundary; BP-06 on all relevant BP-05 proposals; BP-08 on BP-07 Tester behavior and actual defect attempt history. **Group BP requirements into substantive Jobs** instead of forcing one Job per section. Each CX has its own candidate smoke/repair, **discarded dirty Job result**, then **clean whole-Pack measurement and KEEP/REVERT** before the next CX; repeat the last Pack safely whenever there is no new one. Skipping a CX group does not block functional work.
+- **Dependencies:** BP-02 depends on BP-01 DEC records; BP-03 on current Plan/Run lifecycle evidence and BP-02 decision links; BP-05 on BP-04 correct engineering/operational boundary; BP-06 on all relevant BP-05 proposals; BP-08 on BP-07 Tester behavior and actual defect attempt history. **GSA1 module design (technical proposal and whole-review) precedes code extraction and GSA2–GSA4; GSA1 is mandatory KEEP after verified parity despite worse initial efficiency.** **Group BP requirements into substantive Jobs** instead of forcing one Job per section. Each CX has its own candidate smoke/repair, **discarded dirty Job result**, then **clean whole-Pack measurement and KEEP/REVERT** before the next CX; repeat the last Pack safely whenever there is no new one. Skipping a CX group does not block functional work.
 - **Stop/escalate:** actual security/correctness regression, unowned write path, unsafe old Run/source state, poor measurable benefit, repeatedly more rework/tool calls, wrong version/role, or Small Function → Big Solution → Larger System Impact. Offer reduced/manual user workflow when proportionate; no invented sandbox, new lifecycle gate or background agent to "fix" a minor feature.
 - **Deferred:** Bootstrap v7 B1–B5 Lead/Worker installer, native local QwenCode/Continue hooks, model orchestration, multi-worktree provisioning, optional 27B skeleton/small-model workflow. Reassess only after functional stability and explicit separate scope decision.
 - **Criteria discrepancy stays visible:** pending explicit formal reconciliation of meter-first and new Bootstrap functional scope against GSA's currently approved research-first-only Criteria. This plan is **not** Criteria approval; do not silently claim Bootstrap's DRAFT implements an authorized GSA feature.
@@ -312,4 +309,4 @@ For every Pack, report in human-readable form:
 4. Test observations, independent Reviewer/Tester result and unverified host limitations.
 5. Context candidate before/after (when applicable), directional result, larger-system impact and disposition KEEP/REVERT/SKIP.
 
-**Final acceptance:** GSA functional behavior is source/host-evidence-grounded for the approved adopted scope; the compact meter reports reasonable relative trends over more than one real functional Pack; no mandatory authority/role/Job correctness is traded for shorter context; `main` and production unaffected until a separately authorized release.
+**Final acceptance:** GSA1 is retained after functional parity and measured in real source-development workflows; GSA2–GSA4 each have independent evidence-based KEEP/REVERT, and actual paired-work measurements remain separate from paper design review. GSA functional behavior is source/host-evidence-grounded for the approved adopted scope; the compact meter reports reasonable relative trends over more than one real functional Pack; no mandatory authority/role/Job correctness is traded for shorter context; `main` and production unaffected until a separately authorized release.
