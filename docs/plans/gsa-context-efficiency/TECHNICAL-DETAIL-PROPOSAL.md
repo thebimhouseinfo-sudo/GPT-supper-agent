@@ -90,7 +90,20 @@ The source-level scan found **98** top-level `function` / `async function` decla
 
 **Cycle correction from the first Reviewer findings:** Under the initial grouping, source calls proved `recordNextMemoryNamespace → resolveExecutionContract` and `validateCompletedTaskRunSnapshots → jobExecutionContract` while Execution helpers used record/path/snapshot functions. Likewise `checkpointVerificationApplicable → evidenceBundleRefValidationError` while Evidence validators depended on Execution contract. The revised `records.ts` owns the shared pure contract/record validators (including these three helpers), breaking both detected cycles. **The 98-function direct-call scan now has zero reciprocal module import pairs** at the top-level-function layer. This is not yet a complete typed import/closure graph; checks on top-level constants, schema initialization, registered handler callbacks and route captures remain required before implementation.
 
-**Constant/schema co-location to verify with AST before moving:** `EXECUTION_CONTRACT_VALUES`, `DEFAULT_EXECUTION_CONTRACT`, `NEXT_MEMORY_NAMESPACE_VALUES`, `DEFAULT_NEXT_MEMORY_NAMESPACE`, `DURABLE_RECORD_SNAPSHOT_SCHEMA` belong with `records.ts` when their initializer dependencies permit it. Bootstrap owns `CRITERIA_BINDING_SCHEMA`, `ADVISOR_RECEIPT_SCOPE_MAX`; Planning owns `MILESTONE_SCHEMA`, `PLANNING_TOPOLOGY_NODE_SCHEMA`, `PLANNING_LOOP_CONTINUATION_SCHEMA`; role/skill constants belong to `agent.ts`; platform/browser own their environment constants. Exact remaining `EVIDENCE_*` and `TEST_CHECKPOINT_SPEC_SCHEMA` ownership must follow their actual consumers, not name alone.
+**Candidate assignment of all 28 named top-level uppercase constants/schemas** (source scan `^const [A-Z_]`). The actual use/initializer graph still must be validated by the Coder before module extraction.
+
+| Owner | Count | Actual named constants / schemas |
+| --- | ---: | --- |
+| `platform.ts` | 8 | `PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AUTH_ISSUER`, `AUTH_SCOPES`, `CUTOVER_INVENTORY_IDS`, `CUTOVER_INVENTORY`, `GSA_SOURCE_BUILD_ID` |
+| `browser.ts` | 1 | `BROWSER_BRIDGE_URL` |
+| `records.ts` | 8 | `EXECUTION_CONTRACT_VALUES`, `DEFAULT_EXECUTION_CONTRACT`, `NEXT_MEMORY_NAMESPACE_VALUES`, `DEFAULT_NEXT_MEMORY_NAMESPACE`, `EVIDENCE_NEED_SCHEMA`, `TEST_CHECKPOINT_SPEC_SCHEMA`, `EVIDENCE_REQUIREMENT_SCHEMA`, `DURABLE_RECORD_SNAPSHOT_SCHEMA` |
+| `bootstrap.ts` | 2 | `CRITERIA_BINDING_SCHEMA`, `ADVISOR_RECEIPT_SCOPE_MAX` |
+| `planning.ts` | 3 | `MILESTONE_SCHEMA`, `PLANNING_TOPOLOGY_NODE_SCHEMA`, `PLANNING_LOOP_CONTINUATION_SCHEMA` |
+| `agent.ts` | 5 | `BASE_AGENT_HARNESS`, `ROLE_HARNESSES`, `ROLE_SKILLS`, `ROLE_HOST_SKILLS`, `RUNTIME_SKILLS` |
+| `project.ts` | 1 | `PROJECT_ID_PATTERN` |
+| **TOTAL** | **28** | Each listed exactly once |
+
+**Coverage arithmetic:** 8 + 1 + 8 + 2 + 3 + 5 + 1 = 28. The 28 count covers uppercase top-level constants, not imported symbols, type aliases, nested locals or captured handler values. Type aliases, imported values, destructured locals and nested constants are **not** in the 28 top-level-uppercase-count group and still require AST lookup during extraction.
 
 **Practical migration direction:** Export a small set of real shared record primitives from `records.ts`; import them from domain modules. Do not duplicate these functions in several modules, make circular imports, or pass a huge `deps` bag into all 55 handlers. The owner may change if subsequent AST/typed source examination proves a stronger cohesive boundary; update this proposal and review before altering that group.
 
