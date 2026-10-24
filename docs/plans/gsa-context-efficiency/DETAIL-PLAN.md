@@ -132,6 +132,7 @@ Verify that accepted context changes do not undermine real GSA behavior, and pre
 
 **M4.1 Deterministic contract regression.**
 - Run original Node runtime/reliability/branch/LLC58/LLC59/LLC60 suites and all new context tests against candidate SHA. Deno `check` must pass.
+- The current `.github/workflows/gsa-next-logic.yml` enumerates test files explicitly; a new context test **does not run in CI merely because it exists under `test-lab/`**. Before declaring test coverage, invoke the new test explicitly in the independent runner and update the workflow's file list and PR path filter **only if** a context test actually gets added. Verify test discovery and source SHA, not just workflow existence.
 - Enforce negative cases for: unauthorized source write, scope/branch escape, Criteria/Advisor misactivation, missed Human gate, incorrect Reviewer independence, stale CAS, cursor/active Run, RETIRE successor conflict, lost stopchat handoff information.
 - If GitHub Actions remains a no-steps environment failure, retrieve run/job/steps/log evidence; use an equivalent source-pinned isolated runner for code PASS and separately record hosted CI **UNVERIFIED**. Do not call failed-to-run GitHub CI a code PASS.
 
