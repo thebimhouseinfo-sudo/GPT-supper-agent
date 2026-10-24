@@ -60,8 +60,8 @@ Implement missing GSA-specific Bootstrap behavior in dependency order, using com
 ### Execution order — reviewed GSA1 foundation and rolling CX candidates
 
 **The Technical Detail Proposal and design review are the canonical architecture references for implementation planning:**
-- \`docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-PROPOSAL.md\` — current GSA1–GSA4 module grouping, 55-tool ownership mapping, functions/callers, operations, tests and real-world measurement
-- \`docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-REVIEW.md\` — source-grounded comparison of monolith / context-only extraction / cohesive domains; remaining exact dependency/import and runtime verification requirements
+- `docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-PROPOSAL.md` — current GSA1–GSA4 module grouping, 55-tool ownership mapping, functions/callers, operations, tests and real-world measurement
+- `docs/plans/gsa-context-efficiency/TECHNICAL-DETAIL-REVIEW.md` — source-grounded comparison of monolith / context-only extraction / cohesive domains; remaining exact dependency/import and runtime verification requirements
 
 **First phase after CT-00 is mandatory GSA1**, not a separate PREP and not the first reversible Harness optimization. Review actual source and proposed function grouping **before source implementation**; index.ts becomes a thin entrypoint/registration map; verify no missing tool/role/route/Job contract after each extracted cohort. The final grouping is judged on functional cohesion, how many files must be read together, dependency direction and real workflow, not on the sheer count of files. The first code change happens only after approved execution scope and reviewed architecture. **GSA1 KEEP once its functionality is equivalent**, even if the early efficiency result is worse, because it supplies the structure for later improvements. A functional regression must be fixed before GSA1 baseline promotion.
 
@@ -96,11 +96,11 @@ Tasks:
 ### CX-01 / GSA1 — Mandatory cohesive source modularization
 
 #### GOAL
-Make \`index.ts\` a thin actual MCP/Hono assembly entrypoint and group the source's existing functions, tool registrations and tests by **cohesive read/edit/test responsibility**. No business logic change. Mandatory KEEP after regression-free parity, independent of any initially higher read/context cost.
+Make `index.ts` a thin actual MCP/Hono assembly entrypoint and group the source's existing functions, tool registrations and tests by **cohesive read/edit/test responsibility**. No business logic change. Mandatory KEEP after regression-free parity, independent of any initially higher read/context cost.
 
 **Technical Proposal → Reviewer first:** use actual code/dependency map of all 55 MCP registrations, role/skill, Project/Bootstrap/Planning/Execution/Evidence/Browser and the large selftest; review three alternatives, group related code together, reject excessive splitting and giant mixed files. Determine best source file matrix and call hierarchy **before implementing**, not by making arbitrary files then trying to merge them later.
 
-**CREATE/MODIFY/KEEP per-task detail:** the verified candidate file matrix, symbols, callers, function ownership, proposed \`register…Tools(server,req)\` wiring, \`index.ts\` import/export boundary, conditional shared contracts and diagnostic tests are documented in \`TECHNICAL-DETAIL-PROPOSAL.md\`. After source-writing authorization move → link → run parity tests **one coherent group at a time**. Preserve public tool list/schema, role/skill strings, secure GitHub/Run state, HTTP responses and existing negative tests.
+**CREATE/MODIFY/KEEP per-task detail:** the verified candidate file matrix, symbols, callers, function ownership, proposed `register…Tools(server,req)` wiring, `index.ts` import/export boundary, conditional shared contracts and diagnostic tests are documented in `TECHNICAL-DETAIL-PROPOSAL.md`. After source-writing authorization move → link → run parity tests **one coherent group at a time**. Preserve public tool list/schema, role/skill strings, secure GitHub/Run state, HTTP responses and existing negative tests.
 
 **PASS:** functional/source/host equivalence at the demonstrated test surface, coherent navigation and no orphaned route/function/tool; practical source-navigation costs are **MEASURED, NOT GUARANTEED**. Repair regressions rather than REVERT merely because GSA1 measures worse. Maintain GSA1 as GSA2 baseline after parity.
 
@@ -137,7 +137,7 @@ Tasks:
 #### GOAL
 Measure and remove actual repeated **delivered** shared-role or MCP initialization guidance without removing mandatory instructions on independently entered tool surfaces.
 
-**MODIFY:** GSA1's actual reviewed Agent/Harness module and startup instruction producer, selected only after runtime evidence; **REUSE_AS_IS:** established role/skill mapping, public request contracts and meter. A mere duplicate sentence in source does not prove redundant host-delivered model context. Preserve Advisor, Human authorization, CAS/readback, correct role independence, error and stopchat behavior. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section C.
+**MODIFY:** GSA1's actual reviewed Agent/Harness module and startup instruction producer, selected only after runtime evidence; **REUSE_AS_IS:** established role/skill mapping, public request contracts and meter. A mere duplicate sentence in source does not prove redundant host-delivered model context. Preserve Advisor, Human authorization, CAS/readback, correct role independence, error and stopchat behavior. See `TECHNICAL-DETAIL-PROPOSAL.md` Section C.
 
 **PASS:** safe GSA-owned payload/call reduction and equivalent behavior; otherwise **REVERT/SKIP GSA2** while retaining modularized GSA1 baseline.
 
@@ -173,7 +173,7 @@ Tasks:
 #### GOAL
 Reduce observed unnecessary instructions/metadata **inside actual GSA-owned tool output**, not redesign progressive catalog/loading already implemented.
 
-**MODIFY:** chosen high-frequency tool handler(s) in their real GSA1 owning domain modules and/or skill metadata when evidenced. Preserve exact \`structuredContent\`/\`content\` compatibility, \`external_steps\`, validation errors, permissions and follow-up. **CREATE** one reusable formatter only if actual repeated consumer needs justify the extra file. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section D.
+**MODIFY:** chosen high-frequency tool handler(s) in their real GSA1 owning domain modules and/or skill metadata when evidenced. Preserve exact `structuredContent`/`content` compatibility, `external_steps`, validation errors, permissions and follow-up. **CREATE** one reusable formatter only if actual repeated consumer needs justify the extra file. See `TECHNICAL-DETAIL-PROPOSAL.md` Section D.
 
 **PASS:** verified net reduced response payload without lost workflow or extra rereads; otherwise **REVERT/SKIP GSA3**.
 
@@ -210,7 +210,7 @@ Tasks:
 #### GOAL
 Reduce irrelevant detailed guidance for a *verified* active Job scope without breaking an Agent's complete mandatory role contract.
 
-**REUSE_AS_IS:** current GSA1 agent module and role-specific \`renderHarness(role)\`. \`get_agent_harness\` currently accepts **only \`role\` and \`mode\`**; do not invent task/phase inputs or new context stores. **CREATE/MODIFY conditional:** a small pure selector only after a real authorized caller can provide trusted task/phase evidence; otherwise **NO_BUILD**. Test Reviewer isolation, Tester simulate, Direct Agent, missing/stale metadata and role permissions. See \`TECHNICAL-DETAIL-PROPOSAL.md\` Section E.
+**REUSE_AS_IS:** current GSA1 agent module and role-specific `renderHarness(role)`. `get_agent_harness` currently accepts **only `role` and `mode`**; do not invent task/phase inputs or new context stores. **CREATE/MODIFY conditional:** a small pure selector only after a real authorized caller can provide trusted task/phase evidence; otherwise **NO_BUILD**. Test Reviewer isolation, Tester simulate, Direct Agent, missing/stale metadata and role permissions. See `TECHNICAL-DETAIL-PROPOSAL.md` Section E.
 
 **PASS:** safe reduction at actual source-pinned runtime vs retained baseline; otherwise **REVERT/SKIP GSA4**.
 
@@ -251,7 +251,7 @@ Minimal journal row schema: `milestone, job_pack, base_sha, control_branch, cand
 1. Prepare exactly TWO named auxiliary source branches for the CX milestone, both from one base SHA. Run the same full approved Bootstrap Job with retained GSA on CONTROL and CX candidate on CANDIDATE, using separate isolated executable GSA runner builds.
 2. If candidate has **no GSA runtime error**, both context samples are eligible on the **first full Job**; no compulsory additional shakeout. Review both implementations and compare the context proxy, calls, tests and quality.
 3. If candidate needs a GSA-context or runtime repair **during that Job**, invalidate its context sample, keep evidence and legitimate feature progress, and repeat the full Job or the next full Pack safely on the **same two branch workspaces** from a verified equivalent starting point. A change of runner source SHA within a measurement invalidates it.
-4. Prefer same-workload raw payload/call comparison. For different new Jobs, estimate relative work from real changed-code lines and caveat domain difficulty; for completed-Pack \`FUNCTIONAL_REPLAY\` with no new code, LOC = N/A. No claims about exact ChatGPT host tokens.
+4. Prefer same-workload raw payload/call comparison. For different new Jobs, estimate relative work from real changed-code lines and caveat domain difficulty; for completed-Pack `FUNCTIONAL_REPLAY` with no new code, LOC = N/A. No claims about exact ChatGPT host tokens.
 5. Independently compare two code outputs against approved decisions, correctness, acceptance, testing, maintainability and simplicity. Select the better code branch irrespective of context version; integrate the selected source into dev and verify.
 6. After comparison and successful integration, **delete the inferior auxiliary branch** and verify deletion, so later merge never needs to consider both competing results. Milestone records the selected output, deleted branch, review/test evidence and integration commit. Do not retain the losing branch solely for later merger comparison or create additional test branches.
 7. Separately decide **KEEP candidate CX** if correct and beneficial, or **REVERT current CX only** (not previously retained CX groups or chosen Bootstrap feature code). Update the **rolling** retained GSA revision and eligible measurement. Next milestone creates exactly TWO new auxiliary branches and compares its new candidate against this winner.
@@ -277,7 +277,7 @@ Deliver a compact `BEFORE-AFTER.md` with **two-branch milestone source selection
 ### GOAL
 Define a coherent, source-validated implementation architecture **before assigning final milestone files/Tasks**, without producing placeholder application code or assuming splitting itself saves model context.
 
-The detailed design, including **GSA1 candidate cohesive-domain module file paths**, actions \`CREATE/MODIFY/KEEP\`, all 55 existing MCP tool owners, actual function/handler names, callers and import edges, thin \`index.ts\` wiring, 932-line selftest extraction, test migration, and GSA2–GSA4 targeted changes, is in \`TECHNICAL-DETAIL-PROPOSAL.md\`. The alternative comparison, review refinements and remaining execution evidence are in \`TECHNICAL-DETAIL-REVIEW.md\`.
+The detailed design, including **GSA1 candidate cohesive-domain module file paths**, actions `CREATE/MODIFY/KEEP`, all 55 existing MCP tool owners, actual function/handler names, callers and import edges, thin `index.ts` wiring, 932-line selftest extraction, test migration, and GSA2–GSA4 targeted changes, is in `TECHNICAL-DETAIL-PROPOSAL.md`. The alternative comparison, review refinements and remaining execution evidence are in `TECHNICAL-DETAIL-REVIEW.md`.
 
 **Design stage:** Review whether closely coupled files should be grouped into one coherent module; verify actual references, callers, input/output types and circular-import risk. The agreed structure can be adjusted before code based on source evidence, not code-line quotas. Reviewer approves logical architecture; no speculative declaration of saved tokens or time.
 
