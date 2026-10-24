@@ -4,35 +4,36 @@
 
 Reduce unnecessary **GSA-controlled** model-facing context while preserving or improving real Job completion quality, speed and reliability. Measure full-workflow consequences rather than declaring success from shorter text alone. Preserve existing governance, explicit Human authority, safe tool use, role independence and durable recovery. Do not claim control of the ChatGPT Web history/context window.
 
-**Status:** DRAFT FOR REVIEW — detailed planning only, not approval to modify runtime.
+**Status:** REVISED FOR RL REVIEW — detailed planning only, not approval to modify runtime.
 **Date:** 2026-10-24.
 **Development branch:** `upgrade/gsa-context-efficiency`.
 **Base of branch:** `main` commit `2ae052b57241bb845234235767b3dcb767030c70`.
 **Baseline production:** Supabase `gsa-mcp` v55 (source artifact previously independently verified).
 **Source truth:** `thebimhouseinfo-sudo/GPT-supper-agent`; do not integrate to or deploy from `main` during research.
 **References:**
-- `docs/plans/planner-evidence-context-efficiency/CRITERIA-DRAFT.md` (feature-level DRAFT, not approved canonical Criteria)
+- **Canonical approved Criteria:** `thebimhouseinfo-sudo/GSA-Projects/projects/01a0f051-4353-7bff-8edf-46be4b44fd2f/CRITERIA.md` @ blob `ff45d47435ae6cc9ae4acd5106bf945308fb4f95` (APPROVED 2026-10-21; in particular research-first B1–B3 and existing bug-intake C).
+- `docs/plans/planner-evidence-context-efficiency/CRITERIA-DRAFT.md` (old feature-level source proposal, historical reference ONLY)
 - `docs/plans/planner-evidence-context-efficiency/PLAN-PRELIMINARY.md` (older preliminary plan)
 - `docs/maintenance/MAIN-PRE-REFACTOR-READINESS-2026-10-23.md` (v55 readiness evidence)
 - `docs/architecture/AGENT-HARNESSES.md`, `PROJECT-MEMORY.md`, `test-lab/README.md`
 
 ### Scope and authority
 
-- This **context-efficiency-only** plan supersedes the implementation sequence of the older *preliminary* Planner+Context Efficiency plan, but does not alter approved Project Criteria, Human intent, existing production behavior or other Jobs. The Planner critical-challenge behavior is **already present** in v55 and is regression coverage, not a feature to rebuild.
+- This is the **Context Efficiency B** work package under the already APPROVED bounded Project Criteria (A/B/C), not a replacement of A/C or of the canonical reviewed Project Plan. Planner critical-challenge (A) is **already present** in v55 and is regression coverage, not a feature to rebuild. Existing defect intake/repairs (C) retain their own owners/evidence; any newly reported real GSA bug is triaged via the existing P0/Criteria-C mechanism rather than silently lost or folded into this context experiment. No changes to approved WHAT/WHY.
 - Human's acceptance that verification on a real GSA Job may occur later permits this bounded research and planning; it **does not** count as passing that future E2E test or as approval to merge or deploy.
-- Work only on the designated development branch when subsequent implementation is explicitly approved. No Super Power or new plugin registration.
-- No separate product-development gate, no new persistent context service, no ChatGPT Web `clear` command, no extra Criteria file, no per-test Job proliferation, no automatic CR. Reuse existing Planner→Reviewer and Tester flows and current Test Lab.
+- Human selected source branch `upgrade/gsa-context-efficiency` for this new context refactor. **Project Memory still declares** `upgrade/planner-evidence-context-efficiency` as the global Development Branch (PROJECT.md blob `14c3ea6562c78762f80d6ed16fb313b5474301e3`) and the existing approved Project Plan and Jobs have historical branch references. Do not silently switch other live Jobs by mutating the global branch policy. Before dispatching any context source-write Run, reconcile the existing GSA Project Memory branch binding and owning Job branch/scope against the Human branch decision and live Job state using the existing governance/administrator procedure; exact SHA readback required. Until reconciled, the new branch is a confirmed **Git ref / intended scoped target**, not yet a confirmed GSA dispatcher target. No Super Power or new plugin registration.
+- No separate product-development gate, no new persistent context service, no ChatGPT Web `clear` command, no extra Criteria file, no per-test Job proliferation, no automatic CR. Reuse existing Planner→Reviewer and Tester flows, the existing canonical Project Plan **J-94B4** and Context research Job **J-02E2** (READY in `WORK/CURRENT_EXECUTION_ORDER.md`) and current Test Lab. This document is a detailed HOW annex for the same context-efficiency work, **not a duplicate Project Plan/Job**; consult live Job/Run revisions instead of assuming the historical states remain current.
 - An existing approved Criteria revision remains the project's authority for WHAT/WHY. The feature-level DRAFT is a planning reference and is **not** retroactively marked approved. If actual implementation demands a **material new WHAT/WHY**, route that decision through the existing Human+Advisor Criteria process; ordinary HOW/benchmark planning must not activate Advisor.
 - Source edits, production merge and deploy require their normal explicit Human authorizations. This document alone grants none.
 
 ### Phase structure and dependency
 
-`M1 Baseline & audit` → `M2 Reproducible replay & experiment contract` → `M3 Small, isolated optimizations` → `M4 Independent regression, staging & release packet`. Candidate M3 may be stopped after M1/M2 if savings or testability are not credible. Branch preparation is complete; no new M0/Bootstrap gate.
+`M1 Read-only audit + rough savings estimates + GO/NARROW/STOP` → (only if research supports measurement) `M2 Minimal benchmark + reproducible baseline/replay` → (only if measured net value justifies implementation) `M3 Small, isolated optimizations` → `M4 Independent regression, staging & release packet`. **No benchmark code before M1's value checkpoint** (Criteria B3). If M1 recommends STOP, the B research objective is complete without creating M2/M3 code; no new M0/Bootstrap gate.
 
-## Phase M1 — Runtime payload baseline and context-path audit
+## Phase M1 — Read-only context audit and net-value decision
 
 ### GOAL
-Establish reproducible evidence for which GSA-owned payloads are delivered, which are redundant, and which savings are *possible* without making unverified host-context claims.
+Before writing any new benchmark tool, establish an evidenced, bounded estimate of where GSA-owned payload can be reduced and decide GO / NARROW / STOP under approved Criteria B1–B3.
 
 **M1.1 Pin identities and measurement scope (read-only).**
 - Record branch HEAD, production build/version, active plugin/client-schema status, runtime SHA and instrumentation/environment identity in a baseline manifest.
@@ -40,30 +41,35 @@ Establish reproducible evidence for which GSA-owned payloads are delivered, whic
 - Capture `get_skill_catalog`, one `load_skill` each for a common and a task-only skill, plus representative tool outputs containing `external_steps`.
 - Inventory MCP server instructions, tool descriptions/schema metadata, `BASE_AGENT_HARNESS`, `ROLE_HARNESSES`, `renderHarness`, `ROLE_SKILLS`, `ROLE_HOST_SKILLS`, and the per-tool response envelopes. For claims about what the model actually sees, distinguish source declaration, MCP server response and ChatGPT host-visible context.
 
-**M1.2 Create measurement script/fixture in the existing Test Lab (only after implementation approval).**
-- Store representative synthetic inputs and an allowlisted set of tool/role cases under `test-lab/fixtures/context-efficiency/`.
-- Produce per-case `codepoints/characters`, `UTF-8 bytes`, tool response size, schema/description size when retrievable, estimated tokens (label tokenizer/model), common-prefix/semantic-overlap candidates and call count.
-- Use sampled duration for MCP endpoints only when callable/instrumentable; separately record full-workflow elapsed time in M2. Never represent bytes, characters or estimates as exact ChatGPT input tokens.
-- Verify deterministic results with repeated runs against the same pinned fixture/source SHA, stable metric units and an identified measurement environment.
+**M1.2 Read-only context-path and authority analysis.**
+- Use existing source, tool responses and repository artifacts to build a `source → transport → caller/role → observed downstream need` map, not a new measurement script.
+- Classify duplicate text as intentional repetition across independent Roles, same-response duplication, tool-boundary mandatory repetition, or potentially removable duplication.
+- Never infer actual host tokens from source or byte counts; check whether `structuredContent` and `content` are both consumed by ChatGPT only if an allowed observation exists. Otherwise mark UNKNOWN and preserve compatibility.
+- Map each removable candidate to the surviving reliable delivery point and its role/safety/authority constraints.
 
-**M1.3 Determine real redundancy and authority boundaries.**
-- Build a `source → transport → caller/role → observed downstream need` map. Mark duplicates as: repeated by design across independent Roles; duplicate in one response; redundant but required at tool boundary; or candidate removable duplication.
-- Audit whether `structuredContent` and `content` are both transmitted/consumed in ChatGPT Web. If inaccessible, record UNKNOWN; leave compatibility unchanged.
-- For each proposed removal, map the *remaining* reliable delivery point and the policy/authority constraint it protects. Do not assume a previous chat turn or client cache will preserve essential instructions.
+**M1.3 Estimate value and cost for every candidate (Criteria B2).**
+- Using **already available observations only**, record a rough range for baseline volume, plausibly removable bytes/chars, workload frequency, estimated workflow benefit, uncertainty, implementation/test effort and risks to tool calls, rereads, role isolation and safety.
+- Mark unobservable values UNKNOWN; state the exact assumptions and whether a candidate reduces only an infrequently requested payload.
+- Rank hypotheses by plausible **NET workflow value**, not just shortening a large block.
 
-**M1.4 Freeze evidence and prioritize hypotheses.**
-- Save small `BASELINE.md`, `BASELINE.json` and `CONTEXT-PATH-MAP.md` within this plan/test-lab scope; evidence must contain revision, date, units, query/test method and observations.
-- Rank candidate changes by **estimated workflow benefit × confidence ÷ implementation/regression risk**, identifying uncertain values instead of pretending precision.
-- Explicit go/narrow/stop recommendation for M3. If no meaningful safe opportunity exists, recommend no code optimization.
+**M1.4 Evidence-based value/feasibility checkpoint BEFORE any benchmark code (Criteria B3).**
+- Planner and Reviewer document `PROCEED`, `NARROW` or `STOP / NO-BUILD` based on M1.1–M1.3 evidence, with a brief explanation for each candidate. This is an existing research decision within the plan, **not a new Human approval gate**.
+- Store a small `M1-READONLY-AUDIT.md` and optional aggregate figures. Do **not** create `test-lab/context-efficiency-metrics.test.cjs`, new fixtures/instrumentation, or runtime code before this decision.
+- If STOP, deliver the finding as valid Criteria-B research completion. If PROCEED/NARROW, specify only the smallest benchmark required and which signals remain UNKNOWN.
 
-**Exit / acceptance:** Pinned, reproducible baseline; auditable distinction between actual observations and UNKNOWN host-token behavior; at least one justified candidate or explicit NO-BUILD conclusion; no runtime policy/security changes.
+**Exit / acceptance:** Exact source-pinned read-only audit, per-candidate bounded estimates including frequency, effort and safety, GO/NARROW/STOP decision prior to any new benchmark tool. A justified NO-BUILD is PASS for M1; runtime unmodified.
 
-## Phase M2 — Controlled replay and frozen acceptance oracle
+## Phase M2 — Minimal benchmark and controlled replay (conditional on M1 PROCEED/NARROW)
 
 ### GOAL
-Measure end-to-end cost/quality on identical scenarios and freeze acceptance rules *before* testing optimized code, preventing a smaller payload from hiding more calls or worse decisions.
+Only after the research value checkpoint, build the smallest justified reusable measurement/replay capability and freeze full-workflow quality/cost acceptance rules before optimizing runtime.
 
-**M2.1 Define scenario corpus (Tester-authored independently of the optimization).**
+**M2.1 Implement only the minimum benchmark capability justified by M1 and define scenario corpus (Tester-authored independently of the optimization).**
+- **Precondition:** recorded M1 PROCEED/NARROW decision; otherwise this phase is NOT REQUIRED rather than failed.
+- If existing Test Lab scripts, source inspection and tool outputs can reproduce metrics, reuse them directly. Only if necessary, add small synthetic fixtures and a test-only read-only metric script under `test-lab/`, with a deterministic test for its behavior.
+- Pin exact source revision, environment, metric units, tokenizer estimate (if used) and reproducibility method; do not add a telemetry service or take production Job actions.
+
+**M2.1 scenario corpus:**
 Minimum scenario classes, with exact initial state, input, expected next action, expected authority and result evidence:
 1. **Short Q&A / project status**: one concise, correct response without full Job/harness loading or invented gate.
 2. **Planner critical challenge**: scoped CONFIRMED POSSIBLE / CONFIRMED IMPOSSIBLE / UNKNOWN and the known ineffective `gsa/clear` proposal; do not activate Advisor.
@@ -75,7 +81,7 @@ Minimum scenario classes, with exact initial state, input, expected next action,
 
 Use lightweight deterministic fixtures for structural/security checks. Model-mediated checks (e.g. planner reasoning) may use 3 or more runs per case as capability/budget allows. Distinguish deterministic from sample-based outcomes.
 
-**M2.2 Establish baseline replay.**
+**M2.2 Establish baseline replay on existing runtime before any optimization.**
 - Replay same fixtures on pinned unoptimized source/connection surface; record tool order, response bytes, all tool calls (including retries/rereads), elapsed latency and final result.
 - Track `wrong-tool` calls against a scenario-owned expected-tool oracle; record whether incorrect tool choice changed work or just added an unnecessary call.
 - Track `rework` as failed validation, additional correction loop or repeated step caused by missing/misread context; do not penalize intentional mandatory Reviewer/Tester steps.
@@ -87,7 +93,7 @@ Use lightweight deterministic fixtures for structural/security checks. Model-med
 - Success requires a demonstrated reduction of at least one targeted GSA-controlled payload, correct task outcomes, and **no material increase in end-to-end calls/retries/rework/latency** under the frozen comparison rule. The quantitative target and non-inferiority tolerances must be set from M1/M2 evidence, not reverse-engineered after results.
 - If host token billing/input counters are unavailable, use byte/estimated-token results only as proxies and label them.
 
-**Exit / acceptance:** Repeatable original-source replay, Tester-owned locked fixture/oracles and frozen threshold/evidence contract. If replay cannot be reliably run, report UNVERIFIED and do not proceed as though quality comparisons are proven.
+**Exit / acceptance:** When M1 authorized measurement on evidence, a repeatable original-source replay, Tester-owned locked fixture/oracles and frozen threshold/evidence contract. If replay cannot be reliably run, report UNVERIFIED and do not claim workflow-quality PASS; full production Job E2E can remain PENDING as the Human permitted, and is **not** misreported as performed.
 
 ## Phase M3 — Bounded context optimization experiments
 
@@ -168,17 +174,17 @@ This is a **proposed scope map** to be confirmed by M1 findings, not a pre-appro
 
 | Work item | Owner (execution role) | Depends on | Deliverable | Evidence required |
 |---|---|---|---|---|
-| M1.1 | Planner/Tester | branch base | Source and payload inventory | paths, SHAs, environment |
-| M1.2 | Tester/Coder (script only) | M1.1 | Minimal measurement fixtures and report | reproducible output |
-| M1.3–M1.4 | Planner + Reviewer | M1.1–M1.2 | Context path map and ranked hypotheses | proof of duplication; keep/remove rationale |
-| M2.1 | Tester | M1 | Frozen scenario corpus | original acceptance oracle |
+| M1.1 | Planner/Tester | branch base | Read-only source and context-surface inventory | paths, SHAs, environment |
+| M1.2 | Planner + Reviewer | M1.1 | Read-only context path + authority map | intentional vs removable duplication |
+| M1.3–M1.4 | Planner + Reviewer | M1.1–M1.2 | Per-candidate rough ranges and PROCEED/NARROW/STOP | frequency, savings, uncertainty, effort, risk; **NO benchmark code yet** |
+| M2.1 | Tester/Coder (test-only if needed) | M1 PROCEED/NARROW | Minimal benchmark + frozen scenario corpus | reproducible measurement and oracle |
 | M2.2–M2.3 | Tester + Planner | M2.1 | baseline replay and thresholds | source-pinned results, definitions |
 | M3.1–M3.2 | Coder + independent Tester | M2 | one-at-a-time candidate commits | failed/pass oracle, delta, negative findings |
 | M4.1 | Coder + Tester | candidate SHA | deterministic regression + typecheck | executed logs and source SHA |
 | M4.2 | Reviewer + Tester | M4.1 | independent behavior comparison | exact scenario results |
 | M4.3–M4.4 | Planner / Reviewer | M4.2 | staging verification + release/rollback packet | client schema, staging SHA, Human decision pending |
 
-**One bounded project upgrade, not a new Job for every fixture.** Reuse existing reviewers/Tests; no new gate topology. This milestone mapping intentionally uses the latest Human-facing M1–M4 naming; the older PRELIMINARY document used M0–M4 with a Planner-development M1 and does not govern this updated work.
+**One existing bounded workstream (J-02E2 research), not a new Job for every fixture.** Reuse existing canonical J-94B4 and approved Jobs/reviewers/tests. A future implementation/optimization step must be reconciled with the reviewed topology rather than inventing duplicate Jobs or assuming existing READY research Job automatically authorizes code changes; no new gate topology. This milestone mapping intentionally uses the latest Human-facing M1–M4 naming; the older PRELIMINARY document used M0–M4 with a Planner-development M1 and does not govern this updated work.
 
 ## Evidence definitions and reporting
 
@@ -210,6 +216,6 @@ Stop or narrow the work when (a) no evidence for meaningful safe GSA-owned savin
 
 ## Decisions still open after this detailed plan
 
-- The numeric target and non-inferiority thresholds are intentionally **not guessed**. They must be frozen from actual M1/M2 baseline before M3, without an additional Human gate unless user intent or Criteria changes.
+- Numeric target and non-inferiority thresholds are intentionally **not guessed**. First M1 must decide if measurement is justified at all, then M2 must freeze baseline/thresholds before M3. No additional Human gate unless user intent or Criteria changes.
 - Exact source patch locations and instrumentation approach follow from M1 observations; no unobserved refactor or obligatory telemetry is authorized.
 - This is a **reviewable plan draft**, not an independently reviewed PASS or Human approval to implement. Execution starts only after the already-established planning approval workflow and explicit Human authorization.
