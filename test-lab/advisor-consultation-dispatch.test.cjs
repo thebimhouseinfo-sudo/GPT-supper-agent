@@ -26,3 +26,9 @@ test('Advisor consultation cannot masquerade as Criteria write authorization', (
   assert.match(decision, /input\?\.human_decision !== 'APPROVE'/)
   assert.match(decision, /'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK'/)
 })
+
+test('Planner role explicitly dispatches advisor and resumes previously settled decision', () => {
+  assert.match(code, /Planner must start_direct_agent\(role=advisor\)/)
+  assert.match(code, /Advisor admission alone is not delivered advice/)
+  assert.match(code, /never stop at a receipt error or ask for the same approval twice/)
+})
