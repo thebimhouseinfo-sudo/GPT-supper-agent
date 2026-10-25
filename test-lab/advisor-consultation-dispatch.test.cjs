@@ -32,3 +32,20 @@ test('Planner role explicitly dispatches advisor and resumes previously settled 
   assert.match(code, /Advisor admission alone is not delivered advice/)
   assert.match(code, /never stop at a receipt error or ask for the same approval twice/)
 })
+
+test('new advice can be submitted before its receipt exists in old Criteria', () => {
+  const decision = code.slice(code.indexOf('function projectCriteriaAdvisoryDecision'), code.indexOf('// M5: reuse M3 Bootstrap'))
+  assert.match(decision, /input\?\.delivered_advice/)
+  assert.match(decision, /proposed\?\.delivered_to_human !== true/)
+  assert.match(decision, /baseline !== input\.criteria_current_sha/)
+  assert.match(decision, /scope !== input\.delta_scope/)
+  assert.match(decision, /receipt_format: 'PROPOSED_CANONICAL'/)
+  assert.match(decision, /criteria_write_prepared: false/)
+})
+
+test('Advisor evidence remains externally verifiable, not standalone write permission', () => {
+  const tool = code.slice(code.indexOf("'project_criteria_advice_check'"), code.indexOf("'project_role_addins_resolve'"))
+  assert.match(tool, /delivered_advice: z\.object/)
+  assert.match(tool, /this is only a claim pending independent readback/)
+  assert.match(tool, /'ADVISOR_DELIVERY_EVIDENCE_INVALID'/)
+})
