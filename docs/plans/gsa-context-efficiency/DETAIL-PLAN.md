@@ -515,3 +515,36 @@ For every valid Job observation record:
 4. Do not merge \`main\` or deploy production as part of the bugfix plan. Record exact regression and runtime evidence separately from technical design review.
 
 **Exit:** Independent functional verification of delivered-advice unlock (positive and negative cases), actual Criteria write/readback using real Advisor evidence when appropriate, and no regression in Advisor scope/CAS/security. **No independent confirmation review after CR**, no Advisor veto, no second Human approval for a decision already settled.
+
+## U-G — Existing Coding Skill Discovery Helper for Bootstrap
+
+### Goal
+
+During existing Bootstrap capability readiness, Planner **reuses compatible, inspected, maintained, established coding skills before authoring custom skills**. Repository popularity (GitHub stars) is a discovery signal only, never an install/quality/security guarantee. The helper is a small curated source-directory with per-repository URLs and selection guidance, not a forked skill store, mandatory marketplace, new agent, or extra Bootstrap gate.
+
+### Reviewed candidate sources (dynamic, verify at use-time)
+
+| Source | Repo | Reason to inspect |
+| --- | --- | --- |
+| Anthropic official Agent Skills | https://github.com/anthropics/skills | General Agent Skills structure, skill creator, MCP and technical examples; assess licenses per directory |
+| Superpowers | https://github.com/obra/superpowers | TDD, systematic debugging, planning, review workflows |
+| Vercel Agent Skills | https://github.com/vercel-labs/agent-skills | Frontend, browser and framework-specific workflow guidance |
+| Curated discovery directory | https://github.com/nodegenie/awesome-agent-skills | Search pointer; follow upstream repository, not aggregator blindly |
+| Security-focused library | https://github.com/trailofbits/skills | Specialized security checks where relevant |
+| Official Agent Skills standard | https://github.com/agentskills/agentskills | Format/compatibility reference, not a skill install bundle |
+
+Do not hardcode transient star counts. Fetch GitHub stars/freshness/license upstream if needed. Ignore ranking where the individual skill is incompatible, unsafe, unmaintained or disallowed by its license.
+
+### Milestone U-G — Skill Discovery and Reuse in existing Bootstrap
+
+| Task | Implementation | Acceptance |
+| --- | --- | --- |
+| UG-01 Catalog helper | Provide concise accessible repo index grouped by coding/testing/security/design/documentation plus source type, compatibility hints and upstream URL; defer actual skill content until needed. Prefer lightweight existing native discovery capability and edit in-repo planner guidance only where appropriate. | Planner can locate appropriate upstream choices without inventing paths, copying whole repositories or loading irrelevant skills. |
+| UG-02 Skill selection | Planner maps Project technical stack, platform and known capability gaps to a shortlist of individual skills. Inspect actual SKILL.md/metadata, licenses, latest revisions, instructions and risks, compare against already-installed skills, and prefer existing capabilities. | Every recommendation references an exact original skill and explains fit, compatibility, maintenance, provenance and limitations; stars alone never authorize install. |
+| UG-03 Bootstrap capability add-in | Add only accepted, compatible skills to the actual Project Coder/Tester configuration using existing mechanisms and authorized source/host tooling. If native host skills are present, reference/use them rather than duplicate as GSA Markdown. If install unavailable, report accurately rather than asserting completion. | Reused skills become genuinely accessible to the relevant agent; no false statement that external GitHub source is installed. |
+| UG-04 Gap fallback and tests | Write a custom skill **only if** available reusable skills are demonstrably insufficient or unsuitable. Test matching, non-suitable high-star cases, malicious instruction and licensing boundaries, unsupported host format, update drift and no-op when already installed. | Capability readiness remains existing Bootstrap acceptance: no new approvals, no bulk installation, no extra job/gate or context pollution. |
+
+**Source relationship:** This supplements Track U's Coder/Tester capability preparation (U-C and U-E). Schedule U-G before declaring those role capabilities ready when a relevant skill gap is identified; do not interrupt R meter, GSA1 parity or active unrelated Jobs. Maintain single common source truth in approved Criteria once scoped Advisor consultation and Human decision are recorded through the existing authorized flow.
+
+**Suggested Criteria wording:** "During Bootstrap, Planner shall first discover, assess and reuse appropriate existing coding/testing skills from credible and maintained repositories, giving popular repositories priority for *discovery*, not blind trust. It must check applicability, compatibility, licensing, security and availability, add only necessary skills through supported mechanisms, and create a custom skill only when an evidenced capability gap remains. This is part of existing Coder/Tester readiness, not a new gate."
+
