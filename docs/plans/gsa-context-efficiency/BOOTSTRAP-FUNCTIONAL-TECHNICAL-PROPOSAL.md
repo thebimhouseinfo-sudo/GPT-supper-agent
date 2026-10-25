@@ -4,7 +4,7 @@
 
 Implement **only the still-missing or behaviorally incomplete functional Bootstrap v7 requirements** inside GSA, preserving its current native Project/Criteria/Plan/Job/Run architecture. This is **Track U**, independently developed from Track R (GSA1–GSA4 Context Efficiency). No Track U application code is authored before a whole-related Technical Review PASS. Only **after both Track U and Track R proposals PASS** may Planner finalize the coordinated implementation milestones.
 
-**Status: PRE-CODE PROPOSAL — Coder nomination, pending whole-related Reviewer verdict; not application implementation or feature acceptance.**
+**Status: PRE-CODE PROPOSAL — revised source-grounded Coder nomination; formal independent CR verdict not recorded. Not application implementation or feature acceptance.**
 
 Source pins:
 - GSA repo: thebimhouseinfo-sudo/GPT-supper-agent, development branch upgrade/gsa-context-efficiency; live source supabase/functions/gsa-mcp/index.ts blob 448355e9a129db45d836c0f86915396fb060514c (9,777 lines, 55 MCP tool registrations).
@@ -205,3 +205,39 @@ These bounded checks must be resolved before corresponding source commits; they 
 **D5 — Cross-track edit collisions.** U owners are currently all in \`index.ts\`; R GSA1 proposes extracting the same callbacks into domain modules. **Correction:** all U code tasks must pin the actual owner file after GSA1 and avoid concurrently editing the same outdated root. The two technical proposals describe one application; later coordination must select one reviewed extraction/integration order, not create competing files or two contradictory source states.
 
 **D6 — Independent CR is not evidenced.** A Direct Agent reviewer admission prepares ephemeral isolated review context but is not itself a returned independent verdict. The durable \`start_critic_review\` API requires an actual Project Job record (UUID, text and SHA) for this target. None of those current Job record identifiers has been verified from a live current Project record in this session. Therefore **this self-check is NOT CR PASS**, and no independent review receipt is being fabricated. The next actual CR reviewer must inspect the revised proposal and source before granting PASS/CHANGES_REQUIRED. No application source work may rely on this section as the required design PASS.
+
+
+## 15. Final Coder revision after adversarial source inspection (2026-10-25)
+
+This revision resolves potential reviewer-blocking ambiguity in the earlier design; it does **not** impersonate the distinct Human-invoked CR reviewer or issue its verdict.
+
+### F1 — Existing development-branch policy differs from requested branch
+
+The live Project Memory at \`thebimhouseinfo-sudo/GSA-Projects/projects/01a0f051-4353-7bff-8edf-46be4b44fd2f/PROJECT.md\` currently records development/integration branch \`upgrade/planner-evidence-context-efficiency\`, whereas the Human explicitly directs this pre-code document work to \`upgrade/gsa-context-efficiency\`. Do NOT silently mutate Project Memory or claim a source-write grant for feature code. The current GitHub document is edited on the explicitly named branch only. Before any GSA project-owned source implementation, reconcile binding through the existing authorized branch policy flow; do not invent an alternative permission gate.
+
+### F2 — Pre-code deliverable specificity, without false file paths
+
+For each U Job, design/implementation must begin with a **source-path readback** naming the current actual owner (present \`index.ts\` or a post-GSA1 module), precise functions/callbacks and tests before its code edit. The existing five proposed module names are **future candidates**, not present source. Reviewer must reject creation of absent \`skills/gsa-*\` guessed paths. Keep native runtime skill bodies and host-managed skills distinct. A path action is \`MODIFY index.ts now\` or \`MODIFY verified GSA1 module after extraction\`, not \`CREATE module merely to host U code\`. Test code uses verified existing \`test-lab/*.test.cjs\` and adds named cases only where existing tests fail to cover the requirement.
+
+### F3 — U-01 durable acceptance is independent from a Discussion Job implementation
+
+A discussion record may be realized by authorized existing Project Memory records and progressive Secretary guidance without creating an extra formal Job type. **Required behavior** is the preservation/retrieval of Human-accepted rationale and negative exceptions. If current source cannot represent it, propose a minimal additional record and prove the original metadata/authorization chain; *never* introduce a mandatory gate just to house discussions. This prevents an optional UX from becoming a prerequisite to all other U Jobs.
+
+### F4 — U-05/U-06 review order must not deadlock Bootstrap itself
+
+The per-Goal descriptive source proposal is an **artifact within the existing plan**. Whole-related Reviewer checks this artifact and produces one verdict with findings; corrected proposal is re-reviewed. There is no additional \`independence confirmation\`, hidden Human technical approval, Reviewer of the Reviewer, or recursive proposal gate. For this current Track U proposal, the Human explicitly requested CRL and stated **CR itself is the one independent final reviewer**. Do not claim it passed before a genuine verdict is returned.
+
+### F5 — U-07 and U-08 skill sources are established, but source bodies are conditional
+
+Verified \`ROLE_HOST_SKILLS.tester=['scenario-tester']\` is a host *reference*, not proof the correct complete skill body is installed. \`RUNTIME_SKILLS.debugging\` is a real GSA *body*, so it MUST be reused first. For Tester simulation, obtain the actual eligible full reference before claiming faithful adoption, otherwise record source gap. Both tasks must preserve ordinary Tester/Coder jobs without forcing heavyweight skills at startup.
+
+### F6 — Reviewable operation/test mapping before code
+
+- U-01/U-02: real \`job_prepare\` / \`job_revise_plan\` + \`plan_review_record\` contracts; negative cases discussion-not-accepted, contradictory decision, missing historical exception.
+- U-03: real \`job_plan_change_assess\` → \`job_plan_change_prepare\` / \`fence_prepare\` / \`resume_evaluate\` and \`execution_cursor_*\` controls; mixed completed/unfinished/unknown host, idempotent retirement, no Run.RETIRED.
+- U-04/U-05: real \`get_agent_harness\` / \`get_skill_catalog\` / \`load_skill\` and current Coder source; negative DEV SHA rules erroneously applied to user-owned operational output.
+- U-06: real \`plan_review_record\` and \`start_critic_review\` / \`critic_review_record\` where authorized; negative independent reviewer not reading related Task source, and no invented Review authority.
+- U-07: existing tester skill mapping, host capability availability and actual originating user command; deterministic multi-flow conflict trace, real-host-unverified labels.
+- U-08: \`RUNTIME_SKILLS.debugging\` and Run verification/evidence; reproduction identity persisted across distinct Job/chat attempts, exactly three full failed Coder-patch+Tester-retest cycles, no fourth blind patch.
+
+**Design readiness:** All eight functional clusters have a proposed owner, integration surface, expected behavior, negative cases and no-new-control-plane rationale. The remaining constraints are: independent CR verdict, genuine original simulation skill text for full fidelity, and project branch-policy alignment before future source mutations. None is permission to alter Criteria or application code during this pre-code revision.
