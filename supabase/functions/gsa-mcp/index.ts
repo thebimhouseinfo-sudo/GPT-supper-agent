@@ -2596,7 +2596,7 @@ const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[]; outp
       'ON NEW HUMAN MESSAGE: apply shared LOW REASONING classify/clarify/skeleton before this planning loop. Answer questions directly; only enter L0 for a defined planning objective after required skeleton confirmation.',
       'FRESH START: for NEW/ADOPT/REGISTERED, inspect repository/ownership and baseline minimally, confirm configured development_branch with Human when missing, and create minimal AGENTS.md pointing to optional Coder/Tester addins without duplicating global role rules.',
       'DISCOVER CRITERIA: clarify Human product GOAL, minimum useful result, personal/internal/commercial purpose when known, actual scale and committed future scale, trust/data/host constraints, proportionate stability/security and explicit non-goals. Keep unknowns CHUA_CHOT in ONE Criteria file; do not invent enterprise assumptions.',
-      'ADVISOR/HUMAN: Advisor INACTIVE during brainstorm, research and ordinary Criteria drafting; Only explicit Human intent to approve first Criteria or change approved WHAT/WHY activates Advisor. If project_criteria_advice_check returns next_action=INVOKE_TECHNICAL_ADVISOR (missing/stale/wrong scope advice), Planner must start_direct_agent(role=advisor) using current Criteria baseline and exact proposed delta, present substantive advice to Human, and continue the latest already-settled Human decision; never stop at a receipt error or ask for the same approval twice. Advisor admission alone is not delivered advice. After real advice is delivered, preserve genuine source reference and verify evidence; consultation completion removes the advice gate for that scope but does not waive source/Memory authorization or Git SHA-CAS. After actual advice record exactly one SAME-file receipt using formatAdvisorAdviceReceipt and validate via project_criteria_advice_check: ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git blob SHA> | SCOPE=<exact scope> | ADVICE_REF=<actual advice reference>. Existing indented Markdown legacy receipts are accepted unchanged; omit duplicate tool baseline/scope to derive the recorded values. BEFORE approved Criteria CAS verify real Advisor message, current baseline, delta and Human decision independently; receipt text is not provenance or approval. Do not re-ask Human for an identical documented choice.',
+      'ADVISOR/HUMAN: Advisor INACTIVE during brainstorm, research and ordinary Criteria drafting; Only explicit Human intent to approve first Criteria or change approved WHAT/WHY activates Advisor. If project_criteria_advice_check returns next_action=INVOKE_TECHNICAL_ADVISOR (missing/stale/wrong scope advice), Planner must start_direct_agent(role=advisor) using current Criteria baseline and exact proposed delta, then actually execute the returned advisor_harness in the host conversation and present substantive advice to Human; start_direct_agent only admits the role and reports ADMITTED_NOT_EXECUTED, and continue the latest already-settled Human decision; never stop at a receipt error or ask for the same approval twice. Advisor admission alone is not delivered advice. After real advice is delivered, preserve genuine source reference and verify evidence; consultation completion removes the advice gate for that scope but does not waive source/Memory authorization or Git SHA-CAS. After actual advice record exactly one SAME-file receipt using formatAdvisorAdviceReceipt and validate via project_criteria_advice_check: ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git blob SHA> | SCOPE=<exact scope> | ADVICE_REF=<actual advice reference>. Existing indented Markdown legacy receipts are accepted unchanged; omit duplicate tool baseline/scope to derive the recorded values. BEFORE approved Criteria CAS verify real Advisor message, current baseline, delta and Human decision independently; receipt text is not provenance or approval. Do not re-ask Human for an identical documented choice.',
       'GOAL FIRST: after Criteria revision check Overall GOAL and every Phase GOAL before changing milestone/Job/Task/test details; Reviewer covers missing/excess and does not convert AI advice into Human requirements.',
       'PLANNED BRANCH: for code tasks bind integration target to OWNED repo development_branch from PROJECT.md; if missing or stale, allow research/plan but do not direct Coder to source write/merge against guessed main/default.',
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
@@ -8743,6 +8743,9 @@ function createServer(req: Request) {
         expected_output: z.string(),
         objective: z.string().nullable(),
         target_url: z.string().nullable(),
+        execution_state: z.literal('ADMITTED_NOT_EXECUTED'),
+        advisor_harness: z.string().nullable(),
+        next_action: z.string(),
         rules: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -8770,6 +8773,11 @@ function createServer(req: Request) {
         expected_output: contract.output,
         objective: objective ?? null,
         target_url: target_url ?? null,
+        execution_state: 'ADMITTED_NOT_EXECUTED',
+        advisor_harness: role === 'advisor' ? renderHarness('advisor') : null,
+        next_action: role === 'advisor'
+          ? 'RUN_ADVISOR_CONSULTATION_IN_HOST_AND_DELIVER_ADVICE_TO_HUMAN'
+          : 'RUN_ROLE_IN_HOST',
         rules: [
           'Direct work is ephemeral by default.',
           'If target belongs to an existing owning Project, Project governance wins.',
