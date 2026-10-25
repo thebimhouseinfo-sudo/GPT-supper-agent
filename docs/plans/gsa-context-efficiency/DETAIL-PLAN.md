@@ -311,3 +311,71 @@ For every Pack, report in human-readable form:
 5. Context candidate before/after (when applicable), directional result, larger-system impact and disposition KEEP/REVERT/SKIP.
 
 **Final acceptance:** GSA1 is retained after functional parity and measured in real source-development workflows; GSA2–GSA4 each have independent evidence-based KEEP/REVERT, and actual paired-work measurements remain separate from paper design review. GSA functional behavior is source/host-evidence-grounded for the approved adopted scope; the compact meter reports reasonable relative trends over more than one real functional Pack; no mandatory authority/role/Job correctness is traded for shorter context; `main` and production unaffected until a separately authorized release.
+
+## Planner implementation milestones and executable Task ledger (2026-10-25)
+
+### GOAL
+Turn the already-PASS technical-design proposal into source-verifiable implementation Tasks without reopening unchanged RL, duplicating plans, or treating document PASS as runtime PASS. This section is the execution breakdown of the phases above, not another authority or separate PREP milestone. All application code, branch mutations, MCP runner work and release remain unexecuted until appropriately authorized.
+
+**Pinned review basis:** `TECHNICAL-DETAIL-PROPOSAL.md` blob `be5e6f86fe8881cbcd6634dfc1c6bedf3ae0517c`; `TECHNICAL-DETAIL-REVIEW.md` blob `cde0a9afff4958fc56daccc82192f18d8979f333`; source `gsa-mcp/index.ts` blob `448355e9a129db45d836c0f86915396fb060514c`. If those inputs change materially, review the delta, not the unchanged design from zero. The current approved Criteria remains authoritative; the existing research-first vs functional-upgrade scope discrepancy must be reconciled by the normal Human/Advisor procedure **before corresponding source implementation**; do not auto-edit Criteria or introduce another review gate.
+
+### CT-00 — Meter readiness (P0)
+
+**Goal:** obtain one honest, small measurement capability before modifying the runner.
+
+| Task | Concrete operation and output | Dependency; acceptance evidence |
+| --- | --- | --- |
+| CT00-T1 | Locate model-facing GSA payload producers and source-navigation observation points; explicitly classify observable vs UNKNOWN host context | Existing entrypoint/skill/tool source; annotated coverage map |
+| CT00-T2 | CREATE `test-lab/context-efficiency-metrics.test.cjs` (or one equivalent test-only script), minimal fixtures only if needed; WRITE `docs/plans/gsa-context-efficiency/CONTEXT-METER.md` describing bytes, characters, token-proxy heuristic, tool-call ledger and source-file open/search/hop/reread counting | CT00-T1; deterministic sample and documented commands, no fake exact token usage |
+| CT00-T3 | MODIFY `.github/workflows/gsa-next-logic.yml` only where needed to execute new test and include new module paths in later GSA1 CI; verify observed `structuredContent` and fallback without assuming both were delivered | CT00-T2; repeated identical sample yields comparable metrics and labeled missing telemetry |
+| CT00-T4 | Pin GSA0 source SHA and one isolated baseline sample; test a synthetic changed response in test-only surface; classify SOURCE-TEST vs isolated live MCP honestly | CT00-T2/3; meter detects controlled difference, no prod/main change |
+
+**Close CT-00:** reproducible observed payload + source-navigation ledger and unknowns. No requirement to create comparison branches or a meter-only Bootstrap Job.
+
+### M-01 — Mandatory GSA1 cohesive modularization (P1 / CX-01)
+
+**Goal:** convert monolithic `supabase/functions/gsa-mcp/index.ts` into reviewed cohesive modules with exact public behavior/security parity; GSA1 remains a required retained version after parity even if initially less efficient.
+
+| Task | File operations / actions | Required acceptance |
+| --- | --- | --- |
+| GSA1-T1 | Revalidate source snapshot and 55 tool registrations / 98 functions / 28 uppercase constants against reviewed ownership; capture tool registration **names, schemas and order**, HTTP/OAuth/health/selftest output, init strings and negative auth controls; map actual callbacks, type/value imports and initialization order | Exact baseline manifest; drift to be delta-reviewed, not paper re-RL |
+| GSA1-T2 | CREATE `platform.ts` and cohesive `records.ts`; move only verified lower-level platform/config/auth and durable record/path/snapshot/attestation primitives. Keep `projectScopeDecision` with project lifecycle as proposed | No circular dependency; source check, original security/negative tests and exact field/error parity |
+| GSA1-T3 | CREATE `project.ts` including Project+Bootstrap+Advisor and `planning.ts` for planning/revision; move their handlers and owned helpers together, wire simple registration exports without circular imports | All owned registrations callable, Advisor gate and bootstrap readiness unchanged, CAS/RETIRED/plan-change tests pass |
+| GSA1-T4 | CREATE `execution.ts`, `evidence.ts` and `agent.ts` (including role harness, skills, initialization strings); preserve shared durable validators in `records.ts`; no GSA2/3 content shrinking during this move | Run/cursor/stopchat/evidence and role/skill output parity; unchanged permissions and error pathways |
+| GSA1-T5 | CREATE `diagnostics.ts` for the ~932-line selftest; CREATE `browser.ts` **only** if actual external bridge/credential boundary stays distinct (otherwise co-locate as reviewed). MODIFY `index.ts` to thin composition root; keep exact registration order or prove harmless compatibility; keep original routes | Selftest oracle, HTTP/OAuth/health/mcp routing and public 55-tool schema and order evidence |
+| GSA1-T6 | MODIFY source-path-sensitive `test-lab/*.test.cjs` discovery and `.github/workflows/gsa-next-logic.yml` as needed for moved symbols/module triggers; preserve every original assertion and negative test, no test weakening | Full TS import/typecheck, current CI/test-lab suite, public schema/diff, security negatives PASS; isolated MCP client parity must be observed for live-runtime PASS |
+| GSA1-T7 | Run **one complete substantive BP Job Pack** independently on exactly two feature-output branches (CONTROL=GSA0, CANDIDATE=GSA1) forked from the same pinned feature base; record actual isolated executable runner SHAs; independently review two code outcomes, select superior output, integrate and verify, delete losing branch and read back | Parity/quality first; context/sample validity recorded; GSA1 **KEEP** only after parity; deletion / live isolation UNVERIFIED until capability actually exercised |
+
+**Extraction order:** T2→T3→T4→T5→T6, with incremental typecheck and relevant regression after **each cohesive move**, not only at T6. Module/group deviations require evidence and review of the changed boundary. Owner inventory and exact file/symbol mapping remain in Proposal §B/B0/B0a; do not duplicate all 181 entries here. T7 may use BP-01 as Job Pack A after its approved scope and prerequisites are ready; do not implement a throwaway duplicate Job merely to measure GSA1.
+
+### M-02 / M-03 / M-04 — Optional rolling optimizations
+
+| Milestone and goal | Executable Tasks | Acceptance / disposition |
+| --- | --- | --- |
+| **M-02 / GSA2:** remove proven redundant *delivered* Harness instructions | GSA2-T1 measure duplicate model-delivered content at actual role/startup entrypoints; GSA2-T2 MODIFY only owning `agent.ts` producers where proven redundant, retain independent-entry obligations; GSA2-T3 same full BP Job Pack (prefer next substantive Pack) on exactly two pinned branches and isolated runners, compare code and payload | KEEP only when observable reduction and correctness hold; otherwise REVERT GSA2 alone, retain GSA1 |
+| **M-03 / GSA3:** reduce unnecessary GSA Tool/Skill output | GSA3-T1 rank actually captured high-frequency payloads and distinguish `structuredContent` vs fallback; GSA3-T2 MODIFY owning handler(s)/skill metadata only for proven excess, reuse existing catalog/load-on-demand; GSA3-T3 full matched Pack + independent output code selection | KEEP/REVERT GSA3 alone; no invented additional skill catalog or formatter without repeat consumers |
+| **M-04 / GSA4:** selectively load by Role/Task/Phase if a trustworthy input exists | GSA4-T1 audit real caller and authoritative task/phase source (current `get_agent_harness` only `role,mode`); GSA4-T2 if justified, MODIFY owning `agent.ts` with small fallback-safe selector and negative tests; GSA4-T3 full paired Pack | If no trustworthy source: **NO_BUILD** and no fake comparison; otherwise KEEP only after role/privacy/functional parity and measured benefit, else REVERT only GSA4 |
+
+For M-02/M-03/M-04 do not introduce a separately named meter Job or standalone micro-Job. Substantive Bootstrap Pack selections draw from BP-01 through BP-08 according to dependencies, not one arbitrary miniature task per context version. If all remaining approved Packs are complete, use a safe full-Pack replay with LOC-normalized metric N/A. BP-01–BP-08 Tasks and acceptance already specified above remain authoritative; do not duplicate their requirements in this ledger.
+
+### PAIR-01 — Shared execution/measurement protocol for every comparison milestone
+
+**Goal:** measure equivalent meaningful work without confusing source branches, GSA runner revisions or code quality.
+
+1. Pin `pack_id`, accepted human decisions, common feature-output base SHA, retained runner SHA, candidate runner SHA, environment and endpoint mapping. Create **exactly TWO auxiliary Git branches** from that feature base, `...-control` and `...-candidate`; record exact created names. No third branch for smoke, retests or test fixtures. Never run the unverified candidate against production by assumption.
+2. Execute the **same complete Bootstrap Job Pack** independently; retained runner uses CONTROL and candidate runner uses CANDIDATE. Track source opened/read/search/hops, model-facing GSA response bytes/token proxy and observed calls, retries, code diff, test results and errors. Confirm both runner versions are **actually executable and isolated**, not merely separate Git refs.
+3. If runner defect/repair contaminates a sample, mark it INVALID with cause and preserve valid feature-work history. Repair, then repeat a safe **complete** Pack with equivalent starting conditions on the same two branches, or use the next approved full Pack when equivalence and user effects allow. Changing runner SHA mid-run invalidates that measurement. Do not conceal failed attempts.
+4. Independently rank the produced Bootstrap feature code for correctness, simplicity, maintainability and tests. Select and integrate the **better code**, verify integration commit/readback; selection is independent of which runner consumed less context.
+5. Only **after** verified integration, delete the **inferior auxiliary Git branch** using an actual branch-ref deletion capability and verify absent. A file-delete tool does not qualify. If real deletion is unsupported, report **cleanup BLOCKED/UNVERIFIED** and do not claim milestone closure or delete a protected/default/shared branch.
+6. GSA1 must be retained after parity; optional GSA2–GSA4 candidate is independently KEEP/REVERT versus **immediately preceding retained winner**. Log rolling baseline SHA, context metric limitations and version winner. Next comparison forks a new pair from its own pinned common feature base.
+7. Separate SOURCE-TESTED, STAGING and real client-mediated evidence. ChatGPT hidden tokens are UNKNOWN; meaningful quality or code size change cannot be replaced by a synthetic percent saving.
+
+**Dependencies / stop rules:** CT-00 before measured comparisons; GSA1 functional/security parity before its rolling baseline promotion; M-02 after GSA1; M-03 after M-02 KEEP or REVERT; M-04 after M-03 KEEP or REVERT, conditional feasibility. Independently approved BP Pack work follows existing BP dependencies. A detected auth/scope/Advisor/Plan/Run/cursor regression stops candidate promotion. Unverified branch deletion or endpoint isolation must remain explicit execution capability gaps, not invented permanent governance gates.
+
+### INT-01 — Integrated acceptance and deferred release
+
+**Goal:** demonstrate functional Bootstrap M7 coverage across the ultimately authorized BP scope and preserved GSA contracts, and give a release recommendation without releasing.
+
+Tasks: **INT-T1** replay representative Project intake/Criteria→Plan→capability→Milestone, Planner/Reviewer, plan revision RETIRED, Coder Proposal, Tester simulate and defect three-cycle paths at verified available surfaces; **INT-T2** aggregate clean and invalid paired samples, selected feature-code commits, module navigation cost, optional CX dispositions and rolling runner SHAs; **INT-T3** verify surviving auxiliary branch cleanup or explicitly state blocker; **INT-T4** prepare documented merge/deploy recommendation and rollback/readback evidence, but **do not** merge `main` or deploy without a later separate Human instruction.
+
+**Completion states:** DESIGN READY = existing RL PASS + this executable task decomposition; CODE READY requires approved authorized scope and capability/runtime preconditions; IMPLEMENTED/PASS requires actual per-task verification; RELEASED requires separate deployment evidence. None of the latter three is implied by editing this plan.
