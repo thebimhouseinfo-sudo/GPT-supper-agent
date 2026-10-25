@@ -4,7 +4,7 @@
 
 Implement **only the still-missing or behaviorally incomplete functional Bootstrap v7 requirements** inside GSA, preserving its current native Project/Criteria/Plan/Job/Run architecture. This is **Track U**, independently developed from Track R (GSA1–GSA4 Context Efficiency). No Track U application code is authored before a whole-related Technical Review PASS. Only **after both Track U and Track R proposals PASS** may Planner finalize the coordinated implementation milestones.
 
-**Status: PRE-CODE PROPOSAL — revised source-grounded Coder nomination; formal independent CR verdict not recorded. Not application implementation or feature acceptance.**
+**Status: PRE-CODE TECHNICAL DESIGN PASS_WITH_FINDINGS — independent CR cycle 2 recorded in GSA Project Memory, verification `01a17283-ba9c-77bd-ba91-959df6b6a020`. This is not Criteria approval, application implementation, or runtime acceptance.**
 
 Source pins:
 - GSA repo: thebimhouseinfo-sudo/GPT-supper-agent, development branch upgrade/gsa-context-efficiency; live source supabase/functions/gsa-mcp/index.ts blob 448355e9a129db45d836c0f86915396fb060514c (9,777 lines, 55 MCP tool registrations).
@@ -280,3 +280,10 @@ No speculative durable schemas, no new agent role and no forced source files. Th
 **Intentionally unresolved material evidence (not silent implementation freedom):** presence and exact full content of the upstream \`simulate.skill\` plus five references; whether an existing Project Memory record can maintain optional discussion-only decision links without schema extension; existing Verification record retention adequacy for three defect cycles. These are **bounded prerequisite source inspections for each relevant U code Task**; fallback is minimal source-backed integration or NOT IMPLEMENTED, never fabricated host support. No such unknown confers permission to alter public schema or Criteria.
 
 **Re-review expectation:** Independent CR should judge this specific design against current pinned source, not require CI/runtime evidence in a pre-code artifact. If design still inadequate, issue explicit source-specific CHANGES_REQUIRED; no paper PASS for unverified behavior.
+
+
+## 17. Final independent CR disposition (2026-10-25)
+
+**Design verdict: PASS_WITH_FINDINGS**, Track U proposal blob `1772b64815ed536ad31975bea03d363c026c97b3` reviewed via GSA `start_critic_review` and `critic_review_record`. Verification: `thebimhouseinfo-sudo/GSA-Projects/projects/01a0f051-4353-7bff-8edf-46be4b44fd2f/VERIFICATION/01a17283-ba9c-77bd-ba91-959df6b6a020.json` (GitHub persisted and read back). Previous CR FAIL receipt: `01a17276-3d91-7b61-8d28-8142b63f0592`. Findings corrected in §16. The only remaining MINOR finding is the bounded implementation-time check of original simulate.skill and current durable record suitability. **CR is itself independent and the final technical design review; no additional independence check or human technical review.**
+
+**Implementation constraint (separate from CR):** Current approved Project Criteria and Memory development-branch policy are narrower/different than the proposed U implementation; obey existing Human/Advisor Criteria and branch-binding procedures before source code work. No product-code authorization is inferred from CR PASS. Track U and Track R pre-code design inputs are now both reviewed; coordinated Planner milestones can be finalized without reopening unchanged technical reviews.
