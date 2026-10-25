@@ -17,7 +17,7 @@ test('Advisor continuation preserves valid TypeScript and declared MCP response 
   assert.match(tool, /'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE'/)
   assert.match(tool, /next_action:\s*dispatchAdvisor\s*\?\s*'INVOKE_TECHNICAL_ADVISOR'/)
   assert.match(tool, /Advisor admission alone is not completed advice/)
-  assert.match(tool, /do not request/i)
+  assert.match(tool, /without requesting a second approval/i)
 })
 
 test('Advisor consultation cannot masquerade as Criteria write authorization', () => {
