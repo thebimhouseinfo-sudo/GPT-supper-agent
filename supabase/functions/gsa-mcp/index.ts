@@ -5639,6 +5639,7 @@ function createServer(req: Request) {
         status: z.string(), advisor_required: z.boolean(),
         criteria_write_prepared: z.literal(false), external_advice_check_required: z.boolean(),
         receipt_format: z.string().nullable(), receipt_baseline_sha: z.string().nullable(), receipt_scope: z.string().nullable(),
+        next_action: z.enum(['INVOKE_TECHNICAL_ADVISOR','VERIFY_ADVICE_DELIVERY_THEN_CONTINUE_CRITERIA_WRITE','NONE']),
         external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -5649,7 +5650,17 @@ function createServer(req: Request) {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for Criteria advice check.')
       const check = projectCriteriaAdvisoryDecision(input.project_id, input)
-      const out = { ...check, external_steps: check.advisor_required ? [
+      const dispatchAdvisor = input.intent === 'INITIAL_APPROVAL' || input.intent === 'MATERIAL_CHANGE'
+        ? ['ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE', 'ADVISOR_SCOPE_MISSING',
+           'ADVISOR_SCOPE_MISMATCH', 'ADVISOR_BASELINE_MISMATCH',
+           'ADVISOR_BASELINE_SHA_MISSING', 'ADVISOR_BASELINE_SHA_INVALID'].includes(check.status)
+        : false
+      const out = { ...check,
+        next_action: dispatchAdvisor ? 'INVOKE_TECHNICAL_ADVISOR' :
+          check.status === 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK'
+            ? 'VERIFY_ADVICE_DELIVERY_THEN_CONTINUE_CRITERIA_WRITE' : 'NONE',
+        external_steps: check.advisor_required ? [
+        'On missing, stale, or wrong-scope Advisor receipt, Planner MUST invoke Technical Advisor on the current Criteria baseline and proposed change, deliver the advice to Human, then continue the already-settled Human decision without requesting a second approval. Advisor admission alone is not completed advice.',
         'Read the exact current CRITERIA.md from configured GitHub Memory Repo; compare path/text/current SHA with tool inputs and confirm it is the ONE canonical Criteria file.',
         'For new receipts use canonical ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git SHA> | SCOPE=<exact advised scope> | ADVICE_REF=<actual message reference>. Previously saved indented Markdown legacy receipts are valid and need not be rewritten. Omit duplicate baseline/scope inputs when rechecking saved receipts; explicitly provided ones must match exactly.',
         'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, including its baseline, exact delta scope and advice reference; text can be forged and is not proof by itself.',
