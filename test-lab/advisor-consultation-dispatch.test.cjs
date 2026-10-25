@@ -49,3 +49,11 @@ test('Advisor evidence remains externally verifiable, not standalone write permi
   assert.match(tool, /this is only a claim pending independent readback/)
   assert.match(tool, /'ADVISOR_DELIVERY_EVIDENCE_INVALID'/)
 })
+
+test('Direct Advisor admission explicitly exposes executable harness but never claims consultation ran', () => {
+  const section = code.slice(code.indexOf("'start_direct_agent'"), code.indexOf("'get_instruction'"))
+  assert.match(section, /execution_state: z\.literal\('ADMITTED_NOT_EXECUTED'\)/)
+  assert.match(section, /advisor_harness: role === 'advisor' \? renderHarness\('advisor'\) : null/)
+  assert.match(section, /RUN_ADVISOR_CONSULTATION_IN_HOST_AND_DELIVER_ADVICE_TO_HUMAN/)
+  assert.doesNotMatch(section, /execution_state: 'ADVICE_DELIVERED'/)
+})
