@@ -79,3 +79,27 @@ Invalid/absent labels are recorded as `null` and marked `eligible_for_baseline:f
 The offline `test-lab/context-run-report.cjs` groups these size-only JSONL records by run and pinned runtime SHA, rejects invalid/unpinned samples and marks run identifiers appearing under multiple SHAs `INVALID_MIXED_RUNTIME_SHA`. Usage: `node test-lab/context-run-report.cjs size-only-events.jsonl`.
 
 **Caveat:** This is instrumented HTTP transport data, not proven model-facing context consumption. Even pinned runs remain `CANDIDATE_NEEDS_WORKLOAD_PROVENANCE`, never an automatically accepted GSA0 baseline. Additional Job/runtimes and equivalent-workload evidence are required for the rolling GSA0/GSA1 comparison. User deferred real-world tests; no CI/E2E PASS is claimed.
+
+
+## Job/workload evidence sidecar (R-00 addition)
+
+The offline report accepts an optional `workloads.json` array in addition to the size-only events:
+
+```json
+[
+  {
+    "run_id": "U_A_GSA0",
+    "runtime_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "job_id": "UA1",
+    "feature_base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "code_lines": 120,
+    "complexity_dimensions": [1, 2, 1, 2],
+    "scored_before_measurement": true,
+    "workload_kind": "APP_CODE"
+  }
+]
+```
+
+Run `node test-lab/context-run-report.cjs size-only-events.jsonl workloads.json`. Sidecar fields are operator-supplied evidence, **not independently verified provenance**. Validate pinned SHAs against real runner and feature commits before interpreting any comparison. A run ID used with multiple runtime SHAs is `INVALID_MIXED_RUNTIME_SHA` regardless of metadata. Scoring after observed results is inconclusive, as are documentation-only, test-only, move-only, mixed and zero-line work.
+
+A valid sidecar computes **workload units only**; it never derives model-context efficiency from raw HTTP bytes. Result remains `CANDIDATE_HTTP_ONLY_MODEL_CONTEXT_UNKNOWN` until genuinely GSA-model-facing captures and equivalent real U Job evidence are available. No sample is promoted into an approved baseline automatically.
