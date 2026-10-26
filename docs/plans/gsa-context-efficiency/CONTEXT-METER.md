@@ -56,3 +56,12 @@ Source entrypoint now conditionally annotates **non-streamed JSON responses only
 **Off by default.** No MCP body read, response content capture, persistent log, background request, network telemetry, or token claim. If a response is streamed, lacks Content-Length, is not JSON, or the feature flag is disabled, no probe header is added. Do not treat absent header as a zero-byte response. Header bytes reflect **HTTP output only** and are not equivalent to model-facing input or tool-response payload (SSE and other transport framing may apply).
 
 This is an incremental, safe boundary probe; it **does not satisfy automatic capture of all MCP tool payloads** and must not be used for an R-00 baseline without pinned runtime and event provenance. Live CI/E2E remain deferred by Human.
+
+
+## Streamed-response measurement amendment (2026-10-26)
+
+Opt-in `GSA_CONTEXT_METER_HEADERS=1` now counts transport bytes even without `Content-Length` by using a transparent streaming `TransformStream` and emitting one size-only `console.info` JSON record **after successful stream completion** (`metric=gsa-mcp-http-response-bytes`, `version=1`, `bytes`, `visibility=HOST_UNKNOWN`, `completeness=COMPLETE`). On cancellation or error, no completion record is emitted. No payload text, identities or request URLs are logged. Streams are forwarded chunk-for-chunk and no false `Content-Length` is introduced.
+
+Where a numeric `Content-Length` is available, the original header-based probe remains; otherwise only the completion log can provide observed size. Do not sum the header and stream measurements for a single response; they are alternative observation paths. Existing docs describing header-only behavior refer to the initial implementation and are superseded by this amendment.
+
+**Safety and interpretation:** The transparent stream wrapper is an untested application-code change and may affect streaming backpressure or host behavior; validate under actual MCP SSE/JSON before release. HTTP transport size still is not ChatGPT model-facing tokens. No continuous baseline, per-tool attribution or GSA0/GSA1 comparison is implied.
