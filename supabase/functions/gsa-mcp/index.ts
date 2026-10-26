@@ -9836,7 +9836,7 @@ app.all('/mcp', async (c) => {
     }
     const len = response.headers.get('content-length')
     const headers = new Headers(response.headers)
-    if (len !== null && /^\d+$/.test(len)) {
+    if (len !== null && /^\d+$/.test(len) && Number.isSafeInteger(Number(len))) {
       headers.set('X-GSA-Context-Proxy-Version', 'v1')
       headers.set('X-GSA-Context-Response-Bytes', len)
       headers.set('X-GSA-Context-Visibility', 'HOST_UNKNOWN')
