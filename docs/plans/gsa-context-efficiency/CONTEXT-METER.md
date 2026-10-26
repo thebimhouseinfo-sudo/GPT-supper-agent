@@ -47,3 +47,12 @@ When an **authorized, already available** response-event JSONL export exists, ru
 The capture output contains **only tool name, byte counts, duplicate-serialization flag and host-visibility-UNKNOWN**, never response text, file paths, tokens or raw payload bodies. `observed_tool_sizes` is counted as a separate `tools` observation in the meter, not `model_facing`; if `structuredContent` is duplicated in one JSON text content entry, the proxy counts one candidate payload instead of summing the two. Even where no duplication is detected, host inclusion of either channel remains UNKNOWN.
 
 This is **offline instrumentation**, not automatic live capture. A real GSA0 baseline is **not available yet** until an actually pinned runtime and comparable approved real U Job are observed. Running test lab input through this capture is useful for shape checks only, not context-efficiency claims. Human has deferred live tests, so no CI/E2E PASS is asserted.
+
+
+## Opt-in MCP HTTP response-size probe
+
+Source entrypoint now conditionally annotates **non-streamed JSON responses only** when server environment variable `GSA_CONTEXT_METER_HEADERS=1` is set AND the HTTP transport has supplied a numeric `Content-Length` header. It adds `X-GSA-Context-Proxy-Version: v1`, `X-GSA-Context-Response-Bytes`, and `X-GSA-Context-Visibility: HOST_UNKNOWN`.
+
+**Off by default.** No MCP body read, response content capture, persistent log, background request, network telemetry, or token claim. If a response is streamed, lacks Content-Length, is not JSON, or the feature flag is disabled, no probe header is added. Do not treat absent header as a zero-byte response. Header bytes reflect **HTTP output only** and are not equivalent to model-facing input or tool-response payload (SSE and other transport framing may apply).
+
+This is an incremental, safe boundary probe; it **does not satisfy automatic capture of all MCP tool payloads** and must not be used for an R-00 baseline without pinned runtime and event provenance. Live CI/E2E remain deferred by Human.
