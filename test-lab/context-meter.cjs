@@ -26,7 +26,7 @@ function measure(records, opt = {}) {
   const out = {
     schema: 'gsa-context-proxy/v1', visibility: 'GSA_OWNED_OBSERVABLE_ONLY',
     model_facing: {calls:0, utf8_bytes:0, characters:0, estimated_tokens:0},
-    tools:{calls:0, utf8_bytes:0},
+    tools:{calls:0, utf8_bytes:0, observed_structured_bytes:0, observed_text_bytes:0, duplicate_structured_text:0, visibility_unknown:0},
     navigation:{file_reads:0, file_searches:0, hops:0, unique_files:0},
     normalization:{code_lines:opt['code-lines'] ?? null, complexity:opt.complexity ?? null,
       workload:null, context_per_1000_work_units:null},
@@ -40,6 +40,18 @@ function measure(records, opt = {}) {
       out.model_facing.calls++
       out.model_facing.utf8_bytes += Buffer.byteLength(r.text,'utf8')
       out.model_facing.characters += Array.from(r.text).length
+    } else if (r.kind === 'observed_tool_sizes') {
+      if (typeof r.tool !== 'string' || !r.tool ||
+          !Number.isSafeInteger(r.structured_bytes) || r.structured_bytes < 0 ||
+          !Number.isSafeInteger(r.text_bytes) || r.text_bytes < 0 ||
+          !Number.isSafeInteger(r.payload_bytes) || r.payload_bytes < 0 ||
+          r.visibility !== 'HOST_MODEL_VISIBILITY_UNKNOWN') throw Error('invalid observed tool sizes')
+      out.tools.calls++
+      out.tools.utf8_bytes += r.payload_bytes
+      out.tools.observed_structured_bytes += r.structured_bytes
+      out.tools.observed_text_bytes += r.text_bytes
+      out.tools.visibility_unknown++
+      if (r.duplication === 'STRUCTURED_EQUALS_TEXT') out.tools.duplicate_structured_text++
     } else if (r.kind === 'tool' || r.kind === 'file_read' || r.kind === 'file_search') {
       if (typeof r.text !== 'string') throw Error(r.kind + ' text required')
       out.tools.calls++
