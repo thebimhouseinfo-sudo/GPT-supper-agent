@@ -9822,12 +9822,26 @@ app.all('/mcp', async (c) => {
   // responses only emit a count after successful completion, never a guessed
   // Content-Length. Default-off prevents production-side overhead.
   if (Deno.env.get('GSA_CONTEXT_METER_HEADERS') === '1') {
+    // Labels are operator-provided non-sensitive identifiers, never extracted
+    // from user payloads, sessions, request paths, or authentication headers.
+    const rawRun = Deno.env.get('GSA_CONTEXT_RUN_ID') ?? ''
+    const rawSha = Deno.env.get('GSA_CONTEXT_RUNTIME_SHA') ?? ''
+    const runId = /^[a-zA-Z0-9_-]{1,64}$/.test(rawRun) ? rawRun : null
+    const runtimeSha = /^[a-f0-9]{40}$/.test(rawSha) ? rawSha : null
+    const sample = {
+      metric: 'gsa-mcp-http-response-bytes', version: 1,
+      run_id: runId, runtime_sha: runtimeSha,
+      eligible_for_baseline: runId !== null && runtimeSha !== null,
+      visibility: 'HOST_UNKNOWN', completeness: 'COMPLETE'
+    }
     const len = response.headers.get('content-length')
     const headers = new Headers(response.headers)
     if (len !== null && /^\d+$/.test(len)) {
       headers.set('X-GSA-Context-Proxy-Version', 'v1')
       headers.set('X-GSA-Context-Response-Bytes', len)
       headers.set('X-GSA-Context-Visibility', 'HOST_UNKNOWN')
+      // Log a size-only sample for the Content-Length path as well.
+      console.info(JSON.stringify({ ...sample, bytes: Number(len), source: 'CONTENT_LENGTH' }))
       return new Response(response.body, { status: response.status,
         statusText: response.statusText, headers })
     }
@@ -9841,9 +9855,7 @@ app.all('/mcp', async (c) => {
         flush() {
           // Only numerical transport metadata; no payload, user ID, URL or text.
           console.info(JSON.stringify({
-            metric: 'gsa-mcp-http-response-bytes', version: 1,
-            bytes: transferredBytes, visibility: 'HOST_UNKNOWN',
-            completeness: 'COMPLETE'
+            ...sample, bytes: transferredBytes, source: 'STREAM_COUNT'
           }))
         }
       })
