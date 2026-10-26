@@ -9817,20 +9817,41 @@ app.all('/mcp', async (c) => {
   const server = createServer(c.req.raw)
   await server.connect(transport)
   const response = await transport.handleRequest(c.req.raw)
-  // R-00: opt-in, response-header-only context proxy. Never inspect MCP
-  // bodies, clone streams, emit private text, or infer actual host tokens.
-  // Content-Length may be missing for streaming/chunked responses; unknown
-  // is deliberate rather than an invented measurement.
-  if (Deno.env.get('GSA_CONTEXT_METER_HEADERS') === '1' &&
-      response.headers.get('content-type')?.includes('application/json')) {
+  // R-00: Opt-in size-only measurement. Do NOT store response bodies, do
+  // NOT equate HTTP transport bytes to model input tokens. For streamed
+  // responses only emit a count after successful completion, never a guessed
+  // Content-Length. Default-off prevents production-side overhead.
+  if (Deno.env.get('GSA_CONTEXT_METER_HEADERS') === '1') {
     const len = response.headers.get('content-length')
+    const headers = new Headers(response.headers)
     if (len !== null && /^\d+$/.test(len)) {
-      const headers = new Headers(response.headers)
       headers.set('X-GSA-Context-Proxy-Version', 'v1')
       headers.set('X-GSA-Context-Response-Bytes', len)
       headers.set('X-GSA-Context-Visibility', 'HOST_UNKNOWN')
       return new Response(response.body, { status: response.status,
         statusText: response.statusText, headers })
+    }
+    if (response.body && response.status !== 204 && response.status !== 304) {
+      let transferredBytes = 0
+      const counter = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          transferredBytes += chunk.byteLength
+          controller.enqueue(chunk)
+        },
+        flush() {
+          // Only numerical transport metadata; no payload, user ID, URL or text.
+          console.info(JSON.stringify({
+            metric: 'gsa-mcp-http-response-bytes', version: 1,
+            bytes: transferredBytes, visibility: 'HOST_UNKNOWN',
+            completeness: 'COMPLETE'
+          }))
+        }
+      })
+      // Never set Content-Length for an unknown-sized stream; leave status and
+      // all other headers unchanged. Cancellation/stream errors do not flush.
+      return new Response(response.body.pipeThrough(counter), {
+        status: response.status, statusText: response.statusText, headers
+      })
     }
   }
   return response
