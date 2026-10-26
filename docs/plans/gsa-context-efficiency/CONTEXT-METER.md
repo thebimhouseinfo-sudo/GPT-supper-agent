@@ -65,3 +65,17 @@ Opt-in `GSA_CONTEXT_METER_HEADERS=1` now counts transport bytes even without `Co
 Where a numeric `Content-Length` is available, the original header-based probe remains; otherwise only the completion log can provide observed size. Do not sum the header and stream measurements for a single response; they are alternative observation paths. Existing docs describing header-only behavior refer to the initial implementation and are superseded by this amendment.
 
 **Safety and interpretation:** The transparent stream wrapper is an untested application-code change and may affect streaming backpressure or host behavior; validate under actual MCP SSE/JSON before release. HTTP transport size still is not ChatGPT model-facing tokens. No continuous baseline, per-tool attribution or GSA0/GSA1 comparison is implied.
+
+
+## Runtime/run correlation (2026-10-26)
+
+When `GSA_CONTEXT_METER_HEADERS=1`, the runtime now labels size-only completed HTTP response samples with two **operator-provided** environment variables:
+
+- `GSA_CONTEXT_RUNTIME_SHA`: pinned lowercase 40-character source commit SHA.
+- `GSA_CONTEXT_RUN_ID`: non-sensitive experiment/Job-run label, 1–64 ASCII alphanumeric, underscore or hyphen characters. Do **not** put user identities, session tokens, private project names or secrets in the label.
+
+Invalid/absent labels are recorded as `null` and marked `eligible_for_baseline:false`; the live runtime SHA is **not inferred** from a claimed Git branch. This opt-in log collects numerical transport bytes, a bounded synthetic run identifier, a source SHA, completion marker and the source of observation (`CONTENT_LENGTH` or `STREAM_COUNT`). It does not persist response bodies. A single response follows one counting path, not two.
+
+The offline `test-lab/context-run-report.cjs` groups these size-only JSONL records by run and pinned runtime SHA, rejects invalid/unpinned samples and marks run identifiers appearing under multiple SHAs `INVALID_MIXED_RUNTIME_SHA`. Usage: `node test-lab/context-run-report.cjs size-only-events.jsonl`.
+
+**Caveat:** This is instrumented HTTP transport data, not proven model-facing context consumption. Even pinned runs remain `CANDIDATE_NEEDS_WORKLOAD_PROVENANCE`, never an automatically accepted GSA0 baseline. Additional Job/runtimes and equivalent-workload evidence are required for the rolling GSA0/GSA1 comparison. User deferred real-world tests; no CI/E2E PASS is claimed.
