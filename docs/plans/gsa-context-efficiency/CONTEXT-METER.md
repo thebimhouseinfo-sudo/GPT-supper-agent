@@ -39,3 +39,11 @@ Output `E` is null unless both `L>0` and `D` are provided. Compare to **one curr
 ## State and release
 
 Meter version: `gsa-context-proxy/v1`. This first version is a standalone deterministic reader, not a hooked MCP recorder and not a real-world baseline. R00-1 event inventory and real version-pinned instrumented captures remain pending. Human explicitly deferred live testing on 2026-10-25. Avoid merging to main or production deploy on this basis.
+
+## R00-1/R00-2: size-only MCP response capture (2026-10-26)
+
+When an **authorized, already available** response-event JSONL export exists, run `node test-lab/mcp-context-capture.cjs mcp-responses.jsonl > observed-sizes.jsonl`, then `node test-lab/context-meter.cjs observed-sizes.jsonl`. This input is a local export with entries containing `tool`, and `structuredContent` and/or `content`. It does **not** fetch host conversation history or install a background recorder. Do not create an external telemetry sink.
+
+The capture output contains **only tool name, byte counts, duplicate-serialization flag and host-visibility-UNKNOWN**, never response text, file paths, tokens or raw payload bodies. `observed_tool_sizes` is counted as a separate `tools` observation in the meter, not `model_facing`; if `structuredContent` is duplicated in one JSON text content entry, the proxy counts one candidate payload instead of summing the two. Even where no duplication is detected, host inclusion of either channel remains UNKNOWN.
+
+This is **offline instrumentation**, not automatic live capture. A real GSA0 baseline is **not available yet** until an actually pinned runtime and comparable approved real U Job are observed. Running test lab input through this capture is useful for shape checks only, not context-efficiency claims. Human has deferred live tests, so no CI/E2E PASS is asserted.
