@@ -9816,7 +9816,24 @@ app.all('/mcp', async (c) => {
   const transport = new WebStandardStreamableHTTPServerTransport()
   const server = createServer(c.req.raw)
   await server.connect(transport)
-  return transport.handleRequest(c.req.raw)
+  const response = await transport.handleRequest(c.req.raw)
+  // R-00: opt-in, response-header-only context proxy. Never inspect MCP
+  // bodies, clone streams, emit private text, or infer actual host tokens.
+  // Content-Length may be missing for streaming/chunked responses; unknown
+  // is deliberate rather than an invented measurement.
+  if (Deno.env.get('GSA_CONTEXT_METER_HEADERS') === '1' &&
+      response.headers.get('content-type')?.includes('application/json')) {
+    const len = response.headers.get('content-length')
+    if (len !== null && /^\\d+$/.test(len)) {
+      const headers = new Headers(response.headers)
+      headers.set('X-GSA-Context-Proxy-Version', 'v1')
+      headers.set('X-GSA-Context-Response-Bytes', len)
+      headers.set('X-GSA-Context-Visibility', 'HOST_UNKNOWN')
+      return new Response(response.body, { status: response.status,
+        statusText: response.statusText, headers })
+    }
+  }
+  return response
 })
 
 root.route('/gsa-mcp', app)
