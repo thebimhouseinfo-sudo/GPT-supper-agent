@@ -9824,7 +9824,7 @@ app.all('/mcp', async (c) => {
   if (Deno.env.get('GSA_CONTEXT_METER_HEADERS') === '1' &&
       response.headers.get('content-type')?.includes('application/json')) {
     const len = response.headers.get('content-length')
-    if (len !== null && /^\\d+$/.test(len)) {
+    if (len !== null && /^\d+$/.test(len)) {
       const headers = new Headers(response.headers)
       headers.set('X-GSA-Context-Proxy-Version', 'v1')
       headers.set('X-GSA-Context-Response-Bytes', len)
