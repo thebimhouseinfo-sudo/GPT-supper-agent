@@ -80,7 +80,9 @@ if(require.main===module) {
     if(process.argv.length < 3 || process.argv.length > 4) throw Error('Usage: node test-lab/context-run-report.cjs size-only-events.jsonl [workloads.json]')
     const lines=fs.readFileSync(process.argv[2],'utf8').split(/\r?\n/).filter(x=>x.trim())
     const records=lines.map((s,i)=>{try{return JSON.parse(s)}catch{throw Error('Invalid JSON at line '+(i+1))}})
-    process.stdout.write(JSON.stringify(report(records),null,2)+'\n')
+    const workloads = process.argv[3] ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8')) : []
+    if (!Array.isArray(workloads)) throw Error('workloads.json must be an array')
+    process.stdout.write(JSON.stringify(report(records,workloads),null,2)+'\n')
   } catch(e){process.stderr.write('CONTEXT_REPORT_ERROR: '+e.message+'\n');process.exitCode=1}
 }
 module.exports={report}
