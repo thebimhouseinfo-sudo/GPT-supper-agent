@@ -8,7 +8,7 @@ const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 function load(name, injected = {}) {
-  const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches'].includes(name)
+  const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
     ? 'execution-guards.ts'
     : ['milestoneLoopDecision','validateExecutionTopology','normalizeNextPlanningModel','planningLoopContinuationDecision'].includes(name)
       ? 'planning-guards.ts' : null;
