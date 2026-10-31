@@ -8,9 +8,16 @@ const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 function load(name, injected = {}) {
-  const node = parsed.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === name);
+  const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches'].includes(name)
+    ? 'execution-guards.ts'
+    : ['milestoneLoopDecision','validateExecutionTopology','normalizeNextPlanningModel','planningLoopContinuationDecision'].includes(name)
+      ? 'planning-guards.ts' : null;
+  const ast = owner ? ts.createSourceFile(owner,
+    fs.readFileSync('supabase/functions/gsa-mcp/'+owner,'utf8'),
+    ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
+  const node = ast.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === name);
   assert.ok(node, 'runtime function must exist: ' + name);
-  const js = ts.transpileModule(node.getText(parsed), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const js = ts.transpileModule(node.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
   const context = vm.createContext({ ...injected, Date, Set, Number, String, JSON, Array });
   return vm.runInContext(js + '\n' + name, context);
 }
