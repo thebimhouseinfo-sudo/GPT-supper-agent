@@ -5,6 +5,7 @@ import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextproto
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
+import { safeProjectName, validIntegrationBranch } from './project-utils.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -3113,10 +3114,6 @@ function normalizeGithubRepo(input: string) {
   }
 }
 
-function safeProjectName(name: string) {
-  return name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').slice(0,120)
-}
-
 function buildProjectManifest(args: {
   projectId: string
   name: string
@@ -3336,14 +3333,6 @@ function validMemoryPath(path: string) {
 function validProjectManifestPath(path: string, projectId: string) {
   return PROJECT_ID_PATTERN.test(projectId) &&
     path === 'projects/' + projectId + '/PROJECT.md' && validMemoryPath(path)
-}
-
-function validIntegrationBranch(name: string) {
-  return typeof name === 'string' && name.length > 0 && name.length <= 128 &&
-    !name.startsWith('/') && !name.endsWith('/') && !name.endsWith('.lock') &&
-    !name.includes('..') && !name.includes('//') && !name.includes('@{') &&
-    /^[A-Za-z0-9][A-Za-z0-9_.\/-]*$/.test(name) &&
-    name.split('/').every((segment) => segment !== '.' && segment !== '..' && !segment.startsWith('.'))
 }
 
 // C14A: preserve an existing Job branch unless Planner explicitly rebinds it.
