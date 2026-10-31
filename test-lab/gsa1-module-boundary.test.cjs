@@ -13,7 +13,7 @@ const owners={
   'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
   'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
   'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired'],
-  'planning-guards.ts':['validateExecutionTopology','milestoneLoopDecision']
+  'planning-guards.ts':['validateExecutionTopology','milestoneLoopDecision','normalizeNextPlanningModel']
 }
 test('GSA1 extracted modules have TypeScript parseable syntax and unique exports',()=>{
   const claimed=new Set()
