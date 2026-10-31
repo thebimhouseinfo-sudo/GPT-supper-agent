@@ -9,7 +9,7 @@ import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSource
 import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
-import { goalRecheckRunMatches, uxFirstTemporaryUiGateRequired } from './execution-guards.ts'
+import { goalRecheckRunMatches, uxFirstTemporaryUiGateRequired, checkpointLeaseExpired, checkpointBoundaryPrerequisiteIds, requiredCheckpointIds } from './execution-guards.ts'
 import { validateExecutionTopology, milestoneLoopDecision, normalizeNextPlanningModel, planningLoopContinuationDecision } from './planning-guards.ts'
 import { projectBootstrapChecklistDecision, projectBootstrapReadinessDecision } from './bootstrap.ts'
 
@@ -244,10 +244,6 @@ function checkpointAttemptPath(projectId: string, attemptId: string, nextMemoryN
   return recordPath(projectId, 'CHECKPOINT_ATTEMPTS', attemptId, 'NEXT', nextMemoryNamespace)
 }
 
-function checkpointLeaseExpired(claim: any, nowMs = Date.now()) {
-  const expires = Date.parse(String(claim?.lease_expires_at ?? ''))
-  return !Number.isFinite(expires) || expires <= nowMs
-}
 
 function parseRecordTexts(texts: string[], label: string) {
   const records: any[] = []
@@ -835,38 +831,7 @@ function checkpointVerificationApplicable(job: any, checkpoint: any, claim: any,
   return ['PASS','OBSERVED'].includes(verification.result)
 }
 
-function checkpointBoundaryPrerequisiteIds(job: any, checkpoint: any) {
-  const ids = new Set<string>(checkpoint.prerequisite_node_ids ?? [])
-  if (checkpoint.boundary === 'MILESTONE_GATE') {
-    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === checkpoint.milestone_id)
-    for (const id of milestone?.node_ids ?? []) if (id !== checkpoint.checkpoint_id) ids.add(id)
-  }
-  if (checkpoint.boundary === 'JOB_FINAL') {
-    for (const node of job.planning_topology ?? []) {
-      if (node.node_id !== checkpoint.checkpoint_id) ids.add(node.node_id)
-    }
-  }
-  return [...ids]
-}
 
-function requiredCheckpointIds(job: any, target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
-  if (target.kind === 'TASK') {
-    const ids = new Set<string>((job.evidence_requirements ?? [])
-      .filter((item: any) => item.consumer_task_id === target.id)
-      .map((item: any) => item.checkpoint_id))
-    const checkpointIds = new Set<string>((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))
-    const topologyNode = (job.planning_topology ?? []).find((item: any) => item.node_id === target.id && item.node_type === 'TASK')
-    for (const dependencyId of topologyNode?.depends_on ?? []) {
-      if (checkpointIds.has(dependencyId)) ids.add(dependencyId)
-    }
-    return [...ids]
-  }
-  if (target.kind === 'MILESTONE') {
-    const milestone = (job.milestones ?? []).find((item: any) => item.milestone_id === target.id)
-    return [...new Set<string>(milestone?.gate_checkpoint_ids ?? [])]
-  }
-  return [...new Set<string>((job.test_checkpoints ?? []).map((item: any) => item.checkpoint_id))]
-}
 
 function evaluateNextEvidenceGate(job: any, claimSnapshots: any[], verificationSnapshots: any[], target: { kind: 'TASK' | 'MILESTONE' | 'JOB', id?: string | null }) {
   const executionContract = jobExecutionContract(job)
