@@ -563,3 +563,15 @@ Do not hardcode transient star counts. Fetch GitHub stars/freshness/license upst
 **R-01 STARTED, not PASS.** On `upgrade/gsa-context-efficiency`, extracted the unchanged pure functions `safeProjectName` and `validIntegrationBranch` into `supabase/functions/gsa-mcp/project-utils.ts` (commit `f7c19a6a0d864762a4e7c93542d32ecd8f8eed78`), and replaced their in-file definitions with the explicit relative import in `index.ts` (commit `a8cf845702e6726a83d575eb8662097d95db444f`). GitHub readback confirmed the import and absence of the old definitions. These functions were selected as pure low-risk first extraction only; this checkpoint does **not** assert TypeScript compilation, runtime parity, 55-tool schema parity, GSA0 baseline, or complete R-01. Human had deferred practical testing; do not call it PASS.
 
 Next: source-bound structural inventory of registrations, imports, free-variable dependencies and coherent ownership from the already-reviewed B0/B0a module map; then move cohesive groups while preserving all public tool contracts and adding parity checks when permitted. Do not merge/deploy until authorization and evidence.
+
+### GSA1 checkpoint — 2026-10-31 expanded module extraction
+
+Human directed continued implementation without human intervention until an actual decision is needed. Current branch `upgrade/gsa-context-efficiency`. This checkpoint covers R-01 **implementation only**, not runtime acceptance.
+
+- **Six extracted cohesive files:** `project-utils.ts`, `record-handles.ts`, `platform-utils.ts`, `advisor-receipt.ts`, `execution-guards.ts`, `planning-guards.ts`; **19 exported functions** moved with unchanged bodies into owners and imported from `index.ts`.
+- Core groups include Project path/name/retired-branch validation, record ID helpers, runtime slug/GitHub URL normalization, Advisor receipt/decision, execution preconditions, planning topology/milestone and planning-revision normalization.
+- Readback structural inventory reports **56** `server.registerTool(` call sites in the current source; original Proposal B0 refers to 55, which is historical and **must not be treated as current parity evidence**. Snapshot actual names/order/schema before further structural tool registration moves; historical difference needs attribution, not a false PASS.
+- Added source-bound static test `test-lab/gsa1-module-boundary.test.cjs` and adapted Advisor source contract tests to the extracted owner; **tests not executed per Human deferment**. No TypeScript compile or runtime parity claim.
+- Current `index.ts` blob SHA after this checkpoint: `99a81100ec9cf842c9e6042cdb2f0209423deaf7`.
+
+Next: move related Project/Planning/Execution owners in coherent clusters with dependency closure; do not split every helper into separate files. Preserve the exact current 56-tool public contract; defer real CI/runtime proof and baseline sampling according to Human instruction. No merge, release or deployment.
