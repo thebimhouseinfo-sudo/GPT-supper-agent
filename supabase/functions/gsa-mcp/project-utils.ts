@@ -10,3 +10,8 @@ export function validIntegrationBranch(name: string) {
     /^[A-Za-z0-9][A-Za-z0-9_.\/-]*$/.test(name) &&
     name.split('/').every((segment) => segment !== '.' && segment !== '..' && !segment.startsWith('.'))
 }
+
+export function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
+  const safeSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'knowledge'
+  return 'projects/' + projectId + '/KNOWLEDGE/' + knowledgeId + '-' + safeSlug + '.md'
+}
