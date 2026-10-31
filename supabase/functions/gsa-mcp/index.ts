@@ -8,6 +8,7 @@ import { z } from 'npm:zod@^4.1.13'
 import { knowledgePath, safeProjectName, validIntegrationBranch } from './project-utils.ts'
 import { projectHandle, jobHandle, runHandle } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts } from './advisor-receipt.ts'
+import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -82,15 +83,6 @@ function uxFirstTemporaryUiGateRequired(job: any, role: string): boolean {
     job.ui_strategy?.temporary_ui_human_approval === 'REQUIRED_PENDING'
 }
 
-function edgeFunctionSlug(req: Request) {
-  const url = new URL(req.url)
-  const parts = url.pathname.split('/').filter(Boolean)
-  const candidate = parts[0] === 'functions' && parts[1] === 'v1' ? parts[2] : parts[0]
-  // Only exact gsa-mcp is production. Explicit gsa-mcp-* function slugs are staging.
-  // No arbitrary path may opt into the production NEXT namespace.
-  return candidate === 'gsa-mcp' || (typeof candidate === 'string' && /^gsa-mcp-[a-z0-9-]+$/.test(candidate))
-    ? candidate : 'gsa-mcp-invalid'
-}
 
 function runtimeSurface(req: Request) {
   return edgeFunctionSlug(req) === 'gsa-mcp' ? 'PRODUCTION' as const : 'STAGING_NEXT' as const
@@ -3034,22 +3026,6 @@ function renderHarness(role: string) {
   ].join('\n')
 }
 
-function normalizeGithubRepo(input: string) {
-  try {
-    const url = new URL(input)
-    if (url.hostname !== 'github.com') return null
-    const parts = url.pathname.replace(/^\/+|\/+$/g, '').split('/')
-    if (parts.length < 2 || !parts[0] || !parts[1]) return null
-    const owner = parts[0]
-    const name = parts[1].replace(/\.git$/, '')
-    return {
-      full_name: owner + '/' + name,
-      url: 'https://github.com/' + owner + '/' + name,
-    }
-  } catch {
-    return null
-  }
-}
 
 function buildProjectManifest(args: {
   projectId: string
