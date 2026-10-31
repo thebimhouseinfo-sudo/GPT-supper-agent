@@ -12,7 +12,8 @@ const owners={
   'record-handles.ts':['projectHandle','jobHandle','runHandle','uuidv7'],
   'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
   'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
-  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired']
+  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired'],
+  'planning-guards.ts':['validateExecutionTopology','milestoneLoopDecision']
 }
 test('GSA1 extracted modules have TypeScript parseable syntax and unique exports',()=>{
   const claimed=new Set()
