@@ -579,3 +579,10 @@ Next: move related Project/Planning/Execution owners in coherent clusters with d
 ### GSA1 tool-name parity correction — 2026-10-31
 
 A deeper source inspection distinguishes **56 `server.registerTool` call sites** from the concrete runtime tool-name list: **55 literal registrations plus 3 `transitionTool` helper invocations**, yielding **58 distinct current tool names**. Earlier references to 56 "tool registrations" were call-site counts, not the expanded tool-name count. Historical technical proposal stated 55 in its earlier snapshot; do not use that as a current runtime contract. Pinned source-derived inventory: `test-lab/gsa1-tool-name-inventory.json`; companion source-bound test asserts the 58 names and declaration order. This is not proof of runtime/tool schemas/handler equivalence; tests still deferred by Human.
+
+### GSA1 review/test wiring checkpoint — 2026-10-31
+
+- Adapted pre-existing source-extraction tests after moving runtime functions into modules: `test-lab/llc60-planning-loop.test.cjs`, `test-lab/runtime-logic.test.cjs`, `test-lab/project-branch-policy.test.cjs`, and Advisor source contract test. **No tests were executed** (Human explicitly postponed practical testing).
+- Registered tool inventory is now pinned by exact **58 public names** and declaration order in `test-lab/gsa1-tool-name-inventory.json`, including 3 `transitionTool` registrations; static assertions in `gsa1-module-boundary.test.cjs` are intended to detect drift.
+- Six cohesive modules currently own **21 moved functions**: Project, Records, Platform, Advisor, Execution Guards, Planning Guards. Further GSA1 extraction and runtime/CI parity pending; do not merge/deploy or label PASS yet.
+
