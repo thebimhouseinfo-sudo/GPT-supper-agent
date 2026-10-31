@@ -5,7 +5,7 @@ import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextproto
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
-import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSourceBranch, parseRetiredBranchRows } from './project-utils.ts'
+import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSourceBranch, parseRetiredBranchRows, resolveProjectCriteriaIntake, projectTaskCapabilityAssessment, projectCriteriaBindingError } from './project-utils.ts'
 import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
@@ -1046,15 +1046,6 @@ const CRITERIA_BINDING_SCHEMA = z.object({
   approval_status: z.literal('APPROVED'),
 })
 
-function projectCriteriaBindingError(projectId: string, planKind: string, binding: any): string | null {
-  if (planKind !== 'PROJECT_PLAN') return null
-  if (!binding || binding.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
-      !/^[0-9a-f]{40}$/.test(String(binding.criteria_blob_sha || '')) ||
-      binding.approval_status !== 'APPROVED') {
-    return 'PROJECT_CRITERIA_NOT_BOUND: a Project Plan requires approved Project CRITERIA.md exact blob SHA, not an AI draft or source default.'
-  }
-  return null
-}
 
 
 /**
@@ -2205,15 +2196,6 @@ const PLANNING_LOOP_CONTINUATION_SCHEMA = z.object({
 })
 
 // Product Criteria intake only; current GSA execution gates remain unchanged.
-function resolveProjectCriteriaIntake(mode: 'NEW' | 'EXISTING', state: 'PRESENT' | 'ABSENT' | 'UNKNOWN', observedSource: string) {
-  const observed = typeof observedSource === 'string' && observedSource.trim().length > 0
-  if (mode === 'NEW') return { disposition: 'CREATE_DRAFT_IF_ABSENT' as const, source_derived: false, review: 'NEW: ask Human for desired GOAL, WHAT/WHY and acceptance before Criteria approval; do not create an Implementation Plan or code.' }
-  if (state === 'PRESENT') return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: false, review: 'EXISTING with Criteria: validate with Human that the existing Criteria describes the intended product (not just design/code); compare actual source for achieved, missing, excess and drift. Source is evidence, not approval.' + (observed ? ' Source observation (independent read required): ' + observedSource.slice(0, 600) : ' Source comparison UNVERIFIED until inspection.') }
-  if (state === 'UNKNOWN') return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: false, review: 'EXISTING: inspect canonical Criteria in Project Memory before preparing anything. Never overwrite or infer approval.' }
-  if (!observed) return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING without Criteria: first read actual source/docs; draft Criteria only if none exists.' }
-  if (/CRITERIA(?:\.md)?/i.test(observedSource)) return { disposition: 'READ_EXISTING_NO_WRITE' as const, source_derived: true, review: 'EXISTING with source Criteria: independently inspect it and actual Human approval. Reuse an approved source document without duplicate Project Memory registration; if draft or unapproved, use the existing approval process.' }
-  return { disposition: 'INSPECT_FIRST_NO_WRITE' as const, source_derived: true, review: 'EXISTING source code is not evidence that a Criteria file exists. Inspect project documents first; create a Criteria draft only if genuinely absent, then obtain Human approval.' }
-}
 
 
 const BASE_AGENT_HARNESS = [
@@ -3060,27 +3042,6 @@ function resolveProjectRoleAddins(projectId: string, role: 'coder' | 'tester', a
 }
 
 // M2: configured add-in paths are discovery evidence, never proof a Task is functional.
-function projectTaskCapabilityAssessment(projectId: string, role: 'coder' | 'tester', taskId: string | undefined,
-  requiresDomain: boolean, resolved: any, evidence: any[] = []) {
-  if (!requiresDomain) return { readiness: 'GENERIC_READY', ready_for_task: true, matched_evidence_refs: [] as string[] }
-  const paths = [...(resolved.harness_path ? [resolved.harness_path] : []), ...(resolved.skill_paths ?? [])]
-  if (resolved.status === 'DENIED' || !paths.length) return {
-    readiness: 'BLOCKED_REQUIRED_ADDIN', ready_for_task: false, matched_evidence_refs: [] as string[],
-  }
-  // A caller-supplied test result is not an authenticated, independently read-back Verification.
-  // Keep the state non-ready even if all claims match. Orchestrator must read back actual
-  // skill files and functional probe evidence before M3/M5 may accept capability readiness.
-  const matches = taskId && paths.every((path: string) => evidence.some((e: any) =>
-    e.project_id === projectId && e.role === role && e.task_id === taskId &&
-    e.path === path && /^[0-9a-f]{40}$/.test(String(e.file_sha ?? '')) &&
-    e.result === 'FUNCTIONAL' && typeof e.verification_ref === 'string' &&
-    e.verification_ref.startsWith('projects/' + projectId + '/VERIFICATION/')))
-  return {
-    readiness: matches ? 'EVIDENCE_PRESENT_UNVERIFIED' : 'CONFIGURED_UNVERIFIED',
-    ready_for_task: false,
-    matched_evidence_refs: matches ? [...new Set(paths.map((p: string) => evidence.find((e: any) => e.path === p && e.project_id === projectId && e.role === role && e.task_id === taskId)?.verification_ref).filter(Boolean))] : [],
-  }
-}
 
 function projectScopeDecision(args: {
   project_manifest_text: string
