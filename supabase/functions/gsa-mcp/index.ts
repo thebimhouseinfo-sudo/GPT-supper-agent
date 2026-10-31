@@ -5,7 +5,7 @@ import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextproto
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
-import { safeProjectName, validIntegrationBranch } from './project-utils.ts'
+import { knowledgePath, safeProjectName, validIntegrationBranch } from './project-utils.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -1050,11 +1050,6 @@ function nextPlanSupersessionMatches(
     claim?.attempt_id === verification?.attempt_id &&
     claim?.last_target_revision === verification?.target_revision
   )
-}
-
-function knowledgePath(projectId: string, knowledgeId: string, slug: string) {
-  const safeSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'knowledge'
-  return 'projects/' + projectId + '/KNOWLEDGE/' + knowledgeId + '-' + safeSlug + '.md'
 }
 
 function prettyJson(value: unknown) {
