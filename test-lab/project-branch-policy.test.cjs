@@ -29,7 +29,7 @@ for (const owner of sources) {
   assert.equal(owner.parseDiagnostics.length, 0, owner.fileName + ' syntax')
   for (const node of owner.statements) {
     if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
-      extracted.push(node.getText(owner).replace(/^export\\s+/, ''))
+      extracted.push(node.getText(owner).replace(/^export\s+/, ''))
     if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
       ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
       extracted.push(node.getText(owner))
