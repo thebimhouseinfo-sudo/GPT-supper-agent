@@ -10,7 +10,7 @@ import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
 import { goalRecheckRunMatches, uxFirstTemporaryUiGateRequired } from './execution-guards.ts'
-import { validateExecutionTopology, milestoneLoopDecision } from './planning-guards.ts'
+import { validateExecutionTopology, milestoneLoopDecision, normalizeNextPlanningModel } from './planning-guards.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -1377,15 +1377,6 @@ function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewe
   return null
 }
 
-function normalizeNextPlanningModel(model: any, planningRevision: number) {
-  return {
-    evidence_needs: (model.evidence_needs ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
-    test_checkpoints: (model.test_checkpoints ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
-    evidence_requirements: (model.evidence_requirements ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
-    milestones: (model.milestones ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
-    planning_topology: (model.planning_topology ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
-  }
-}
 
 function validateNextPlanningModel(executionContract: ExecutionContract, tasks: any[], model: any, planningRevision: number): string | null {
   const evidenceNeeds = model.evidence_needs ?? []
