@@ -12,7 +12,7 @@ const owners={
   'record-handles.ts':['projectHandle','jobHandle','runHandle','uuidv7'],
   'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
   'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
-  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired'],
+  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'],
   'planning-guards.ts':['validateExecutionTopology','milestoneLoopDecision','normalizeNextPlanningModel','planningLoopContinuationDecision'],
   'bootstrap.ts':['projectBootstrapChecklistDecision','projectBootstrapReadinessDecision']
 }
