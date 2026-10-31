@@ -74,3 +74,55 @@ export function normalizeNextPlanningModel(model: any, planningRevision: number)
     planning_topology: (model.planning_topology ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
   }
 }
+
+export function planningLoopContinuationDecision(
+  stage: 'JOB_PREPARED' | 'PLAN_REVISED' | 'REVIEW_RECORDED' | 'READY_TRANSITION',
+  lifecycle: string,
+  planningRevision: number,
+  reviewResult?: string,
+) {
+  const invalid = () => ({
+    state: 'NOT_APPLICABLE' as const, next_action_after_readback: 'NONE' as const,
+    next_role: 'none' as const, resume_same_turn: false,
+    requires_readback: false, planning_revision: planningRevision,
+    human_action_required: false, mutation_authorized: false as const,
+  })
+  if (!Number.isInteger(planningRevision) || planningRevision < 1) return invalid()
+  let action: string = 'NONE'
+  let role: string = 'none'
+  if ((stage === 'JOB_PREPARED' || stage === 'PLAN_REVISED') &&
+      (lifecycle === 'DRAFT' || (stage === 'PLAN_REVISED' && lifecycle === 'IN_PROGRESS'))) {
+    action = 'REVIEW_CURRENT_REVISION'
+    role = 'reviewer'
+  } else if (stage === 'REVIEW_RECORDED' &&
+      (lifecycle === 'DRAFT' || lifecycle === 'IN_PROGRESS')) {
+    if (reviewResult === 'CHANGES_REQUIRED') {
+      action = 'REVISE_PLAN'
+      role = 'planner'
+    } else if (reviewResult === 'PASS') {
+      action = lifecycle === 'DRAFT' ? 'PROMOTE_READY' : 'PRESENT_PLAN_FOR_APPROVAL'
+      role = lifecycle === 'DRAFT' ? 'orchestrator' : 'human'
+    } else if (reviewResult === 'HUMAN_REVIEW_REQUIRED') {
+      action = 'STOP_HUMAN_DECISION'
+      role = 'human'
+    } else if (reviewResult === 'BLOCKED') {
+      action = 'STOP_BLOCKED'
+      role = 'orchestrator'
+    }
+  } else if (stage === 'READY_TRANSITION' && lifecycle === 'READY') {
+    action = 'PRESENT_PLAN_FOR_APPROVAL'
+    role = 'human'
+  }
+  if (action === 'NONE') return invalid()
+  const stopped = action === 'STOP_HUMAN_DECISION' || action === 'STOP_BLOCKED' || action === 'PRESENT_PLAN_FOR_APPROVAL'
+  return {
+    state: 'AWAITING_DURABLE_READBACK' as const,
+    next_action_after_readback: action,
+    next_role: role,
+    resume_same_turn: !stopped,
+    requires_readback: true,
+    planning_revision: planningRevision,
+    human_action_required: action === 'STOP_HUMAN_DECISION' || action === 'PRESENT_PLAN_FOR_APPROVAL',
+    mutation_authorized: false as const,
+  }
+}
