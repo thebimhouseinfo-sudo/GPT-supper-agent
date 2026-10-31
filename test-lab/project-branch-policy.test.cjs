@@ -21,7 +21,7 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts'].map(file =>
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts'].map(file =>
   ts.createSourceFile(file,
     fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
