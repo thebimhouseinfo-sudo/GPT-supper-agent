@@ -8,7 +8,7 @@ const ts=require('typescript')
 const root=path.join(__dirname,'../supabase/functions/gsa-mcp')
 const index=fs.readFileSync(path.join(root,'index.ts'),'utf8')
 const owners={
-  'project-utils.ts':['knowledgePath','safeProjectName','validIntegrationBranch','isRetiredSourceBranch','parseRetiredBranchRows'],
+  'project-utils.ts':['knowledgePath','safeProjectName','validIntegrationBranch','isRetiredSourceBranch','parseRetiredBranchRows','resolveProjectCriteriaIntake','projectTaskCapabilityAssessment','projectCriteriaBindingError'],
   'record-handles.ts':['projectHandle','jobHandle','runHandle','uuidv7'],
   'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
   'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
