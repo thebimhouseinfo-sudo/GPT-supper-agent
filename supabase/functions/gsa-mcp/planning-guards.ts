@@ -64,3 +64,13 @@ export function milestoneLoopDecision(job: any, milestoneId: string, stage: stri
   }
   return stopped('Review stage/verdict is not a valid transition for this milestone.')
 }
+
+export function normalizeNextPlanningModel(model: any, planningRevision: number) {
+  return {
+    evidence_needs: (model.evidence_needs ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    test_checkpoints: (model.test_checkpoints ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    evidence_requirements: (model.evidence_requirements ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    milestones: (model.milestones ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+    planning_topology: (model.planning_topology ?? []).map((item: any) => ({ ...item, planning_revision: planningRevision })),
+  }
+}
