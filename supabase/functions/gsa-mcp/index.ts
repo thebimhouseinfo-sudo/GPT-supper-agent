@@ -5,8 +5,8 @@ import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextproto
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
-import { knowledgePath, safeProjectName, validIntegrationBranch } from './project-utils.ts'
-import { projectHandle, jobHandle, runHandle } from './record-handles.ts'
+import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSourceBranch } from './project-utils.ts'
+import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
 
@@ -191,18 +191,6 @@ async function authContext(req: Request) {
   return { token, user: data.user, supabase }
 }
 
-function uuidv7() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  let ts = BigInt(Date.now())
-  for (let i = 5; i >= 0; i--) {
-    bytes[i] = Number(ts & 0xffn)
-    ts >>= 8n
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x70
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-  return [hex.slice(0,8), hex.slice(8,12), hex.slice(12,16), hex.slice(16,20), hex.slice(20)].join('-')
-}
 
 
 function resolveNextMemoryNamespace(value: unknown, executionContract: ExecutionContract | null = 'NEXT'): NextMemoryNamespace | null {
@@ -3027,9 +3015,6 @@ function parseRetiredBranchRows(text: string): Array<{ repository_url: string; b
   return rows
 }
 
-function isRetiredSourceBranch(rows: Array<{ repository_url: string; branch: string }>, repositoryUrl: string, branch: string | null | undefined): boolean {
-  return !!branch && rows.some((row) => row.repository_url.toLowerCase() === repositoryUrl.toLowerCase() && row.branch === branch)
-}
 
 function parseProjectManifest(text: string) {
   const values: Record<string, string> = {}
