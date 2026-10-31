@@ -21,9 +21,19 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-for (const node of ast.statements) {
-  if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) extracted.push(node.getText(ast))
-  if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['PROJECT_ID_PATTERN', 'ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(ast)))) extracted.push(node.getText(ast))
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts'].map(file =>
+  ts.createSourceFile(file,
+    fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
+    ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
+for (const owner of sources) {
+  assert.equal(owner.parseDiagnostics.length, 0, owner.fileName + ' syntax')
+  for (const node of owner.statements) {
+    if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
+      extracted.push(node.getText(owner).replace(/^export\\s+/, ''))
+    if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
+      ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
+      extracted.push(node.getText(owner))
+  }
 }
 for (const name of names) assert.ok(extracted.some(x => x.includes('function ' + name + '(')), 'Missing runtime function: ' + name)
 assert.ok(extracted.some(x => x.includes('PROJECT_ID_PATTERN')))
