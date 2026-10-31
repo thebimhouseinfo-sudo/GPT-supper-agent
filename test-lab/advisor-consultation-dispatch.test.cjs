@@ -7,6 +7,7 @@ const path = require('node:path')
 const ts = require('typescript')
 
 const code = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
+const decisionModule = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/advisor-receipt.ts'), 'utf8')
 const source = ts.createSourceFile('index.ts', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 
 test('Advisor continuation preserves valid TypeScript and declared MCP response schema', () => {
@@ -21,7 +22,7 @@ test('Advisor continuation preserves valid TypeScript and declared MCP response 
 })
 
 test('Advisor consultation cannot masquerade as Criteria write authorization', () => {
-  const decision = code.slice(code.indexOf('function projectCriteriaAdvisoryDecision'), code.indexOf('// M5: reuse M3 Bootstrap'))
+  const decision = decisionModule.slice(decisionModule.indexOf('function projectCriteriaAdvisoryDecision'))
   assert.match(decision, /criteria_write_prepared:\s*false/)
   assert.match(decision, /input\?\.human_decision !== 'APPROVE'/)
   assert.match(decision, /'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK'/)
@@ -34,7 +35,7 @@ test('Planner role explicitly dispatches advisor and resumes previously settled 
 })
 
 test('new advice can be submitted before its receipt exists in old Criteria', () => {
-  const decision = code.slice(code.indexOf('function projectCriteriaAdvisoryDecision'), code.indexOf('// M5: reuse M3 Bootstrap'))
+  const decision = decisionModule.slice(decisionModule.indexOf('function projectCriteriaAdvisoryDecision'))
   assert.match(decision, /input\?\.delivered_advice/)
   assert.match(decision, /proposed\?\.delivered_to_human !== true/)
   assert.match(decision, /baseline !== input\.criteria_current_sha/)
