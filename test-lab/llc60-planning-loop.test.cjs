@@ -7,8 +7,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
-const sf = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const source = fs.readFileSync('supabase/functions/gsa-mcp/planning-guards.ts', 'utf8');
+const sf = ts.createSourceFile('planning-guards.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 assert.equal(sf.parseDiagnostics.length, 0, 'Exact GSA runtime source parses');
 const functionDecl = sf.statements.find(s => ts.isFunctionDeclaration(s) &&
   s.name?.text === 'planningLoopContinuationDecision');
