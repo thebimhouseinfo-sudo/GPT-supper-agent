@@ -22,9 +22,9 @@ test('GSA1 extracted modules have TypeScript parseable syntax and unique exports
     for(const name of names){
       assert.ok(!claimed.has(name),'duplicated owner: '+name)
       claimed.add(name)
-      assert.match(text,new RegExp('^export function '+name+'\\\\(','m'))
-      assert.doesNotMatch(index,new RegExp('^function '+name+'\\\\(','m'))
-      assert.match(index,new RegExp('\\\\b'+name+'\\\\b'))
+      assert.match(text,new RegExp('^export function '+name+'\\(','m'))
+      assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
+      assert.match(index,new RegExp('\\b'+name+'\\b'))
     }
     assert.match(index,new RegExp("from './"+file.replace(/\./g,'\\.')+"'"))
   }
