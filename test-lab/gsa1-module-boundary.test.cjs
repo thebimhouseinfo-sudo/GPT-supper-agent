@@ -11,7 +11,8 @@ const owners={
   'project-utils.ts':['knowledgePath','safeProjectName','validIntegrationBranch','isRetiredSourceBranch','parseRetiredBranchRows'],
   'record-handles.ts':['projectHandle','jobHandle','runHandle','uuidv7'],
   'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
-  'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo']
+  'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
+  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired']
 }
 test('GSA1 extracted modules have TypeScript parseable syntax and unique exports',()=>{
   const claimed=new Set()
