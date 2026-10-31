@@ -9,6 +9,7 @@ import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSource
 import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
+import { goalRecheckRunMatches, uxFirstTemporaryUiGateRequired } from './execution-guards.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -60,13 +61,6 @@ function jobExecutionContract(job: any): ExecutionContract | null {
   return resolveExecutionContract(job?.execution_contract)
 }
 
-function goalRecheckRunMatches(run: any, projectId: string, jobId: string, runId: string) {
-  return run?.project_id === projectId &&
-    run?.job_id === jobId &&
-    run?.run_id === runId &&
-    run?.role === 'coder' &&
-    run?.lifecycle === 'IN_PROGRESS'
-}
 
 function invalidExecutionContract() {
   return {
@@ -75,13 +69,6 @@ function invalidExecutionContract() {
   }
 }
 
-function uxFirstTemporaryUiGateRequired(job: any, role: string): boolean {
-  return role === 'coder' &&
-    job?.product_workflow === 'UX_FIRST' &&
-    Array.isArray(job?.ui_strategy?.temporary_ui) &&
-    job.ui_strategy.temporary_ui.length > 0 &&
-    job.ui_strategy?.temporary_ui_human_approval === 'REQUIRED_PENDING'
-}
 
 
 function runtimeSurface(req: Request) {
