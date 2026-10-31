@@ -5,7 +5,7 @@ import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextproto
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
-import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSourceBranch } from './project-utils.ts'
+import { knowledgePath, safeProjectName, validIntegrationBranch, isRetiredSourceBranch, parseRetiredBranchRows } from './project-utils.ts'
 import { projectHandle, jobHandle, runHandle, uuidv7 } from './record-handles.ts'
 import { formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaAdvisoryDecision } from './advisor-receipt.ts'
 import { edgeFunctionSlug, normalizeGithubRepo } from './platform-utils.ts'
@@ -2993,27 +2993,6 @@ function buildProjectManifest(args: {
 }
 
 // An optional, additive Project Memory contract. Branch retirement is not Git ref deletion.
-function parseRetiredBranchRows(text: string): Array<{ repository_url: string; branch: string; sha: string }> | null {
-  const rows: Array<{ repository_url: string; branch: string; sha: string }> = []
-  const seen = new Set<string>()
-  let inSection = false
-  for (const line of text.split('\n')) {
-    if (/^## /.test(line)) {
-      inSection = /^## Retired Branches(?:\s|$)/.test(line)
-      continue
-    }
-    if (!inSection || !/^\s*-\s*/.test(line)) continue
-    const match = line.match(/^\s*-\s*(https:\/\/github\.com\/[^\s|]+)\s*\|\s*branch=([^\s|]+)\s*\|\s*sha=([a-f0-9]{40})\s*\|\s*status=RETIRED\s*$/i)
-    if (!match || !validIntegrationBranch(match[2])) return null
-    const repo = normalizeGithubRepo(match[1])
-    if (!repo) return null
-    const key = repo.url.toLowerCase() + '|' + match[2]
-    if (seen.has(key)) return null
-    seen.add(key)
-    rows.push({ repository_url: repo.url, branch: match[2], sha: match[3].toLowerCase() })
-  }
-  return rows
-}
 
 
 function parseProjectManifest(text: string) {
