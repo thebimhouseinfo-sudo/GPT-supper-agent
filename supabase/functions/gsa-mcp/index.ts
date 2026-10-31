@@ -6,6 +6,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Hono } from 'npm:hono@^4.9.7'
 import { z } from 'npm:zod@^4.1.13'
 import { knowledgePath, safeProjectName, validIntegrationBranch } from './project-utils.ts'
+import { projectHandle, jobHandle, runHandle } from './record-handles.ts'
 
 const PROJECT_REF = 'fbyqktduoqlpbbtkghkf'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? `https://${PROJECT_REF}.supabase.co`
@@ -210,18 +211,6 @@ function uuidv7() {
   return [hex.slice(0,8), hex.slice(8,12), hex.slice(12,16), hex.slice(16,20), hex.slice(20)].join('-')
 }
 
-function projectHandle(projectId: string) {
-  return 'P-' + projectId.replace(/-/g, '').slice(-4).toUpperCase()
-}
-
-
-function jobHandle(jobId: string) {
-  return 'J-' + jobId.replace(/-/g, '').slice(-4).toUpperCase()
-}
-
-function runHandle(runId: string) {
-  return 'R-' + runId.replace(/-/g, '').slice(-4).toUpperCase()
-}
 
 function resolveNextMemoryNamespace(value: unknown, executionContract: ExecutionContract | null = 'NEXT'): NextMemoryNamespace | null {
   if (executionContract !== 'NEXT') return null
