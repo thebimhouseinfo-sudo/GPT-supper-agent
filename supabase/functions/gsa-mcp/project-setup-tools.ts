@@ -1,6 +1,6 @@
 // GSA1-S4: Project setup/advice/addins/bootstrap preparation/branch policy tools.
 export function registerProjectSetupTools(deps: any) {
-  const { server, z, req, AUTH_SCOPES, authContext, authError, parseProjectManifest, validProjectManifestPath, resolveProjectCriteriaIntake, projectCriteriaAdvisoryDecision, resolveProjectRoleAddins, projectTaskCapabilityAssessment, projectBootstrapChecklistDecision, projectBootstrapReadinessDecision, normalizeGithubRepo, formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaBindingError, validIntegrationBranch, CRITERIA_BINDING_SCHEMA, isRetiredSourceBranch } = deps
+  const { server, z, req, AUTH_SCOPES, authContext, authError, parseProjectManifest, validProjectManifestPath, resolveProjectCriteriaIntake, projectCriteriaAdvisoryDecision, resolveProjectRoleAddins, projectTaskCapabilityAssessment, projectBootstrapChecklistDecision, projectBootstrapReadinessDecision, normalizeGithubRepo, formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaBindingError, validIntegrationBranch, CRITERIA_BINDING_SCHEMA, isRetiredSourceBranch, PROJECT_ID_PATTERN } = deps
   server.registerTool(
     'project_setup_prepare',
     {
