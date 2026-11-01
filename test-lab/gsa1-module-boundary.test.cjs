@@ -70,6 +70,10 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
       'evidence_repository_probe_verification_prepare']],
     ['registerEvidenceBundleAttestationTool','evidence-bundle-tool.ts',[
       'evidence_bundle_attestation_prepare']],
+    ['registerProjectManagementTools','project-management-tools.ts',[
+      'project_list',
+      'project_create',
+      'project_register_repositories']],
     ['registerProjectAuthorizationTools','project-auth-tools.ts',[
       'get_memory_repo_config',
       'set_memory_repo_config',
