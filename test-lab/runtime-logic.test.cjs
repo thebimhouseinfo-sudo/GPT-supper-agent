@@ -18,7 +18,7 @@ function load(name, injected = {}) {
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
   const node = ast.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === name);
   assert.ok(node, 'runtime function must exist: ' + name);
-  const js = ts.transpileModule(node.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const js = ts.transpileModule(node.getText(ast).replace(/^export\s+/, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
   const context = vm.createContext({ ...injected, Date, Set, Number, String, JSON, Array });
   return vm.runInContext(js + '\n' + name, context);
 }
