@@ -88,7 +88,7 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
     assert.equal(ast.parseDiagnostics.length,0,file+' must parse')
     const matches=[...index.matchAll(new RegExp(fn+'\\(\\s*\\{','g'))]
     assert.equal(matches.length,1,fn+' must be invoked exactly once')
-    const names=[...moduleSource.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>m[1])
+    const names=[...moduleSource.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g), ...moduleSource.matchAll(/transitionTool\(\s*'([^']+)'/g)].sort((a,b)=>a.index-b.index).map(m=>m[1])
     assert.deepEqual(names,expected,file+' tool inventory changed')
     assert.ok(index.includes("from './"+file+"'"),file+' import absent')
     names.forEach((name,i)=>positions.push({name,pos:matches[0].index+i/10000}))
