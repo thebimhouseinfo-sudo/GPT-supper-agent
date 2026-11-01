@@ -10,6 +10,7 @@ const ts = require('typescript')
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
 const harnessSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-catalog.ts'), 'utf8')
+const setupSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-setup-tools.ts'), 'utf8')
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
@@ -146,7 +147,7 @@ test('Contract: READY and status expose branch config; Admin requires owned repo
   const lifecycleSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-lifecycle-tools.ts'), 'utf8')
   const open = lifecycleSource.slice(lifecycleSource.indexOf("'project_open',"), lifecycleSource.indexOf("'project_status',"))
   const status = lifecycleSource.slice(lifecycleSource.indexOf("'project_status',"), lifecycleSource.indexOf('const transitionTool ='))
-  const prepare = source.slice(source.indexOf("'project_branch_policy_prepare',"), source.indexOf('registerProjectLifecycleTools('))
+  const prepare = setupSource.slice(setupSource.indexOf("'project_branch_policy_prepare',"))
   assert.match(open, /branch_policy_status: parsed\.branch_policy_status/)
   assert.match(open, /validProjectManifestPath\(memory_path, parsed\.project_id\)/)
   assert.match(status, /branch_policies: parsed\.branch_policies/)
@@ -225,7 +226,7 @@ test('M2: configured paths alone never satisfy required domain functionality', (
 })
 
 test('M2: tool exposes capability evidence as non-authoritative discovery only', () => {
-  const tool = source.slice(source.indexOf("'project_role_addins_resolve',"),source.indexOf("'project_branch_policy_prepare',"))
+  const tool = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
   assert.match(tool,/projectTaskCapabilityAssessment\(project_id, role, task_id/)
   assert.match(tool,/ready_for_task: assessed\.ready_for_task/)
   assert.match(tool,/Independently GitHub readback exact project\/role\/task\/path SHA/)
@@ -238,7 +239,7 @@ test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contrac
   assert.ok(roleMap.includes('advisor: {'))
   assert.ok(roleMap.includes('Never act as Reviewer/CR'))
   assert.ok(roleMap.includes('GOAL FIRST'))
-  const startup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  const startup = setupSource.slice(setupSource.indexOf("'project_setup_prepare',"), setupSource.indexOf("'project_role_addins_resolve',"))
   assert.ok(startup.includes('AGENTS.md'))
   assert.ok(startup.includes('Status: DRAFT'))
   assert.ok(startup.includes('CHUA_CHOT'))
@@ -276,7 +277,7 @@ test('C30: EXISTING without Criteria must inspect code before a provisional draf
 })
 
 test('M1 setup routes independently validated Criteria states and Advisor remains intent-only', () => {
-  const setup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  const setup = setupSource.slice(setupSource.indexOf("'project_setup_prepare',"), setupSource.indexOf("'project_role_addins_resolve',"))
   assert.match(setup, /intake_mode: z\.enum\(\['NEW','EXISTING'\]\)/)
   assert.match(setup, /existing_criteria_state: z\.enum\(\['PRESENT','ABSENT','UNKNOWN'\]\)/)
   assert.match(setup, /intake_disposition: z\.enum/)
@@ -326,7 +327,7 @@ test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self
 })
 
 test('M4 C31: advice check is read-only and preserves existing Memory CAS', () => {
-  const tool = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
+  const tool = setupSource.slice(setupSource.indexOf("'project_criteria_advice_check',"),setupSource.indexOf("'project_role_addins_resolve',"))
   assert.match(tool,/readOnlyHint: true/)
   assert.match(tool,/criteria_write_prepared: z\.literal\(false\)/)
   assert.match(tool,/Independently verify the actual Advisor message was delivered/)
@@ -425,7 +426,7 @@ test('M3: invalid, duplicate and cyclic reviewed Task dependencies cannot certif
 })
 
 test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job lifecycle', () => {
-  const tool=source.slice(source.indexOf("'project_bootstrap_readiness_prepare',"),source.indexOf("'project_branch_policy_prepare',"))
+  const tool=setupSource.slice(setupSource.indexOf("'project_bootstrap_readiness_prepare',"),setupSource.indexOf("'project_branch_policy_prepare',"))
   assert.match(tool,/source_write_authorized: z.literal\(false\)/)
   assert.match(tool,/readOnlyHint: true/)
   assert.match(tool,/separately verify Human execution approval/)
@@ -574,7 +575,7 @@ test('M6 Advisor–Planner shared canonical formatter round-trips without granti
 test('M6 Advisor and Planner prompts share receipt contract with pre-commit verification', () => {
   const planner = harnessSource.slice(harnessSource.indexOf('  planner: {'),harnessSource.indexOf('  advisor: {'))
   const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'),harnessSource.indexOf('  designer: {'))
-  const check = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
+  const check = setupSource.slice(setupSource.indexOf("'project_criteria_advice_check',"),setupSource.indexOf("'project_role_addins_resolve',"))
   assert.ok(planner.includes('formatAdvisorAdviceReceipt'))
   assert.ok(planner.includes('project_criteria_advice_check'))
   assert.ok(advisor.includes('ADVISOR SIGNED: ADVISED | BASELINE='))
