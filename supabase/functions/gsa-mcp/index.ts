@@ -2726,7 +2726,7 @@ function createServer(req: Request) {
     },
   )
 
-  registerProjectSetupTools({ server, z, req, AUTH_SCOPES, authContext, authError, parseProjectManifest, validProjectManifestPath, resolveProjectCriteriaIntake, projectCriteriaAdvisoryDecision, resolveProjectRoleAddins, projectTaskCapabilityAssessment, projectBootstrapChecklistDecision, projectBootstrapReadinessDecision, normalizeGithubRepo, formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaBindingError, validIntegrationBranch })
+  registerProjectSetupTools({ server, z, req, AUTH_SCOPES, authContext, authError, parseProjectManifest, validProjectManifestPath, resolveProjectCriteriaIntake, projectCriteriaAdvisoryDecision, resolveProjectRoleAddins, projectTaskCapabilityAssessment, projectBootstrapChecklistDecision, projectBootstrapReadinessDecision, normalizeGithubRepo, formatAdvisorAdviceReceipt, parseAdvisorAdviceReceipts, projectCriteriaBindingError, validIntegrationBranch, CRITERIA_BINDING_SCHEMA, isRetiredSourceBranch })
 
   registerProjectLifecycleTools({ server, z, req, AUTH_SCOPES, authContext, authError, parseProjectManifest, validProjectManifestPath, projectHandle, transitionProjectManifest })
 
