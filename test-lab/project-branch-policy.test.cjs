@@ -143,9 +143,10 @@ test('C14A job_revise_plan consumes and persists branch with external project/li
 })
 
 test('Contract: READY and status expose branch config; Admin requires owned repo and Git verification', () => {
-  const open = source.slice(source.indexOf("'project_open',"), source.indexOf("'project_status',"))
-  const status = source.slice(source.indexOf("'project_status',"), source.indexOf('const transitionTool ='))
-  const prepare = source.slice(source.indexOf("'project_branch_policy_prepare',"), source.indexOf("'project_open',"))
+  const lifecycleSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-lifecycle-tools.ts'), 'utf8')
+  const open = lifecycleSource.slice(lifecycleSource.indexOf("'project_open',"), lifecycleSource.indexOf("'project_status',"))
+  const status = lifecycleSource.slice(lifecycleSource.indexOf("'project_status',"), lifecycleSource.indexOf('const transitionTool ='))
+  const prepare = source.slice(source.indexOf("'project_branch_policy_prepare',"), source.indexOf('registerProjectLifecycleTools('))
   assert.match(open, /branch_policy_status: parsed\.branch_policy_status/)
   assert.match(open, /validProjectManifestPath\(memory_path, parsed\.project_id\)/)
   assert.match(status, /branch_policies: parsed\.branch_policies/)
