@@ -7,7 +7,8 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const ts=require('typescript');
 const source=fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8');
-const sf=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+const catalog=fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
+const sf=ts.createSourceFile('harness-catalog.ts',catalog,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
 assert.equal(sf.parseDiagnostics.length,0,'Runtime source must parse');
 
 function sourceConstant(name) {
