@@ -2583,7 +2583,7 @@ function createServer(req: Request) {
     },
   )
 
-  registerProjectAuthorizationTools({ server, z, req, AUTH_SCOPES, authContext, authError, normalizeGithubRepo, projectBootstrapExecutionError, projectScopeDecision })
+  registerProjectAuthorizationTools({ server, z, req, AUTH_SCOPES, authContext, authError, normalizeGithubRepo, projectBootstrapExecutionError, projectScopeDecision, readMemoryConfig, validMemoryPath })
 
   server.registerTool(
     'project_list',
