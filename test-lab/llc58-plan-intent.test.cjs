@@ -6,8 +6,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const source = fs.readFileSync('supabase/functions/gsa-mcp/plan-change-decisions.ts', 'utf8');
+const runtimeIndex = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const sf = ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+const factory=sf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text==='createPlanChangeDecisions');
+assert.ok(factory&&factory.body,'Plan Change factory must exist');
+const declarations=factory.body.statements;
 const uid='0fa72d63-17b4-4e28-84d9-231a17f5fe70';
 const planId='79a7c63d-9b84-4b4e-a290-6cd049513ec2';
 const oldId='7cd8a327-3a87-4baf-981c-4a5f28b207d1';
@@ -24,7 +28,7 @@ const deps={JSON,Number,String,Date,Set,Map,uuidv7:()=>newId,jobHandle:getHandle
   executionMemoryRoot:root,verificationPath:verifyPath,
   DEFAULT_NEXT_MEMORY_NAMESPACE:'PRODUCTION'};
 function load(name,extra={}){
-  const dec=sf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
+  const dec=declarations.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
   assert.ok(dec,'Find exact runtime helper '+name);
   const js=ts.transpileModule(dec.getText(sf),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
   return vm.runInNewContext(js+'\n'+name,{...deps,...extra});
@@ -220,7 +224,7 @@ test('LLC58: concurrent change to predecessor SHA blocks resume, unrelated super
     'PLAN_CHANGE_PREDECESSOR_SUPERSESSION_LINEAGE_CONFLICT');
 });
 test('LLC58 test-validity: removing predecessor-SHA guard changes the negative result',()=>{
-  const dec=sf.statements.find(x=>ts.isFunctionDeclaration(x) && x.name?.text==='validatePlanChangeSupersession');
+  const dec=declarations.find(x=>ts.isFunctionDeclaration(x) && x.name?.text==='validatePlanChangeSupersession');
   const real=dec.getText(sf);
   const needle='fence.original_job_sha !== a.predecessor_job_sha';
   assert.ok(real.includes(needle),'Mutation must target executed source guard, not an irrelevant string');
@@ -243,9 +247,9 @@ test('LLC58 test-validity: removing predecessor-SHA guard changes the negative r
 });
 test('LLC58: tool surface includes prepare, resume and governed replacement Job creation',()=>{
   for(const name of ['job_plan_change_assess','job_plan_change_prepare','job_plan_change_resume_evaluate'])
-    assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
-  assert.match(source,/replacement_context: z\.object\(/);
-  assert.match(source,/replacement_of_job_id: replacement\.predecessor\.job_id/);
+    assert.match(runtimeIndex,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
+  assert.match(runtimeIndex,/replacement_context: z\.object\(/);
+  assert.match(runtimeIndex,/replacement_of_job_id: replacement\.predecessor\.job_id/);
 });
 
 
@@ -321,9 +325,9 @@ test('LLC58 RETIRED is terminal, resumes without creating replacement and checks
   assert.equal(retireResume(i,[{...closed,retired_reason:'different'}]).allowed,false);
   assert.equal(retireResume(i,[{...closed,result:'PASS'}]).allowed,false);
   assert.equal(retireResume(i,[{...old,lifecycle:'COMPLETED'}]).allowed,false);
-  assert.match(source,/target_lifecycle === 'RETIRED' \? 'RETIRED'/);
-  assert.match(source,/RETIRE_REQUIRES_REVIEWED_PLAN_INTENT_AND_SETTLED_ACTIVITY/);
-  assert.match(source,/NEXT_DISPATCH_TASK_RETIRED/);
+  assert.match(runtimeIndex,/target_lifecycle === 'RETIRED' \? 'RETIRED'/);
+  assert.match(runtimeIndex,/RETIRE_REQUIRES_REVIEWED_PLAN_INTENT_AND_SETTLED_ACTIVITY/);
+  assert.match(runtimeIndex,/NEXT_DISPATCH_TASK_RETIRED/);
 });
 test('LLC58 validates retirement Task scope, preserves existing REPLACE path',()=>{
   const work={...old,tasks:[{task_id:'A',lifecycle:'READY'},{task_id:'B',lifecycle:'IN_PROGRESS'}]};
