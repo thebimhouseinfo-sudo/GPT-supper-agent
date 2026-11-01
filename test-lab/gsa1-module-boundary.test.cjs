@@ -69,7 +69,12 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
       'evidence_repository_publish_finalize',
       'evidence_repository_probe_verification_prepare']],
     ['registerEvidenceBundleAttestationTool','evidence-bundle-tool.ts',[
-      'evidence_bundle_attestation_prepare']]
+      'evidence_bundle_attestation_prepare']],
+    ['registerProjectAuthorizationTools','project-auth-tools.ts',[
+      'get_memory_repo_config',
+      'set_memory_repo_config',
+      'authorize_project_scope',
+      'authorize_memory_mutation']]
   ]
   for(const [fn,file,expected] of delegatedGroups){
     const moduleSource=fs.readFileSync(path.join(root,file),'utf8')
