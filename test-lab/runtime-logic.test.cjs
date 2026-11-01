@@ -327,7 +327,7 @@ test('retirement record parser rejects duplicate or malformed rows instead of ig
   assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\n' + retirementRecord)), null);
   assert.equal(parseRetiredBranchRows(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
-  assert.match(source, /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
+  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/project-setup-tools.ts', 'utf8'), /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
 });
 
 
