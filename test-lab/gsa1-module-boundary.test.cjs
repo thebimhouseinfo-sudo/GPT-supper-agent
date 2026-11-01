@@ -61,14 +61,27 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
     ...[...index.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>({name:m[1],pos:m.index})),
     ...[...index.matchAll(/transitionTool\(\s*'([^']+)'/g)].map(m=>({name:m[1],pos:m.index}))
   ]
-  // A delegated registration still occupies its original entrypoint position.
-  const bundleModule=fs.readFileSync(path.join(root,'evidence-bundle-tool.ts'),'utf8')
-  const delegated=[...index.matchAll(/registerEvidenceBundleAttestationTool\(\s*\{/g)]
-  assert.equal(delegated.length,1,'Evidence bundle registration must be delegated exactly once')
-  const delegatedNames=[...bundleModule.matchAll(/server\.registerTool\(\s*['\"]([^'\"]+)['\"]/g)].map(m=>m[1])
-  assert.deepEqual(delegatedNames,['evidence_bundle_attestation_prepare'])
-  assert.match(index,/from '\.\/evidence-bundle-tool\.ts'/)
-  positions.push({name:delegatedNames[0],pos:delegated[0].index})
+  // Count delegated registrations at their exact entrypoint call positions.
+  // Missing/duplicate module tool names or changed order must fail closed.
+  const delegatedGroups=[
+    ['registerRepositoryEvidenceTools','evidence-repository-tools.ts',[
+      'evidence_repository_publish_prepare',
+      'evidence_repository_publish_finalize',
+      'evidence_repository_probe_verification_prepare']],
+    ['registerEvidenceBundleAttestationTool','evidence-bundle-tool.ts',[
+      'evidence_bundle_attestation_prepare']]
+  ]
+  for(const [fn,file,expected] of delegatedGroups){
+    const moduleSource=fs.readFileSync(path.join(root,file),'utf8')
+    const ast=ts.createSourceFile(file,moduleSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+    assert.equal(ast.parseDiagnostics.length,0,file+' must parse')
+    const matches=[...index.matchAll(new RegExp(fn+'\\(\\s*\\{','g'))]
+    assert.equal(matches.length,1,fn+' must be invoked exactly once')
+    const names=[...moduleSource.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>m[1])
+    assert.deepEqual(names,expected,file+' tool inventory changed')
+    assert.ok(index.includes("from './"+file+"'"),file+' import absent')
+    names.forEach((name,i)=>positions.push({name,pos:matches[0].index+i/10000}))
+  }
   const names=positions.sort((a,b)=>a.pos-b.pos).map(x=>x.name)
   assert.deepEqual(names,pinned.names)
   assert.equal(new Set(names).size,names.length)
