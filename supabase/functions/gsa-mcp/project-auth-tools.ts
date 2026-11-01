@@ -1,5 +1,5 @@
 export function registerProjectAuthorizationTools(deps: any) {
-  const { server, z, req, AUTH_SCOPES, authContext, authError, normalizeGithubRepo, projectBootstrapExecutionError, projectScopeDecision } = deps
+  const { server, z, req, AUTH_SCOPES, authContext, authError, normalizeGithubRepo, projectBootstrapExecutionError, projectScopeDecision, readMemoryConfig, validMemoryPath } = deps
   server.registerTool(
     'get_memory_repo_config',
     {
