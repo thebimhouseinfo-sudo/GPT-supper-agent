@@ -287,7 +287,7 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
   assert.match(setup, /ADVISOR SIGNED: PENDING/)
   assert.match(setup, /advisor_activation: 'HUMAN_CRITERIA_INTENT_ONLY'/)
   assert.match(setup, /No fake Advisor signature/)
-  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  const base = harnessSource.slice(harnessSource.indexOf('const BASE_AGENT_HARNESS'), harnessSource.indexOf('const ROLE_HARNESSES'))
   assert.match(base, /explicit Human intent/)
   assert.match(base, /not approval/)
   const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'), harnessSource.indexOf('  designer: {'))
@@ -337,7 +337,7 @@ test('M4 C31: advice check is read-only and preserves existing Memory CAS', () =
 })
 
 test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only', () => {
-  const roles = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+  const roles = harnessSource.slice(harnessSource.indexOf('const ROLE_HARNESSES'), harnessSource.indexOf('const ROLE_SKILLS'))
   const planner = roles.slice(roles.indexOf('  planner: {'), roles.indexOf('  advisor: {'))
   const advisor = roles.slice(roles.indexOf('  advisor: {'), roles.indexOf('  designer: {'))
   assert.match(planner, /Advisor INACTIVE during brainstorm/)
