@@ -39,20 +39,20 @@ test('GSA1-S2 Plan Change and Recovery modules are owned and imported without du
   for(const [file,content] of [['recovery-decisions.ts',recovery],['plan-change-decisions.ts',planning]]){
     const ast=ts.createSourceFile(file,content,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
     assert.equal(ast.parseDiagnostics.length,0,file+' parse failure')
-    assert.match(index,new RegExp("from './"+file.replace(/\\./g,'\\\\.')+"'"))
+    assert.match(index,new RegExp("from './"+file.replace(/\./g,'\\.')+"'"))
   }
   for(const name of ['sourceMutationRecoveryDecision','orchestrationProgressDecision']){
-    assert.match(recovery,new RegExp('^export function '+name+'\\\\(','m'))
-    assert.doesNotMatch(index,new RegExp('^function '+name+'\\\\(','m'))
+    assert.match(recovery,new RegExp('^export function '+name+'\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
   }
-  assert.match(planning,/^export function createPlanChangeDecisions\\(/m)
+  assert.match(planning,/^export function createPlanChangeDecisions\(/m)
   for(const name of ['isRecognizedJobRecordShape','assessHumanPlanChangeJobs',
     'prepareHumanPlanChangeIntent','prepareHumanPlanChangeFenceDecision',
     'validatePlanChangeSupersession','resumeHumanPlanChangeIntent']){
-    assert.match(planning,new RegExp('^function '+name+'\\\\(','m'))
-    assert.doesNotMatch(index,new RegExp('^function '+name+'\\\\(','m'))
+    assert.match(planning,new RegExp('^function '+name+'\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
   }
-  assert.match(index,/createPlanChangeDecisions\\(\\{ jobExecutionContract,/)
+  assert.match(index,/createPlanChangeDecisions\(\{ jobExecutionContract,/)
 })
 
 test('MCP public tool names retain the pinned static-plus-transition order',()=>{
