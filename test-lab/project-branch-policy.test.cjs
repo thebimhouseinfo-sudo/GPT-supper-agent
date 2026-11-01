@@ -9,6 +9,7 @@ const vm = require('node:vm')
 const ts = require('typescript')
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
+const harnessSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-catalog.ts'), 'utf8')
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
@@ -232,7 +233,7 @@ test('M2: tool exposes capability evidence as non-authoritative discovery only',
 })
 
 test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contract exist', () => {
-  const roleMap = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+  const roleMap = harnessSource.slice(harnessSource.indexOf('const ROLE_HARNESSES'), harnessSource.indexOf('const ROLE_SKILLS'))
   assert.ok(roleMap.includes('advisor: {'))
   assert.ok(roleMap.includes('Never act as Reviewer/CR'))
   assert.ok(roleMap.includes('GOAL FIRST'))
@@ -241,7 +242,7 @@ test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contrac
   assert.ok(startup.includes('Status: DRAFT'))
   assert.ok(startup.includes('CHUA_CHOT'))
   assert.ok(startup.toLowerCase().includes('same criteria.md'))
-  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  const base = harnessSource.slice(harnessSource.indexOf('const BASE_AGENT_HARNESS'), harnessSource.indexOf('const ROLE_HARNESSES'))
   assert.ok(base.includes('STOPCHAT'))
   assert.ok(base.includes('PROJECT ADDINS'))
   assert.ok(base.includes('CRITERIA CHANGE ORDER'))
@@ -288,7 +289,7 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
   const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
   assert.match(base, /explicit Human intent/)
   assert.match(base, /not approval/)
-  const advisor = source.slice(source.indexOf('  advisor: {'), source.indexOf('  designer: {'))
+  const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'), harnessSource.indexOf('  designer: {'))
   assert.match(advisor, /only Human intent/)
   assert.match(advisor, /Do not activate on draft completion/)
 })
@@ -570,8 +571,8 @@ test('M6 Advisor–Planner shared canonical formatter round-trips without granti
 })
 
 test('M6 Advisor and Planner prompts share receipt contract with pre-commit verification', () => {
-  const planner = source.slice(source.indexOf('  planner: {'),source.indexOf('  advisor: {'))
-  const advisor = source.slice(source.indexOf('  advisor: {'),source.indexOf('  designer: {'))
+  const planner = harnessSource.slice(harnessSource.indexOf('  planner: {'),harnessSource.indexOf('  advisor: {'))
+  const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'),harnessSource.indexOf('  designer: {'))
   const check = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
   assert.ok(planner.includes('formatAdvisorAdviceReceipt'))
   assert.ok(planner.includes('project_criteria_advice_check'))
@@ -626,7 +627,8 @@ test('M5: Coder and source-write boundaries must consume Project Bootstrap evide
 })
 
 test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelated roles remain intact', () => {
-  const scope = source.slice(source.indexOf("'authorize_project_scope',"), source.indexOf("'authorize_memory_mutation',"))
+  const authSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-auth-tools.ts'), 'utf8')
+  const scope = authSource.slice(authSource.indexOf("'authorize_project_scope',"), authSource.indexOf("'authorize_memory_mutation',"))
   assert.match(scope, /operation === 'MUTATE_SOURCE'/)
   assert.match(scope, /projectBootstrapExecutionError/)
   assert.match(scope, /allowed: false, mutation_allowed: false/)
@@ -680,14 +682,14 @@ test('M6: deployed Hono matcher serves exact production and isolated staging slu
 })
 
 test('M4: Critic harness and selftest recognize milestone Human preauthorization without generic CR auto-dispatch', () => {
-  const critic = source.slice(source.indexOf('  critic_reviewer: {'), source.indexOf('  tester: {'))
+  const critic = harnessSource.slice(harnessSource.indexOf('  critic_reviewer: {'), harnessSource.indexOf('  tester: {'))
   assert.ok(critic.includes('HUMAN AUTHORITY:'))
   assert.ok(critic.includes('Human-preauthorized milestone crl'))
   assert.ok(critic.includes('persisted current Reviewer PASS'))
   assert.ok(!critic.includes('must never auto-dispatch this role'))
   assert.ok(source.includes('critic_human_authority_scoped:'))
   assert.ok(source.includes('critic_harness_present:'))
-  assert.ok(source.includes('Orchestrator may continue an approved AUTO milestone'))
+  assert.ok(harnessSource.includes('Orchestrator may continue an approved AUTO milestone'))
 })
 
 test('Brownfield four-check Bootstrap adopts approved existing source docs without registration gates', () => {
