@@ -5,14 +5,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const src = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const src = fs.readFileSync('supabase/functions/gsa-mcp/plan-change-decisions.ts', 'utf8');
 const sf = ts.createSourceFile('index.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-const decl = sf.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'assessHumanPlanChangeJobs');
+const factory=sf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text==='createPlanChangeDecisions');
+assert.ok(factory&&factory.body,'Plan Change factory must exist');
+const declarations=factory.body.statements;
+const decl = declarations.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'assessHumanPlanChangeJobs');
 assert.ok(decl, 'Runtime helper exists');
 const js = ts.transpileModule(decl.getText(sf), {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 const jobExecutionContract = job => job.execution_contract == null ? 'V2_STABLE' :
   (['NEXT','V2_STABLE'].includes(job.execution_contract) ? job.execution_contract : null);
-const shapeDecl=sf.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'isRecognizedJobRecordShape');
+const shapeDecl=declarations.find(x => ts.isFunctionDeclaration(x) && x.name?.text === 'isRecognizedJobRecordShape');
 assert.ok(shapeDecl,'Runtime recognizes legacy Job record shape');
 const shapeJS=ts.transpileModule(shapeDecl.getText(sf),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 const isRecognizedJobRecordShape=vm.runInNewContext(shapeJS+'\nisRecognizedJobRecordShape',{
@@ -100,7 +103,7 @@ test('LLC58 negative-control: assessment NEVER authorizes mutation',()=>{
     const out=one(row(idA,'READY',decision));
     assert.equal(out.mutation_authorized,false);
   }
-  assert.match(src,/server\.registerTool\(\s*'job_plan_change_assess'/);
+  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8'),/server\.registerTool\(\s*'job_plan_change_assess'/);
 });
 
 
