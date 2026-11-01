@@ -131,7 +131,7 @@ test('M1 CRL evidence is exact job/milestone/revision AND source SHA bound', () 
 test('M1 negative control: removing source SHA comparison makes stale-evidence assertion RED', () => {
   const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
   assert.ok(node);
-  const good=node.getText(bootstrapAst).replace(/^export\s+/, '');
+  const good=node.getText(parsed);
   const mutant=good.replace('review.target_revision !== targetRevision','false');
   assert.notEqual(mutant,good,'mutation must alter the actual code');
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
@@ -222,7 +222,7 @@ test('P0 bootstrap negative control detects removing canonical current SHA check
   const bootstrapAst=ts.createSourceFile('bootstrap.ts',fs.readFileSync('supabase/functions/gsa-mcp/bootstrap.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
   const node=bootstrapAst.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
   assert.ok(node);
-  const good=node.getText(parsed);
+  const good=node.getText(bootstrapAst).replace(/^export\s+/, '');
   const mutant=good.replace('input?.criteria_current_blob_sha !== c.criteria_blob_sha','false');
   assert.notEqual(good,mutant);
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
