@@ -33,6 +33,28 @@ test('GSA1 extracted modules have TypeScript parseable syntax and unique exports
   }
   assert.equal(ts.createSourceFile('index.ts',index,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS).parseDiagnostics.length,0)
 })
+test('GSA1-S2 Plan Change and Recovery modules are owned and imported without duplication',()=>{
+  const recovery=fs.readFileSync(path.join(root,'recovery-decisions.ts'),'utf8')
+  const planning=fs.readFileSync(path.join(root,'plan-change-decisions.ts'),'utf8')
+  for(const [file,content] of [['recovery-decisions.ts',recovery],['plan-change-decisions.ts',planning]]){
+    const ast=ts.createSourceFile(file,content,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+    assert.equal(ast.parseDiagnostics.length,0,file+' parse failure')
+    assert.match(index,new RegExp("from './"+file.replace(/\\./g,'\\\\.')+"'"))
+  }
+  for(const name of ['sourceMutationRecoveryDecision','orchestrationProgressDecision']){
+    assert.match(recovery,new RegExp('^export function '+name+'\\\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\\\(','m'))
+  }
+  assert.match(planning,/^export function createPlanChangeDecisions\\(/m)
+  for(const name of ['isRecognizedJobRecordShape','assessHumanPlanChangeJobs',
+    'prepareHumanPlanChangeIntent','prepareHumanPlanChangeFenceDecision',
+    'validatePlanChangeSupersession','resumeHumanPlanChangeIntent']){
+    assert.match(planning,new RegExp('^function '+name+'\\\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\\\(','m'))
+  }
+  assert.match(index,/createPlanChangeDecisions\\(\\{ jobExecutionContract,/)
+})
+
 test('MCP public tool names retain the pinned static-plus-transition order',()=>{
   const pinned=JSON.parse(fs.readFileSync(path.join(__dirname,'gsa1-tool-name-inventory.json'),'utf8'))
   const positions=[
