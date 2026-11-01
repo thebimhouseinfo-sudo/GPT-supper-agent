@@ -61,6 +61,14 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
     ...[...index.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>({name:m[1],pos:m.index})),
     ...[...index.matchAll(/transitionTool\(\s*'([^']+)'/g)].map(m=>({name:m[1],pos:m.index}))
   ]
+  // A delegated registration still occupies its original entrypoint position.
+  const bundleModule=fs.readFileSync(path.join(root,'evidence-bundle-tool.ts'),'utf8')
+  const delegated=[...index.matchAll(/registerEvidenceBundleAttestationTool\\(\\s*\\{/g)]
+  assert.equal(delegated.length,1,'Evidence bundle registration must be delegated exactly once')
+  const delegatedNames=[...bundleModule.matchAll(/server\\.registerTool\\(\\s*['\"]([^'\"]+)['\"]/g)].map(m=>m[1])
+  assert.deepEqual(delegatedNames,['evidence_bundle_attestation_prepare'])
+  assert.match(index,/from '\\.\\/evidence-bundle-tool\\.ts'/)
+  positions.push({name:delegatedNames[0],pos:delegated[0].index})
   const names=positions.sort((a,b)=>a.pos-b.pos).map(x=>x.name)
   assert.deepEqual(names,pinned.names)
   assert.equal(new Set(names).size,names.length)
