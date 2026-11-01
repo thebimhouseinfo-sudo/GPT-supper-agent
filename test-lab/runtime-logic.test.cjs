@@ -12,7 +12,11 @@ function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
     ? 'execution-guards.ts'
     : ['milestoneLoopDecision','validateExecutionTopology','normalizeNextPlanningModel','planningLoopContinuationDecision'].includes(name)
-      ? 'planning-guards.ts' : null;
+      ? 'planning-guards.ts'
+      : ['projectCriteriaBindingError','parseRetiredBranchRows','isRetiredSourceBranch'].includes(name)
+        ? 'project-utils.ts'
+        : ['projectBootstrapReadinessDecision','projectBootstrapChecklistDecision'].includes(name)
+          ? 'bootstrap.ts' : null;
   const ast = owner ? ts.createSourceFile(owner,
     fs.readFileSync('supabase/functions/gsa-mcp/'+owner,'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
