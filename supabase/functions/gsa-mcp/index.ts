@@ -1258,7 +1258,7 @@ function validateNextPlanningModel(executionContract: ExecutionContract, tasks: 
 // Legacy GSA V2 and some early NEXT records omit it. An explicit foreign
 // kind remains invalid; contract and exact Project/Job identity remain the
 // real durable admission boundary.
-const { isRecognizedJobRecordShape, assessHumanPlanChangeJobs, prepareHumanPlanChangeIntent, prepareHumanPlanChangeFenceDecision, validatePlanChangeSupersession, resumeHumanPlanChangeIntent } = createPlanChangeDecisions({ jobExecutionContract, executionMemoryRoot, uuidv7, jobHandle, recordNextMemoryNamespace, verificationPath, DEFAULT_NEXT_MEMORY_NAMESPACE, DURABLE_RECORD_SNAPSHOT_SCHEMA, evaluateNextEvidenceGate, nextClosureCoverageError, validatePlanChangeSupersession, durableSnapshotReadbackSteps })
+const { isRecognizedJobRecordShape, assessHumanPlanChangeJobs, prepareHumanPlanChangeIntent, prepareHumanPlanChangeFenceDecision, validatePlanChangeSupersession, resumeHumanPlanChangeIntent } = createPlanChangeDecisions({ jobExecutionContract, executionMemoryRoot, uuidv7, jobHandle, recordNextMemoryNamespace, verificationPath, DEFAULT_NEXT_MEMORY_NAMESPACE })
 
 function executionCursorPath(projectId: string, jobId: string, namespace: NextMemoryNamespace) {
   return executionMemoryRoot(projectId, 'NEXT', namespace) +
