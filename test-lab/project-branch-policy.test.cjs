@@ -354,7 +354,8 @@ test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only
   assert.match(advisor, /Receipt format alone never proves advice or Human approval/)
   assert.match(advisor, /End Advisor activity immediately/)
 
-  const exposed = source.slice(source.indexOf("'get_agent_harness',"), source.indexOf("'get_skill_catalog',"))
+  const harnessToolsSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-skill-tools.ts'), 'utf8')
+  const exposed = harnessToolsSource.slice(harnessToolsSource.indexOf("'get_agent_harness',"), harnessToolsSource.indexOf("'get_skill_catalog',"))
   assert.match(exposed, /'advisor'/)
   assert.match(exposed, /renderHarness\(role\)/)
   assert.equal((roles.match(/advisor: \{/g) || []).length, 1, 'No duplicate Advisor agent')
