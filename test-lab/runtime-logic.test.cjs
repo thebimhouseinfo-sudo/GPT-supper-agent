@@ -235,8 +235,8 @@ test('P0 bootstrap negative control detects removing canonical current SHA check
 test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
   const runStart=runSource.indexOf("'run_begin'");
   const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
-  const runSource=runSource.slice(runStart,runEnd);
-  assert.match(runSource,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const runBlock=runSource.slice(runStart,runEnd);
+  assert.match(runBlock,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
   const completionStart=runSource.indexOf("'run_complete'");
   const completion=runSource.slice(completionStart,completionStart+2500);
   assert.match(completion,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
