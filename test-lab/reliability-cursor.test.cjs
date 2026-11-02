@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8');
+const cursorTools = fs.readFileSync('supabase/functions/gsa-mcp/execution-cursor-tools.ts','utf8');
+const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
 const parsed = ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
 const recoverySource = fs.readFileSync('supabase/functions/gsa-mcp/recovery-decisions.ts','utf8');
 const recoveryParsed = ts.createSourceFile('recovery-decisions.ts',recoverySource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
@@ -121,14 +123,14 @@ test('one TREE intent covers a multi-file atomic commit without per-file cursor 
 });
 test('new cursor tools are authenticated, read-only and not in the always-loaded default skills',()=>{
   for (const name of ['execution_cursor_prepare','execution_cursor_resume_evaluate']) {
-    assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
+    assert.match(cursorTools,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
   }
-  assert.match(source,/Authentication required for Job cursor preparation/);
-  assert.match(source,/Authentication required for Job cursor recovery/);
-  assert.match(source,/lazily persist one Job execution cursor on the first consequential atomic Git mutation/);
-  assert.match(source,/execution_cursor_resume_evaluate decides last checkpoint or pending mutation/);
-  assert.match(source,/No cursor round trips for ordinary tools/);
-  const skills=source.slice(source.indexOf('const ROLE_SKILLS'),source.indexOf('const RUNTIME_SKILLS'));
+  assert.match(cursorTools,/Authentication required for Job cursor preparation/);
+  assert.match(cursorTools,/Authentication required for Job cursor recovery/);
+  assert.match(harnessSource,/lazily persist one Job execution cursor on the first consequential atomic Git mutation/);
+  assert.match(cursorTools,/execution_cursor_resume_evaluate decides last checkpoint or pending mutation/);
+  assert.match(harnessSource,/No cursor round trips for ordinary tools/);
+  const skills=harnessSource.slice(harnessSource.indexOf('const ROLE_SKILLS'),harnessSource.indexOf('const RUNTIME_SKILLS'));
   assert.match(skills,/coder:\s*\['coding-loop', 'delegation'\]/);
 });
 
