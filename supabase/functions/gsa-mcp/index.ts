@@ -1925,7 +1925,7 @@ function createServer(req: Request) {
     },
   )
 
-  registerPlanChangeTools({ server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE })
+  registerPlanChangeTools({ server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE, assessHumanPlanChangeJobs, jobExecutionContract, prepareHumanPlanChangeFenceDecision, prepareHumanPlanChangeIntent, prettyJson, recordNextMemoryNamespace, recordPath, resumeHumanPlanChangeIntent })
 
   server.registerTool(
     'execution_cursor_prepare',
