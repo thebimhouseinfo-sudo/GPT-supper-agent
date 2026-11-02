@@ -13,7 +13,7 @@ function runtimeFunction(name, transform = body => body) {
   const js = ts.transpileModule(transform(decl.getText(parsed)), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
   }).outputText;
-  const ctx = vm.createContext({ Number, String, Date, JSON });
+  const ctx = vm.createContext({ Number, String, Date, JSON, exports: {} });
   return vm.runInContext(js + '\n' + name, ctx);
 }
 const recover = runtimeFunction('sourceMutationRecoveryDecision');
