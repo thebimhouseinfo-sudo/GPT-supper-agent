@@ -139,10 +139,11 @@ test('M1 negative control: removing source SHA comparison makes stale-evidence a
   assert.throws(()=>assert.match(broken(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/),assert.AssertionError);
 });
 test('M1 source CR record routes preauthorized milestone via orchestrator, direct cr to Human', () => {
-  const start=source.indexOf("'critic_review_record'");
-  const end=source.indexOf("'checkpoint_claim_prepare'",start);
+  const criticSource=fs.readFileSync('supabase/functions/gsa-mcp/critic-review-tools.ts','utf8');
+  const start=criticSource.indexOf("'critic_review_record'");
+  const end=criticSource.length;
   assert.ok(start>0&&end>start);
-  const route=source.slice(start,end);
+  const route=criticSource.slice(start,end);
   assert.match(route,/next_role:\s*human_invoked === true \? 'human' : 'orchestrator'/);
   assert.match(route,/milestone_loop_evaluate\(stage=CR/);
   assert.match(route,/After immutable CR Verification persistence and exact readback/);
