@@ -336,7 +336,8 @@ test('every advertised runtime skill can pass the public load_skill input schema
   assert.ok(skillObject, 'runtime skill registry exists');
   const knownNames = [...skillObject[1].matchAll(/^\s{2}'?([a-z][a-z0-9-]+)'?:\s*\{\s*$/gm)].map(x=>x[1]);
   assert.ok(knownNames.includes('tester-lab'), 'tester-lab is a published runtime skill');
-  const loaderBlock = source.split("server.registerTool(\n    'load_skill',")[1]?.split("server.registerTool(")[0];
+  const harnessToolsSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-skill-tools.ts','utf8');
+  const loaderBlock = harnessToolsSource.split("server.registerTool(\n    'load_skill',")[1]?.split("server.registerTool(")[0];
   assert.ok(loaderBlock, 'load_skill is registered');
   const allowed = loaderBlock.match(/name:\s*z\.enum\(\[([^\]]+)\]\)/);
   assert.ok(allowed, 'load_skill has a finite enum');
