@@ -1,6 +1,6 @@
 // GSA1-S6: Job revision, preserving exact handler and validation semantics.
 export function registerJobRevisePlanTool(deps: any) {
-  const { server, z, req, AUTH_SCOPES, authContext, authError, CRITERIA_BINDING_SCHEMA, PLANNING_LOOP_CONTINUATION_SCHEMA, EVIDENCE_NEED_SCHEMA, TEST_CHECKPOINT_SPEC_SCHEMA, EVIDENCE_REQUIREMENT_SCHEMA, MILESTONE_SCHEMA, PLANNING_TOPOLOGY_NODE_SCHEMA, projectCriteriaBindingError, normalizeNextPlanningModel, validateNextPlanningModel, validateExecutionTopology, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, prettyJson, planningLoopContinuationDecision, revisedJobIntegrationBranchError, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE } = deps
+  const { server, z, req, AUTH_SCOPES, authContext, authError, CRITERIA_BINDING_SCHEMA, PLANNING_LOOP_CONTINUATION_SCHEMA, EVIDENCE_NEED_SCHEMA, TEST_CHECKPOINT_SPEC_SCHEMA, EVIDENCE_REQUIREMENT_SCHEMA, MILESTONE_SCHEMA, PLANNING_TOPOLOGY_NODE_SCHEMA, projectCriteriaBindingError, normalizeNextPlanningModel, validateNextPlanningModel, validateExecutionTopology, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, prettyJson, planningLoopContinuationDecision, revisedJobIntegrationBranchError, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE, nextPlanSupersessionMatches } = deps
   server.registerTool(
     'job_revise_plan',
     {
