@@ -7,10 +7,13 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8');
 const parsed = ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+const recoverySource = fs.readFileSync('supabase/functions/gsa-mcp/recovery-decisions.ts','utf8');
+const recoveryParsed = ts.createSourceFile('recovery-decisions.ts',recoverySource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
 function load(name,injected={}) {
-  const decl=parsed.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
+  const ast = ['sourceMutationRecoveryDecision','orchestrationProgressDecision'].includes(name) ? recoveryParsed : parsed;
+  const decl=ast.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
   assert.ok(decl,'Runtime function exists: '+name);
-  const js=ts.transpileModule(decl.getText(parsed),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const js=ts.transpileModule(decl.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
   return vm.runInContext(js+'\n'+name,vm.createContext({JSON,Number,String,Date,...injected}));
 }
 const namespace=job=>job?.memory_namespace==='TEST_LAB'?'TEST_LAB':job?.memory_namespace==='PRODUCTION'?'PRODUCTION':null;
