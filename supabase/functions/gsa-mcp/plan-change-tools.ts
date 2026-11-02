@@ -1,6 +1,6 @@
 // GSA1: bounded Job Plan Change and supersession tools.
 export function registerPlanChangeTools(deps: any) {
- const { server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE } = deps
+ const { server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE, assessHumanPlanChangeJobs, jobExecutionContract, prepareHumanPlanChangeFenceDecision, prepareHumanPlanChangeIntent, prettyJson, recordNextMemoryNamespace, recordPath, resumeHumanPlanChangeIntent } = deps
   server.registerTool(
     'job_plan_change_fence_prepare',
     {
