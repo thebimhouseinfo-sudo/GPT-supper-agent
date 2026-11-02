@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/plan-change-decisions.ts', 'utf8');
-const runtimeIndex = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const runtimeIndex = fs.readFileSync('supabase/functions/gsa-mcp/plan-change-tools.ts', 'utf8');
 const sf = ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
 const factory=sf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text==='createPlanChangeDecisions');
 assert.ok(factory&&factory.body,'Plan Change factory must exist');
