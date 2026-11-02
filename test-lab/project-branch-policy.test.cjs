@@ -446,7 +446,8 @@ test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA'
 })
 
 test('M3: Project Plan preparation and planning Reviewer preserve exact Criteria binding', () => {
-  const create = source.slice(source.indexOf("'job_prepare',"), source.indexOf("'job_revise_plan',"))
+  const jobPrepareSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-prepare-tool.ts'), 'utf8')
+  const create = jobPrepareSource.slice(jobPrepareSource.indexOf("'job_prepare',"))
   const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
   const review = source.slice(source.indexOf("'plan_review_record',"), source.indexOf("'start_critic_review',"))
   assert.ok(create.includes('plan_kind'))
