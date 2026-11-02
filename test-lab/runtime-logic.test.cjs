@@ -8,6 +8,7 @@ const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
+const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
 function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
     ? 'execution-guards.ts'
@@ -147,12 +148,12 @@ test('M1 source CR record routes preauthorized milestone via orchestrator, direc
   assert.match(route,/next_role:\s*human_invoked === true \? 'human' : 'orchestrator'/);
   assert.match(route,/milestone_loop_evaluate\(stage=CR/);
   assert.match(route,/After immutable CR Verification persistence and exact readback/);
-  const runStart=source.indexOf("'run_begin'");
-  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
-  assert.match(source.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
-  const verifyStart=source.indexOf("'run_verification_record'");
-  const verifyEnd=source.indexOf("'run_complete'",verifyStart);
-  assert.match(source.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
+  const runStart=runSource.indexOf("'run_begin'");
+  const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
+  assert.match(runSource.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
+  const verifyStart=runSource.indexOf("'run_verification_record'");
+  const verifyEnd=runSource.indexOf("'run_complete'",verifyStart);
+  assert.match(runSource.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
 });
 
 
@@ -232,12 +233,12 @@ test('P0 bootstrap negative control detects removing canonical current SHA check
     'CRITERIA_STALE_OR_UNVERIFIED'),assert.AssertionError);
 });
 test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
-  const runStart=source.indexOf("'run_begin'");
-  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
-  const runSource=source.slice(runStart,runEnd);
+  const runStart=runSource.indexOf("'run_begin'");
+  const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
+  const runSource=runSource.slice(runStart,runEnd);
   assert.match(runSource,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
-  const completionStart=source.indexOf("'run_complete'");
-  const completion=source.slice(completionStart,completionStart+2500);
+  const completionStart=runSource.indexOf("'run_complete'");
+  const completion=runSource.slice(completionStart,completionStart+2500);
   assert.match(completion,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
   const taskCase={execution_contract:'NEXT',planning_revision:1,tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
   assert.match(dispatch(taskCase,'coder',['T2'],1,sha,sha,[]),/TASK_INVALID/);
