@@ -61,7 +61,7 @@ export function registerHarnessSkillTools(deps: any) {
     async () => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to list runtime skills.')
-      const skills = Object.entries(RUNTIME_SKILLS).map(([name, skill]) => ({ name, description: skill.description }))
+      const skills = Object.entries(RUNTIME_SKILLS as Record<string, {description: string}>).map(([name, skill]) => ({ name, description: skill.description }))
       return { structuredContent: { skills }, content: [{ type: 'text', text: JSON.stringify({ skills }) }] }
     },
   )
