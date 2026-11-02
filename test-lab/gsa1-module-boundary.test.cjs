@@ -72,6 +72,7 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
       'evidence_bundle_attestation_prepare']],
     ['registerHarnessSkillTools','harness-skill-tools.ts',['get_agent_harness','get_skill_catalog','load_skill']],
     ['registerJobPrepareTool','job-prepare-tool.ts',['job_prepare']],
+    ['registerJobTransitionTool','job-transition-tool.ts',['job_transition']],
     ['registerProjectSetupTools','project-setup-tools.ts',[
       'project_setup_prepare','project_criteria_advice_check','project_role_addins_resolve','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','project_branch_policy_prepare']],
     ['registerProjectLifecycleTools','project-lifecycle-tools.ts',[
