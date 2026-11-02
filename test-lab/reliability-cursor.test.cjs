@@ -128,7 +128,7 @@ test('new cursor tools are authenticated, read-only and not in the always-loaded
   assert.match(cursorTools,/Authentication required for Job cursor preparation/);
   assert.match(cursorTools,/Authentication required for Job cursor recovery/);
   assert.match(harnessSource,/lazily persist one Job execution cursor on the first consequential atomic Git mutation/);
-  assert.match(cursorTools,/execution_cursor_resume_evaluate decides last checkpoint or pending mutation/);
+  assert.match(harnessSource,/execution_cursor_resume_evaluate decides last checkpoint or pending mutation/);
   assert.match(harnessSource,/No cursor round trips for ordinary tools/);
   const skills=harnessSource.slice(harnessSource.indexOf('const ROLE_SKILLS'),harnessSource.indexOf('const RUNTIME_SKILLS'));
   assert.match(skills,/coder:\s*\['coding-loop', 'delegation'\]/);
