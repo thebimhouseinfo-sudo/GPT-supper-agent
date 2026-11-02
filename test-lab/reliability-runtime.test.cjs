@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const source = fs.readFileSync('supabase/functions/gsa-mcp/recovery-decisions.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 function runtimeFunction(name, transform = body => body) {
   const decl = parsed.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
