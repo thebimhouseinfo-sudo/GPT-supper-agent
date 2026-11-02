@@ -1931,7 +1931,7 @@ function createServer(req: Request) {
 
   registerExecutionCursorTools({ server, z, req, AUTH_SCOPES, authContext, authError, executionCursorPath, orchestrationProgressDecision, prepareExecutionCursorDecision, resumeExecutionCursorDecision, sourceMutationRecoveryDecision })
 
-  registerBrowserTestTools({ server, z, req, AUTH_SCOPES, authContext, authError })
+  registerBrowserTestTools({ server, z, req, AUTH_SCOPES, authContext, authError, callBrowserBridge })
 
   function validateRepositoryProbeSnapshot(
     snapshot: any,
