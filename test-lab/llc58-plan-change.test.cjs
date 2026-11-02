@@ -103,7 +103,7 @@ test('LLC58 negative-control: assessment NEVER authorizes mutation',()=>{
     const out=one(row(idA,'READY',decision));
     assert.equal(out.mutation_authorized,false);
   }
-  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8'),/server\.registerTool\(\s*'job_plan_change_assess'/);
+  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/plan-change-tools.ts','utf8'),/server\.registerTool\(\s*'job_plan_change_assess'/);
 });
 
 
