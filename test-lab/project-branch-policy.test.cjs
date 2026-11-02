@@ -132,7 +132,7 @@ test('C14A revision binding: missing, retained, newly supplied and malformed ref
 })
 
 test('C14A job_revise_plan consumes and persists branch with external project/live-ref/readback gates', () => {
-  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
+  const revise = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-revise-plan-tool.ts'), 'utf8').split("'job_revise_plan',")[1]
   assert.match(revise, /integration_branch: z\.string\(\)\.optional\(\)/)
   assert.match(revise, /criteria_binding, integration_branch, revision_reason/)
   assert.match(revise, /revisedJobIntegrationBranchError\(current, executionContract, integration_branch\)/)
@@ -448,7 +448,7 @@ test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA'
 test('M3: Project Plan preparation and planning Reviewer preserve exact Criteria binding', () => {
   const jobPrepareSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-prepare-tool.ts'), 'utf8')
   const create = jobPrepareSource.slice(jobPrepareSource.indexOf("'job_prepare',"))
-  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
+  const revise = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-revise-plan-tool.ts'), 'utf8').split("'job_revise_plan',")[1]
   const review = source.slice(source.indexOf("'plan_review_record',"), source.indexOf("'start_critic_review',"))
   assert.ok(create.includes('plan_kind'))
   assert.ok(create.includes('criteria_binding: criteria_binding ?? null'))
