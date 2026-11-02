@@ -77,6 +77,7 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
     ['registerPlanReviewRecordTool','plan-review-record-tool.ts',['plan_review_record']],
     ['registerCriticReviewTools','critic-review-tools.ts',['start_critic_review','critic_review_record']],
     ['registerCheckpointTools','checkpoint-tools.ts',['checkpoint_claim_prepare','checkpoint_verification_prepare','checkpoint_gate_evaluate']],
+    ['registerRunExecutionTools','run-execution-tools.ts',['run_begin','relationship_knowledge_prepare','goal_recheck_record','run_verification_record','run_complete']],
     ['registerProjectSetupTools','project-setup-tools.ts',[
       'project_setup_prepare','project_criteria_advice_check','project_role_addins_resolve','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','project_branch_policy_prepare']],
     ['registerProjectLifecycleTools','project-lifecycle-tools.ts',[
