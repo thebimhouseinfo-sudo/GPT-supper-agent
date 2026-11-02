@@ -1,6 +1,6 @@
 // GSA1: Execution Cursor, recovery and orchestration progress tools.
 export function registerExecutionCursorTools(deps: any) {
- const { server, z, req, AUTH_SCOPES, authContext, authError } = deps
+ const { server, z, req, AUTH_SCOPES, authContext, authError, executionCursorPath, orchestrationProgressDecision, prepareExecutionCursorDecision, resumeExecutionCursorDecision, sourceMutationRecoveryDecision } = deps
   server.registerTool(
     'execution_cursor_prepare',
     {
