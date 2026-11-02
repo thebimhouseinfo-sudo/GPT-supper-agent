@@ -1,6 +1,6 @@
 // GSA1-S6: Job lifecycle transition, original contract preserved.
 export function registerJobTransitionTool(deps: any) {
-  const { server, z, req, AUTH_SCOPES, authContext, authError, PLANNING_LOOP_CONTINUATION_SCHEMA, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, parseDurableSnapshots, planningLoopContinuationDecision, prettyJson, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE } = deps
+  const { server, z, req, AUTH_SCOPES, authContext, authError, PLANNING_LOOP_CONTINUATION_SCHEMA, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, parseDurableSnapshots, planningLoopContinuationDecision, prettyJson, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE, DURABLE_RECORD_SNAPSHOT_SCHEMA, evaluateNextEvidenceGate, nextClosureCoverageError, validatePlanChangeSupersession, durableSnapshotReadbackSteps } = deps
   server.registerTool(
     'job_transition',
     {
