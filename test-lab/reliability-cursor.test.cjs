@@ -14,7 +14,7 @@ function load(name,injected={}) {
   const decl=ast.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text===name);
   assert.ok(decl,'Runtime function exists: '+name);
   const js=ts.transpileModule(decl.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-  return vm.runInContext(js+'\n'+name,vm.createContext({JSON,Number,String,Date,...injected}));
+  return vm.runInContext(js+'\n'+name,vm.createContext({JSON,Number,String,Date,exports: {},...injected}));
 }
 const namespace=job=>job?.memory_namespace==='TEST_LAB'?'TEST_LAB':job?.memory_namespace==='PRODUCTION'?'PRODUCTION':null;
 const root=(project,contract,ns)=>'projects/'+project+(ns==='TEST_LAB'?'/TEST-LAB/NEXT':'');
