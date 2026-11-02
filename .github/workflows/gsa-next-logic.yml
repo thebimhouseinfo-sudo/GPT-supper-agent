@@ -3,22 +3,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'supabase/functions/gsa-mcp/index.ts'
+      - 'supabase/functions/gsa-mcp/**'
       - 'test-lab/**'
       - 'skills/gsa-job-runtime/SKILL.md'
       - 'docs/architecture/**'
       - '.github/workflows/gsa-next-logic.yml'
   pull_request:
     paths:
-      - 'supabase/functions/gsa-mcp/index.ts'
-      - 'test-lab/runtime-logic.test.cjs'
-      - 'test-lab/project-branch-policy.test.cjs'
-      - 'test-lab/reliability-runtime.test.cjs'
-      - 'test-lab/reliability-cursor.test.cjs'
-      - 'test-lab/llc58-plan-change.test.cjs'
-      - 'test-lab/llc58-plan-intent.test.cjs'
-      - 'test-lab/llc59-autonomy-harness.test.cjs'
-      - 'test-lab/llc60-planning-loop.test.cjs'
+      - 'supabase/functions/gsa-mcp/**'
+      - 'test-lab/**'
       - 'skills/gsa-job-runtime/SKILL.md'
       - 'docs/architecture/AGENT-HARNESSES.md'
       - 'docs/architecture/EXECUTION-AND-REVIEW.md'
@@ -39,7 +32,7 @@ jobs:
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
-        run: node --test test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs
+        run: node --test test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs
   deno-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
