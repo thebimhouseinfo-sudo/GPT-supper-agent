@@ -476,8 +476,9 @@ test('M4: CRL requires approved milestone, current planning PASS and exact Revie
 })
 
 test('M4: Human CR fallback and milestone invocation record distinct provenance', () => {
-  const start = source.slice(source.indexOf("'start_critic_review',"), source.indexOf("'critic_review_record',"))
-  const record = source.slice(source.indexOf("'critic_review_record',"), source.indexOf("'run_begin',"))
+  const criticSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/critic-review-tools.ts'),'utf8')
+  const start = criticSource.slice(criticSource.indexOf("'start_critic_review',"), criticSource.indexOf("'critic_review_record',"))
+  const record = criticSource.slice(criticSource.indexOf("'critic_review_record',"))
   assert.ok(start.includes('human_invoked === true'))
   assert.ok(start.includes('milestoneCrlEvidenceError'))
   assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
