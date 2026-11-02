@@ -74,8 +74,8 @@ test('registered recovery tools and auth guard are present on the served source'
   for (const name of ['execution_recovery_evaluate','orchestration_progress_evaluate']) {
     assert.match(cursorTools,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
   }
-  assert.match(source,/Authentication required for recovery evaluation/);
-  assert.match(source,/Authentication required for progress evaluation/);
+  assert.match(cursorTools,/Authentication required for recovery evaluation/);
+  assert.match(cursorTools,/Authentication required for progress evaluation/);
 });
 
 test('debugging skill is opt-in and exposed by catalog/loader schema (static contract)', () => {
