@@ -38,11 +38,12 @@ function assertRoute(input, wantAction, wantRole, wantContinue = true) {
   return d;
 }
 function toolBody(name) {
-  const start = runtimeSource.indexOf("  server.registerTool(\n    '" + name + "'");
+  const ownerSource = name === 'job_prepare' ? fs.readFileSync('supabase/functions/gsa-mcp/job-prepare-tool.ts', 'utf8') : runtimeSource;
+  const start = ownerSource.indexOf("  server.registerTool(\n    '" + name + "'");
   assert.ok(start >= 0, 'Live tool registered: ' + name);
-  const end = runtimeSource.indexOf('\n  server.registerTool(', start + 10);
-  assert.ok(end > start, 'Next tool boundary for ' + name);
-  return runtimeSource.slice(start, end);
+  const end = ownerSource.indexOf('\n  server.registerTool(', start + 10);
+  assert.ok(end > start || name === 'job_prepare', 'Next tool boundary for ' + name);
+  return ownerSource.slice(start, end > start ? end : undefined);
 }
 function constantBody(name) {
   const decls = harnessAst.statements.filter(ts.isVariableStatement)
