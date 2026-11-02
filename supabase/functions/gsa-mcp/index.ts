@@ -1928,7 +1928,7 @@ function createServer(req: Request) {
 
   registerPlanChangeTools({ server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE, assessHumanPlanChangeJobs, jobExecutionContract, prepareHumanPlanChangeFenceDecision, prepareHumanPlanChangeIntent, prettyJson, recordNextMemoryNamespace, recordPath, resumeHumanPlanChangeIntent })
 
-  registerExecutionCursorTools({ server, z, req, AUTH_SCOPES, authContext, authError })
+  registerExecutionCursorTools({ server, z, req, AUTH_SCOPES, authContext, authError, executionCursorPath, orchestrationProgressDecision, prepareExecutionCursorDecision, resumeExecutionCursorDecision, sourceMutationRecoveryDecision })
 
   server.registerTool(
     'browser_ui_inspect',
