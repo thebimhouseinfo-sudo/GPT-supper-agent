@@ -1,6 +1,6 @@
 // GSA1: Browser UI inspection and test-flow evidence tools.
 export function registerBrowserTestTools(deps: any) {
-  const { server, z, req, AUTH_SCOPES, authContext, authError } = deps
+  const { server, z, req, AUTH_SCOPES, authContext, authError, callBrowserBridge } = deps
   server.registerTool(
     'browser_ui_inspect',
     {
