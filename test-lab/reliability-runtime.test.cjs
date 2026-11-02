@@ -6,6 +6,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/recovery-decisions.ts', 'utf8');
+const cursorTools = fs.readFileSync('supabase/functions/gsa-mcp/execution-cursor-tools.ts','utf8');
+const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
+const harnessTools = fs.readFileSync('supabase/functions/gsa-mcp/harness-skill-tools.ts','utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 function runtimeFunction(name, transform = body => body) {
   const decl = parsed.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
@@ -69,17 +72,17 @@ test('negative mutation control: changing no-progress threshold must turn test R
 });
 test('registered recovery tools and auth guard are present on the served source', () => {
   for (const name of ['execution_recovery_evaluate','orchestration_progress_evaluate']) {
-    assert.match(source,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
+    assert.match(cursorTools,new RegExp("server\\.registerTool\\(\\s*'"+name+"'"));
   }
   assert.match(source,/Authentication required for recovery evaluation/);
   assert.match(source,/Authentication required for progress evaluation/);
 });
 
 test('debugging skill is opt-in and exposed by catalog/loader schema (static contract)', () => {
-  assert.match(source,/['"]debugging['"]:\s*\{/);
-  assert.match(source,/name:\s*z\.enum\(\['job-planning','coding-loop','debugging'/);
-  assert.match(source,/For a reproducible nontrivial bug or failed hotfix retest, discover debugging/);
-  const rolePart = source.slice(source.indexOf('const ROLE_SKILLS'), source.indexOf('const RUNTIME_SKILLS'));
+  assert.match(harnessSource,/['"]debugging['"]:\s*\{/);
+  assert.match(harnessTools,/name:\s*z\.enum\(\['job-planning','coding-loop','debugging'/);
+  assert.match(harnessSource,/For a reproducible nontrivial bug or failed hotfix retest, discover debugging/);
+  const rolePart = harnessSource.slice(harnessSource.indexOf('const ROLE_SKILLS'), harnessSource.indexOf('const RUNTIME_SKILLS'));
   assert.match(rolePart,/coder:\s*\['coding-loop', 'delegation'\]/);
   assert.doesNotMatch(rolePart,/coder:\s*\[[^\]]*debugging/);
 });
