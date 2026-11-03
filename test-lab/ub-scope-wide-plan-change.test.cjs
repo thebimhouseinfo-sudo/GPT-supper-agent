@@ -172,7 +172,7 @@ test('UB-03: fence before unknown/pending Run/cursor, then stable permits only e
   const i=JSON.parse(intentReady().intent_record_text);
   const fA=fence(i,jobs[0]);const fB=fence(i,jobs[1]);const fE=fence(i,jobs[4]);
   assert.equal(fA.allowed,true);assert.equal(fB.allowed,true);assert.equal(fE.allowed,true);
-  const updated=[fA.record,fB.record,jobs[2],jobs[3],fE.record];
+  const updated=[fA.record,fB.record,jobs[2],jobs[3],fE.record,jobs[5]];
   const pending=resume(i,updated,[{job_id:b,cursor_state:'PENDING',active_run_state:'ACTIVE'}]);
   assert.equal(pending.allowed,true);
   assert.equal(pending.actions.find(a=>a.job_id===b).next_action,'RECONCILE_PENDING_SOURCE_CURSOR');
