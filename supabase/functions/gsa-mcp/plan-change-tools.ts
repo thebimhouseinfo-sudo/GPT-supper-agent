@@ -106,6 +106,7 @@ export function registerPlanChangeTools(deps: any) {
         plan_review_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
         plan_review_memory_path: z.string().min(1),
         work_branch: z.string().min(1),
+        human_change_approval_ref: z.string().min(1).optional(),
         scope_selection: z.object({
           boundary: z.enum(['PLAN','PHASE']),
           phase: z.string().min(1).optional(),
@@ -143,7 +144,7 @@ export function registerPlanChangeTools(deps: any) {
       if (!auth) return authError(req, 'Authentication required for Plan Change intent.')
       const decision = prepareHumanPlanChangeIntent(input)
       if (decision.allowed && input.scope_selection) decision.external_steps.unshift(
-        'Independently enumerate all current child Jobs in active Project Memory and verify inventory_job_ids exactly equals their IDs; every Job must have a current blob SHA. Read reviewed Plan/Phase and explicit Human acceptance before relying on scope_selection.',
+        'Independently enumerate all current child Jobs in active Project Memory and verify inventory_job_ids exactly equals their IDs; every Job must have a current blob SHA. Read back the actual Human-approved changed Plan/Phase and bind human_change_approval_ref before relying on scope_selection.',
         'Do not dispatch rebuilt Jobs until every affected unfinished Job has durable RETIRED readback and all crossed dependencies have been re-reviewed.',
         'Shared/default/main/release/integration Git refs and history must remain intact; no branch deletion or automatic release.',
       )
