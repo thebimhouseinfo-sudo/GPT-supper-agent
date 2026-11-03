@@ -352,7 +352,10 @@ test('M4 C31: role prompts invoke Advisor only for Criteria intent, then ask Hum
   const harnessToolsSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-skill-tools.ts'), 'utf8')
   const exposed = harnessToolsSource.slice(harnessToolsSource.indexOf("'get_agent_harness',"), harnessToolsSource.indexOf("'get_skill_catalog',"))
   assert.match(exposed, /'advisor'/)
-  assert.match(exposed, /renderHarness\(role\)/)
+  // GSA2 keeps advisor role entry, but the role's duplicate skill hints are
+  // removed only when this same response exposes the authoritative skill list.
+  assert.match(exposed, /renderHarness\(role, \{ includeProgressiveSkills: false \}\)/)
+  assert.match(exposed, /suggested_skills:\s*ROLE_SKILLS\[role\]/)
   assert.equal((roles.match(/advisor: \{/g) || []).length, 1)
 })
 

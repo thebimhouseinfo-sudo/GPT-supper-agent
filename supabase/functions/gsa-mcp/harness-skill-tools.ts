@@ -26,7 +26,8 @@ export function registerHarnessSkillTools(deps: any) {
     async ({ role, mode }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to load a role harness.')
-      const harness = renderHarness(role)
+      // The same tool result carries suggested_skills as structured metadata.
+      const harness = renderHarness(role, { includeProgressiveSkills: false })
       if (!harness) return { content: [{ type: 'text', text: 'Unknown role harness.' }], isError: true }
       const result = {
         role,
