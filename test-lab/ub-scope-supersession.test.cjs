@@ -142,6 +142,7 @@ test('U-B fence, unknown/PENDING Run and cursor block retirement and scope rebui
   const begin=makeResume(intent,old);
   assert.equal(begin.actions[0].next_action,'FENCE_PREDECESSOR_BY_EXACT_SHA');
   assert.equal(begin.actions[3].next_action,'FENCE_DEPENDENT_JOB_BY_EXACT_SHA');
+  assert.equal(begin.actions.length,7,JSON.stringify({begin,scope:intent.scope_selection,rebuild:intent.rebuild_jobs}));
   assert.equal(begin.actions[5].next_action,'WAIT_SCOPE_RETIREMENT');
   const fA=fence(old[0]),fB=fence(old[1]),fD=fence(old[3]);
   assert.equal(fA.allowed,true);assert.equal(fB.allowed,true);
