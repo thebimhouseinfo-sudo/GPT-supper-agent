@@ -129,6 +129,8 @@ test('UB-02: immutable intent contains full scope and idempotent retry never min
   assert.equal(p.operation,'CREATE');
   const i=JSON.parse(p.intent_record_text);
   assert.equal(i.scope_change.human_approval_ref,scope.human_approval_ref);
+  assert.equal(i.scope_change.successor_job_count,1);
+  assert.deepEqual(Array.from(i.scope_change.successor_job_ids),[successor]);
   assert.deepEqual(Array.from(i.scope_change.retiring_job_ids).sort(),[a,b,e].sort());
   assert.equal(i.actions.filter(a=>a.decision==='RETIRE').length,3);
   assert.equal(i.actions.filter(a=>a.decision==='REPLACE').length,0);
@@ -142,6 +144,11 @@ test('UB-02: immutable intent contains full scope and idempotent retry never min
     scope_change:{...scope,human_approval_ref:'another-approval'},
     existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha});
   assert.equal(conflict.allowed,false);
+  assert.equal(api.prepareHumanPlanChangeIntent({...base,
+    scope_change:{...scope,successor_job_count:2},
+    existing_intent_record_text:p.intent_record_text,existing_intent_record_sha:sha}).allowed,false);
+  assert.equal(api.assessHumanPlanChangeJobs({...base,
+    scope_change:{...scope,successor_job_count:0}}).allowed,false);
 });
 test('UB-03: fence before unknown/pending Run/cursor, then stable permits only exact lineage',()=>{
   const i=JSON.parse(intentReady().intent_record_text);
@@ -207,6 +214,16 @@ test('UB-02: Job transition retires unfinished milestone/Task, keeps historical 
   assert.equal(result.milestones[0].lifecycle,'COMPLETED');
   assert.equal(result.milestones[0].result,'PASS');
   assert.equal(result.milestones[1].lifecycle,'RETIRED');
+  // A stale milestone PASS with an unfinished Task must not survive retirement.
+  const conflicted={...old,milestones:old.milestones.map(m=>
+    m.node_ids.includes(tOpen)?{...m,status:'PASS'}:m)};
+  const stale=await handler({project_id:pid,job_id:a,job_record_text:JSON.stringify(conflicted),
+    job_record_sha:fencedSha,target_lifecycle:'RETIRED',result:'RETIRED',
+    plan_change_context:{intent_record_text:JSON.stringify(i),intent_record_sha:sha,
+      intent_memory_path:intentReady().intent_memory_path,cursor_state:'STABLE',active_run_state:'NONE'}});
+  assert.equal(stale.isError,undefined,JSON.stringify(stale));
+  const staleRecord=JSON.parse(stale.structuredContent.next_job_record_text);
+  assert.equal(staleRecord.milestones[1].lifecycle,'RETIRED');
   assert.equal(result.retired_by_replacement_job_id,null);
 });
 test('UB-03: delayed NEXT Run success after fence is rejected; safe cancellation still allowed',async()=>{
@@ -237,4 +254,85 @@ test('UB-03: no Run.RETIRED, git deletion or uncontrolled alternate runtime surf
   assert.match(read('plan-change-decisions.ts'),/Do not delete Git refs/);
   assert.match(read('run-execution-tools.ts'),/plan_change_pending/);
   assert.match(read('job-prepare-tool.ts'),/scope_change_context/);
+});
+
+test('UB-02: reserved successor is enforced in existing Job preparation; retry cannot allocate another',async()=>{
+  const i=JSON.parse(intentReady().intent_record_text);
+  const retired=jobs.filter(j=>[a,b,e].includes(j.job_id)).map(job=>{
+    const action=i.actions.find(a=>a.predecessor_job_id===job.job_id);
+    return {...job,lifecycle:'RETIRED',result:'RETIRED',
+      retired_by_plan_change_id:i.change_id,retired_reason:action.reason,
+      tasks:job.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'})};
+  });
+  const handlers=register('job-prepare-tool.ts','registerJobPrepareTool',{
+    readMemoryConfig:async()=>({data:{memory_repo_full_name:'owner/memory'}}),
+    normalizeGithubRepo:u=>({url:u}),jobCreationExecutionContractDefault:()=> 'NEXT',
+    resolveExecutionContract:v=>v, nextMemoryNamespaceForRequest:()=> 'PRODUCTION',
+    validIntegrationBranch:()=>true,projectCriteriaBindingError:()=>null,
+    cutoverInventoryError:()=>null,validateExecutionTopology:()=>null,
+    normalizeNextPlanningModel:(model,revision)=>Object.fromEntries(
+      ['evidence_needs','test_checkpoints','evidence_requirements','milestones','planning_topology']
+        .map(k=>[k,model[k]??[]])),
+    validateNextPlanningModel:()=>null,
+    planningLoopContinuationDecision:()=>({next_action_after_readback:'REVIEW_CURRENT_REVISION'}),
+  });
+  const handler=handlers.get('job_prepare');
+  const taskId='11000000-0000-4000-8000-000000000020';
+  const milestoneId='11000000-0000-4000-8000-000000000021';
+  const context={
+    intent_record_text:JSON.stringify(i),intent_record_sha:sha,
+    intent_memory_path:intentReady().intent_memory_path,reviewed_plan_sha:sha,
+    successor_job_id:successor,
+    retired_job_snapshots:retired.map(j=>({job_record_text:JSON.stringify(j),job_record_sha:fencedSha})),
+  };
+  const payload={project_id:pid,type:'code',objective:'Fresh reviewed scope plan',scope:['new scope'],
+    non_goals:[],execution_contract:'NEXT',plan_kind:'JOB',work_context:'BROWNFIELD',
+    phase:'A-new',milestone:'new milestone',relationship_scan_summary:'scanned',
+    job_sizing:{size:'SMALL'},brownfield_logic_review:[{target:'old',classification:'CANONICAL'}],
+    project_repository_mode:'SINGLE',registered_repositories:['https://github.com/owner/repo'],
+    working_repository_url:'https://github.com/owner/repo',
+    cross_repo_impact:[{repository_url:'https://github.com/owner/repo',impact:'NONE',reason:'same repo'}],
+    repository_structure_evidence:['reviewed'],
+    integration_branch:'upgrade/gsa-context-efficiency',
+    tasks:[{task_id:taskId,objective:'fresh',scope:[],dependencies:[],completion_criteria:['done']}],
+    milestones:[{milestone_id:milestoneId,node_ids:[taskId]}],
+    planning_topology:[{node_id:taskId,node_type:'TASK',depends_on:[]}],
+    completion_requirements:['fresh'],verification_requirements:[],review_triggers:[],
+    scope_change_context:context};
+  const okay=await handler(payload);
+  assert.equal(okay.isError,undefined,JSON.stringify(okay));
+  assert.equal(okay.structuredContent?.job_id,successor);
+  const created=JSON.parse(okay.structuredContent.job_record_text);
+  assert.equal(created.lifecycle,'DRAFT');
+  assert.equal(created.planning_review.status,'PENDING');
+  assert.deepEqual(Array.from(created.scope_predecessor_job_ids).sort(),[a,b,e].sort());
+  assert.equal(created.scope_supersession_id,i.change_id);
+  const unreserved=await handler({...payload,scope_change_context:{...context,
+    successor_job_id:'11000000-0000-4000-8000-000000000099'}});
+  assert.equal(unreserved.isError,true);
+  assert.match(unreserved.content[0].text,/SCOPE_CHANGE_REVIEWED_INTENT_OR_COMPLETE_RETIREMENT_REQUIRED/);
+  const unfinished=await handler({...payload,scope_change_context:{...context,
+    retired_job_snapshots:context.retired_job_snapshots.slice(1)}});
+  assert.equal(unfinished.isError,true);
+  const oldId=await handler({...payload,tasks:[{...payload.tasks[0],task_id:tOpen}]});
+  assert.equal(oldId.isError,true);
+});
+test('UB-03 high-risk mutation negative control: removing Task-coverage guard turns a forged intent falsely green',()=>{
+  const i=JSON.parse(intentReady().intent_record_text);
+  const f=fence(i,jobs[0]).record;
+  const broken={...i,actions:i.actions.map(action=>action.predecessor_job_id===a
+    ? {...action,retired_task_ids:[]} : action)};
+  const context={project_id:pid,intent_record_text:JSON.stringify(broken),intent_record_sha:sha,
+    intent_memory_path:intentReady().intent_memory_path,
+    predecessor_job:f,predecessor_job_sha:fencedSha,
+    cursor_state:'ABSENT',active_run_state:'NONE'};
+  assert.equal(api.validatePlanChangeSupersession(context).allowed,false);
+  const src=read('plan-change-decisions.ts');
+  const pattern=/expectedRetired.length !== \(a.retired_task_ids \?\? \[\]\).length \|\|\s*expectedRetired.some\(\(id: string\) => !a.retired_task_ids.includes\(id\)\)/;
+  assert.match(src,pattern);
+  const mutantSource=src.replace(pattern,'false');
+  const mutantFactory=vm.runInNewContext(toJS(mutantSource)+'\ncreatePlanChangeDecisions',deps);
+  const mutant=mutantFactory(deps);
+  assert.equal(mutant.validatePlanChangeSupersession(context).allowed,true,
+    'The actual Task coverage guard is what rejects the forged intent');
 });
