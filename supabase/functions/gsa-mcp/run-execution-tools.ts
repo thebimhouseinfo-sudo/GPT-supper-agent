@@ -621,6 +621,25 @@ export function registerRunExecutionTools(deps: any) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: NEXT Run memory_namespace is invalid.' }], isError: true }
       }
+      // U-B: a delayed successful callback cannot resurrect a superseded
+      // Job or publish stale PASS after the Plan fence was committed. NEXT
+      // successful Runs require an exact owning Job snapshot for ALL roles,
+      // not only Coder. Failed/cancelled settlement remains possible.
+      if (lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
+        if (!job_record_text || !/^[0-9a-f]{40}$/.test(String(job_record_sha ?? ''))) {
+          return { content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_REQUIRES_CURRENT_JOB_SHA.'}],isError:true }
+        }
+        let owning: any
+        try { owning = JSON.parse(job_record_text) }
+        catch { return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_JOB_JSON_INVALID.'}],isError:true} }
+        if (owning.project_id !== project_id || owning.job_id !== job_id ||
+            owning.plan_change_pending || !['READY','IN_PROGRESS'].includes(owning.lifecycle) ||
+            owning.planning_revision !== current.planning_revision ||
+            jobExecutionContract(owning) !== executionContract ||
+            recordNextMemoryNamespace(owning) !== nextMemoryNamespace) {
+          return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB.'}],isError:true}
+        }
+      }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
         let goalRef: string | null = null
@@ -798,6 +817,10 @@ export function registerRunExecutionTools(deps: any) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...(lifecycle === 'COMPLETED' ? [
+          'Independently reread the CURRENT owning Job at its contract-derived Memory path just before writing terminal Run. Reject any plan_change_pending, RETIRED/SUPERSEDED status, stale planning_revision or unexpected Job SHA; do not trust a callback-supplied snapshot.',
+          'Treat delayed completion after an exact-SHA Plan fence as stale, even when a previous Run verification or PASS result exists. Do not promote old evidence to new topology.',
+        ] : []),
         ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),
         ...durableSnapshotReadbackSteps(run_verification_snapshot ? [run_verification_snapshot] : [], 'Reviewer/Tester Run Verification snapshot'),
         ...durableSnapshotReadbackSteps(
