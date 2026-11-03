@@ -13,7 +13,7 @@
 
 ## Evidence, checks and remaining test
 - Starting GSA source branch: `upgrade/gsa-context-efficiency` @ `e3224c5e5eb540db79bf6e08e65b121cd5d9f28a`; original `bootstrap.ts` blob `700462c5d703963290dbb4822dd49f87e5a231ad`, `run-execution-tools.ts` blob `f6a7843cf93da35d426a25dad5a7ec040e7bae5c`.
-- Regression includes real extracted runtime path for descriptive Task ID and ownership negatives, typed/untyped product Plan scenarios, nearest executable Task capability, existing Proposal, stale/unapproved Criteria and false source authorization negatives. CI run/link to be appended only after verification.
+- Regression includes real extracted runtime path for descriptive Task ID and ownership negatives, typed/untyped product Plan scenarios, nearest executable Task capability, existing Proposal, stale/unapproved Criteria and false source authorization negatives. Hosted CI evidence: https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41587309590 (commit bc24213; Deno SUCCESS, 139/139 Node tests).
 - **REAL TEST REQUIRED**: host-authenticated MCP E2E and real brownfield Bootstrap on authorized target/runtime after deployment. Never claim historical GSA-Localconnector work has been modified or now passes live.
 
-Status: **FIX_IN_DEVELOPMENT**. This is GSA's canonical lesson, not a change to approved Criteria. No main merge or production deploy.
+Status: **FIXED_DEV_CI_PASS**. GSA source commit `bc24213c54da9d002a43c941fe9f351eb2d51715`; GitHub Actions run `41587309590` at that exact SHA: Deno typecheck PASS; executable Node regression **139/139 PASS, 0 FAIL**. This is source/CI evidence, not real hosted MCP or real GSA-Localconnector Bootstrap proof. No approved Criteria edit, no main merge or production deploy.
