@@ -267,4 +267,32 @@ test('U-B runtime: a late NEXT Run callback cannot complete under a fenced/revis
       planning_review:{status:'PENDING'}}),role:'coder',scope_claim:['old scope']});
   assert.equal(reviewPendingBegin.isError,true);
   assert.match(reviewPendingBegin.content[0].text,/SCOPE_REVALIDATION_REVIEW_PENDING/);
+  const rebuilt={...owner,plan_change_id:'SCOPE-R3',
+    scope_rebuild:{pack_key:'B',reviewed_plan_sha:sha,dependency_job_ids:[ids[1]]},
+    planning_review:{status:'PASS',reviewed_revision:2}};
+  const dispatchBase={project_id:P,job_id:ids[0],
+    job_record_text:JSON.stringify({...rebuilt,job_id:ids[0]}),
+    role:'tester',scope_claim:['check new scope']};
+  const withoutDependency=await begin(dispatchBase);
+  assert.equal(withoutDependency.isError,true);
+  assert.match(withoutDependency.content[0].text,/SCOPE_REBUILD_DEPENDENCY_READBACK_REQUIRED/);
+  const predecessor={...J(ids[1],'COMPLETED','ALPHA'),result:'PASS',
+    plan_change_id:'SCOPE-R3',scope_rebuild:{pack_key:'A',reviewed_plan_sha:sha},
+    planning_review:{status:'PASS',reviewed_revision:2}};
+  const depPath=root(P,'NEXT','PRODUCTION')+'/JOBS/'+ids[1]+'.json';
+  const proof=record=>[{path:depPath,sha,record_text:JSON.stringify(record)}];
+  for (const bad of [
+    {...predecessor,lifecycle:'READY'},
+    {...predecessor,result:'PASS_RETEST_REQUIRED'},
+    {...predecessor,plan_change_id:'OTHER_PLAN'},
+    {...predecessor,planning_review:{status:'PENDING',reviewed_revision:null}},
+  ]) {
+    const result=await begin({...dispatchBase,scope_dependency_job_snapshots:proof(bad)});
+    assert.equal(result.isError,true);
+    assert.match(result.content[0].text,/SCOPE_REBUILD_DEPENDENCY_NOT_COMPLETED/);
+  }
+  const accepted=await begin({...dispatchBase,scope_dependency_job_snapshots:proof(predecessor)});
+  assert.equal(accepted.isError,true);
+  assert.match(accepted.content[0].text,/NEXT_TASK_BINDING_REQUIRED/,
+    'valid upstream PASS moves admission forward to the ordinary Task guard');
 });
