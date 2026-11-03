@@ -57,9 +57,23 @@ function resolveScopeWideAssessment(input: any) {
   const affected = new Set(jobs.filter(({job}) => inBoundary(job) && unfinished(job))
     .map(({job}) => job.job_id))
   if (!affected.size) return { allowed: false, reason: 'SCOPE_NO_UNFINISHED_WORK' }
+  // Dependencies may cross more than one Phase. Carry the invalidation
+  // through completed historical nodes without altering their lifecycle:
+  // downstream unfinished consumers still need fresh review.
+  const impactedDependencies = new Set(affected)
+  let propagated = true
+  while (propagated) {
+    propagated = false
+    for (const {job} of jobs) {
+      if (impactedDependencies.has(job.job_id)) continue
+      if ((job.dependencies ?? []).some((dep: any) =>
+        impactedDependencies.has(typeof dep === 'string' ? dep : dep?.job_id))) {
+        impactedDependencies.add(job.job_id); propagated = true
+      }
+    }
+  }
   const snapshots = jobs.map(({snap,job}) => {
-    const outsideDependency = !inBoundary(job) && Array.isArray(job.dependencies) &&
-      job.dependencies.some((dep: any) => affected.has(typeof dep === 'string' ? dep : dep?.job_id))
+    const outsideDependency = !inBoundary(job) && impactedDependencies.has(job.job_id)
     const decision = inBoundary(job) && unfinished(job) ? 'RETIRE' :
       outsideDependency && unfinished(job) ? 'REVALIDATE' : 'KEEP'
     if (snap.decision != null && snap.decision !== decision)
@@ -83,6 +97,9 @@ function resolveScopeWideAssessment(input: any) {
     boundary: s.boundary, phase: s.boundary === 'PHASE' ? s.phase : null,
     inventory_job_ids: [...s.inventory_job_ids].sort(),
     affected_job_ids: [...affected].sort(),
+    dependent_job_ids: jobs.filter(({job}) => !inBoundary(job) &&
+      unfinished(job) && impactedDependencies.has(job.job_id))
+      .map(({job}) => job.job_id).sort(),
   } }
 }
 
@@ -219,6 +236,10 @@ function prepareHumanPlanChangeIntent(input: any) {
     return deny('PLAN_CHANGE_REVIEW_NOT_PASSED')
   const contract = jobExecutionContract(planJob)
   if (!contract) return deny('PLAN_CHANGE_PLAN_CONTRACT_INVALID')
+  if (input.scope_selection &&
+      (typeof input.human_change_approval_ref !== 'string' ||
+        !input.human_change_approval_ref.trim()))
+    return deny('SCOPE_HUMAN_APPROVED_CHANGE_REQUIRED')
   const ns = recordNextMemoryNamespace(planJob)
   if (contract === 'NEXT' && !ns) return deny('PLAN_CHANGE_NAMESPACE_INVALID')
   const expectedRef = verificationPath(input.project_id, verification?.verification_id,
@@ -251,6 +272,8 @@ function prepareHumanPlanChangeIntent(input: any) {
       phase: input.scope_selection.boundary === 'PHASE' ? input.scope_selection.phase : null,
       inventory_job_ids: [...(input.scope_selection.inventory_job_ids ?? [])].sort(),
     }
+    if (input.scope_selection && old.human_change_approval_ref !== input.human_change_approval_ref)
+      return deny('PLAN_CHANGE_EXISTING_HUMAN_APPROVAL_CONFLICT')
     if (JSON.stringify(old.scope_selection && {
         boundary: old.scope_selection.boundary, phase: old.scope_selection.phase,
         inventory_job_ids: old.scope_selection.inventory_job_ids,
@@ -322,7 +345,9 @@ function prepareHumanPlanChangeIntent(input: any) {
     ...(contract === 'NEXT' ? { memory_namespace: ns } : {}),
     work_branch: input.work_branch,
     ...(impact.scope_selection ? {
-      scope_selection: impact.scope_selection, rebuild_jobs: rebuildJobs,
+      scope_selection: impact.scope_selection,
+      human_change_approval_ref: input.human_change_approval_ref,
+      rebuild_jobs: rebuildJobs,
     } : {}),
     actions, created_at: new Date().toISOString(),
   }
@@ -492,6 +517,9 @@ function resumeHumanPlanChangeIntent(input: any) {
         (intent.scope_selection.boundary === 'PHASE' && !intent.scope_selection.phase) ||
         !Array.isArray(intent.scope_selection.inventory_job_ids) ||
         !Array.isArray(intent.scope_selection.affected_job_ids) ||
+        !Array.isArray(intent.scope_selection.dependent_job_ids) ||
+        typeof intent.human_change_approval_ref !== 'string' ||
+        !intent.human_change_approval_ref.trim() ||
         new Set(intent.scope_selection.inventory_job_ids).size !== intent.scope_selection.inventory_job_ids.length ||
         new Set(intent.scope_selection.affected_job_ids).size !== intent.scope_selection.affected_job_ids.length ||
         !intent.scope_selection.affected_job_ids.every((id: string) =>
