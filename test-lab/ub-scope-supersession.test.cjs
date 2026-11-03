@@ -77,7 +77,8 @@ const common={
   plan_review_memory_path:ref,work_branch:'upgrade/gsa-context-efficiency',
   job_snapshots:snapshots(old),scope_selection:scope,rebuild_job_packs:packSpecs,
 };
-const snap=job=>({job_record_text:JSON.stringify(job),job_record_sha:sha2});
+const snap=job=>({job_record_text:JSON.stringify(job),job_record_sha:
+  job.plan_change_pending || job.lifecycle==='RETIRED' || job.plan_change_revalidated_by ? sha2 : sha});
 const prepareScope=()=>skill().prepareHumanPlanChangeIntent(common);
 function makeResume(intent,jobs,activity=[]){
   return skill().resumeHumanPlanChangeIntent({project_id:P,
