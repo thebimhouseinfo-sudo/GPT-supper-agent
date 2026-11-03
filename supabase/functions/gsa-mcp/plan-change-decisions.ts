@@ -280,6 +280,8 @@ function prepareHumanPlanChangeIntent(input: any) {
     return deny('SCOPE_CHANGE_PLAN_JOB_MISMATCH')
   const impact = assessHumanPlanChangeJobs(input)
   if (!impact.allowed) return deny(impact.reason)
+  const scopeSummary = 'scope_summary' in impact ? impact.scope_summary : null
+  if (input.scope_change && !scopeSummary) return deny('SCOPE_CHANGE_SUMMARY_MISSING')
   if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
     return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   const known = new Set(impact.decisions.map((row: any) => row.job_id))
@@ -320,10 +322,10 @@ function prepareHumanPlanChangeIntent(input: any) {
       boundary: input.scope_change.boundary,
       phase_id: input.scope_change.phase_id ?? null,
       human_approval_ref: input.scope_change.human_approval_ref,
-      inventory_job_ids: impact.scope_summary.inventory_job_ids,
-      retiring_job_ids: impact.scope_summary.retiring_job_ids,
-      cross_boundary_job_ids: impact.scope_summary.cross_boundary_job_ids,
-      completed_outcome_job_ids: impact.scope_summary.completed_outcome_job_ids,
+      inventory_job_ids: scopeSummary!.inventory_job_ids,
+      retiring_job_ids: scopeSummary!.retiring_job_ids,
+      cross_boundary_job_ids: scopeSummary!.cross_boundary_job_ids,
+      completed_outcome_job_ids: scopeSummary!.completed_outcome_job_ids,
     } } : {}),
     actions, created_at: new Date().toISOString(),
   }
