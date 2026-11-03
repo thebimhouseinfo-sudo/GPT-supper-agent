@@ -84,7 +84,9 @@ function register(file,fn,depsExtra={}){
   const handlers=new Map();
   const js=toJS(read(file));
   const init=vm.runInNewContext(js+'\n'+fn,{JSON,Date,Array,Set,Map,Number,String});
+  const schema=stubZ().object({});
   init({...deps,...depsExtra,z:stubZ(),req:{},AUTH_SCOPES:[],
+    DURABLE_RECORD_SNAPSHOT_SCHEMA:schema,PLANNING_LOOP_CONTINUATION_SCHEMA:schema,
     authContext:async()=>({user_id:'test'}),
     server:{registerTool:(name,definition,handler)=>handlers.set(name,handler)},
     authError:()=>({isError:true}),prettyJson:o=>JSON.stringify(o),
