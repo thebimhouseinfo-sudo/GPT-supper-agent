@@ -565,6 +565,21 @@ function resumeHumanPlanChangeIntent(input: any) {
       if (retiring && old.lifecycle === 'RETIRED') {
         if (old.result !== 'RETIRED' || old.retired_by_plan_change_id !== intent.change_id || old.retired_reason !== a.reason ||
             old.retired_by_replacement_job_id != null) return stop('PLAN_CHANGE_RETIREMENT_LINEAGE_CONFLICT')
+        if (intent.scope_change) {
+          const tasks = old.tasks ?? []
+          const completed = new Set(['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'])
+          if ((a.retired_task_ids ?? []).some((id: string) =>
+                !tasks.some((t: any) => t.task_id === id && t.lifecycle === 'RETIRED')) ||
+              tasks.some((t: any) => !completed.has(t.lifecycle)) ||
+              (old.milestones ?? []).some((m: any) => {
+                const related = tasks.filter((t: any) => (m.node_ids ?? []).includes(t.task_id))
+                const done = related.length > 0
+                  ? related.every((t: any) => t.lifecycle === 'COMPLETED')
+                  : m.lifecycle === 'COMPLETED' || m.status === 'PASS' || m.result === 'PASS'
+                return !done && m.lifecycle !== 'RETIRED'
+              }))
+            return stop('SCOPE_CHANGE_TERMINAL_TASK_OR_MILESTONE_ZOMBIE')
+        }
         next = 'RETIRED_NO_REPLACEMENT'
       } else if (!retiring && old.lifecycle === 'SUPERSEDED') {
         if (old.superseded_by_plan_change_id !== intent.change_id ||
