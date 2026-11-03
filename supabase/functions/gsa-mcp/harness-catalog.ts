@@ -579,7 +579,10 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
   },
 }
 
-export function renderHarness(role: string) {
+// GSA2: get_agent_harness already returns suggested_skills beside harness_text.
+// Suppress only that duplicated same-response list at its caller.
+// Default rendering stays complete for independent/direct role entry.
+export function renderHarness(role: string, options: { includeProgressiveSkills?: boolean } = {}) {
   const h = ROLE_HARNESSES[role]
   if (!h) return null
   return [
@@ -595,9 +598,11 @@ export function renderHarness(role: string) {
     '',
     'EXPECTED OUTPUTS',
     ...h.outputs.map((x) => '- ' + x),
-    '',
-    'PROGRESSIVE SKILLS',
-    ...(ROLE_SKILLS[role] ?? []).map((x) => '- ' + x + ': load only when relevant to the current Run.'),
+    ...(options.includeProgressiveSkills === false ? [] : [
+      '',
+      'PROGRESSIVE SKILLS',
+      ...(ROLE_SKILLS[role] ?? []).map((x) => '- ' + x + ': load only when relevant to the current Run.'),
+    ]),
   ].join('\n')
 }
 
