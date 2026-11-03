@@ -42,6 +42,11 @@ const old=(id,phase,lifecycle,tasks=[],dependencies=[])=>({
   milestones:tasks.map((t,i)=>({milestone_id:id+'-M'+i,node_ids:[t.task_id],
     ...(t.lifecycle==='COMPLETED'?{lifecycle:'COMPLETED',result:'PASS'}:{})})),
 });
+const retiredMilestones=job=>(job.milestones??[]).map(m=>{
+  const related=(job.tasks??[]).filter(t=>(m.node_ids??[]).includes(t.task_id));
+  return related.length>0 && related.every(t=>t.lifecycle==='COMPLETED')
+    ? m : {...m,lifecycle:'RETIRED'};
+});
 const jobs=[
   old(a,'A','READY',[{task_id:tDone,lifecycle:'COMPLETED',result:'PASS',verification_ref:'historical'},
     {task_id:tOpen,lifecycle:'READY'}]),
@@ -187,7 +192,8 @@ test('UB-02: retirement is idempotent and scope reports fresh topology only afte
     return {...old,lifecycle:'RETIRED',result:'RETIRED',
       retired_by_plan_change_id:i.change_id,retired_reason:action.reason,
       retired_by_replacement_job_id:null,
-      tasks:old.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'})};
+      tasks:old.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'}),
+      milestones:retiredMilestones(job)};
   });
   const r=resume(i,retired);
   assert.equal(r.allowed,true,r.reason);
@@ -196,6 +202,11 @@ test('UB-02: retirement is idempotent and scope reports fresh topology only afte
   assert.ok(r.actions.filter(a=>a.decision==='RETIRE')
     .every(a=>a.next_action==='RETIRED_NO_REPLACEMENT'));
   assert.equal(resume(i,retired.map(j=>j.job_id===a?{...j,retired_reason:'forged'}:j)).allowed,false);
+  const zombie=retired.map(j=>j.job_id===a?{...j,milestones:jobs[0].milestones}:j);
+  assert.equal(resume(i,zombie).reason,'SCOPE_CHANGE_TERMINAL_TASK_OR_MILESTONE_ZOMBIE');
+  const zombieTask=retired.map(j=>j.job_id===a?{...j,
+    tasks:[j.tasks[0],{...j.tasks[1],lifecycle:'READY'}]}:j);
+  assert.equal(resume(i,zombieTask).allowed,false);
   assert.equal(resume({...i,scope_change:{...i.scope_change,inventory_job_ids:[a]}},retired).allowed,false);
 });
 test('UB-02: Job transition retires unfinished milestone/Task, keeps historical completed PASS',async()=>{
@@ -265,7 +276,8 @@ test('UB-02: reserved successor is enforced in existing Job preparation; retry c
     const action=i.actions.find(a=>a.predecessor_job_id===job.job_id);
     return {...job,lifecycle:'RETIRED',result:'RETIRED',
       retired_by_plan_change_id:i.change_id,retired_reason:action.reason,
-      tasks:job.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'})};
+      tasks:job.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'}),
+      milestones:retiredMilestones(job)};
   });
   const handlers=register('job-prepare-tool.ts','registerJobPrepareTool',{
     readMemoryConfig:async()=>({data:{memory_repo_full_name:'owner/memory'}}),
@@ -319,6 +331,11 @@ test('UB-02: reserved successor is enforced in existing Job preparation; retry c
   assert.equal(unfinished.isError,true);
   const oldId=await handler({...payload,tasks:[{...payload.tasks[0],task_id:tOpen}]});
   assert.equal(oldId.isError,true);
+  const zombieSnapshot={...retired[0],milestones:jobs[0].milestones};
+  const zombies=await handler({...payload,scope_change_context:{...context,
+    retired_job_snapshots:[{...context.retired_job_snapshots[0],
+      job_record_text:JSON.stringify(zombieSnapshot)},...context.retired_job_snapshots.slice(1)]}});
+  assert.equal(zombies.isError,true);
 });
 test('UB-03 high-risk mutation negative control: removing Task-coverage guard turns a forged intent falsely green',()=>{
   const i=JSON.parse(intentReady().intent_record_text);
