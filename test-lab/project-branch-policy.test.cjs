@@ -354,8 +354,8 @@ test('M4 C31: role prompts invoke Advisor only for Criteria intent, then ask Hum
   assert.match(exposed, /'advisor'/)
   // GSA2 keeps advisor role entry, but the role's duplicate skill hints are
   // removed only when this same response exposes the authoritative skill list.
-  assert.match(exposed, /renderHarness\\(role, \\{ includeProgressiveSkills: false \\}\\)/)
-  assert.match(exposed, /suggested_skills:\\s*ROLE_SKILLS\\[role\\]/)
+  assert.match(exposed, /renderHarness\(role, \{ includeProgressiveSkills: false \}\)/)
+  assert.match(exposed, /suggested_skills:\s*ROLE_SKILLS\[role\]/)
   assert.equal((roles.match(/advisor: \{/g) || []).length, 1)
 })
 
