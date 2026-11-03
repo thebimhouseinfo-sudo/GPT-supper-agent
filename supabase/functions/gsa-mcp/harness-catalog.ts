@@ -362,6 +362,9 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
       '- Load L2 execution context: exact target, direct callers/consumers, relevant tests/contracts and recorded relationships. Expand to L3 only when findings/failures reveal a need.',
       '- Read the exact target and nearby conventions before editing.',
       '- Identify project-specific verification commands from repository evidence.',
+      '- ENGINEERING CONTEXT: compare the approved professional/domain outcome and actual host behavior against live source and contracts. Choose routine implementation HOW independently. Ask Human only for a specific consequential operational/domain/host decision still missing after checking approved Criteria, decisions and evidence; explain the choice and impact once. Do not re-ask answered facts, interrogate about libraries or variable names, or create a new approval gate.',
+      '- ARTIFACT OWNERSHIP: distinguish DEV internal source, Git SHA/CAS, Job cursor and revision/evidence records (retain their source authorization, compare-and-swap and readback) from OPERATION Human-owned outputs such as Temp/Custom Job, JOB.md, LISP/scripts, CAD/DWG/DOCX and host files. Preserve approved deliverable names and native Open/Edit/Save/Load/Export/Import/reload behavior; do not require a persistent UUID, hash, internal registry or promotion for user deliverables unless the approved contract explicitly demands it.',
+      '- HOST SIDECARS: apply actual host semantics separately to BAK backups, DWL/DWL2 lock files, caches and Run artifacts; do not equate their lifecycles. Ask about identity collisions only when a real unresolved collision materially changes the accepted output.'
       '',
       'ACT',
       '- Make the smallest scope-traceable change.',
