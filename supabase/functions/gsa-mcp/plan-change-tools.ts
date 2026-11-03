@@ -106,11 +106,21 @@ export function registerPlanChangeTools(deps: any) {
         plan_review_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
         plan_review_memory_path: z.string().min(1),
         work_branch: z.string().min(1),
+        scope_selection: z.object({
+          boundary: z.enum(['PLAN','PHASE']),
+          phase: z.string().min(1).optional(),
+          inventory_job_ids: z.array(z.string().uuid()).min(1),
+        }).optional(),
+        rebuild_job_packs: z.array(z.object({
+          pack_key: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+          phase: z.string().min(1),
+          depends_on_pack_keys: z.array(z.string()).default([]),
+        })).optional(),
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
@@ -132,6 +142,11 @@ export function registerPlanChangeTools(deps: any) {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for Plan Change intent.')
       const decision = prepareHumanPlanChangeIntent(input)
+      if (decision.allowed && input.scope_selection) decision.external_steps.unshift(
+        'Independently enumerate all current child Jobs in active Project Memory and verify inventory_job_ids exactly equals their IDs; every Job must have a current blob SHA. Read reviewed Plan/Phase and explicit Human acceptance before relying on scope_selection.',
+        'Do not dispatch rebuilt Jobs until every affected unfinished Job has durable RETIRED readback and all crossed dependencies have been re-reviewed.',
+        'Shared/default/main/release/integration Git refs and history must remain intact; no branch deletion or automatic release.',
+      )
       return { structuredContent: decision, content: [{ type: 'text', text: JSON.stringify(decision) }] }
     },
   )
@@ -145,11 +160,16 @@ export function registerPlanChangeTools(deps: any) {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
         reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        scope_selection: z.object({
+          boundary: z.enum(['PLAN','PHASE']),
+          phase: z.string().min(1).optional(),
+          inventory_job_ids: z.array(z.string().uuid()).min(1),
+        }).optional(),
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
