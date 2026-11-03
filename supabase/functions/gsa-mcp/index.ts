@@ -2297,7 +2297,7 @@ function createServer(req: Request) {
 const root = new Hono()
 const app = new Hono()
 
-registerSelftest(app, { uuidv7 })
+registerSelftest(app, { CUTOVER_INVENTORY, PROJECT_REF, buildProjectManifest, checkpointAttemptPath, checkpointClaimPath, checkpointVerificationApplicable, checkpointVerificationOutcome, cutoverInventoryError, edgeFunctionBase, evaluateNextEvidenceGate, evidenceBundleRefValidationError, goalRecheckCoverageError, jobCreationExecutionContractDefault, mcpResource, nextClosureCoverageError, nextDispatchPreflightError, nextMemoryNamespaceForRequest, nextPlanSupersessionMatches, parseProjectManifest, prettyJson, productFailureRetestValidationError, projectScopeDecision, recordPath, resolveExecutionContract, resolveNextMemoryNamespace, resolveRequiredTaskSkills, resourceMetadata, runtimeSurface, transitionProjectManifest, validMemoryPath, validateEvidenceBundleAttestationSnapshot, validateRunVerificationSnapshot, validateTesterEvidenceClaimSnapshot, verificationPath })
 
 app.get('/health', (c) =>
   c.json({

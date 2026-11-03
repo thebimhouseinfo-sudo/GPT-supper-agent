@@ -662,8 +662,9 @@ test('M4: Critic harness and selftest recognize milestone Human preauthorization
   assert.ok(critic.includes('Human-preauthorized milestone crl'))
   assert.ok(critic.includes('persisted current Reviewer PASS'))
   assert.ok(!critic.includes('must never auto-dispatch this role'))
-  assert.ok(source.includes('critic_human_authority_scoped:'))
-  assert.ok(source.includes('critic_harness_present:'))
+  const selftestSource = fs.readFileSync('supabase/functions/gsa-mcp/selftest.ts', 'utf8')
+  assert.ok(selftestSource.includes('critic_human_authority_scoped:'))
+  assert.ok(selftestSource.includes('critic_harness_present:'))
   assert.ok(harnessSource.includes('Orchestrator may continue an approved AUTO milestone'))
 })
 

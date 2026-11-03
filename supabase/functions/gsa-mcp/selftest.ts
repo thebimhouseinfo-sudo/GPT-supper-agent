@@ -1,5 +1,12 @@
+import { BASE_AGENT_HARNESS, ROLE_SKILLS, RUNTIME_SKILLS, renderHarness } from './harness-catalog.ts'
+import { checkpointBoundaryPrerequisiteIds, checkpointLeaseExpired, goalRecheckRunMatches, uxFirstTemporaryUiGateRequired } from './execution-guards.ts'
+import { normalizeGithubRepo } from './platform-utils.ts'
+import { uuidv7 } from './record-handles.ts'
+import { validateExecutionTopology } from './planning-guards.ts'
 // GSA1: Source-equivalent diagnostics; no production side-effects.
+type ExecutionContract = 'V2_STABLE' | 'NEXT'
 export function registerSelftest(app: any, deps: any) {
+  const { CUTOVER_INVENTORY, PROJECT_REF, buildProjectManifest, checkpointAttemptPath, checkpointClaimPath, checkpointVerificationApplicable, checkpointVerificationOutcome, cutoverInventoryError, edgeFunctionBase, evaluateNextEvidenceGate, evidenceBundleRefValidationError, goalRecheckCoverageError, jobCreationExecutionContractDefault, mcpResource, nextClosureCoverageError, nextDispatchPreflightError, nextMemoryNamespaceForRequest, nextPlanSupersessionMatches, parseProjectManifest, prettyJson, productFailureRetestValidationError, projectScopeDecision, recordPath, resolveExecutionContract, resolveNextMemoryNamespace, resolveRequiredTaskSkills, resourceMetadata, runtimeSurface, transitionProjectManifest, validMemoryPath, validateEvidenceBundleAttestationSnapshot, validateRunVerificationSnapshot, validateTesterEvidenceClaimSnapshot, verificationPath } = deps
 app.get('/selftest', (c: any) => {
   const now = new Date().toISOString()
   const projectId = uuidv7()
