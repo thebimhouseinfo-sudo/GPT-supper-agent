@@ -169,9 +169,9 @@ export function registerJobTransitionTool(deps: any) {
             milestones: (current.milestones ?? []).map((milestone: any) => {
               const related = (current.tasks ?? []).filter((task: any) =>
                 (milestone.node_ids ?? []).includes(task.task_id))
-              const completed = milestone.lifecycle === 'COMPLETED' ||
-                milestone.status === 'PASS' || milestone.result === 'PASS' ||
-                (related.length > 0 && related.every((task: any) => task.lifecycle === 'COMPLETED'))
+              const completed = related.length > 0
+                ? related.every((task: any) => task.lifecycle === 'COMPLETED')
+                : (milestone.lifecycle === 'COMPLETED' || milestone.status === 'PASS' || milestone.result === 'PASS')
               return completed ? milestone : {
                 ...milestone, lifecycle: 'RETIRED',
                 retired_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
