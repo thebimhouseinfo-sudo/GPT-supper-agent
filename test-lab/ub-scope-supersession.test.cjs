@@ -204,3 +204,67 @@ test('U-B no phantom Run RETIRED; delayed NEXT completions, scope review and fre
   assert.match(revise,/SCOPE_REVALIDATION_FENCE_OR_ACTIVITY_UNSETTLED/);
   assert.match(transition,/milestones: \(current\.milestones \?\? \[\]\)\.map/);
 });
+
+
+test('U-B runtime: a late NEXT Run callback cannot complete under a fenced/revised/retired owner',async()=>{
+  const runSource=fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
+  const runSf=ts.createSourceFile('run-execution-tools.ts',runSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  const decl=runSf.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text==='registerRunExecutionTools');
+  assert.ok(decl,'real Run handler factory');
+  const registered=new Map();
+  const fluent=()=>{};
+  const z=new Proxy(fluent,{get:()=>z,apply:()=>z});
+  const js=ts.transpileModule(decl.getText(runSf),{compilerOptions:{
+    target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None
+  }}).outputText;
+  const register=vm.runInNewContext(js+'\nregisterRunExecutionTools',{JSON,Number,String,Date,Set,Map,exports:{}});
+  register({server:{registerTool:(name,config,fn)=>registered.set(name,fn)},
+    z,req:{},AUTH_SCOPES:[],authContext:async()=>({}),
+    jobExecutionContract:contract,recordNextMemoryNamespace:namespace,
+    resolveExecutionContract:x=>x,
+    recordPath:(pid,kind,id)=>root(pid,'NEXT','PRODUCTION')+'/'+kind+'/'+id+'.json',
+    prettyJson:value=>JSON.stringify(value),durableSnapshotReadbackSteps:()=>[],
+  });
+  const finish=registered.get('run_complete');
+  const begin=registered.get('run_begin');
+  assert.equal(typeof finish,'function');
+  assert.equal(typeof begin,'function');
+  const runId='40000000-0000-4000-8000-000000000001';
+  const runtimeRun={kind:'RUN',project_id:P,job_id:ids[0],run_id:runId,
+    role:'tester',execution_contract:'NEXT',memory_namespace:'PRODUCTION',
+    planning_revision:2,lifecycle:'IN_PROGRESS'};
+  const owner=J(ids[0],'READY','ALPHA');
+  const base={project_id:P,job_id:ids[0],run_id:runId,role:'tester',
+    run_record_text:JSON.stringify(runtimeRun),run_record_sha:sha,
+    lifecycle:'FAILED',result:'ERROR',output_refs:[],verification_refs:[]};
+  for (const badOwner of [
+    {...owner,plan_change_pending:{change_id:'X'}},
+    {...owner,lifecycle:'RETIRED'},
+    {...owner,planning_revision:3},
+    {...owner,plan_change_revalidated_by:'P1',planning_review:{status:'PENDING'}},
+  ]) {
+    const blocked=await finish({...base,job_record_text:JSON.stringify(badOwner),job_record_sha:sha});
+    assert.equal(blocked.isError,true);
+    assert.match(blocked.content[0].text,/RUN_STALE_OR_FENCED/);
+  }
+  const missing=await finish(base);
+  assert.equal(missing.isError,true);
+  assert.match(missing.content[0].text,/RUN_STALE_OR_FENCED/);
+  const cancelled=await finish({...base,lifecycle:'CANCELLED',result:'CANCELLED'});
+  assert.ok(cancelled.structuredContent?.terminal_run_record_text,'Cancellation still possible while fenced');
+  assert.equal(JSON.parse(cancelled.structuredContent.terminal_run_record_text).lifecycle,'CANCELLED');
+  const invalidHandoff=await finish({...base,lifecycle:'CANCELLED',handoff:{
+    next_role:'coder',completed_summary:'stale',expected_next_outcome:'PASS'}});
+  assert.equal(invalidHandoff.isError,true);
+  assert.match(invalidHandoff.content[0].text,/CANCELLED_RUN_CANNOT_HANDOFF/);
+  const fencedBegin=await begin({project_id:P,job_id:ids[0],
+    job_record_text:JSON.stringify({...owner,plan_change_pending:{change_id:'X'}}),
+    role:'coder',scope_claim:['old scope']});
+  assert.equal(fencedBegin.isError,true);
+  assert.match(fencedBegin.content[0].text,/PLAN_CHANGE_PENDING_FENCE/);
+  const reviewPendingBegin=await begin({project_id:P,job_id:ids[0],
+    job_record_text:JSON.stringify({...owner,plan_change_revalidated_by:'P1',
+      planning_review:{status:'PENDING'}}),role:'coder',scope_claim:['old scope']});
+  assert.equal(reviewPendingBegin.isError,true);
+  assert.match(reviewPendingBegin.content[0].text,/SCOPE_REVALIDATION_REVIEW_PENDING/);
+});
