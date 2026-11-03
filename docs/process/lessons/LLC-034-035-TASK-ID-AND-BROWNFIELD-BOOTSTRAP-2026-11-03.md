@@ -1,0 +1,19 @@
+# LLC-034/035 — Descriptive Task IDs and brownfield Bootstrap (2026-11-03)
+
+## Observed incidents
+- Two approved, source-committed GSA Jobs (`J-2AD6` Advisor simplification; `J-F0B4` GSA1 selftest repair) could not close through `goal_recheck_record`: reviewed Job Task identifiers `ADVISOR-FIX` and `SELFTEST-FIX` are legal nonempty strings, whereas the API required UUID in both Goal Recheck Task and criteria fields. Runtime `goalRecheckCoverageError` already checks exact ownership against the reviewed Job, so UUID encoding was an accidental extra gate.
+- GSA-Localconnector brownfield Bootstrap (GSA Project Memory lesson `LESSONS/2026-10-22-brownfield-bootstrap-unrequested-gates-gsa-localconnector.md`) reported already approved source Criteria, Plan, M0–M6 Milestones, a new technical proposal/other source docs, yet repeated blocked readiness due to demanded `PROJECT_PLAN` Job metadata and capability proof for far-future features. Original incident and its later source triage distinguish true implementation limitations from malformed caller input and stale host schemas; not all errors were proven runtime defects.
+
+## Ownership and minimal repair
+1. Use nonempty string Task IDs consistently in Goal Recheck, capability/add-in tool schemas, and Job/Run contracts. Keep exact source Job membership, planning revision, unique criterion coverage and negative control.
+2. For source Plan documents already independently reviewed, accept evidence-grounded Plan-shaped input without requiring `plan_kind=PROJECT_PLAN` or a newly created GSA Project Plan Job; still reject a typed `JOB` masquerading as project-level Plan and reject a typed `PROJECT_PLAN` missing/stale Criteria binding.
+3. For old Plan-shaped Bootstrap inputs, verify capabilities only for Task(s) in the earliest incomplete milestone with all dependencies complete, rather than every future Task. Missing immediate development/test capability remains NOT READY. Unfinished Mac/Windows product features are not prerequisite capabilities.
+4. For markdown/non-typed existing documents, use the existing four-field semantic `assessment` only after independently inspecting actual source Criteria, approved Plan, Milestones and real Coder/Tester ability. Never pretend a supplied PASS flag independently establishes verification; `project_bootstrap_readiness_prepare` remains PREPARE ONLY and no source write/merge/deploy authorization.
+5. Technical Proposal may inform review but is not an additional Bootstrap gate. Preserve already accepted Human decision, avoid duplicate paperwork, and retain ordinary Git SHA-CAS/source-scope permission and Human code implementation approval.
+
+## Evidence, checks and remaining test
+- Starting GSA source branch: `upgrade/gsa-context-efficiency` @ `e3224c5e5eb540db79bf6e08e65b121cd5d9f28a`; original `bootstrap.ts` blob `700462c5d703963290dbb4822dd49f87e5a231ad`, `run-execution-tools.ts` blob `f6a7843cf93da35d426a25dad5a7ec040e7bae5c`.
+- Regression includes real extracted runtime path for descriptive Task ID and ownership negatives, typed/untyped product Plan scenarios, nearest executable Task capability, existing Proposal, stale/unapproved Criteria and false source authorization negatives. CI run/link to be appended only after verification.
+- **REAL TEST REQUIRED**: host-authenticated MCP E2E and real brownfield Bootstrap on authorized target/runtime after deployment. Never claim historical GSA-Localconnector work has been modified or now passes live.
+
+Status: **FIX_IN_DEVELOPMENT**. This is GSA's canonical lesson, not a change to approved Criteria. No main merge or production deploy.

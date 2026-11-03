@@ -698,3 +698,74 @@ test('M5 four-check ready is separate from Human execution and branch scope', ()
   assert.match(g(evidence,'main'),/BOOTSTRAP_SOURCE_BRANCH_INVALID/)
   assert.match(g(undefined),/BOOTSTRAP_REQUIRED/)
 })
+
+
+test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot bypass membership', () => {
+  const runTools = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8')
+  const criteriaSchema = runTools.slice(runTools.indexOf("'goal_recheck_record',"),runTools.indexOf("'run_verification_record',"))
+  const occurrences = criteriaSchema.match(/^\s*task_id: z\.string\(\)\.min\(1\)\.optional\(\),/gm) || []
+  assert.equal(occurrences.length,2, 'owning Task and criteria Task use nonempty IDs')
+  assert.doesNotMatch(criteriaSchema,/^\s*task_id: z\.string\(\)\.uuid\(\)/m)
+  const setup = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
+  assert.match(setup,/task_id: z\.string\(\)\.min\(1\)\.optional\(\)/)
+  assert.match(setup,/task_id: z\.string\(\)\.min\(1\)/)
+  const found = ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
+  assert.ok(found)
+  const js=ts.transpileModule(found.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const check=vm.runInNewContext(js+'\ngoalRecheckCoverageError', { jobExecutionContract: job=>job.execution_contract })
+  const criterion='Human confirmation and decision sufficient'
+  const j={execution_contract:'NEXT',project_id:id,job_id:'reviewed-job',
+    planning_revision:1,tasks:[{task_id:'ADVISOR-FIX',completion_criteria:[criterion]}],
+    topology:[{task_id:'ADVISOR-FIX',handler:'coder'}]}
+  const r={project_id:id,job_id:'reviewed-job',planning_revision:1,primary_task_id:'ADVISOR-FIX',affected_task_refs:[]}
+  assert.equal(check(j,r,[{task_id:'ADVISOR-FIX',criterion}]),null)
+  assert.match(check(j,r,[{task_id:'UNRELATED',criterion}]),/criteria must exactly cover/)
+  assert.match(check(j,r,[{task_id:'',criterion}]),/every NEXT criterion requires task_id/)
+  assert.match(check(j,r,[{task_id:'ADVISOR-FIX',criterion},{task_id:'ADVISOR-FIX',criterion}]),/duplicate Task criterion/)
+  assert.match(check(j,{...r,primary_task_id:'WRONG'},[{task_id:'WRONG',criterion}]),/not current Coder-owned topology/)
+  assert.equal(check({...j,tasks:[{task_id:'T-1',completion_criteria:[criterion]}],
+    topology:[{task_id:'T-1',handler:'coder'}]},
+    {...r,primary_task_id:'T-1'},[{task_id:'T-1',criterion}]),null)
+})
+
+test('M5 brownfield existing reviewed source Plan and Milestones bootstrap without duplicate PROJECT_PLAN or future capabilities', () => {
+  const criteria={criteria_path:'projects/'+id+'/CRITERIA.md',criteria_blob_sha:'a'.repeat(40),approval_status:'APPROVED'}
+  // Product source Plan: reviewed, not a fabricated GSA Project Plan Job.
+  const plan={planning_revision:2,planning_review:{status:'PASS',reviewed_revision:2},
+    tasks:[
+      {task_id:'MAC-M2',lifecycle:'READY',dependencies:[],completion_criteria:['Mac implementation']},
+      {task_id:'MAC-M3',lifecycle:'READY',dependencies:['MAC-M2'],completion_criteria:['Mac integration']},
+      {task_id:'WIN-M6',lifecycle:'READY',dependencies:['MAC-M3'],completion_criteria:['Future Windows build']}
+    ],
+    milestones:[{milestone_id:'M2',node_ids:['MAC-M2','MAC-M3']},
+      {milestone_id:'M6',node_ids:['WIN-M6']}]}
+  const evidence={criteria,criteria_human_approved:true,criteria_current_blob_sha:criteria.criteria_blob_sha,
+    plan,capabilities:[{task_id:'MAC-M2',readiness:'GENERIC_READY'}],human_execution_approved:false}
+  const ready=h.projectBootstrapReadinessDecision(id,evidence)
+  assert.equal(ready.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(ready.source_write_authorized,false)
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,human_execution_approved:true}).status,
+    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[]}).status,'CAPABILITY_NOT_READY')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[{task_id:'WIN-M6',readiness:'GENERIC_READY'}]}).status,'CAPABILITY_NOT_READY')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_human_approved:false}).status,'CRITERIA_HUMAN_APPROVAL_UNVERIFIED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_current_blob_sha:'b'.repeat(40)}).status,'CRITERIA_STALE_OR_UNVERIFIED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,planning_review:{status:'PENDING',reviewed_revision:1}}}).status,'PLAN_REVIEW_PENDING')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'PROJECT_PLAN'}}).status,'PLAN_CRITERIA_MISMATCH')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'JOB'}}).status,'PLAN_CRITERIA_MISMATCH')
+  const withBinding={...plan,plan_kind:'PROJECT_PLAN',criteria_binding:criteria}
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:withBinding}).status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  const futureOnly={...plan,tasks:plan.tasks.map(t=>({...t,lifecycle:t.task_id==='MAC-M2'?'COMPLETED':t.lifecycle}))}
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:futureOnly}).status,'CAPABILITY_NOT_READY',
+    'After MAC-M2 completion, next MAC-M3 requires newly verified capability')
+})
+
+test('M5 four-check Bootstrap accepts existing Criteria, Plan, Milestones and Proposal without a fifth gate', () => {
+  const assessment={criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
+  const ok=h.projectBootstrapReadinessDecision(id,{assessment,proposal:'Already reviewed detailed proposal'})
+  assert.equal(ok.status,'BOOTSTRAP_READY')
+  assert.equal(ok.bootstrapped,false,'prepare-only, independently verify before code')
+  assert.equal(ok.source_write_authorized,false)
+  assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,tester:'UNVERIFIED'}}).status,
+    'CAPABILITY_NOT_READY')
+})

@@ -155,10 +155,17 @@ export function projectBootstrapReadinessDecision(projectId: string, input: any)
     return result('CRITERIA_STALE_OR_UNVERIFIED', 'Read and verify current canonical Criteria GitHub SHA before any official Plan.')
   const plan = input?.plan
   if (!plan) return result('IMPLEMENTATION_PLAN_MISSING', 'No official Implementation Plan may be inferred from DRAFT or code.')
-  if (plan.plan_kind !== 'PROJECT_PLAN' ||
-      projectCriteriaBindingError(projectId, 'PROJECT_PLAN', plan.criteria_binding) ||
-      plan.criteria_binding?.criteria_blob_sha !== c.criteria_blob_sha)
-    return result('PLAN_CRITERIA_MISMATCH', 'Reviewed Plan must bind the exact current Human-approved Criteria SHA.')
+  // Brownfield source Plan documents may predate GSA's PROJECT_PLAN Job schema.
+  // Reuse their independently reviewed Task/Milestone evidence; never require
+  // creating a duplicate Job merely to satisfy metadata. Existing typed GSA
+  // PROJECT_PLAN records must retain their exact Criteria binding checks.
+  const sourcePlan = plan.plan_kind === undefined
+  if ((!sourcePlan && plan.plan_kind !== 'PROJECT_PLAN') ||
+      ((!sourcePlan || plan.criteria_binding !== undefined) &&
+        (projectCriteriaBindingError(projectId, 'PROJECT_PLAN', plan.criteria_binding) ||
+         plan.criteria_binding?.criteria_blob_sha !== c.criteria_blob_sha)))
+    return result('PLAN_CRITERIA_MISMATCH',
+      'Use an existing reviewed source Plan (without GSA Job metadata) or a PROJECT_PLAN with exact Criteria binding; do not create a duplicate Project Plan Job.')
   if (plan.planning_review?.status !== 'PASS' ||
       !Number.isInteger(plan.planning_revision) ||
       plan.planning_review?.reviewed_revision !== plan.planning_revision)
@@ -189,11 +196,6 @@ export function projectBootstrapReadinessDecision(projectId: string, input: any)
   }
   if (tasks.some((t: any) => hasCycle(t.task_id)))
     return result('PLAN_DEPENDENCIES_INVALID', 'Task dependency cycles cannot produce a ready implementation milestone.')
-  const capability = Array.isArray(input?.capabilities) ? input.capabilities : []
-  if (tasks.some((t: any) => !capability.some((c: any) =>
-    c.task_id === t.task_id && (c.readiness === 'GENERIC_READY' ||
-      (c.readiness === 'DOMAIN_READY_VERIFIED' && c.evidence_verified === true)))))
-    return result('CAPABILITY_NOT_READY', 'Generic ready or independently verified domain Task capability required, not only configured paths.')
   const milestones = Array.isArray(plan.milestones) ? plan.milestones : []
   if (milestones.length === 0 ||
       new Set(milestones.map((m: any) => m.milestone_id)).size !== milestones.length ||
@@ -204,6 +206,27 @@ export function projectBootstrapReadinessDecision(projectId: string, input: any)
         m.node_ids.some((id: string) => !taskIds.has(id))) ||
       tasks.some((t: any) => !milestones.some((m: any) => m.node_ids.includes(t.task_id))))
     return result('MILESTONES_NOT_READY', 'Milestones must cover actual Tasks with coherent dependencies and acceptance.')
+  // Bootstrap checks implementer readiness only for the next executable Task
+  // set; unfinished future product features do not block starting current work.
+  const completed = new Set(tasks.filter((t: any) => t.lifecycle === 'COMPLETED')
+    .map((t: any) => t.task_id))
+  let upcoming: string[] = []
+  for (const milestone of milestones) {
+    const pending = milestone.node_ids.filter((taskId: string) => !completed.has(taskId))
+    if (!pending.length) continue
+    upcoming = pending.filter((taskId: string) =>
+      (byTaskId.get(taskId)?.dependencies ?? []).every((dep: string) => completed.has(dep)))
+    if (!upcoming.length)
+      return result('PLAN_DEPENDENCIES_INVALID',
+        'The first incomplete Milestone has no dependency-ready Task; inspect actual Task completion rather than inventing readiness.')
+    break
+  }
+  const capability = Array.isArray(input?.capabilities) ? input.capabilities : []
+  if (upcoming.some((taskId: string) => !capability.some((c: any) =>
+    c.task_id === taskId && (c.readiness === 'GENERIC_READY' ||
+      (c.readiness === 'DOMAIN_READY_VERIFIED' && c.evidence_verified === true)))))
+    return result('CAPABILITY_NOT_READY',
+      'Verify usable Coder/Tester development and test paths for the next executable Task(s), not all future Tasks or unfinished product functionality.')
   return result(input?.human_execution_approved === true
     ? 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED' : 'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING',
     'Prepared readiness only. M5 must independently verify immutable snapshots, source branch and actual Human approval before code; do not repeat Bootstrap on later normal Jobs.')

@@ -315,11 +315,11 @@ export function registerRunExecutionTools(deps: any) {
         run_record_sha: z.string().min(7),
         job_record_text: z.string().min(2).optional(),
         job_record_sha: z.string().min(7).optional(),
-        task_id: z.string().uuid().optional(),
+        task_id: z.string().min(1).optional(),
         target_ref: z.string().min(1),
         target_revision: z.string().min(1),
         criteria: z.array(z.object({
-          task_id: z.string().uuid().optional(),
+          task_id: z.string().min(1).optional(),
           criterion: z.string().min(1),
           result: z.enum(['MET','PARTIAL','NOT_MET','UNVERIFIED']),
           evidence: z.array(z.string()).default([]),
