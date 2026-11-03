@@ -81,6 +81,10 @@ export function registerJobPrepareTool(deps: any) {
           intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
           intent_memory_path: z.string().min(1),
           pack_key: z.string().min(1),
+          job_snapshots: z.array(z.object({
+            job_record_text: z.string().min(2),
+            job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          })).min(1),
         }).optional(),
         replacement_context: z.object({
           intent_record_text: z.string().min(2),
@@ -198,6 +202,44 @@ export function registerJobPrepareTool(deps: any) {
         if (dependencies.some((id: any) => !id || id === pack.job_id ||
             !packs.some((p: any) => p.job_id === id))) {
           return { content:[{type:'text',text:'SCOPE_REBUILD_DEPENDENCY_INVALID.'}],isError:true }
+        }
+        // Every original Job must be in the supplied fresh exact-SHA readbacks.
+        // No successor is creatable while a predecessor has an unfinished
+        // retirement or a crossing dependent is awaiting independent review.
+        const snapshots = new Map<string, any>()
+        for (const snap of scope_rebuild_context.job_snapshots ?? []) {
+          let job: any
+          try { job = JSON.parse(snap.job_record_text) }
+          catch { return { content:[{type:'text',text:'SCOPE_REBUILD_READBACK_INVALID.'}],isError:true } }
+          if (!/^[0-9a-f]{40}$/.test(snap.job_record_sha ?? '') ||
+              job.project_id !== project_id || !job.job_id ||
+              snapshots.has(job.job_id)) {
+            return { content:[{type:'text',text:'SCOPE_REBUILD_READBACK_INVALID.'}],isError:true }
+          }
+          snapshots.set(job.job_id, job)
+        }
+        const originals = intent.scope_selection.inventory_job_ids ?? []
+        if (snapshots.size !== originals.length || originals.some((id: string) => !snapshots.has(id))) {
+          return { content:[{type:'text',text:'SCOPE_REBUILD_INVENTORY_INCOMPLETE.'}],isError:true }
+        }
+        for (const action of intent.actions ?? []) {
+          const current = snapshots.get(action.predecessor_job_id)
+          if (!current) return { content:[{type:'text',text:'SCOPE_REBUILD_PREDECESSOR_MISSING.'}],isError:true }
+          if (action.decision === 'RETIRE' &&
+              (current.lifecycle !== 'RETIRED' ||
+                current.retired_by_plan_change_id !== intent.change_id ||
+                current.result !== 'RETIRED' ||
+                current.retired_by_replacement_job_id != null)) {
+            return { content:[{type:'text',text:'SCOPE_REBUILD_RETIREMENT_UNSETTLED.'}],isError:true }
+          }
+          if (action.decision === 'REVALIDATE' &&
+              (current.plan_change_revalidated_by !== intent.change_id ||
+                current.plan_change_pending ||
+                current.planning_revision <= action.predecessor_planning_revision ||
+                current.planning_review?.status !== 'PASS' ||
+                current.planning_review?.reviewed_revision !== current.planning_revision)) {
+            return { content:[{type:'text',text:'SCOPE_REBUILD_DEPENDENCY_UNREVIEWED.'}],isError:true }
+          }
         }
         scopeRebuild = { intent, pack, dependencies }
       }
@@ -330,7 +372,7 @@ export function registerJobPrepareTool(deps: any) {
       if (scopeRebuild) {
         externalSteps.unshift(
           'Read back exactly the current immutable Scope Plan intent (path, blob SHA and bytes) and verify Human-approved changed Plan/Phase boundary.',
-          'Independently enumerate and read back ALL affected retired predecessor Jobs and crossed dependency reviews before creating/dispatching this pack; UNKNOWN/PENDING stays fenced.',
+          'Independently refetch every supplied original Job snapshot by exact SHA, enumerate real Runs/cursors and verify retired/REVALIDATE lineage before creating this pack; UNKNOWN/PENDING stays fenced.',
           'Use the reserved scope Job ID once; on target-path CREATE collision independently read back this Job and confirm exact scope_rebuild lineage. Never generate an alternative Job ID.',
           'Do not import historical PASS, old task/milestone IDs, Run evidence or old closure into this new DRAFT Job.',
         )
