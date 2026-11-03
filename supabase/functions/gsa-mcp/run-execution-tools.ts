@@ -24,6 +24,7 @@ export function registerRunExecutionTools(deps: any) {
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         completed_task_run_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
+        scope_dependency_job_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         project_manifest_text: z.string().optional(),
         bootstrap_evidence: z.any().optional(),
       },
@@ -45,7 +46,7 @@ export function registerRunExecutionTools(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, scope_dependency_job_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -68,6 +69,37 @@ export function registerRunExecutionTools(deps: any) {
           (owningJob.planning_review?.status !== 'PASS' ||
             owningJob.planning_review.reviewed_revision !== owningJob.planning_revision)) {
         return { content:[{type:'text',text:'SCOPE_REVALIDATION_REVIEW_PENDING: fresh planning Reviewer PASS required.'}],isError:true }
+      }
+      // U-B: Job-level topology is separate from within-Job Task topology.
+      // No new Run, including Tester/Reviewer, may execute a scope rebuild
+      // before every rebuilt predecessor Job is current, reviewed and PASS.
+      if (owningJob.scope_rebuild?.dependency_job_ids?.length) {
+        const deps = owningJob.scope_rebuild.dependency_job_ids
+        const proof = scope_dependency_job_snapshots ?? []
+        if (!Array.isArray(deps) || new Set(deps).size !== deps.length ||
+            proof.length !== deps.length ||
+            new Set(proof.map((s: any) => s.path)).size !== proof.length) {
+          return { content:[{type:'text',text:'SCOPE_REBUILD_DEPENDENCY_READBACK_REQUIRED.'}],isError:true }
+        }
+        for (const id of deps) {
+          const expected = recordPath(project_id,'JOBS',id,executionContract,
+            nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
+          const snap = proof.find((s: any) => s.path === expected)
+          let dep: any
+          try { dep = JSON.parse(snap?.record_text ?? '') } catch { dep = null }
+          if (!snap || !/^[0-9a-f]{40}$/.test(snap.sha ?? '') ||
+              dep?.kind !== 'JOB' || dep.job_id !== id || dep.project_id !== project_id ||
+              dep.execution_contract !== executionContract ||
+              (executionContract === 'NEXT' && dep.memory_namespace !== nextMemoryNamespace) ||
+              dep.plan_change_id !== owningJob.plan_change_id ||
+              dep.scope_rebuild?.reviewed_plan_sha !== owningJob.scope_rebuild.reviewed_plan_sha ||
+              dep.lifecycle !== 'COMPLETED' || dep.result !== 'PASS' ||
+              dep.plan_change_pending ||
+              dep.planning_review?.status !== 'PASS' ||
+              dep.planning_review?.reviewed_revision !== dep.planning_revision) {
+            return { content:[{type:'text',text:'SCOPE_REBUILD_DEPENDENCY_NOT_COMPLETED.'}],isError:true }
+          }
+        }
       }
       if (role === 'coder') {
         const blocked = projectBootstrapExecutionError(project_id, project_manifest_text ?? '', bootstrap_evidence,
@@ -206,6 +238,9 @@ export function registerRunExecutionTools(deps: any) {
         external_steps: [
           'Re-read current PROJECT.md and require lifecycle=ACTIVE before this consequential dispatch.',
           'The supplied owning Job snapshot has passed identity/lifecycle and UX_FIRST temporary-UI Human-Gate validation. Re-fetch it before persistence and require the same planning revision/state is still current.',
+          ...(owningJob.scope_rebuild?.dependency_job_ids?.length ? [
+            'Independently refetch every scope_dependency_job_snapshots entry at exact path/sha immediately before Run CREATE; require each rebuilt predecessor Job COMPLETED/PASS, current planning Reviewer PASS and matching scope lineage. Any changed SHA requires re-evaluation.',
+          ] : []),
           ...(executionContract === 'NEXT'
             ? [
                 'Immediately re-fetch the owning Job before Run persistence and require blob SHA=' + String(job_record_sha) + ' plus planning_revision=' + String(planning_revision) + '. A mismatch rejects dispatch as stale.',
