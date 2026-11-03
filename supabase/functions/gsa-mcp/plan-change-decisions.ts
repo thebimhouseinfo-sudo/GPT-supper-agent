@@ -487,6 +487,17 @@ function resumeHumanPlanChangeIntent(input: any) {
     intent.execution_contract, intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
     '/WORK/PLAN_RECONCILIATIONS/' + intent.change_id + '.json'
   if (input.intent_memory_path !== expected) return stop('PLAN_CHANGE_INTENT_PATH_MISMATCH')
+  if (intent.scope_selection &&
+      (!['PLAN','PHASE'].includes(intent.scope_selection.boundary) ||
+        (intent.scope_selection.boundary === 'PHASE' && !intent.scope_selection.phase) ||
+        !Array.isArray(intent.scope_selection.inventory_job_ids) ||
+        !Array.isArray(intent.scope_selection.affected_job_ids) ||
+        new Set(intent.scope_selection.inventory_job_ids).size !== intent.scope_selection.inventory_job_ids.length ||
+        new Set(intent.scope_selection.affected_job_ids).size !== intent.scope_selection.affected_job_ids.length ||
+        !intent.scope_selection.affected_job_ids.every((id: string) =>
+          intent.scope_selection.inventory_job_ids.includes(id)) ||
+        intent.actions.length !== intent.scope_selection.inventory_job_ids.length))
+    return stop('SCOPE_INTENT_INVENTORY_INVALID')
   if (!Array.isArray(input.current_job_snapshots)) return stop('PLAN_CHANGE_CURRENT_JOBS_REQUIRED')
   const jobs = new Map<string,any>()
   for (const s of input.current_job_snapshots) {
@@ -507,10 +518,11 @@ function resumeHumanPlanChangeIntent(input: any) {
     const oldSnapshot = jobs.get(a.predecessor_job_id)
     if (!oldSnapshot) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
     const old = oldSnapshot.job
-    if (intent.scope_selection && (a.decision === 'RETIRE' ?
-        !intent.scope_selection.affected_job_ids.includes(old.job_id) :
-        intent.scope_selection.affected_job_ids.includes(old.job_id) && a.decision !== 'KEEP'))
-      return stop('SCOPE_ACTION_BOUNDARY_CONFLICT')
+    if (intent.scope_selection) {
+      const affected = intent.scope_selection.affected_job_ids.includes(old.job_id)
+      if (affected !== (a.decision === 'RETIRE'))
+        return stop('SCOPE_ACTION_BOUNDARY_CONFLICT')
+    }
     const alreadyRevised = a.decision === 'REVALIDATE' &&
       old.plan_change_revalidated_by === intent.change_id &&
       old.planning_revision > a.predecessor_planning_revision
@@ -610,6 +622,10 @@ function resumeHumanPlanChangeIntent(input: any) {
       return stop('SCOPE_REBUILD_RESERVATIONS_INVALID')
     for (const pack of packs) {
       const snap = jobs.get(pack.job_id)
+      if (seenOld.has(pack.job_id) || !/^[0-9a-f-]{36}$/.test(String(pack.job_id)) ||
+          !Array.isArray(pack.depends_on_pack_keys) ||
+          pack.depends_on_pack_keys.some((key: string) => !packs.some((p: any) => p.pack_key === key)))
+        return stop('SCOPE_REBUILD_RESERVATIONS_INVALID')
       if (!snap) {
         actions.push({ action_key: 'REBUILD:' + pack.pack_key, job_id: pack.job_id,
           decision: 'REBUILD', replacement_job_id: null,
