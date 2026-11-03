@@ -8,6 +8,7 @@ export function registerPlanChangeTools(deps: any) {
     plan_job_id: z.string().uuid(),
     phase_id: z.string().min(1).optional(),
     human_approval_ref: z.string().min(1),
+    successor_job_count: z.number().int().min(1).max(16).default(1),
     inventory_job_ids: z.array(z.string().uuid()).min(1),
   })
   server.registerTool(
