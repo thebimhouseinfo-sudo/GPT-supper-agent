@@ -75,6 +75,7 @@ const common={
   plan_job_record_text:JSON.stringify(plan),plan_job_record_sha:sha,
   plan_review_record_text:JSON.stringify(review),plan_review_record_sha:sha,
   plan_review_memory_path:ref,work_branch:'upgrade/gsa-context-efficiency',
+  human_change_approval_ref:'APPROVED-HUMAN-CHANGE-U-B-M02',
   job_snapshots:snapshots(old),scope_selection:scope,rebuild_job_packs:packSpecs,
 };
 const snap=job=>({job_record_text:JSON.stringify(job),job_record_sha:
@@ -95,6 +96,13 @@ test('U-B Phase: all unfinished affected Jobs retired, completed history KEEP, c
   assert.equal(r.decisions[2].old_evidence_applicable_to_new_job,false);
   assert.deepEqual(Array.from(r.scope_selection.affected_job_ids),[ids[0],ids[1]]);
 });
+test('U-B transitive cross-Phase dependency invalidates unfinished consumers without rewriting history',()=>{
+  const chain=old.map(j=>j.job_id===ids[4]?{...j,dependencies:[ids[3]]}:j);
+  const result=skill().assessHumanPlanChangeJobs({...common,job_snapshots:snapshots(chain)});
+  assert.equal(result.allowed,true);
+  assert.equal(result.decisions[4].decision,'REVALIDATE');
+  assert.deepEqual(Array.from(result.scope_selection.dependent_job_ids),[ids[3],ids[4]]);
+});
 test('U-B whole Plan affects all unfinished Jobs, never retires completed',()=>{
   const result=skill().assessHumanPlanChangeJobs({...common,scope_selection:{
     boundary:'PLAN',inventory_job_ids:ids}});
@@ -112,6 +120,8 @@ test('U-B inventory absence, wrong phase, per-Job override and wrong Project fai
     {...snapshots(old)[0],decision:'KEEP'},...snapshots(old).slice(1)]}).reason,
     'SCOPE_PER_JOB_DECISION_CONFLICT');
   assert.equal(s.assessHumanPlanChangeJobs({...common,project_id:ids[0]}).allowed,false);
+  assert.equal(s.prepareHumanPlanChangeIntent({...common,human_change_approval_ref:''}).reason,
+    'SCOPE_HUMAN_APPROVED_CHANGE_REQUIRED');
 });
 test('U-B immutable intent reserves unique rebuilt Job IDs, idempotent replay and graph validation',()=>{
   const s=skill(),prepared=s.prepareHumanPlanChangeIntent(common);
