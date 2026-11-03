@@ -219,7 +219,7 @@ test('U-B runtime: a late NEXT Run callback cannot complete under a fenced/revis
   }}).outputText;
   const register=vm.runInNewContext(js+'\nregisterRunExecutionTools',{JSON,Number,String,Date,Set,Map,exports:{}});
   register({server:{registerTool:(name,config,fn)=>registered.set(name,fn)},
-    z,req:{},AUTH_SCOPES:[],authContext:async()=>({}),
+    z,DURABLE_RECORD_SNAPSHOT_SCHEMA:z,req:{},AUTH_SCOPES:[],authContext:async()=>({}),
     jobExecutionContract:contract,recordNextMemoryNamespace:namespace,
     resolveExecutionContract:x=>x,
     recordPath:(pid,kind,id)=>root(pid,'NEXT','PRODUCTION')+'/'+kind+'/'+id+'.json',
