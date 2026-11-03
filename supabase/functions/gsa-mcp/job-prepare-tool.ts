@@ -154,6 +154,8 @@ export function registerJobPrepareTool(deps: any) {
           /^[0-9a-f]{40}$/.test(scope_change_context.intent_record_sha) &&
           scope_change_context.intent_memory_path === intentPath &&
           retireActions.length > 0 &&
+          Array.isArray(intent.scope_change.successor_job_ids) &&
+          intent.scope_change.successor_job_ids.includes(scope_change_context.successor_job_id) &&
           retireActions.length === scope_change_context.retired_job_snapshots.length
         if (!valid) return { content:[{type:'text',text:'SCOPE_CHANGE_REVIEWED_INTENT_OR_COMPLETE_RETIREMENT_REQUIRED.'}],isError:true }
         const olderIds = new Set<string>()
