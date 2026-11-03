@@ -33,6 +33,8 @@ function assessScopeWidePlanChange(input: any) {
       !cfg || !['PLAN', 'PHASE'].includes(cfg.boundary) ||
       typeof cfg.plan_job_id !== 'string' || !cfg.plan_job_id ||
       typeof cfg.human_approval_ref !== 'string' || !cfg.human_approval_ref.trim() ||
+      !Number.isInteger(cfg.successor_job_count ?? 1) ||
+      (cfg.successor_job_count ?? 1) < 1 || (cfg.successor_job_count ?? 1) > 16 ||
       (cfg.boundary === 'PHASE' ? (typeof cfg.phase_id !== 'string' || !cfg.phase_id.trim()) : cfg.phase_id != null))
     return fail('SCOPE_CHANGE_REVIEWED_HUMAN_BOUNDARY_REQUIRED')
   if (!Array.isArray(cfg.inventory_job_ids) || !cfg.inventory_job_ids.length ||
@@ -263,6 +265,7 @@ function prepareHumanPlanChangeIntent(input: any) {
         old.scope_change.boundary !== input.scope_change.boundary ||
         old.scope_change.phase_id !== (input.scope_change.phase_id ?? null) ||
         old.scope_change.human_approval_ref !== input.scope_change.human_approval_ref ||
+        old.scope_change.successor_job_count !== (input.scope_change.successor_job_count ?? 1) ||
         JSON.stringify(old.scope_change.inventory_job_ids) !== JSON.stringify([...input.scope_change.inventory_job_ids].sort()))
         : old.scope_change != null))
       return deny('PLAN_CHANGE_EXISTING_INTENT_CONFLICT')
@@ -285,6 +288,14 @@ function prepareHumanPlanChangeIntent(input: any) {
   if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
     return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   const known = new Set(impact.decisions.map((row: any) => row.job_id))
+  known.add(planJob.job_id)
+  if (input.scope_change) {
+    for (const snapshot of input.job_snapshots) {
+      const job = JSON.parse(snapshot.job_record_text)
+      for (const task of job.tasks ?? []) known.add(task.task_id)
+      for (const milestone of job.milestones ?? []) known.add(milestone.milestone_id)
+    }
+  }
   const actions = impact.decisions.map((row: any) => {
     let replacement: any = null
     if (row.decision === 'REPLACE') {
@@ -308,6 +319,19 @@ function prepareHumanPlanChangeIntent(input: any) {
     }
   })
   if (actions.some((x: any) => x === null)) return deny('PLAN_CHANGE_RESERVED_ID_COLLISION')
+  // Reserve scope-level successor IDs exactly once in the immutable intent.
+  // There is no 1:1 mapping to retired Jobs; count comes from reviewed new
+  // topology. A lost response/retry reuses the persisted IDs, never mints new.
+  const reservedScopeSuccessors: string[] = []
+  if (input.scope_change) {
+    for (let i=0; i<(input.scope_change.successor_job_count ?? 1); i++) {
+      let id = uuidv7()
+      for (let attempt=0; known.has(id) && attempt<4; attempt++) id=uuidv7()
+      if (known.has(id)) return deny('SCOPE_CHANGE_RESERVED_SUCCESSOR_ID_COLLISION')
+      known.add(id)
+      reservedScopeSuccessors.push(id)
+    }
+  }
   const intent = {
     kind: 'PLAN_RECONCILIATION_INTENT', version: 1,
     project_id: input.project_id, change_id: changeId,
@@ -322,6 +346,8 @@ function prepareHumanPlanChangeIntent(input: any) {
       boundary: input.scope_change.boundary,
       phase_id: input.scope_change.phase_id ?? null,
       human_approval_ref: input.scope_change.human_approval_ref,
+      successor_job_count: input.scope_change.successor_job_count ?? 1,
+      successor_job_ids: reservedScopeSuccessors,
       inventory_job_ids: scopeSummary!.inventory_job_ids,
       retiring_job_ids: scopeSummary!.retiring_job_ids,
       cross_boundary_job_ids: scopeSummary!.cross_boundary_job_ids,
@@ -503,6 +529,12 @@ function resumeHumanPlanChangeIntent(input: any) {
   if (intent.scope_change) {
     const ids = intent.scope_change.inventory_job_ids
     if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length ||
+        !Number.isInteger(intent.scope_change.successor_job_count) ||
+        intent.scope_change.successor_job_count < 1 || intent.scope_change.successor_job_count > 16 ||
+        !Array.isArray(intent.scope_change.successor_job_ids) ||
+        intent.scope_change.successor_job_ids.length !== intent.scope_change.successor_job_count ||
+        new Set(intent.scope_change.successor_job_ids).size !== intent.scope_change.successor_job_count ||
+        intent.scope_change.successor_job_ids.some((id: any) => typeof id !== 'string' || !id || ids.includes(id)) ||
         ids.some((id: any) => !jobs.has(id)) || intent.actions.length !== ids.length ||
         intent.actions.some((a: any) => !ids.includes(a.predecessor_job_id) || !['KEEP','RETIRE'].includes(a.decision)) ||
         !Array.isArray(intent.scope_change.retiring_job_ids) ||
