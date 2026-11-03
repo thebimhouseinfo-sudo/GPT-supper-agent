@@ -18,6 +18,109 @@ function isRecognizedJobRecordShape(job: any): boolean {
     ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(job.lifecycle)
 }
 
+
+/** U-B: scope boundary is read from the reviewed Plan, not a per-Job vote.
+ * The supplied inventory must be independently compared to all current child
+ * Jobs in Project Memory; this pure helper can only check supplied coverage. */
+function resolveScopeWideAssessment(input: any) {
+  const s = input.scope_selection
+  if (s == null) return { allowed: true, snapshots: input.job_snapshots, scope: null }
+  if (s.boundary !== 'PLAN' && s.boundary !== 'PHASE')
+    return { allowed: false, reason: 'SCOPE_BOUNDARY_INVALID' }
+  if ((s.boundary === 'PHASE' && (typeof s.phase !== 'string' || !s.phase.trim())) ||
+      (s.boundary === 'PLAN' && s.phase != null))
+    return { allowed: false, reason: 'SCOPE_PHASE_INVALID' }
+  if (!Array.isArray(input.job_snapshots) || !input.job_snapshots.length ||
+      !Array.isArray(s.inventory_job_ids) || !s.inventory_job_ids.length ||
+      s.inventory_job_ids.some((id: any) => typeof id !== 'string' || !id) ||
+      new Set(s.inventory_job_ids).size !== s.inventory_job_ids.length)
+    return { allowed: false, reason: 'SCOPE_INVENTORY_REQUIRED' }
+  const jobs: any[] = []
+  const seen = new Set<string>()
+  for (const snap of input.job_snapshots) {
+    let job: any
+    try { job = JSON.parse(snap.job_record_text) }
+    catch { return { allowed: false, reason: 'SCOPE_JOB_JSON_INVALID' } }
+    if (!isRecognizedJobRecordShape(job) || seen.has(job.job_id))
+      return { allowed: false, reason: 'SCOPE_JOB_INVALID_OR_DUPLICATE' }
+    if (s.boundary === 'PHASE' && (typeof job.planning_context?.phase !== 'string' ||
+      !job.planning_context.phase.trim()))
+      return { allowed: false, reason: 'SCOPE_JOB_PHASE_UNVERIFIED' }
+    seen.add(job.job_id)
+    jobs.push({ snap, job })
+  }
+  if (seen.size !== s.inventory_job_ids.length ||
+      s.inventory_job_ids.some((id: string) => !seen.has(id)))
+    return { allowed: false, reason: 'SCOPE_INVENTORY_INCOMPLETE' }
+  const inBoundary = (job: any) => s.boundary === 'PLAN' || job.planning_context.phase === s.phase
+  const unfinished = (job: any) => !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(job.lifecycle)
+  const affected = new Set(jobs.filter(({job}) => inBoundary(job) && unfinished(job))
+    .map(({job}) => job.job_id))
+  if (!affected.size) return { allowed: false, reason: 'SCOPE_NO_UNFINISHED_WORK' }
+  const snapshots = jobs.map(({snap,job}) => {
+    const outsideDependency = !inBoundary(job) && Array.isArray(job.dependencies) &&
+      job.dependencies.some((dep: any) => affected.has(typeof dep === 'string' ? dep : dep?.job_id))
+    const decision = inBoundary(job) && unfinished(job) ? 'RETIRE' :
+      outsideDependency && unfinished(job) ? 'REVALIDATE' : 'KEEP'
+    if (snap.decision != null && snap.decision !== decision)
+      return { error: 'SCOPE_PER_JOB_DECISION_CONFLICT' }
+    if (snap.retired_task_ids?.length && decision !== 'RETIRE')
+      return { error: 'SCOPE_TASK_DECISION_CONFLICT' }
+    return {
+      ...snap, decision,
+      reason: snap.reason || (decision === 'RETIRE' ? 'Retire unfinished work in reviewed changed scope' :
+        decision === 'REVALIDATE' ? 'Cross-boundary dependency requires current-revision review' :
+          'Preserve unaffected or completed historical work'),
+      retired_task_ids: decision === 'RETIRE' ?
+        (job.tasks ?? []).filter((task: any) =>
+          !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(task.lifecycle))
+          .map((task: any) => task.task_id) : [],
+    }
+  })
+  if (snapshots.some((snap: any) => snap.error))
+    return { allowed: false, reason: snapshots.find((snap: any) => snap.error).error }
+  return { allowed: true, snapshots, scope: {
+    boundary: s.boundary, phase: s.boundary === 'PHASE' ? s.phase : null,
+    inventory_job_ids: [...s.inventory_job_ids].sort(),
+    affected_job_ids: [...affected].sort(),
+  } }
+}
+
+function reserveScopeRebuildJobs(input: any, known: Set<string>) {
+  const packs = input.rebuild_job_packs ?? []
+  if (!Array.isArray(packs) || packs.some((p: any) =>
+      !p || typeof p.pack_key !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(p.pack_key) ||
+      typeof p.phase !== 'string' || !p.phase.trim() ||
+      !Array.isArray(p.depends_on_pack_keys) ||
+      p.depends_on_pack_keys.some((key: any) => typeof key !== 'string')))
+    return null
+  const keys = new Set(packs.map((p: any) => p.pack_key))
+  if (keys.size !== packs.length) return null
+  const graph = new Map(packs.map((p: any) => [p.pack_key, p.depends_on_pack_keys]))
+  for (const p of packs) if (new Set(p.depends_on_pack_keys).size !== p.depends_on_pack_keys.length ||
+      p.depends_on_pack_keys.includes(p.pack_key) ||
+      p.depends_on_pack_keys.some((key: string) => !keys.has(key))) return null
+  const done = new Set<string>(), visiting = new Set<string>()
+  const walk = (key: string): boolean => {
+    if (visiting.has(key)) return false
+    if (done.has(key)) return true
+    visiting.add(key)
+    for (const dep of graph.get(key) ?? []) if (!walk(dep)) return false
+    visiting.delete(key); done.add(key); return true
+  }
+  if ([...keys].some((key) => !walk(key))) return null
+  const reserved: any[] = []
+  for (const p of packs) {
+    let id = uuidv7()
+    for (let n = 0; known.has(id) && n < 4; n++) id = uuidv7()
+    if (known.has(id)) return null
+    known.add(id)
+    reserved.push({ pack_key: p.pack_key, phase: p.phase, job_id: id,
+      depends_on_pack_keys: p.depends_on_pack_keys })
+  }
+  return reserved
+}
+
 function assessHumanPlanChangeJobs(input: any) {
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
@@ -25,9 +128,11 @@ function assessHumanPlanChangeJobs(input: any) {
     return reject('PLAN_CHANGE_REVIEWED_TARGET_REQUIRED')
   if (!Array.isArray(input.job_snapshots) || input.job_snapshots.length === 0)
     return reject('PLAN_CHANGE_JOB_SNAPSHOTS_REQUIRED')
+  const scoped = resolveScopeWideAssessment(input)
+  if (!scoped.allowed) return reject(scoped.reason)
   const ids = new Set<string>()
   const rows: any[] = []
-  for (const item of input.job_snapshots) {
+  for (const item of scoped.snapshots) {
     let job: any
     try { job = JSON.parse(item.job_record_text) }
     catch { return reject('PLAN_CHANGE_JOB_JSON_INVALID') }
@@ -73,12 +178,18 @@ function assessHumanPlanChangeJobs(input: any) {
       execution_contract: oldContract, decision: item.decision,
       reason: item.reason, next_action: nextAction,
       retired_task_ids: retiredTaskIds,
+      ...(scoped.scope ? {
+        scope_affected: scoped.scope.affected_job_ids.includes(job.job_id),
+        historical_task_ids: (job.tasks ?? []).map((t: any) => t.task_id),
+        historical_milestone_ids: (job.milestones ?? []).map((m: any) => m.milestone_id),
+      } : {}),
       old_evidence_applicable_to_new_job: false,
     })
   }
   return {
     allowed: true, reason: 'ASSESSMENT_ONLY_REQUIRES_REVIEWED_PLAN_AND_FRESH_MEMORY_READBACK',
-    decisions: rows, mutation_authorized: false,
+    decisions: rows, ...(scoped.scope ? { scope_selection: scoped.scope } : {}),
+    mutation_authorized: false,
   }
 }
 
@@ -135,6 +246,19 @@ function prepareHumanPlanChangeIntent(input: any) {
     let old: any
     try { old = JSON.parse(input.existing_intent_record_text) }
     catch { return deny('PLAN_CHANGE_EXISTING_INTENT_INVALID') }
+    const proposedScope = input.scope_selection == null ? null : {
+      boundary: input.scope_selection.boundary,
+      phase: input.scope_selection.boundary === 'PHASE' ? input.scope_selection.phase : null,
+      inventory_job_ids: [...(input.scope_selection.inventory_job_ids ?? [])].sort(),
+    }
+    if (JSON.stringify(old.scope_selection && {
+        boundary: old.scope_selection.boundary, phase: old.scope_selection.phase,
+        inventory_job_ids: old.scope_selection.inventory_job_ids,
+      } || null) !== JSON.stringify(proposedScope) ||
+        JSON.stringify((old.rebuild_jobs ?? []).map((j: any) => ({
+          pack_key: j.pack_key, phase: j.phase, depends_on_pack_keys: j.depends_on_pack_keys,
+        }))) !== JSON.stringify(input.rebuild_job_packs ?? []))
+      return deny('PLAN_CHANGE_EXISTING_SCOPE_OR_REBUILD_CONFLICT')
     if (!sha(input.existing_intent_record_sha) ||
         old?.kind !== 'PLAN_RECONCILIATION_INTENT' || old.version !== 1 ||
         old.project_id !== input.project_id || old.change_id !== changeId ||
@@ -158,6 +282,8 @@ function prepareHumanPlanChangeIntent(input: any) {
   if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
     return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   const known = new Set(impact.decisions.map((row: any) => row.job_id))
+  const rebuildJobs = impact.scope_selection ? reserveScopeRebuildJobs(input, known) : []
+  if (!rebuildJobs) return deny('SCOPE_REBUILD_PACKS_INVALID')
   const actions = impact.decisions.map((row: any) => {
     let replacement: any = null
     if (row.decision === 'REPLACE') {
@@ -175,6 +301,10 @@ function prepareHumanPlanChangeIntent(input: any) {
       predecessor_execution_contract: row.execution_contract,
       decision: row.decision, reason: row.reason,
       retired_task_ids: row.retired_task_ids,
+      ...(impact.scope_selection ? {
+        historical_task_ids: row.historical_task_ids,
+        historical_milestone_ids: row.historical_milestone_ids,
+      } : {}),
       initial_next_action: row.next_action,
       replacement,
       old_evidence_applicable_to_new_job: false,
@@ -191,6 +321,9 @@ function prepareHumanPlanChangeIntent(input: any) {
     execution_contract: contract,
     ...(contract === 'NEXT' ? { memory_namespace: ns } : {}),
     work_branch: input.work_branch,
+    ...(impact.scope_selection ? {
+      scope_selection: impact.scope_selection, rebuild_jobs: rebuildJobs,
+    } : {}),
     actions, created_at: new Date().toISOString(),
   }
   return {
@@ -359,6 +492,10 @@ function resumeHumanPlanChangeIntent(input: any) {
     const oldSnapshot = jobs.get(a.predecessor_job_id)
     if (!oldSnapshot) return stop('PLAN_CHANGE_PREDECESSOR_READBACK_MISSING')
     const old = oldSnapshot.job
+    if (intent.scope_selection && (a.decision === 'RETIRE' ?
+        !intent.scope_selection.affected_job_ids.includes(old.job_id) :
+        intent.scope_selection.affected_job_ids.includes(old.job_id) && a.decision !== 'KEEP'))
+      return stop('SCOPE_ACTION_BOUNDARY_CONFLICT')
     if (old.planning_revision !== a.predecessor_planning_revision ||
         jobExecutionContract(old) !== a.predecessor_execution_contract)
       return stop('PLAN_CHANGE_PREDECESSOR_REVISION_OR_CONTRACT_DRIFT')
@@ -416,6 +553,38 @@ function resumeHumanPlanChangeIntent(input: any) {
     }
     actions.push({ action_key: a.action_key, job_id: old.job_id, decision: a.decision,
       replacement_job_id: a.replacement?.job_id ?? null, next_action: next })
+  }
+  if (intent.scope_selection) {
+    const unsettled = actions.some((a) => a.decision === 'RETIRE' &&
+      a.next_action !== 'RETIRED_NO_REPLACEMENT')
+    const packs = intent.rebuild_jobs ?? []
+    if (!Array.isArray(packs) || new Set(packs.map((p: any) => p.job_id)).size !== packs.length)
+      return stop('SCOPE_REBUILD_RESERVATIONS_INVALID')
+    for (const pack of packs) {
+      const snap = jobs.get(pack.job_id)
+      if (!snap) {
+        actions.push({ action_key: 'REBUILD:' + pack.pack_key, job_id: pack.job_id,
+          decision: 'REBUILD', replacement_job_id: null,
+          next_action: unsettled ? 'WAIT_SCOPE_RETIREMENT' : 'CREATE_RESERVED_SCOPE_JOB' })
+        continue
+      }
+      const job = snap.job
+      const deps = pack.depends_on_pack_keys.map((key: string) =>
+        packs.find((p: any) => p.pack_key === key)?.job_id)
+      if (job.plan_change_id !== intent.change_id ||
+          job.scope_rebuild?.pack_key !== pack.pack_key ||
+          job.scope_rebuild?.reviewed_plan_sha !== intent.reviewed_plan_sha ||
+          job.planning_context?.phase !== pack.phase ||
+          JSON.stringify(job.dependencies ?? []) !== JSON.stringify(deps) ||
+          (job.lifecycle === 'DRAFT' && job.planning_review?.status === 'PASS'))
+        return stop('SCOPE_REBUILD_JOB_LINEAGE_CONFLICT')
+      actions.push({ action_key: 'REBUILD:' + pack.pack_key, job_id: pack.job_id,
+        decision: 'REBUILD', replacement_job_id: null,
+        next_action: unsettled ? 'WAIT_SCOPE_RETIREMENT' :
+          job.lifecycle === 'DRAFT' ? 'REVIEW_REBUILD_JOB' :
+          ['READY','IN_PROGRESS','COMPLETED'].includes(job.lifecycle) ?
+            'REVALIDATE_SCOPE_DEPENDENCIES_BEFORE_DISPATCH' : 'SCOPE_REBUILD_TERMINAL_CONFLICT' })
+    }
   }
   return { allowed: true, reason: 'FRESH_READBACK_RECONCILIATION_ONLY',
     actions, mutation_authorized: false }
