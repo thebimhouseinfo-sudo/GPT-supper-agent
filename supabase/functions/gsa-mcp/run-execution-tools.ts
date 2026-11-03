@@ -64,6 +64,11 @@ export function registerRunExecutionTools(deps: any) {
       if (owningJob.plan_change_pending) {
         return { content: [{ type:'text', text:'PLAN_CHANGE_PENDING_FENCE: Job is being reconciled with a newer reviewed Plan; do not start another Run.' }], isError:true }
       }
+      if (owningJob.plan_change_revalidated_by &&
+          (owningJob.planning_review?.status !== 'PASS' ||
+            owningJob.planning_review.reviewed_revision !== owningJob.planning_revision)) {
+        return { content:[{type:'text',text:'SCOPE_REVALIDATION_REVIEW_PENDING: fresh planning Reviewer PASS required.'}],isError:true }
+      }
       if (role === 'coder') {
         const blocked = projectBootstrapExecutionError(project_id, project_manifest_text ?? '', bootstrap_evidence,
           owningJob.repository_context?.working_repository_url ?? null,
@@ -621,6 +626,26 @@ export function registerRunExecutionTools(deps: any) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: NEXT Run memory_namespace is invalid.' }], isError: true }
       }
+      // U-B: an old Run response cannot report PASS or create a new Handoff
+      // after the owning Job is fenced/revised/retired. Cancellation is legal
+      // only when the caller independently verifies the actual Run/Job state.
+      if (executionContract === 'NEXT' && lifecycle !== 'CANCELLED') {
+        let owner: any
+        try { owner = JSON.parse(job_record_text ?? '') } catch { owner = null }
+        if (!owner || !/^[0-9a-f]{40}$/.test(String(job_record_sha ?? '')) ||
+            owner.kind !== 'JOB' || owner.project_id !== project_id ||
+            owner.job_id !== job_id || jobExecutionContract(owner) !== executionContract ||
+            recordNextMemoryNamespace(owner) !== nextMemoryNamespace ||
+            !['READY','IN_PROGRESS'].includes(owner.lifecycle) ||
+            owner.plan_change_pending ||
+            owner.planning_revision !== current.planning_revision ||
+            (owner.plan_change_revalidated_by && owner.planning_review?.status !== 'PASS')) {
+          return { content:[{type:'text',text:'RUN_STALE_OR_FENCED: current exact-SHA owning Job readback required; old callbacks cannot promote evidence.'}],isError:true }
+        }
+      }
+      if (lifecycle === 'CANCELLED' && handoff) {
+        return { content:[{type:'text',text:'CANCELLED_RUN_CANNOT_HANDOFF.'}],isError:true }
+      }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
         let goalRef: string | null = null
@@ -797,6 +822,10 @@ export function registerRunExecutionTools(deps: any) {
         ended_at: new Date().toISOString(),
       }
       const externalSteps = [
+        ...(executionContract === 'NEXT' ? [
+          'Before non-CANCELLED Run terminal update, independently refetch current owning Job SHA/bytes and Run SHA; reject a late response when Job is plan_change_pending, RETIRED, SUPERSEDED or planning_revision changed.',
+          'Under Plan fencing only CANCELLED (actual terminal) is permitted; UNKNOWN/PENDING host effects must be reconciled, never assumed stopped.',
+        ] : []),
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
         ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),
         ...durableSnapshotReadbackSteps(run_verification_snapshot ? [run_verification_snapshot] : [], 'Reviewer/Tester Run Verification snapshot'),
