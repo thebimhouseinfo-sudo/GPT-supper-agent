@@ -128,7 +128,7 @@ function assessHumanPlanChangeJobs(input: any) {
     return reject('PLAN_CHANGE_REVIEWED_TARGET_REQUIRED')
   if (!Array.isArray(input.job_snapshots) || input.job_snapshots.length === 0)
     return reject('PLAN_CHANGE_JOB_SNAPSHOTS_REQUIRED')
-  const scoped = resolveScopeWideAssessment(input)
+  const scoped = input.scope_selection ? resolveScopeWideAssessment(input) : { allowed:true, snapshots: input.job_snapshots, scope:null }
   if (!scoped.allowed) return reject(scoped.reason)
   const ids = new Set<string>()
   const rows: any[] = []
