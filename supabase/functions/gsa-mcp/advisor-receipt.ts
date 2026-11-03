@@ -50,63 +50,29 @@ export function parseAdvisorAdviceReceipts(text: string) {
   return { receipts, malformed }
 }
 
+
+/** Consultation is an anti-overengineering checkpoint, not a proof/receipt protocol.
+ * The caller must ground acknowledgement in Human's actual confirmation.
+ * This read-only check does not grant Criteria/Memory write permission.
+ */
 export function projectCriteriaAdvisoryDecision(projectId: string, input: any) {
-  const reject = (status: string, receipt?: any) => ({
-    status, advisor_required: true, criteria_write_prepared: false,
-    external_advice_check_required: true,
-    receipt_format: receipt?.format ?? null,
-    receipt_baseline_sha: receipt?.baseline ?? null,
-    receipt_scope: receipt?.scope ?? null,
-  })
+  const base = { advisor_required: false, criteria_write_prepared: false,
+    external_advice_check_required: false, receipt_format: null,
+    receipt_baseline_sha: null, receipt_scope: null }
   const intent = input?.intent
-  if (['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE'].includes(intent))
-    return { ...reject('ADVISOR_NOT_REQUIRED'), advisor_required: false, external_advice_check_required: false }
+  if (['DISCUSSION', 'DRAFT_EDIT', 'PLAN_OR_TASK_CHANGE'].includes(intent))
+    return { ...base, status: 'ADVISOR_NOT_REQUIRED' }
   if (intent === 'HUMAN_KEEP_CRITERIA')
-    return { ...reject('HUMAN_KEEPS_CRITERIA_NO_WRITE'), advisor_required: false, external_advice_check_required: false }
-  if (!['INITIAL_APPROVAL','MATERIAL_CHANGE'].includes(intent)) return reject('CRITERIA_INTENT_INVALID')
+    return { ...base, status: 'HUMAN_KEEPS_CRITERIA_NO_WRITE' }
+  if (!['INITIAL_APPROVAL', 'MATERIAL_CHANGE'].includes(intent))
+    return { ...base, status: 'CRITERIA_INTENT_INVALID' }
   if (input?.criteria_path !== 'projects/' + projectId + '/CRITERIA.md' ||
       !/^[0-9a-f]{40}$/.test(String(input?.criteria_current_sha ?? '')) ||
-      typeof input?.criteria_text !== 'string') return reject('CRITERIA_BASELINE_INVALID')
-  // A new consultation is not yet in the canonical Criteria file. Accept a
-  // proposed scoped receipt as *untrusted evidence for external verification*,
-  // never as authority to write. Requiring it to exist in the OLD Criteria file
-  // made a legitimate first revision impossible to complete.
-  const proposed = input?.delivered_advice
-  if (proposed !== undefined) {
-    const baseline = String(proposed?.baseline_sha ?? '')
-    const scope = String(proposed?.scope ?? '')
-    const adviceRef = String(proposed?.advice_ref ?? '')
-    const receiptLine = formatAdvisorAdviceReceipt(baseline, scope, adviceRef)
-    if (!receiptLine || proposed?.delivered_to_human !== true ||
-        baseline !== input.criteria_current_sha ||
-        scope !== input.delta_scope ||
-        input?.human_decision !== 'APPROVE')
-      return reject('ADVISOR_DELIVERY_EVIDENCE_INVALID')
-    return {
-      status: 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK',
-      advisor_required: true, criteria_write_prepared: false,
-      external_advice_check_required: true, receipt_format: 'PROPOSED_CANONICAL',
-      receipt_baseline_sha: baseline, receipt_scope: scope,
-    }
-  }
-  const parsed = parseAdvisorAdviceReceipts(input.criteria_text)
-  if (parsed.malformed || parsed.receipts.length !== 1)
-    return reject('ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  const receipt = parsed.receipts[0]
-  const baseline = input.advisor_baseline_sha ?? receipt.baseline
-  const scope = input.delta_scope === undefined ? receipt.scope : input.delta_scope
-  if (baseline === undefined || baseline === null || baseline === '')
-    return reject('ADVISOR_BASELINE_SHA_MISSING', receipt)
-  if (!/^[0-9a-f]{40}$/.test(String(baseline))) return reject('ADVISOR_BASELINE_SHA_INVALID', receipt)
-  if (typeof scope !== 'string' || !scope.trim()) return reject('ADVISOR_SCOPE_MISSING', receipt)
-  if (scope.length > ADVISOR_RECEIPT_SCOPE_MAX) return reject('ADVISOR_SCOPE_TOO_LONG', receipt)
-  if (baseline !== receipt.baseline) return reject('ADVISOR_BASELINE_MISMATCH', receipt)
-  if (scope !== receipt.scope) return reject('ADVISOR_SCOPE_MISMATCH', receipt)
-  if (input?.human_decision !== 'APPROVE') return reject('HUMAN_DECISION_PENDING', receipt)
-  return {
-    status: 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK',
-    advisor_required: true, criteria_write_prepared: false,
-    external_advice_check_required: true, receipt_format: receipt.format,
-    receipt_baseline_sha: receipt.baseline, receipt_scope: receipt.scope,
-  }
+      typeof input?.criteria_text !== 'string')
+    return { ...base, status: 'CRITERIA_BASELINE_INVALID' }
+  if (input?.human_advisor_acknowledged !== true)
+    return { ...base, status: 'ADVISOR_CONSULTATION_REQUIRED', advisor_required: true }
+  if (input?.human_decision !== 'APPROVE')
+    return { ...base, status: 'HUMAN_DECISION_PENDING' }
+  return { ...base, status: 'HUMAN_ADVISOR_ACKNOWLEDGED' }
 }

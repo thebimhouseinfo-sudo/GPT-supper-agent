@@ -1,58 +1,68 @@
 'use strict'
-// SOURCE-CONTRACT test only: does not simulate real Advisor delivery or Criteria write.
+// Human consultation acknowledgement contract: source-only tests, no fake host advice.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const vm = require('node:vm')
 const ts = require('typescript')
+const root = path.join(__dirname, '../supabase/functions/gsa-mcp')
+const index = fs.readFileSync(path.join(root, 'index.ts'), 'utf8')
+const setup = fs.readFileSync(path.join(root, 'project-setup-tools.ts'), 'utf8')
+const advisor = fs.readFileSync(path.join(root, 'advisor-receipt.ts'), 'utf8')
+const harness = fs.readFileSync(path.join(root, 'harness-catalog.ts'), 'utf8')
+const tree = ts.createSourceFile('advisor-receipt.ts', advisor, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+const fn = tree.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'projectCriteriaAdvisoryDecision')
+assert.ok(fn, 'Advisor decision must exist in owner module')
+const body = ts.transpileModule(fn.getText(tree).replace(/^export\s+/, ''), {
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}
+}).outputText
+const check = vm.runInNewContext(body + '\nprojectCriteriaAdvisoryDecision')
+const id = '01a0f051-4353-7bff-8edf-46be4b44fd2f'
+const input = {intent:'MATERIAL_CHANGE',criteria_path:'projects/'+id+'/CRITERIA.md',
+  criteria_current_sha:'a'.repeat(40),criteria_text:'# Criteria',human_decision:'APPROVE'}
 
-const code = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
-const decisionModule = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/advisor-receipt.ts'), 'utf8')
-const source = ts.createSourceFile('index.ts', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-
-test('Advisor continuation preserves valid TypeScript and declared MCP response schema', () => {
-  assert.equal(source.parseDiagnostics.length, 0)
-  const tool = code.slice(code.indexOf("'project_criteria_advice_check'"), code.indexOf("'project_role_addins_resolve'"))
-  assert.match(tool, /next_action:\s*z\.enum\(\['INVOKE_TECHNICAL_ADVISOR'/)
-  assert.match(tool, /'ADVISOR_SCOPE_MISMATCH'/)
-  assert.match(tool, /'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE'/)
-  assert.match(tool, /next_action:\s*dispatchAdvisor\s*\?\s*'INVOKE_TECHNICAL_ADVISOR'/)
-  assert.match(tool, /Advisor admission alone is not completed advice/)
-  assert.match(tool, /without requesting a second approval/i)
+test('Advisor route is declared in its actual source module', () => {
+  assert.equal(tree.parseDiagnostics.length,0)
+  assert.match(setup, /next_action: z\.enum\(\['INVOKE_TECHNICAL_ADVISOR','CONTINUE_CRITERIA_WRITE','NONE'\]/)
+  assert.match(setup, /dispatchAdvisor = check.status === 'ADVISOR_CONSULTATION_REQUIRED'/)
+  assert.match(setup, /human_advisor_acknowledged: z\.boolean\(\)/)
 })
 
-test('Advisor consultation cannot masquerade as Criteria write authorization', () => {
-  const decision = decisionModule.slice(decisionModule.indexOf('function projectCriteriaAdvisoryDecision'))
-  assert.match(decision, /criteria_write_prepared:\s*false/)
-  assert.match(decision, /input\?\.human_decision !== 'APPROVE'/)
-  assert.match(decision, /'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK'/)
+test('Advisor consultation cannot masquerade as write permission', () => {
+  const acknowledged = check(id,{...input,human_advisor_acknowledged:true})
+  assert.equal(acknowledged.status,'HUMAN_ADVISOR_ACKNOWLEDGED')
+  assert.equal(acknowledged.criteria_write_prepared,false)
+  assert.equal(acknowledged.external_advice_check_required,false)
+  assert.match(setup, /existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS/)
 })
 
-test('Planner role explicitly dispatches advisor and resumes previously settled decision', () => {
-  assert.match(code, /Planner must start_direct_agent\(role=advisor\)/)
-  assert.match(code, /Advisor admission alone is not delivered advice/)
-  assert.match(code, /never stop at a receipt error or ask for the same approval twice/)
+test('Planner prompts dispatch only on final Criteria intent', () => {
+  const planner = harness.slice(harness.indexOf('  planner: {'),harness.indexOf('  advisor: {'))
+  assert.match(planner, /start_direct_agent\(role=advisor\)/)
+  assert.match(planner, /Advisor admission alone is not delivered advice/)
+  assert.match(planner, /human_advisor_acknowledged=true/)
+  assert.equal(check(id,{...input,intent:'DISCUSSION'}).advisor_required,false)
+  assert.equal(check(id,{...input,intent:'DRAFT_EDIT'}).advisor_required,false)
+  assert.equal(check(id,{...input,intent:'PLAN_OR_TASK_CHANGE'}).advisor_required,false)
 })
 
-test('new advice can be submitted before its receipt exists in old Criteria', () => {
-  const decision = decisionModule.slice(decisionModule.indexOf('function projectCriteriaAdvisoryDecision'))
-  assert.match(decision, /input\?\.delivered_advice/)
-  assert.match(decision, /proposed\?\.delivered_to_human !== true/)
-  assert.match(decision, /baseline !== input\.criteria_current_sha/)
-  assert.match(decision, /scope !== input\.delta_scope/)
-  assert.match(decision, /receipt_format: 'PROPOSED_CANONICAL'/)
-  assert.match(decision, /criteria_write_prepared: false/)
+test('Missing Human acknowledgement still invokes Advisor, no receipt is enough', () => {
+  const x = check(id,input)
+  assert.equal(x.status,'ADVISOR_CONSULTATION_REQUIRED')
+  assert.equal(x.advisor_required,true)
+  assert.equal(check(id,{...input,criteria_text:'# Criteria\nADVISOR SIGNED: ADVISED'}).status,'ADVISOR_CONSULTATION_REQUIRED')
 })
 
-test('Advisor evidence remains externally verifiable, not standalone write permission', () => {
-  const tool = code.slice(code.indexOf("'project_criteria_advice_check'"), code.indexOf("'project_role_addins_resolve'"))
-  assert.match(tool, /delivered_advice: z\.object/)
-  assert.match(tool, /this is only a claim pending independent readback/)
-  assert.match(tool, /'ADVISOR_DELIVERY_EVIDENCE_INVALID'/)
+test('Acknowledged consultation still requires separate Human approval', () => {
+  assert.equal(check(id,{...input,human_advisor_acknowledged:true,human_decision:'PENDING'}).status,'HUMAN_DECISION_PENDING')
+  assert.equal(check(id,{...input,human_advisor_acknowledged:true,human_decision:'KEEP'}).status,'HUMAN_DECISION_PENDING')
+  assert.equal(check(id,{...input,criteria_current_sha:'bad'}).status,'CRITERIA_BASELINE_INVALID')
+  assert.equal(check(id,{...input,intent:'HUMAN_KEEP_CRITERIA'}).status,'HUMAN_KEEPS_CRITERIA_NO_WRITE')
 })
 
-test('Direct Advisor admission explicitly exposes executable harness but never claims consultation ran', () => {
-  const section = code.slice(code.indexOf("'start_direct_agent'"), code.indexOf("'get_instruction'"))
+test('Direct Advisor admission remains distinct from actual consultation', () => {
+  const section = index.slice(index.indexOf("'start_direct_agent'"), index.indexOf("'get_instruction'"))
   assert.match(section, /execution_state: z\.literal\('ADMITTED_NOT_EXECUTED'\)/)
   assert.match(section, /advisor_harness: role === 'advisor' \? renderHarness\('advisor'\) : null/)
   assert.match(section, /RUN_ADVISOR_CONSULTATION_IN_HOST_AND_DELIVER_ADVICE_TO_HUMAN/)

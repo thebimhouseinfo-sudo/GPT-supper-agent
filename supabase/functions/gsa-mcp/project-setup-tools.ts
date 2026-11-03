@@ -87,7 +87,7 @@ export function registerProjectSetupTools(deps: any) {
         '## Approval',
         'Human decision: PENDING',
         'Technical Advisor: INACTIVE until Human requests initial Criteria approval or material approved Criteria change.',
-        'ADVISOR SIGNED: PENDING',
+        'Advisor consultation: PENDING Human confirmation; no technical receipt required.',
         'Planner updates this SAME file on Human choice; do not auto-promote DRAFT, create Criteria V2 or infer approval from SHA.',
         '',
       ].join('\n') : ''
@@ -107,8 +107,8 @@ export function registerProjectSetupTools(deps: any) {
           'Create AGENTS.md only when absent; create canonical Criteria DRAFT only if intake_disposition=CREATE_DRAFT_IF_ABSENT and GitHub independently confirms file absent. Each CREATE requires existing scope+memory authorization and exact readback. Otherwise do not write Criteria.',
           'For EXISTING with Criteria, inspect product-theory fit and compare actual source for achieved/missing/excess/drift; give Human a report, not an automatic Criteria edit. For EXISTING without Criteria, inspect source then draft a product hypothesis marked CHUA_CHOT; no code-derived approval.',
           'If Development Branch is unconfigured, Admin consults Human and prepares PROJECT.md branch configuration before dependent source writes; Project open/chat/discovery may continue.',
-          'Before writing approved Criteria: use canonical ADVISOR SIGNED: ADVISED | BASELINE=<sha> | SCOPE=<exact scope> | ADVICE_REF=<real reference> or accept saved indented Markdown legacy receipt unchanged. Validate structure with project_criteria_advice_check and independently read back Advisor message, Human decision and canonical Criteria SHA; never invent approval.',
-          'Advisor stays inactive while brainstorming or editing DRAFT. Activate ONLY on explicit Human intent to finalize first Criteria or material WHAT/WHY change; advice delivery acknowledges ADVISOR SIGNED for revision/delta scope in the SAME CRITERIA.md. Human decides; Planner only then writes/readbacks approved changes. No fake Advisor signature.',
+          'Before writing approved Criteria: activate Advisor only at Human first approval/material WHAT-WHY change, deliver technical tradeoffs, and ask Human to confirm they received consultation and APPROVE or KEEP. No ADVICE_REF, Advisor signature or proof reference. Normal Git SHA-CAS and Memory permissions remain.',
+          'Advisor stays inactive during brainstorm, DRAFT, Plan, ordinary code and wording-only edits. After consultation Human acknowledgement is enough; Human decides; Planner only then performs authorized same-file CAS/readback.',
           'Project READY itself only reads metadata and never triggers Project setup writes or Job dispatch.',
         ],
       }
@@ -119,29 +119,23 @@ export function registerProjectSetupTools(deps: any) {
   server.registerTool(
     'project_criteria_advice_check',
     {
-      title: 'Verify scoped Advisor advice before approved Criteria write',
-      description: 'C31 READ ONLY. Parse same-file canonical or saved indented Markdown legacy Advisor receipts. Derive exact baseline/scope from receipt when optional caller values are absent. Structural match is not Advisor provenance, Human approval or write authorization.',
+      title: 'Check Human Advisor consultation acknowledgement for Criteria',
+      description: 'C31 READ ONLY. Advisor only at Human initial Criteria approval/material WHAT-WHY change; Human acknowledgement + decision suffice, no technical receipt. Write authorization remains separate.',
       inputSchema: {
         project_id: z.string().uuid(),
         criteria_path: z.string().min(1),
         criteria_current_sha: z.string(),
         criteria_text: z.string(),
         intent: z.enum(['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE','HUMAN_KEEP_CRITERIA','INITIAL_APPROVAL','MATERIAL_CHANGE']),
-        advisor_baseline_sha: z.string().optional(),
         delta_scope: z.string().optional(),
         human_decision: z.enum(['PENDING','APPROVE','KEEP']).default('PENDING'),
-        delivered_advice: z.object({
-          baseline_sha: z.string(),
-          scope: z.string(),
-          advice_ref: z.string(),
-          delivered_to_human: z.boolean(),
-        }).optional(),
+        human_advisor_acknowledged: z.boolean().default(false),
       },
       outputSchema: {
         status: z.string(), advisor_required: z.boolean(),
         criteria_write_prepared: z.literal(false), external_advice_check_required: z.boolean(),
         receipt_format: z.string().nullable(), receipt_baseline_sha: z.string().nullable(), receipt_scope: z.string().nullable(),
-        next_action: z.enum(['INVOKE_TECHNICAL_ADVISOR','VERIFY_ADVICE_DELIVERY_THEN_CONTINUE_CRITERIA_WRITE','NONE']),
+        next_action: z.enum(['INVOKE_TECHNICAL_ADVISOR','CONTINUE_CRITERIA_WRITE','NONE']),
         external_steps: z.array(z.string()),
       },
       securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }],
@@ -152,27 +146,21 @@ export function registerProjectSetupTools(deps: any) {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required for Criteria advice check.')
       const check = projectCriteriaAdvisoryDecision(input.project_id, input)
-      const dispatchAdvisor = input.intent === 'INITIAL_APPROVAL' || input.intent === 'MATERIAL_CHANGE'
-        ? ['ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE', 'ADVISOR_SCOPE_MISSING',
-           'ADVISOR_SCOPE_MISMATCH', 'ADVISOR_BASELINE_MISMATCH',
-           'ADVISOR_BASELINE_SHA_MISSING', 'ADVISOR_BASELINE_SHA_INVALID',
-           'ADVISOR_DELIVERY_EVIDENCE_INVALID'].includes(check.status)
-        : false
+      const dispatchAdvisor = check.status === 'ADVISOR_CONSULTATION_REQUIRED'
+      const acknowledged = check.status === 'HUMAN_ADVISOR_ACKNOWLEDGED'
       const out = { ...check,
         next_action: dispatchAdvisor ? 'INVOKE_TECHNICAL_ADVISOR' :
-          check.status === 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK'
-            ? 'VERIFY_ADVICE_DELIVERY_THEN_CONTINUE_CRITERIA_WRITE' : 'NONE',
-        external_steps: check.advisor_required ? [
-        'On missing, stale, or wrong-scope Advisor receipt, Planner MUST invoke Technical Advisor on the current Criteria baseline and proposed change, deliver the advice to Human, then continue the already-settled Human decision without requesting a second approval. Advisor admission alone is not completed advice.',
-        'Read the exact current CRITERIA.md from configured GitHub Memory Repo; compare path/text/current SHA with tool inputs and confirm it is the ONE canonical Criteria file.',
-        'For new advice not yet in Criteria, provide delivered_advice with exact current baseline_sha, delta_scope, actual advice_ref and delivered_to_human=true; this is only a claim pending independent readback and never write authority. For new receipts use canonical ADVISOR SIGNED: ADVISED | BASELINE=<40 lowercase Git SHA> | SCOPE=<exact advised scope> | ADVICE_REF=<actual message reference>. Previously saved indented Markdown legacy receipts are valid and need not be rewritten. Omit duplicate baseline/scope inputs when rechecking saved receipts; explicitly provided ones must match exactly.',
-        'Independently verify the actual Advisor message was delivered to Human before ADVISOR SIGNED, including its baseline, exact delta scope and advice reference; text can be forged and is not proof by itself.',
-        'Read back the Advisor baseline SHA from GitHub history and confirm no intervening material Criteria edit or wider final delta. If stale, fake or scope changed, do not approve; reconsult Advisor on the new delta.',
-        'Verify Human decision to approve exact advised scope separately; KEEP means no approved Criteria write.',
-        'Only then use existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS to update this SAME CRITERIA.md; read back. This check never issues write permission.',
-      ] : [
-        'Ordinary discussion, draft-only edits and Plan/Task changes do not call Advisor. Keep existing Memory/Git authorization for any actual draft write.',
-      ] }
+          acknowledged ? 'CONTINUE_CRITERIA_WRITE' : 'NONE',
+        external_steps: dispatchAdvisor ? [
+          'Planner MUST invoke Technical Advisor only at first Criteria approval or material WHAT-WHY change; explain feasibility, hidden costs, risks and simpler alternatives. Role admission alone is not delivered advice.',
+          'Ask Human to confirm they received the advice and choose APPROVE or KEEP. Do not invent their acknowledgement, demand a message reference or ask again after an explicit confirmed choice.',
+          'After actual Human acknowledgement, call this read-only check with human_advisor_acknowledged=true and their decision.',
+        ] : acknowledged ? [
+          'Human acknowledged advice and approved their Criteria decision. No Advisor receipt, message reference, signature or independent delivery proof required.',
+          'This tool does not authorize writes. Verify the Human confirmation and approval; use existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS to update this SAME CRITERIA.md, then read back.',
+        ] : [
+          'Discussion, DRAFT, Plan/Task and Human KEEP do not trigger Advisor. If consultation was acknowledged but Human has not approved, await their decision; do not write Criteria.',
+        ] }
       return { structuredContent: out, content: [{ type: 'text', text: JSON.stringify(out) }] }
     },
   )
