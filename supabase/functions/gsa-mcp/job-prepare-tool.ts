@@ -170,7 +170,15 @@ export function registerJobPrepareTool(deps: any) {
               old.retired_by_plan_change_id !== intent.change_id ||
               !/^[0-9a-f]{40}$/.test(snapshot.job_record_sha) ||
               (action.retired_task_ids ?? []).some((id: string) =>
-                !(old.tasks ?? []).some((t: any) => t.task_id === id && t.lifecycle === 'RETIRED')))
+                !(old.tasks ?? []).some((t: any) => t.task_id === id && t.lifecycle === 'RETIRED')) ||
+              (old.tasks ?? []).some((t: any) => !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(t.lifecycle)) ||
+              (old.milestones ?? []).some((m: any) => {
+                const related = (old.tasks ?? []).filter((t: any) => (m.node_ids ?? []).includes(t.task_id))
+                const done = related.length > 0
+                  ? related.every((t: any) => t.lifecycle === 'COMPLETED')
+                  : m.lifecycle === 'COMPLETED' || m.status === 'PASS' || m.result === 'PASS'
+                return !done && m.lifecycle !== 'RETIRED'
+              }))
             return {content:[{type:'text',text:'SCOPE_CHANGE_RETIREMENT_LINEAGE_OR_TASKS_INCOMPLETE.'}],isError:true}
           observed.add(old.job_id)
           olderIds.add(old.job_id)
