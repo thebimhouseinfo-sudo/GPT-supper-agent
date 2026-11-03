@@ -76,6 +76,12 @@ export function registerJobPrepareTool(deps: any) {
         review_triggers: z.array(z.string()).default([]),
         // Optional LLC58 replacement: only a durable reviewed Plan intent may
         // reserve a preallocated replacement Job ID.
+        scope_rebuild_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          pack_key: z.string().min(1),
+        }).optional(),
         replacement_context: z.object({
           intent_record_text: z.string().min(2),
           intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
@@ -96,7 +102,7 @@ export function registerJobPrepareTool(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context, scope_rebuild_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -156,6 +162,45 @@ export function registerJobPrepareTool(deps: any) {
         }
         replacement = { intent, predecessor, item }
       }
+      // U-B: a scope-wide rebuild has independent pack identity, never a
+      // one-to-one inheritance of old PASS, Tasks, Milestones or old Run IDs.
+      let scopeRebuild: any = null
+      if (scope_rebuild_context) {
+        if (replacement_context) return { content: [{ type:'text', text:'SCOPE_REBUILD_CANNOT_REPLACE_ONE_TO_ONE.' }], isError:true }
+        let intent: any
+        try { intent=JSON.parse(scope_rebuild_context.intent_record_text) }
+        catch { return { content:[{type:'text',text:'SCOPE_REBUILD_INTENT_INVALID.'}],isError:true } }
+        const expectedPath = executionMemoryRoot(project_id, intent?.execution_contract,
+          intent?.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
+          '/WORK/PLAN_RECONCILIATIONS/' + intent?.change_id + '.json'
+        const packs = intent?.rebuild_jobs
+        const pack = Array.isArray(packs) ? packs.find((p: any) => p.pack_key === scope_rebuild_context.pack_key) : null
+        if (intent?.kind !== 'PLAN_RECONCILIATION_INTENT' || intent.version !== 1 ||
+            intent.project_id !== project_id || !intent.scope_selection ||
+            !/^[0-9a-f]{40}$/.test(scope_rebuild_context.intent_record_sha) ||
+            !/^[0-9a-f]{40}$/.test(intent.reviewed_plan_sha ?? '') ||
+            scope_rebuild_context.intent_memory_path !== expectedPath ||
+            !pack || !pack.job_id || packs.some((p: any) => p !== pack && p.job_id === pack.job_id) ||
+            pack.phase !== phase || intent.work_branch !== integration_branch ||
+            (intent.execution_contract !== executionContract) ||
+            (executionContract === 'NEXT' && intent.memory_namespace !== nextMemoryNamespace)) {
+          return { content:[{type:'text',text:'SCOPE_REBUILD_IDENTITY_OR_BRANCH_MISMATCH.'}],isError:true }
+        }
+        const oldIds = new Set((intent.actions ?? []).flatMap((a: any) => [
+          a.predecessor_job_id, ...(a.historical_task_ids ?? []), ...(a.historical_milestone_ids ?? []),
+        ]))
+        if (oldIds.has(pack.job_id) || (tasks ?? []).some((t: any) => t.task_id && oldIds.has(t.task_id)) ||
+            (milestones ?? []).some((m: any) => oldIds.has(m.milestone_id))) {
+          return { content:[{type:'text',text:'SCOPE_REBUILD_MUST_USE_FRESH_IDS.'}],isError:true }
+        }
+        const dependencies = (pack.depends_on_pack_keys ?? []).map((key: string) =>
+          packs.find((p: any) => p.pack_key === key)?.job_id)
+        if (dependencies.some((id: any) => !id || id === pack.job_id ||
+            !packs.some((p: any) => p.job_id === id))) {
+          return { content:[{type:'text',text:'SCOPE_REBUILD_DEPENDENCY_INVALID.'}],isError:true }
+        }
+        scopeRebuild = { intent, pack, dependencies }
+      }
       if (((type === 'code') || (plan_kind === 'PROJECT_PLAN')) &&
           resolveExecutionContract(execution_contract) === 'NEXT' &&
           !validIntegrationBranch(integration_branch)) {
@@ -166,7 +211,7 @@ export function registerJobPrepareTool(deps: any) {
       if (criteria_binding && projectCriteriaBindingError(project_id, 'PROJECT_PLAN', criteria_binding)) {
         return { content: [{ type: 'text', text: 'Provided Criteria binding is invalid for this Project.' }], isError: true }
       }
-      const jobId = replacement?.item?.replacement?.job_id ?? uuidv7()
+      const jobId = scopeRebuild?.pack.job_id ?? replacement?.item?.replacement?.job_id ?? uuidv7()
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
         task_id: task.task_id || uuidv7(),
@@ -193,6 +238,15 @@ export function registerJobPrepareTool(deps: any) {
         kind: 'JOB',
         job_id: jobId,
         handle: jobHandle(jobId),
+        ...(scopeRebuild ? {
+          plan_change_id: scopeRebuild.intent.change_id,
+          scope_rebuild: {
+            pack_key: scopeRebuild.pack.pack_key,
+            reviewed_plan_sha: scopeRebuild.intent.reviewed_plan_sha,
+            intent_memory_path: scope_rebuild_context.intent_memory_path,
+            dependency_job_ids: scopeRebuild.dependencies,
+          },
+        } : {}),
         ...(replacement ? {
           // Include full immutable ID in the displayed name: a four-char
           // handle alone is not globally collision-free.
@@ -245,7 +299,7 @@ export function registerJobPrepareTool(deps: any) {
         evidence_requirements: nextPlanning.evidence_requirements,
         milestones: nextPlanning.milestones,
         planning_topology: nextPlanning.planning_topology,
-        dependencies: [],
+        dependencies: scopeRebuild?.dependencies ?? [],
         completion_requirements,
         verification_requirements,
         review_triggers,
@@ -273,6 +327,14 @@ export function registerJobPrepareTool(deps: any) {
         'GitHub Memory Repo: create_file at memory_path with job_record_text.',
         'Fetch the new Job record back and verify job_id/project_id/lifecycle=DRAFT/planning_revision=1.',
       ]
+      if (scopeRebuild) {
+        externalSteps.unshift(
+          'Read back exactly the current immutable Scope Plan intent (path, blob SHA and bytes) and verify Human-approved changed Plan/Phase boundary.',
+          'Independently enumerate and read back ALL affected retired predecessor Jobs and crossed dependency reviews before creating/dispatching this pack; UNKNOWN/PENDING stays fenced.',
+          'Use the reserved scope Job ID once; on target-path CREATE collision independently read back this Job and confirm exact scope_rebuild lineage. Never generate an alternative Job ID.',
+          'Do not import historical PASS, old task/milestone IDs, Run evidence or old closure into this new DRAFT Job.',
+        )
+      }
       if (replacement) {
         externalSteps.unshift(
           'Read back exact immutable Plan Change intent path + blob SHA and the SUPERSEDED predecessor Job path + blob SHA. Never trust caller-provided JSON alone.',
