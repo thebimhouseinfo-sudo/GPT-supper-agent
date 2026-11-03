@@ -256,6 +256,8 @@ function prepareHumanPlanChangeIntent(input: any) {
   const path = executionMemoryRoot(input.project_id, contract,
     ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
     '/WORK/PLAN_RECONCILIATIONS/' + changeId + '.json'
+  if (input.scope_change && !Array.isArray(input.scope_change.plan_member_job_ids))
+    return deny('SCOPE_CHANGE_REVIEWED_PLAN_MEMBERSHIP_REQUIRED')
   if (input.existing_intent_record_text != null) {
     let old: any
     try { old = JSON.parse(input.existing_intent_record_text) }
