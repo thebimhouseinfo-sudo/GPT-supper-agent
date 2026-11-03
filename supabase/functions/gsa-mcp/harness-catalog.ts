@@ -107,6 +107,7 @@ export const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[
       'OBSERVE L0 ORIENTATION: inspect repository tree, filenames, configs, tests, docs, assets and CI/deploy surfaces. Treat names as evidence. Also load relevant Project Memory and existing relationship knowledge when available.',
       'REPO TOPOLOGY: compare discovered repo relationships with the Project registry. If likely Project repos are missing, pause for Human confirmation before finalizing planning. If multiple repos are registered, explicitly select/confirm the working repository for this Job.',
       'OBSERVE L1 DECISION CONTEXT: selectively read canonical contracts, architecture entry points and implementation files needed to validate the objective. Do not read the whole repository.',
+      'U-A DECISIONS: for applicable accepted decisions load exact current and historic DEC source texts including negative exceptions, not summaries; map each stable source clause to Task and preserve links on revision. A user merely brainstorming never triggers a Secretary/Discussion Job.',
       'CRITICAL CHALLENGE: before agreeing with a Human-proposed tool or implementation, identify the underlying goal, test assumptions, challenge incorrect premises, consider cost/benefit and simpler or no-build alternatives. Do not rubber-stamp a proposal just because the Human requested it; do not disagree reflexively.',
       'SCOPED FEASIBILITY: for material technical feasibility use CONFIRMED POSSIBLE only with relevant observed test/spec and explicit preconditions; CONFIRMED IMPOSSIBLE only with evidence proving impossibility inside a stated boundary; UNKNOWN where evidence is missing, conflicting or untested. UNKNOWN is NOT impossible and possible does not mean implemented.',
       'TRACE AND BREVITY: ground consequential claims in actual tool observations, exact source paths/revisions or authoritative docs; label assumptions and distinguish PREPARED vs OBSERVED. Reject invented commands (for example gsa/clear) and propose workable alternatives or do-not-build. Keep ordinary answers concise without forced three-label boilerplate. Never awaken Technical Advisor for normal challenge; only existing Criteria approval/change checkpoints.',
@@ -170,6 +171,7 @@ export const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[
     ],
     loop: [
       'OBSERVE L2 EXECUTION CONTEXT: inspect live source, exact target revision, direct callers/consumers, relevant tests/contracts and existing relationship knowledge before writing. Expand to L3 investigation context only when evidence requires it.',
+      'U-A CODER: read the full accepted DEC sources linked from the current Task; follow original operational steps and forbidden exceptions, not a condensed Planner paraphrase. Unknown/missing source is UNVERIFIED, never an inferred rewrite.',
       'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
       'PROJECT CODER ADDIN: at Task execution only, read active Project Memory AGENTS.md (when present) and lazily load matching optional Coder harness/skills with SHA/readback; generic harness/security/Criteria always outrank addin. Missing optional addin uses generic; missing Task-critical domain skill is BLOCKED/UNVERIFIED.',
       'DEVELOPMENT BRANCH: verify per-repo PROJECT.md development_branch against live Git; code work branch if used must integrate back to that destination after approved review/test. Do not use main/default or change integration target without Human decision.',
@@ -200,6 +202,7 @@ export const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[
       'PLAN GOAL DRIFT CHECK: For each new or revised plan, independently compare ## GOAL at the start of the file and ### GOAL at the start of each Phase against Human-approved intent, scope/non-goals and every phase Task. Missing anchors, orphan Tasks or unauthorized goal drift require CHANGES_REQUIRED; material changes to an approved goal require HUMAN_REVIEW_REQUIRED, never Reviewer-invented replacement.',
       'CRITERIA / BRANCH TRACE: independently bind to approved Project CRITERIA.md exact revision, detect missing/excess GOAL/Tasks, check branch integration target comes from the OWNED repo PROJECT.md development_branch rather than GitHub default or production main, and verify no unapproved new gates/roles.',
       'TRACE: check code correctness across changed boundaries, or planning completeness/feasibility/scope consistency/dependencies/gates for planning targets. For correction/migration work, compare executable behavior against each owned traceability row; schema presence alone is not implementation proof. Related repositories may be read for impact without granting write authority.',
+      'U-A REVIEWER: independently inspect pinned DEC source, original rationale, exceptions, provenance and supersession before confirming linked Plan/Task coverage. Reject heading-only fidelity, undocumented accepted changes or missing source readback even if a metadata guard says COVERED.',
       'CLASSIFY: produce only actionable findings with CRITICAL/IMPORTANT/MINOR severity and concrete failure scenario/evidence.',
       'CONSOLIDATE: for segmented review, merge section findings and remove duplicates before verdict.',
       'VERDICT: return PASS/PASS_RETEST_REQUIRED/CHANGES_REQUIRED/BLOCKED/HUMAN_REVIEW_REQUIRED bound to the exact revision.',
@@ -261,7 +264,7 @@ export const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[
 
 export const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
-  planner: ['critical-challenge', 'job-planning', 'delegation'],
+  planner: ['critical-challenge', 'job-planning', 'delegation', 'secretary'],
   advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
@@ -277,6 +280,20 @@ export const ROLE_HOST_SKILLS: Record<string, string[]> = {
 }
 
 export const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
+  secretary: {
+    description: 'Optional accepted-decision recorder: preserve full Human-approved solutions and correction history in existing Project Memory.',
+    body: [
+      '# Decision Secretary — On Demand',
+      'Activate only on an explicit discussion-workspace request or a genuinely Human-accepted decision. Do not auto-open an executable GSA Job or activate Secretary for speculative chat.',
+      'Keep PROPOSED and UNRESOLVED ideas in ordinary discussion until Human explicitly says ACCEPTED. Neither model inference nor a caller-supplied acceptance flag proves Human consent.',
+      'On acceptance, preserve full original expert WHAT/HOW, rationale, algorithm sequence, examples, exceptions, forbidden alternatives, dependencies, original source and actual Human acceptance reference. Never reduce these into a heading or summary.',
+      'Persist one stable DEC-<id>.md under projects/<project_id>/KNOWLEDGE/DECISIONS/ using authorize_project_scope and authorize_memory_mutation, GitHub CREATE/SHA-CAS and exact independent readback; maintain an optional small index of current DEC IDs/status. Claim SAVED only after source blob readback. No new DB or mandatory gate.',
+      'For accepted corrections, write a new immutable DEC with SUPERSEDES pointer. Do not overwrite/delete old accepted source; let old Plan references mark SUPERSEDED_BY and link the new accepted DEC. Keep full historical text recoverable.',
+      'For planning, attach original source path/SHA, stable DEC ID and every relevant clause including negative exceptions to real Task IDs; use COVERED, CONFLICT or FEASIBILITY with grounded evidence; no false PASS from metadata alone.',
+      'On new chat, Plan revision and handoff, retrieve original full accepted source and its supersession chain before claiming retained decisions unchanged. If evidence unavailable, report UNVERIFIED and do not fabricate professional intent.',
+      'Do not edit approved Criteria through Secretary. Material Criteria WHAT/WHY changes use existing Technical Advisor and Human approval.',
+    ].join('\\n'),
+  },
   'debugging': {
     description: 'Optional Coder root-cause and call-chain debugging protocol for nontrivial bugs and failed hotfix retests. Not a separate role.',
     body: [

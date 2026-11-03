@@ -1,3 +1,4 @@
+import { decisionFidelityError, decisionRevisionError, DECISION_PREFIX } from './decision-fidelity.ts'
 // GSA1-S6: Job revision, preserving exact handler and validation semantics.
 export function registerJobRevisePlanTool(deps: any) {
   const { server, z, req, AUTH_SCOPES, authContext, authError, CRITERIA_BINDING_SCHEMA, PLANNING_LOOP_CONTINUATION_SCHEMA, EVIDENCE_NEED_SCHEMA, TEST_CHECKPOINT_SPEC_SCHEMA, EVIDENCE_REQUIREMENT_SCHEMA, MILESTONE_SCHEMA, PLANNING_TOPOLOGY_NODE_SCHEMA, projectCriteriaBindingError, normalizeNextPlanningModel, validateNextPlanningModel, validateExecutionTopology, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, prettyJson, planningLoopContinuationDecision, revisedJobIntegrationBranchError, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE, nextPlanSupersessionMatches } = deps
@@ -199,6 +200,10 @@ export function registerJobRevisePlanTool(deps: any) {
         last_planning_revision_reason: revision_reason,
         updated_at: new Date().toISOString(),
       }
+      const revisionDecisionError = decisionRevisionError(current, next)
+      if (revisionDecisionError) return { content: [{ type: 'text', text: revisionDecisionError }], isError: true }
+      const decisionError = decisionFidelityError(next)
+      if (decisionError) return { content: [{ type: 'text', text: decisionError }], isError: true }
       const memoryPath = recordPath(project_id, 'JOBS', job_id, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const out = {
         memory_path: memoryPath,
