@@ -368,7 +368,7 @@ function prepareHumanPlanChangeFenceDecision(input: any) {
     intent.memory_namespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
   if (input.intent_memory_path !== root+'/WORK/PLAN_RECONCILIATIONS/'+intent.change_id+'.json')
     return reject('PLAN_CHANGE_FENCE_INTENT_PATH_MISMATCH')
-  const matching=intent.actions.filter((a: any) => ['REPLACE','RETIRE'].includes(a.decision) &&
+  const matching=intent.actions.filter((a: any) => ['REPLACE','RETIRE','REVALIDATE'].includes(a.decision) &&
     a.predecessor_job_id === job.job_id)
   if (matching.length !== 1) return reject('PLAN_CHANGE_FENCE_ACTION_NOT_UNIQUE')
   const action=matching[0]
@@ -386,6 +386,7 @@ function prepareHumanPlanChangeFenceDecision(input: any) {
     intent_record_sha:input.intent_record_sha,
     original_job_sha:action.predecessor_job_sha,
     replacement_job_id:action.replacement?.job_id ?? null,
+    ...(action.decision === 'REVALIDATE' ? { dependency_revalidation: true } : {}),
   }
   if (job.plan_change_pending) {
     const existing=job.plan_change_pending
@@ -445,6 +446,20 @@ function validatePlanChangeSupersession(input: any) {
     return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
   if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
     return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
+  if (intent.scope_selection) {
+    if (a.decision !== 'RETIRE' ||
+        !intent.scope_selection.affected_job_ids?.includes(old.job_id) ||
+        !intent.scope_selection.inventory_job_ids?.includes(old.job_id) ||
+        (intent.scope_selection.boundary === 'PHASE' &&
+          old.planning_context?.phase !== intent.scope_selection.phase))
+      return invalid('SCOPE_RETIREMENT_BOUNDARY_CONFLICT')
+    const unfinishedIds = (old.tasks ?? []).filter((t: any) =>
+      !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(t.lifecycle))
+      .map((t: any) => t.task_id)
+    if (unfinishedIds.length !== (a.retired_task_ids ?? []).length ||
+        unfinishedIds.some((id: string) => !a.retired_task_ids.includes(id)))
+      return invalid('SCOPE_RETIREMENT_MUST_COVER_ALL_UNFINISHED_TASKS')
+  }
   // UNKNOWN is as unsafe as ACTIVE/PENDING. Caller must independently
   // enumerate Runs and cursor and revalidate Git source HEAD before writing.
   if (!['ABSENT','STABLE'].includes(input.cursor_state))
@@ -496,11 +511,43 @@ function resumeHumanPlanChangeIntent(input: any) {
         !intent.scope_selection.affected_job_ids.includes(old.job_id) :
         intent.scope_selection.affected_job_ids.includes(old.job_id) && a.decision !== 'KEEP'))
       return stop('SCOPE_ACTION_BOUNDARY_CONFLICT')
-    if (old.planning_revision !== a.predecessor_planning_revision ||
+    const alreadyRevised = a.decision === 'REVALIDATE' &&
+      old.plan_change_revalidated_by === intent.change_id &&
+      old.planning_revision > a.predecessor_planning_revision
+    if ((!alreadyRevised && old.planning_revision !== a.predecessor_planning_revision) ||
         jobExecutionContract(old) !== a.predecessor_execution_contract)
       return stop('PLAN_CHANGE_PREDECESSOR_REVISION_OR_CONTRACT_DRIFT')
     let next = a.decision === 'KEEP' ? 'KEEP_UNCHANGED' :
       a.decision === 'REVALIDATE' ? 'REVALIDATE_DEPENDENCIES_AND_EVIDENCE' : ''
+    if (a.decision === 'REVALIDATE') {
+      const fence = old.plan_change_pending
+      if (alreadyRevised) {
+        if (fence) return stop('SCOPE_DEPENDENCY_REVALIDATION_FENCE_NOT_CLEARED')
+        next = old.planning_review?.status === 'PASS' &&
+          old.planning_review?.reviewed_revision === old.planning_revision ?
+            'REVALIDATED_SCOPE_DEPENDENCY' : 'REVIEW_DEPENDENCY_REVALIDATION'
+      } else if (!fence) {
+        if (oldSnapshot.sha !== a.predecessor_job_sha)
+          return stop('SCOPE_DEPENDENCY_PREDECESSOR_SHA_DRIFT')
+        next = 'FENCE_DEPENDENT_JOB_BY_EXACT_SHA'
+      } else {
+        if (fence.change_id !== intent.change_id ||
+            fence.intent_memory_path !== input.intent_memory_path ||
+            fence.intent_record_sha !== input.intent_record_sha ||
+            fence.original_job_sha !== a.predecessor_job_sha ||
+            fence.replacement_job_id !== null || fence.dependency_revalidation !== true)
+          return stop('SCOPE_DEPENDENCY_FENCE_CONFLICT')
+        const live = (input.activity ?? []).find((x: any) => x.job_id === old.job_id)
+        if (!live || !['ABSENT','STABLE','PENDING','UNKNOWN'].includes(live.cursor_state) ||
+            !['NONE','TERMINAL','ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'REFETCH_ACTIVE_RUN_AND_CURSOR'
+        else if (['PENDING','UNKNOWN'].includes(live.cursor_state))
+          next = 'RECONCILE_PENDING_SOURCE_CURSOR'
+        else if (['ACTIVE','UNKNOWN'].includes(live.active_run_state))
+          next = 'SETTLE_ACTIVE_RUN'
+        else next = 'REVISE_DEPENDENT_JOB_AND_REVIEW'
+      }
+    }
     if (a.decision === 'REPLACE' || a.decision === 'RETIRE') {
       const retiring = a.decision === 'RETIRE'
       const id = a.replacement?.job_id
@@ -555,8 +602,9 @@ function resumeHumanPlanChangeIntent(input: any) {
       replacement_job_id: a.replacement?.job_id ?? null, next_action: next })
   }
   if (intent.scope_selection) {
-    const unsettled = actions.some((a) => a.decision === 'RETIRE' &&
-      a.next_action !== 'RETIRED_NO_REPLACEMENT')
+    const unsettled = actions.some((a) =>
+      (a.decision === 'RETIRE' && a.next_action !== 'RETIRED_NO_REPLACEMENT') ||
+      (a.decision === 'REVALIDATE' && a.next_action !== 'REVALIDATED_SCOPE_DEPENDENCY'))
     const packs = intent.rebuild_jobs ?? []
     if (!Array.isArray(packs) || new Set(packs.map((p: any) => p.job_id)).size !== packs.length)
       return stop('SCOPE_REBUILD_RESERVATIONS_INVALID')
