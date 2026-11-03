@@ -13,7 +13,7 @@ assert.ok(declaration,'load real Plan Change factory');
 const js=ts.transpileModule(declaration.getText(sf),{compilerOptions:{
   target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None
 }}).outputText;
-const factory=vm.runInNewContext(js+'\ncreatePlanChangeDecisions',{JSON,Array,Number,String,Set,Map,Date});
+const factory=vm.runInNewContext(js+'\ncreatePlanChangeDecisions',{JSON,Array,Number,String,Set,Map,Date,exports:{}});
 const P='0fa72d63-17b4-4e28-84d9-231a17f5fe70';
 const planId='79a7c63d-9b84-4b4e-a290-6cd049513ec2';
 const ids=[
