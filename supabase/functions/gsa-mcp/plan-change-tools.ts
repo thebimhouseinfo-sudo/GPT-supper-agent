@@ -1,6 +1,15 @@
 // GSA1: bounded Job Plan Change and supersession tools.
 export function registerPlanChangeTools(deps: any) {
  const { server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE, assessHumanPlanChangeJobs, jobExecutionContract, prepareHumanPlanChangeFenceDecision, prepareHumanPlanChangeIntent, prettyJson, recordNextMemoryNamespace, recordPath, resumeHumanPlanChangeIntent } = deps
+  // Scope-wide U-B is an option on the existing LLC58 Plan Change surface,
+  // not a new authority or lifecycle. Inventory/approval require Git readback.
+  const SCOPE_CHANGE_SCHEMA = z.object({
+    boundary: z.enum(['PLAN','PHASE']),
+    plan_job_id: z.string().uuid(),
+    phase_id: z.string().min(1).optional(),
+    human_approval_ref: z.string().min(1),
+    inventory_job_ids: z.array(z.string().uuid()).min(1),
+  })
   server.registerTool(
     'job_plan_change_fence_prepare',
     {
@@ -95,7 +104,7 @@ export function registerPlanChangeTools(deps: any) {
     'job_plan_change_prepare',
     {
       title: 'Prepare immutable Human Plan Change reconciliation intent',
-      description: 'LLC58: prepare one deterministic CREATE per reviewed Plan revision. Reserve unique replacement Job IDs; requires PASS planning-review evidence. Only external authorized GitHub CREATE/readback makes it durable; no Job mutation is performed.',
+      description: 'LLC58/U-B: prepare one reviewed immutable Plan Change intent. Optional scope_change automatically RETIRES all unfinished Plan/Phase work plus dependent unfinished Jobs; requires verified Human approval and complete inventory readback. No mutation is performed.',
       inputSchema: {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
@@ -106,11 +115,12 @@ export function registerPlanChangeTools(deps: any) {
         plan_review_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
         plan_review_memory_path: z.string().min(1),
         work_branch: z.string().min(1),
+        scope_change: SCOPE_CHANGE_SCHEMA.optional(),
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
@@ -140,16 +150,17 @@ export function registerPlanChangeTools(deps: any) {
     'job_plan_change_assess',
     {
       title: 'Assess Jobs affected by a Human-reviewed Plan change',
-      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE, RETIRE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
+      description: 'Read-only LLC58/U-B impact. Optional scope_change derives scope-wide RETIRE (including crossing dependencies), preserves completed/unchanged work; requires independent complete inventory and reviewed Human boundary. Never writes.',
       inputSchema: {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
         reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        scope_change: SCOPE_CHANGE_SCHEMA.optional(),
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
