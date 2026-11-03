@@ -153,6 +153,16 @@ export function registerJobTransitionTool(deps: any) {
           retired_by_replacement_job_id: null,
         } : {}),
         ...(['SUPERSEDED','RETIRED'].includes(target_lifecycle) && planSupersession?.allowed ? {
+          // Whole-scope U-B retirement covers all unfinished Tasks and Milestones.
+          // Completed historical results/Verifications are never rewritten.
+          ...(target_lifecycle === 'RETIRED' &&
+              JSON.parse(plan_change_context.intent_record_text).scope_selection ? {
+            milestones: (current.milestones ?? []).map((milestone: any) =>
+              milestone.lifecycle === 'COMPLETED' ? milestone :
+                { ...milestone, lifecycle: 'RETIRED',
+                  retired_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+                  retired_reason: planSupersession.action.reason }),
+          } : {}),
           tasks: (current.tasks ?? []).map((task: any) => {
             const retire = target_lifecycle === 'RETIRED' || (planSupersession.action.retired_task_ids ?? []).includes(task.task_id)
             return retire && !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(task.lifecycle)
