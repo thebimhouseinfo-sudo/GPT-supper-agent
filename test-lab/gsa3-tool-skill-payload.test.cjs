@@ -91,7 +91,7 @@ test('GSA2 tool-level Harness optimization, metadata and full role fallback rema
 })
 test('Critic skill removes only redundant consecutive source-reconstruction instruction', () => {
   const body=RUNTIME_SKILLS['critic-review'].body
-  assert.match(body,/Human-invoked or Human-preauthorized/)
+  assert.match(body,/CR is an independent peer-review path only when Human invokes it/)
   assert.match(body,/Ignore conversation history as evidence/)
   assert.match(body,/durable Project Memory/)
   assert.match(body,/Do not read or rely on the prior Reviewer verdict until independent/)
