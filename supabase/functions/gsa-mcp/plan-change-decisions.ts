@@ -451,6 +451,15 @@ function validatePlanChangeSupersession(input: any) {
     return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
   if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
     return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
+  if (intent.scope_change) {
+    const expectedRetired = (old.tasks ?? []).filter((t: any) =>
+      !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(t.lifecycle)).map((t: any) => t.task_id)
+    if (a.decision !== 'RETIRE' ||
+        !intent.scope_change.retiring_job_ids?.includes(old.job_id) ||
+        expectedRetired.length !== (a.retired_task_ids ?? []).length ||
+        expectedRetired.some((id: string) => !a.retired_task_ids.includes(id)))
+      return invalid('SCOPE_CHANGE_UNFINISHED_TASK_COVERAGE_MISMATCH')
+  }
   // UNKNOWN is as unsafe as ACTIVE/PENDING. Caller must independently
   // enumerate Runs and cursor and revalidate Git source HEAD before writing.
   if (!['ABSENT','STABLE'].includes(input.cursor_state))
@@ -493,7 +502,9 @@ function resumeHumanPlanChangeIntent(input: any) {
     const ids = intent.scope_change.inventory_job_ids
     if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length ||
         ids.some((id: any) => !jobs.has(id)) || intent.actions.length !== ids.length ||
-        intent.actions.some((a: any) => !ids.includes(a.predecessor_job_id) || !['KEEP','RETIRE'].includes(a.decision)))
+        intent.actions.some((a: any) => !ids.includes(a.predecessor_job_id) || !['KEEP','RETIRE'].includes(a.decision)) ||
+        !Array.isArray(intent.scope_change.retiring_job_ids) ||
+        intent.actions.some((a: any) => intent.scope_change.retiring_job_ids.includes(a.predecessor_job_id) !== (a.decision === 'RETIRE')))
       return stop('SCOPE_CHANGE_INVENTORY_OR_ACTION_DRIFT')
   }
   const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
