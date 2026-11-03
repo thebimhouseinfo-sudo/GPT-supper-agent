@@ -60,6 +60,13 @@ export function registerJobRevisePlanTool(deps: any) {
         superseding_verification_ref: z.string().min(1).optional(),
         superseding_claim_record_text: z.string().min(2).optional(),
         superseding_claim_record_sha: z.string().min(7).optional(),
+        scope_revalidation_context: z.object({
+          intent_record_text: z.string().min(2),
+          intent_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
+          intent_memory_path: z.string().min(1),
+          cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']),
+          active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']),
+        }).optional(),
       },
       outputSchema: {
         memory_path: z.string(),
@@ -73,14 +80,14 @@ export function registerJobRevisePlanTool(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha, scope_revalidation_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
       try { current = JSON.parse(job_record_text) } catch {
         return { content: [{ type: 'text', text: 'Invalid Job JSON.' }], isError: true }
       }
-      if (current.plan_change_pending) {
+      if (current.plan_change_pending && !scope_revalidation_context) {
         return { content:[{type:'text',text:'PLAN_CHANGE_PENDING_FENCE: revise the successor Plan, not a fenced Job.'}],isError:true }
       }
       const executionContract = jobExecutionContract(current)
@@ -92,13 +99,40 @@ export function registerJobRevisePlanTool(deps: any) {
       if (current.job_id !== job_id || current.project_id !== project_id) {
         return { content: [{ type: 'text', text: 'Job identity mismatch.' }], isError: true }
       }
+      // Reuse normal revision + Reviewer loop for a fenced unaffected Job
+      // whose dependency crosses the retired Plan/Phase. No new entity/gate.
+      let scopeRevalidation: any = null
+      if (scope_revalidation_context) {
+        let intent: any
+        try { intent=JSON.parse(scope_revalidation_context.intent_record_text) }
+        catch { return { content:[{type:'text',text:'SCOPE_REVALIDATION_INTENT_INVALID.'}],isError:true } }
+        const a = (intent?.actions ?? []).find((v: any) =>
+          v.decision === 'REVALIDATE' && v.predecessor_job_id === job_id)
+        const fence = current.plan_change_pending
+        if (!intent?.scope_selection || intent.kind !== 'PLAN_RECONCILIATION_INTENT' ||
+            intent.version !== 1 || intent.project_id !== project_id ||
+            !a || a.predecessor_planning_revision !== current.planning_revision ||
+            a.predecessor_execution_contract !== executionContract ||
+            !fence || fence.dependency_revalidation !== true ||
+            fence.change_id !== intent.change_id ||
+            fence.intent_record_sha !== scope_revalidation_context.intent_record_sha ||
+            fence.intent_memory_path !== scope_revalidation_context.intent_memory_path ||
+            fence.original_job_sha !== a.predecessor_job_sha ||
+            fence.replacement_job_id != null ||
+            !['DRAFT','READY','IN_PROGRESS'].includes(current.lifecycle) ||
+            !['ABSENT','STABLE'].includes(scope_revalidation_context.cursor_state) ||
+            !['NONE','TERMINAL'].includes(scope_revalidation_context.active_run_state)) {
+          return { content:[{type:'text',text:'SCOPE_REVALIDATION_FENCE_OR_ACTIVITY_UNSETTLED.'}],isError:true }
+        }
+        scopeRevalidation = { intent, action: a }
+      }
       const inProgressNextRevision = executionContract === 'NEXT' && current.lifecycle === 'IN_PROGRESS'
       const inProgressReviewRepair =
         inProgressNextRevision &&
         ['CHANGES_REQUIRED','HUMAN_REVIEW_REQUIRED'].includes(current.planning_review?.status) &&
         Boolean(current.superseding_verification_ref)
-      const inProgressGapSupersession = inProgressNextRevision && !inProgressReviewRepair
-      if (current.lifecycle !== 'DRAFT' && !inProgressNextRevision) {
+      const inProgressGapSupersession = inProgressNextRevision && !inProgressReviewRepair && !scopeRevalidation
+      if (current.lifecycle !== 'DRAFT' && !inProgressNextRevision && !scopeRevalidation) {
         return { content: [{ type: 'text', text: 'Planner revision is allowed only for DRAFT Jobs or NEXT IN_PROGRESS supersession/review repair.' }], isError: true }
       }
       let supersedingVerification: any = null
@@ -193,6 +227,10 @@ export function registerJobRevisePlanTool(deps: any) {
         review_triggers: review_triggers ?? current.review_triggers,
         planning_revision: nextRevision,
         planning_review: { status: 'PENDING', reviewed_revision: null, verification_ref: null },
+        ...(scopeRevalidation ? {
+          plan_change_pending: null,
+          plan_change_revalidated_by: scopeRevalidation.intent.change_id,
+        } : {}),
         supersedes_planning_revision: inProgressNextRevision ? current.planning_revision : current.supersedes_planning_revision ?? null,
         superseding_verification_ref: inProgressGapSupersession ? superseding_verification_ref : current.superseding_verification_ref ?? null,
         superseding_claim_sha: inProgressGapSupersession ? superseding_claim_record_sha : current.superseding_claim_sha ?? null,
@@ -207,6 +245,11 @@ export function registerJobRevisePlanTool(deps: any) {
         planning_revision: nextRevision,
         continuation: planningLoopContinuationDecision('PLAN_REVISED', next.lifecycle, nextRevision),
         external_steps: [
+          ...(scopeRevalidation ? [
+            'Independently read exact persisted Plan intent at scope_revalidation_context.intent_memory_path and require its actual blob SHA equals intent_record_sha; verify all affected Job retirement and crossed dependency evidence.',
+            'Read current fenced Job at exact job_record_sha; independently enumerate all active Runs, source cursor and host Git effects. UNKNOWN/PENDING cannot be declared settled by this input alone.',
+            'After revision CAS/readback, old Runs may only cancel; dispatch stays blocked until fresh planning Reviewer PASS on new revision. Never transfer historical PASS.',
+          ] : []),
           ...(effectiveIntegrationBranch ? [
             'C14A branch binding: independently re-read exact current PROJECT.md. Verify the selected working repository is OWNED and its Human-configured Development Branch equals repository_context.integration_branch=' + effectiveIntegrationBranch + '; reject implicit main/default, wrong repository or unconfigured policy.',
             'C14A branch binding: verify live GitHub branch ' + effectiveIntegrationBranch + ' exists in the exact selected working repository before any Job Memory mutation.',
