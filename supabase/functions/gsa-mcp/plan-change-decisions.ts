@@ -123,7 +123,7 @@ function reserveScopeRebuildJobs(input: any, known: Set<string>) {
 
 function assessHumanPlanChangeJobs(input: any) {
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
-  const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
+  const reject = (reason: string) => ({ allowed: false, reason, decisions: [], scope_selection: null, mutation_authorized: false })
   if (!input?.project_id || !input?.change_ref || !sha(input?.reviewed_plan_sha))
     return reject('PLAN_CHANGE_REVIEWED_TARGET_REQUIRED')
   if (!Array.isArray(input.job_snapshots) || input.job_snapshots.length === 0)
