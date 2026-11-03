@@ -15,6 +15,7 @@ const b='11000000-0000-4000-8000-000000000005';
 const c='11000000-0000-4000-8000-000000000006';
 const d='11000000-0000-4000-8000-000000000007';
 const e='11000000-0000-4000-8000-000000000008';
+const unrelated='11000000-0000-4000-8000-000000000014';
 const successor='11000000-0000-4000-8000-000000000009';
 const tDone='11000000-0000-4000-8000-000000000010';
 const tOpen='11000000-0000-4000-8000-000000000011';
@@ -54,6 +55,7 @@ const jobs=[
   old(c,'B','READY',[{task_id:'C1',lifecycle:'READY'}]),
   old(d,'A','COMPLETED',[{task_id:'D1',lifecycle:'COMPLETED',result:'PASS'}]),
   old(e,'A','DRAFT',[{task_id:tE,lifecycle:'WAITING'}]),
+  old(unrelated,'A','READY',[{task_id:'U1',lifecycle:'READY'}]),
 ];
 const reviewRef=verification(pid,reviewId,'NEXT','PRODUCTION');
 const planJob={kind:'JOB',project_id:pid,job_id:planId,type:'plan',execution_contract:'NEXT',
@@ -64,7 +66,8 @@ const review={kind:'PLANNING_REVIEW',verification_id:reviewId,project_id:pid,job
   result:'PASS',producer:'reviewer'};
 const snapshots=jobs.map(job=>({job_record_text:JSON.stringify(job),job_record_sha:sha}));
 const scope={boundary:'PHASE',phase_id:'A',plan_job_id:planId,
-  human_approval_ref:'human-approved-plan-r3',inventory_job_ids:jobs.map(j=>j.job_id)};
+  human_approval_ref:'human-approved-plan-r3',inventory_job_ids:jobs.map(j=>j.job_id),
+  plan_member_job_ids:[a,b,c,d,e]};
 const base={project_id:pid,change_ref:'docs/reviewed-plan-r3.md',reviewed_plan_sha:sha,
   plan_job_record_text:JSON.stringify(planJob),plan_job_record_sha:sha,
   plan_review_record_text:JSON.stringify(review),plan_review_record_sha:sha,
@@ -114,6 +117,8 @@ test('UB-01: PHASE selection retires all unfinished plus transitive crossing, ke
   assert.equal(by.get(c).decision,'KEEP');
   assert.equal(by.get(d).decision,'KEEP');
   assert.equal(by.get(d).completed_outcome_review_required,true);
+  assert.equal(by.get(unrelated).decision,'KEEP',
+    'Unrelated Plan with the SAME phase label must survive reviewed Phase change');
   assert.equal(impact.mutation_authorized,false);
 });
 test('UB-01: whole PLAN boundary retires every unfinished, including formerly unaffected phase',()=>{
@@ -121,11 +126,15 @@ test('UB-01: whole PLAN boundary retires every unfinished, including formerly un
   const r=api.assessHumanPlanChangeJobs({...base,scope_change:plan});
   assert.equal(r.allowed,true,r.reason);
   assert.deepEqual([...r.scope_summary.retiring_job_ids].sort(),[a,b,c,e].sort());
+  assert.equal(r.decisions.find(x=>x.job_id===unrelated).decision,'KEEP');
 });
 test('UB-01 negative: wrong approved scope, missing job, mismatched Project/sha and per-Job overrides fail closed',()=>{
   const make=s=>api.assessHumanPlanChangeJobs({...base,...s});
   assert.equal(make({scope_change:{...scope,human_approval_ref:''}}).allowed,false);
   assert.equal(make({scope_change:{...scope,phase_id:null}}).allowed,false);
+  assert.equal(make({scope_change:{...scope,plan_member_job_ids:undefined}}).allowed,false);
+  assert.equal(make({scope_change:{...scope,plan_member_job_ids:[a,a]}}).allowed,false);
+  assert.equal(make({scope_change:{...scope,plan_member_job_ids:[a,'foreign']}}).allowed,false);
   assert.equal(make({job_snapshots:snapshots.slice(1)}).allowed,false);
   assert.equal(make({scope_change:{...scope,inventory_job_ids:[a,a,b,c,d]}}).allowed,false);
   assert.equal(make({job_snapshots:[{...snapshots[0],job_record_sha:'bad'},...snapshots.slice(1)]}).allowed,false);
@@ -138,6 +147,7 @@ test('UB-02: immutable intent contains full scope and idempotent retry never min
   const i=JSON.parse(p.intent_record_text);
   assert.equal(i.scope_change.human_approval_ref,scope.human_approval_ref);
   assert.equal(i.scope_change.successor_job_count,1);
+  assert.deepEqual(Array.from(i.scope_change.plan_member_job_ids).sort(),[a,b,c,d,e].sort());
   assert.deepEqual(Array.from(i.scope_change.successor_job_ids),[successor]);
   assert.deepEqual(Array.from(i.scope_change.retiring_job_ids).sort(),[a,b,e].sort());
   assert.equal(i.actions.filter(a=>a.decision==='RETIRE').length,3);
