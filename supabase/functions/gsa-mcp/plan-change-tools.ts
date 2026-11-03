@@ -10,6 +10,7 @@ export function registerPlanChangeTools(deps: any) {
     human_approval_ref: z.string().min(1),
     successor_job_count: z.number().int().min(1).max(16).default(1),
     inventory_job_ids: z.array(z.string().uuid()).min(1),
+    plan_member_job_ids: z.array(z.string().uuid()).min(1),
   })
   server.registerTool(
     'job_plan_change_fence_prepare',
