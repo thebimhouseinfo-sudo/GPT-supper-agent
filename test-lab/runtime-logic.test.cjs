@@ -7,10 +7,23 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
+const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
 function load(name, injected = {}) {
-  const node = parsed.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === name);
+  const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
+    ? 'execution-guards.ts'
+    : ['milestoneLoopDecision','validateExecutionTopology','normalizeNextPlanningModel','planningLoopContinuationDecision'].includes(name)
+      ? 'planning-guards.ts'
+      : ['projectCriteriaBindingError','parseRetiredBranchRows','isRetiredSourceBranch'].includes(name)
+        ? 'project-utils.ts'
+        : ['projectBootstrapReadinessDecision','projectBootstrapChecklistDecision'].includes(name)
+          ? 'bootstrap.ts' : null;
+  const ast = owner ? ts.createSourceFile(owner,
+    fs.readFileSync('supabase/functions/gsa-mcp/'+owner,'utf8'),
+    ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
+  const node = ast.statements.find(x => ts.isFunctionDeclaration(x) && x.name?.text === name);
   assert.ok(node, 'runtime function must exist: ' + name);
-  const js = ts.transpileModule(node.getText(parsed), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const js = ts.transpileModule(node.getText(ast).replace(/^export\s+/, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
   const context = vm.createContext({ ...injected, Date, Set, Number, String, JSON, Array });
   return vm.runInContext(js + '\n' + name, context);
 }
@@ -127,19 +140,20 @@ test('M1 negative control: removing source SHA comparison makes stale-evidence a
   assert.throws(()=>assert.match(broken(crlJob,'M1',reviewSnapshot(),'b'.repeat(40)),/SOURCE_REVISION_MISMATCH/),assert.AssertionError);
 });
 test('M1 source CR record routes preauthorized milestone via orchestrator, direct cr to Human', () => {
-  const start=source.indexOf("'critic_review_record'");
-  const end=source.indexOf("'checkpoint_claim_prepare'",start);
+  const criticSource=fs.readFileSync('supabase/functions/gsa-mcp/critic-review-tools.ts','utf8');
+  const start=criticSource.indexOf("'critic_review_record'");
+  const end=criticSource.length;
   assert.ok(start>0&&end>start);
-  const route=source.slice(start,end);
+  const route=criticSource.slice(start,end);
   assert.match(route,/next_role:\s*human_invoked === true \? 'human' : 'orchestrator'/);
   assert.match(route,/milestone_loop_evaluate\(stage=CR/);
   assert.match(route,/After immutable CR Verification persistence and exact readback/);
-  const runStart=source.indexOf("'run_begin'");
-  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
-  assert.match(source.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
-  const verifyStart=source.indexOf("'run_verification_record'");
-  const verifyEnd=source.indexOf("'run_complete'",verifyStart);
-  assert.match(source.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
+  const runStart=runSource.indexOf("'run_begin'");
+  const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
+  assert.match(runSource.slice(runStart,runEnd),/milestone_id: approvedReviewMilestones\[0\]\.milestone_id/);
+  const verifyStart=runSource.indexOf("'run_verification_record'");
+  const verifyEnd=runSource.indexOf("'run_complete'",verifyStart);
+  assert.match(runSource.slice(verifyStart,verifyEnd),/milestone_id: run\.milestone_id/);
 });
 
 
@@ -207,9 +221,10 @@ test('P0 historical M1 capability-only snapshot is NOT accepted as source approv
   assert.match(admission(null),/BOOTSTRAP_REQUIRED/);
 });
 test('P0 bootstrap negative control detects removing canonical current SHA check',()=>{
-  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
+  const bootstrapAst=ts.createSourceFile('bootstrap.ts',fs.readFileSync('supabase/functions/gsa-mcp/bootstrap.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  const node=bootstrapAst.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
   assert.ok(node);
-  const good=node.getText(parsed);
+  const good=node.getText(bootstrapAst).replace(/^export\s+/, '');
   const mutant=good.replace('input?.criteria_current_blob_sha !== c.criteria_blob_sha','false');
   assert.notEqual(good,mutant);
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
@@ -218,12 +233,12 @@ test('P0 bootstrap negative control detects removing canonical current SHA check
     'CRITERIA_STALE_OR_UNVERIFIED'),assert.AssertionError);
 });
 test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
-  const runStart=source.indexOf("'run_begin'");
-  const runEnd=source.indexOf("'relationship_knowledge_prepare'",runStart);
-  const runSource=source.slice(runStart,runEnd);
-  assert.match(runSource,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
-  const completionStart=source.indexOf("'run_complete'");
-  const completion=source.slice(completionStart,completionStart+2500);
+  const runStart=runSource.indexOf("'run_begin'");
+  const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
+  const runBlock=runSource.slice(runStart,runEnd);
+  assert.match(runBlock,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
+  const completionStart=runSource.indexOf("'run_complete'");
+  const completion=runSource.slice(completionStart,completionStart+2500);
   assert.match(completion,/primary_task_id:\s*z\.string\(\)\.min\(1\)\.optional\(\)/);
   const taskCase={execution_contract:'NEXT',planning_revision:1,tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
   assert.match(dispatch(taskCase,'coder',['T2'],1,sha,sha,[]),/TASK_INVALID/);
@@ -232,13 +247,13 @@ test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-
 
 
 // M2 Planner harness: source-backed prompt contract, not a model-level behavioral guarantee.
-function plannerHarnessSlice(text=source) {
+function plannerHarnessSlice(text=harnessSource) {
   const h=text.indexOf('const ROLE_HARNESSES');
   const start=text.indexOf('  planner: {',h),end=text.indexOf('  advisor: {',start);
   assert.ok(start>h&&end>start,'role-bounded Planner harness must exist');
   return text.slice(start,end);
 }
-function validatePlannerContract(text=source) {
+function validatePlannerContract(text=harnessSource) {
   const planner=plannerHarnessSlice(text);
   assert.match(planner,/CRITICAL CHALLENGE: before agreeing with a Human-proposed/);
   assert.match(planner,/underlying goal, test assumptions, challenge incorrect premises/);
@@ -255,12 +270,12 @@ test('M2 Planner guidance covers evidence, impossible versus unknown and no Advi
   validatePlannerContract();
 });
 test('M2 negative control: remove scoped feasibility check and contract test must RED',()=>{
-  const broken=source.replace("CONFIRMED IMPOSSIBLE only with evidence proving impossibility","CONFIRMED IMPOSSIBLE with no evidence");
-  assert.notEqual(broken,source,'mutation must actually hit source');
+  const broken=harnessSource.replace("CONFIRMED IMPOSSIBLE only with evidence proving impossibility","CONFIRMED IMPOSSIBLE with no evidence");
+  assert.notEqual(broken,harnessSource,'mutation must actually hit source');
   assert.throws(()=>validatePlannerContract(broken),assert.AssertionError);
 });
 test('M2 Planner-only instructions do not leak into Advisor role',()=>{
-  const src=source,index=src.indexOf('const ROLE_HARNESSES');
+  const src=harnessSource,index=src.indexOf('const ROLE_HARNESSES');
   const start=src.indexOf('  advisor: {',index);
   const end=src.indexOf('  designer: {',start);
   assert.ok(end>start);
@@ -314,16 +329,17 @@ test('retirement record parser rejects duplicate or malformed rows instead of ig
   assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\n' + retirementRecord)), null);
   assert.equal(parseRetiredBranchRows(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
-  assert.match(source, /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
+  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/project-setup-tools.ts', 'utf8'), /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
 });
 
 
 test('every advertised runtime skill can pass the public load_skill input schema', () => {
-  const skillObject = source.match(/const RUNTIME_SKILLS:[\s\S]*?=\s*\{([\s\S]*?)\n\}\n\n/);
+  const skillObject = harnessSource.match(/const RUNTIME_SKILLS:[\s\S]*?=\s*\{([\s\S]*?)\n\}\n\n/);
   assert.ok(skillObject, 'runtime skill registry exists');
   const knownNames = [...skillObject[1].matchAll(/^\s{2}'?([a-z][a-z0-9-]+)'?:\s*\{\s*$/gm)].map(x=>x[1]);
   assert.ok(knownNames.includes('tester-lab'), 'tester-lab is a published runtime skill');
-  const loaderBlock = source.split("server.registerTool(\n    'load_skill',")[1]?.split("server.registerTool(")[0];
+  const harnessToolsSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-skill-tools.ts','utf8');
+  const loaderBlock = harnessToolsSource.split("server.registerTool(\n    'load_skill',")[1]?.split("server.registerTool(")[0];
   assert.ok(loaderBlock, 'load_skill is registered');
   const allowed = loaderBlock.match(/name:\s*z\.enum\(\[([^\]]+)\]\)/);
   assert.ok(allowed, 'load_skill has a finite enum');

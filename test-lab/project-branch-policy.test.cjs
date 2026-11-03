@@ -9,6 +9,8 @@ const vm = require('node:vm')
 const ts = require('typescript')
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
+const harnessSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-catalog.ts'), 'utf8')
+const setupSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-setup-tools.ts'), 'utf8')
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
@@ -21,9 +23,19 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-for (const node of ast.statements) {
-  if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) extracted.push(node.getText(ast))
-  if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['PROJECT_ID_PATTERN', 'ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(ast)))) extracted.push(node.getText(ast))
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts'].map(file =>
+  ts.createSourceFile(file,
+    fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
+    ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
+for (const owner of sources) {
+  assert.equal(owner.parseDiagnostics.length, 0, owner.fileName + ' syntax')
+  for (const node of owner.statements) {
+    if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
+      extracted.push(node.getText(owner).replace(/^export\s+/, ''))
+    if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
+      ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
+      extracted.push(node.getText(owner))
+  }
 }
 for (const name of names) assert.ok(extracted.some(x => x.includes('function ' + name + '(')), 'Missing runtime function: ' + name)
 assert.ok(extracted.some(x => x.includes('PROJECT_ID_PATTERN')))
@@ -120,7 +132,7 @@ test('C14A revision binding: missing, retained, newly supplied and malformed ref
 })
 
 test('C14A job_revise_plan consumes and persists branch with external project/live-ref/readback gates', () => {
-  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
+  const revise = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-revise-plan-tool.ts'), 'utf8').split("'job_revise_plan',")[1]
   assert.match(revise, /integration_branch: z\.string\(\)\.optional\(\)/)
   assert.match(revise, /criteria_binding, integration_branch, revision_reason/)
   assert.match(revise, /revisedJobIntegrationBranchError\(current, executionContract, integration_branch\)/)
@@ -132,9 +144,10 @@ test('C14A job_revise_plan consumes and persists branch with external project/li
 })
 
 test('Contract: READY and status expose branch config; Admin requires owned repo and Git verification', () => {
-  const open = source.slice(source.indexOf("'project_open',"), source.indexOf("'project_status',"))
-  const status = source.slice(source.indexOf("'project_status',"), source.indexOf('const transitionTool ='))
-  const prepare = source.slice(source.indexOf("'project_branch_policy_prepare',"), source.indexOf("'project_open',"))
+  const lifecycleSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-lifecycle-tools.ts'), 'utf8')
+  const open = lifecycleSource.slice(lifecycleSource.indexOf("'project_open',"), lifecycleSource.indexOf("'project_status',"))
+  const status = lifecycleSource.slice(lifecycleSource.indexOf("'project_status',"), lifecycleSource.indexOf('const transitionTool ='))
+  const prepare = setupSource.slice(setupSource.indexOf("'project_branch_policy_prepare',"))
   assert.match(open, /branch_policy_status: parsed\.branch_policy_status/)
   assert.match(open, /validProjectManifestPath\(memory_path, parsed\.project_id\)/)
   assert.match(status, /branch_policies: parsed\.branch_policies/)
@@ -213,7 +226,7 @@ test('M2: configured paths alone never satisfy required domain functionality', (
 })
 
 test('M2: tool exposes capability evidence as non-authoritative discovery only', () => {
-  const tool = source.slice(source.indexOf("'project_role_addins_resolve',"),source.indexOf("'project_branch_policy_prepare',"))
+  const tool = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
   assert.match(tool,/projectTaskCapabilityAssessment\(project_id, role, task_id/)
   assert.match(tool,/ready_for_task: assessed\.ready_for_task/)
   assert.match(tool,/Independently GitHub readback exact project\/role\/task\/path SHA/)
@@ -222,16 +235,16 @@ test('M2: tool exposes capability evidence as non-authoritative discovery only',
 })
 
 test('M1/M3/M4: read-only Advisor, one Criteria, STOPCHAT and GOAL-first contract exist', () => {
-  const roleMap = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+  const roleMap = harnessSource.slice(harnessSource.indexOf('const ROLE_HARNESSES'), harnessSource.indexOf('const ROLE_SKILLS'))
   assert.ok(roleMap.includes('advisor: {'))
   assert.ok(roleMap.includes('Never act as Reviewer/CR'))
   assert.ok(roleMap.includes('GOAL FIRST'))
-  const startup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  const startup = setupSource.slice(setupSource.indexOf("'project_setup_prepare',"), setupSource.indexOf("'project_role_addins_resolve',"))
   assert.ok(startup.includes('AGENTS.md'))
   assert.ok(startup.includes('Status: DRAFT'))
   assert.ok(startup.includes('CHUA_CHOT'))
   assert.ok(startup.toLowerCase().includes('same criteria.md'))
-  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  const base = harnessSource.slice(harnessSource.indexOf('const BASE_AGENT_HARNESS'), harnessSource.indexOf('const ROLE_HARNESSES'))
   assert.ok(base.includes('STOPCHAT'))
   assert.ok(base.includes('PROJECT ADDINS'))
   assert.ok(base.includes('CRITERIA CHANGE ORDER'))
@@ -264,7 +277,7 @@ test('C30: EXISTING without Criteria must inspect code before a provisional draf
 })
 
 test('M1 setup routes independently validated Criteria states and Advisor remains intent-only', () => {
-  const setup = source.slice(source.indexOf("'project_setup_prepare',"), source.indexOf("'project_role_addins_resolve',"))
+  const setup = setupSource.slice(setupSource.indexOf("'project_setup_prepare',"), setupSource.indexOf("'project_role_addins_resolve',"))
   assert.match(setup, /intake_mode: z\.enum\(\['NEW','EXISTING'\]\)/)
   assert.match(setup, /existing_criteria_state: z\.enum\(\['PRESENT','ABSENT','UNKNOWN'\]\)/)
   assert.match(setup, /intake_disposition: z\.enum/)
@@ -272,79 +285,75 @@ test('M1 setup routes independently validated Criteria states and Advisor remain
   assert.match(setup, /intake\.disposition === 'CREATE_DRAFT_IF_ABSENT'/)
   assert.match(setup, /source-derived product hypothesis; Human must confirm/)
   assert.match(setup, /GitHub independently confirms file absent/)
-  assert.match(setup, /ADVISOR SIGNED: PENDING/)
+  assert.match(setup, /Advisor consultation: PENDING/)
   assert.match(setup, /advisor_activation: 'HUMAN_CRITERIA_INTENT_ONLY'/)
-  assert.match(setup, /No fake Advisor signature/)
-  const base = source.slice(source.indexOf('const BASE_AGENT_HARNESS'), source.indexOf('const ROLE_HARNESSES'))
+  assert.match(setup, /No ADVICE_REF/)
+  const base = harnessSource.slice(harnessSource.indexOf('const BASE_AGENT_HARNESS'), harnessSource.indexOf('const ROLE_HARNESSES'))
   assert.match(base, /explicit Human intent/)
   assert.match(base, /not approval/)
-  const advisor = source.slice(source.indexOf('  advisor: {'), source.indexOf('  designer: {'))
+  const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'), harnessSource.indexOf('  designer: {'))
   assert.match(advisor, /only Human intent/)
   assert.match(advisor, /Do not activate on draft completion/)
 })
 
 
-test('M4 C31: same-file Advisor receipt has exact baseline and delta, never self-authorizes write', () => {
-  const sha = 'a'.repeat(40)
-  const receipt = 'ADVISOR SIGNED: ADVISED | BASELINE=' + sha +
-    ' | SCOPE=change intake behavior | ADVICE_REF=advisor-chat-20261020'
-  const input = {
-    intent: 'MATERIAL_CHANGE', criteria_path: 'projects/' + id + '/CRITERIA.md',
-    criteria_current_sha: 'b'.repeat(40), criteria_text: '# Criteria\n' + receipt,
-    advisor_baseline_sha: sha, delta_scope: 'change intake behavior', human_decision: 'APPROVE'
-  }
+test('M4 C31: Human acknowledgement, not a technical receipt, unlocks Advisor checkpoint only', () => {
+  const input = { intent: 'MATERIAL_CHANGE', criteria_path: 'projects/' + id + '/CRITERIA.md',
+    criteria_current_sha: 'b'.repeat(40), criteria_text: '# Criteria',
+    human_decision: 'APPROVE' }
   const decide = p => h.projectCriteriaAdvisoryDecision(id, { ...input, ...p })
-  const good = decide({})
-  assert.equal(good.status, 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK')
-  assert.equal(good.criteria_write_prepared, false)
-  assert.equal(good.external_advice_check_required, true)
-  assert.equal(decide({ intent: 'DISCUSSION' }).advisor_required, false)
-  assert.equal(decide({ intent: 'DRAFT_EDIT' }).advisor_required, false)
-  assert.equal(decide({ intent: 'PLAN_OR_TASK_CHANGE' }).advisor_required, false)
+  const first = decide({})
+  assert.equal(first.status, 'ADVISOR_CONSULTATION_REQUIRED')
+  assert.equal(first.advisor_required, true)
+  assert.equal(first.criteria_write_prepared, false)
+  assert.equal(first.external_advice_check_required, false)
+  const ack = decide({ human_advisor_acknowledged: true })
+  assert.equal(ack.status, 'HUMAN_ADVISOR_ACKNOWLEDGED')
+  assert.equal(ack.advisor_required, false)
+  assert.equal(ack.criteria_write_prepared, false, 'Acknowledgement never issues write permission')
+  assert.equal(ack.external_advice_check_required, false)
+  assert.equal(decide({ human_advisor_acknowledged: true, human_decision: 'PENDING' }).status, 'HUMAN_DECISION_PENDING')
+  assert.equal(decide({ human_advisor_acknowledged: true, human_decision: 'KEEP' }).status, 'HUMAN_DECISION_PENDING')
+  assert.equal(decide({ human_advisor_acknowledged: true, delta_scope: 'new human decision' }).status, 'HUMAN_ADVISOR_ACKNOWLEDGED')
+  for (const intent of ['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE']) {
+    assert.equal(decide({ intent }).advisor_required, false)
+  }
   assert.equal(decide({ intent: 'HUMAN_KEEP_CRITERIA' }).status, 'HUMAN_KEEPS_CRITERIA_NO_WRITE')
-  assert.equal(decide({ human_decision: 'PENDING' }).status, 'HUMAN_DECISION_PENDING')
-  assert.equal(decide({ delta_scope: 'change execution permissions' }).status, 'ADVISOR_SCOPE_MISMATCH')
-  assert.equal(decide({ advisor_baseline_sha: 'c'.repeat(40) }).status, 'ADVISOR_BASELINE_MISMATCH')
-  assert.equal(decide({ criteria_text: '# Criteria\nADVISOR SIGNED: PENDING' }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(decide({ criteria_text: '# Criteria\n' + receipt + '\n' + receipt }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(decide({ criteria_text: '# Criteria\n' + receipt.replace('advisor-chat-20261020', 'PENDING') }).status, 'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
   assert.equal(decide({ criteria_path: 'projects/' + id + '/CRITERIA-V2.md' }).status, 'CRITERIA_BASELINE_INVALID')
   assert.equal(decide({ criteria_current_sha: 'bad' }).status, 'CRITERIA_BASELINE_INVALID')
   assert.equal(decide({ intent: 'INVALID' }).status, 'CRITERIA_INTENT_INVALID')
 })
 
-test('M4 C31: advice check is read-only and preserves existing Memory CAS', () => {
-  const tool = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
-  assert.match(tool,/readOnlyHint: true/)
-  assert.match(tool,/criteria_write_prepared: z\.literal\(false\)/)
-  assert.match(tool,/Independently verify the actual Advisor message was delivered/)
-  assert.match(tool,/text can be forged and is not proof by itself/)
-  assert.match(tool,/existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS/)
-  assert.match(tool,/this SAME CRITERIA.md/)
+test('M4 C31: read-only Advisor check preserves existing GitHub authorization and CAS', () => {
+  const tool = setupSource.slice(setupSource.indexOf("'project_criteria_advice_check',"), setupSource.indexOf("'project_role_addins_resolve',"))
+  assert.match(tool, /readOnlyHint: true/)
+  assert.match(tool, /criteria_write_prepared: z\.literal\(false\)/)
+  assert.match(tool, /human_advisor_acknowledged: z\.boolean\(\)/)
+  assert.match(tool, /existing authorize_project_scope, authorize_memory_mutation and GitHub SHA-CAS/)
+  assert.match(tool, /this SAME CRITERIA.md/)
+  assert.doesNotMatch(tool, /delivered_advice: z\.object/)
   assert.ok(!tool.includes('GitHub update_file('))
 })
 
-test('M4 C31: Advisor signature is scoped to actual Human Criteria decision only', () => {
-  const roles = source.slice(source.indexOf('const ROLE_HARNESSES'), source.indexOf('const ROLE_SKILLS'))
+test('M4 C31: role prompts invoke Advisor only for Criteria intent, then ask Human', () => {
+  const roles = harnessSource.slice(harnessSource.indexOf('const ROLE_HARNESSES'), harnessSource.indexOf('const ROLE_SKILLS'))
   const planner = roles.slice(roles.indexOf('  planner: {'), roles.indexOf('  advisor: {'))
   const advisor = roles.slice(roles.indexOf('  advisor: {'), roles.indexOf('  designer: {'))
   assert.match(planner, /Advisor INACTIVE during brainstorm/)
   assert.match(planner, /Only explicit Human intent to approve first Criteria or change approved WHAT\/WHY/)
-  assert.match(planner, /formatAdvisorAdviceReceipt/)
-  assert.match(planner, /project_criteria_advice_check/)
-  assert.match(planner, /verify real Advisor message/)
-  assert.match(planner, /same-file receipt/i)
+  assert.match(planner, /start_direct_agent\(role=advisor\)/)
+  assert.match(planner, /Advisor admission alone is not delivered advice/)
+  assert.match(planner, /human_advisor_acknowledged=true/)
   assert.match(planner, /Do not re-ask Human for an identical documented choice/)
-  assert.match(advisor, /only after delivering actual advice to Human/)
-  assert.match(advisor, /ADVISOR SIGNED: ADVISED \| BASELINE=/)
-  assert.match(advisor, /Older indented Markdown receipts remain acceptable/)
-  assert.match(advisor, /Receipt format alone never proves advice or Human approval/)
+  assert.doesNotMatch(planner, /formatAdvisorAdviceReceipt/)
+  assert.match(advisor, /return control to Human and Planner/)
+  assert.match(advisor, /No signed receipt or message-reference verification/)
   assert.match(advisor, /End Advisor activity immediately/)
-
-  const exposed = source.slice(source.indexOf("'get_agent_harness',"), source.indexOf("'get_skill_catalog',"))
+  const harnessToolsSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-skill-tools.ts'), 'utf8')
+  const exposed = harnessToolsSource.slice(harnessToolsSource.indexOf("'get_agent_harness',"), harnessToolsSource.indexOf("'get_skill_catalog',"))
   assert.match(exposed, /'advisor'/)
   assert.match(exposed, /renderHarness\(role\)/)
-  assert.equal((roles.match(/advisor: \{/g) || []).length, 1, 'No duplicate Advisor agent')
+  assert.equal((roles.match(/advisor: \{/g) || []).length, 1)
 })
 
 test('C30 M3: official Plan cannot precede Human-approved, current canonical Criteria', () => {
@@ -413,7 +422,7 @@ test('M3: invalid, duplicate and cyclic reviewed Task dependencies cannot certif
 })
 
 test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job lifecycle', () => {
-  const tool=source.slice(source.indexOf("'project_bootstrap_readiness_prepare',"),source.indexOf("'project_branch_policy_prepare',"))
+  const tool=setupSource.slice(setupSource.indexOf("'project_bootstrap_readiness_prepare',"),setupSource.indexOf("'project_branch_policy_prepare',"))
   assert.match(tool,/source_write_authorized: z.literal\(false\)/)
   assert.match(tool,/readOnlyHint: true/)
   assert.match(tool,/separately verify Human execution approval/)
@@ -432,9 +441,10 @@ test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA'
 })
 
 test('M3: Project Plan preparation and planning Reviewer preserve exact Criteria binding', () => {
-  const create = source.slice(source.indexOf("'job_prepare',"), source.indexOf("'job_revise_plan',"))
-  const revise = source.slice(source.indexOf("'job_revise_plan',"), source.indexOf("'plan_review_record',"))
-  const review = source.slice(source.indexOf("'plan_review_record',"), source.indexOf("'start_critic_review',"))
+  const jobPrepareSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-prepare-tool.ts'), 'utf8')
+  const create = jobPrepareSource.slice(jobPrepareSource.indexOf("'job_prepare',"))
+  const revise = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/job-revise-plan-tool.ts'), 'utf8').split("'job_revise_plan',")[1]
+  const review = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/plan-review-record-tool.ts'), 'utf8').split("'plan_review_record',")[1]
   assert.ok(create.includes('plan_kind'))
   assert.ok(create.includes('criteria_binding: criteria_binding ?? null'))
   assert.ok(revise.includes('criteria_binding: effectiveCriteria ?? null'))
@@ -461,8 +471,9 @@ test('M4: CRL requires approved milestone, current planning PASS and exact Revie
 })
 
 test('M4: Human CR fallback and milestone invocation record distinct provenance', () => {
-  const start = source.slice(source.indexOf("'start_critic_review',"), source.indexOf("'critic_review_record',"))
-  const record = source.slice(source.indexOf("'critic_review_record',"), source.indexOf("'run_begin',"))
+  const criticSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/critic-review-tools.ts'),'utf8')
+  const start = criticSource.slice(criticSource.indexOf("'start_critic_review',"), criticSource.indexOf("'critic_review_record',"))
+  const record = criticSource.slice(criticSource.indexOf("'critic_review_record',"))
   assert.ok(start.includes('human_invoked === true'))
   assert.ok(start.includes('milestoneCrlEvidenceError'))
   assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
@@ -497,78 +508,52 @@ test('M4 loop: rl never starts CR and Human milestone continuation stops on PASS
 })
 
 
-test('M6 real CadGPT regression: saved multiline Advisor receipt with long scope is structurally valid', () => {
+test('M6: historical CadGPT receipt does not become an extra consultation proof gate', () => {
   const cadId = '01a0d70c-9683-7324-9d3d-a8231a93c63b'
   const baseline = '8'.repeat(40)
-  const scope = 'INITIAL_APPROVAL — Entire first CadGPT Criteria; Builder flexible tool nomination; ' +
-    'defer CAI until stable; Operator/Builder ownership; Dynamic Lisp and AutoCAD host constraints; ' +
-    'minimal gates scoped to source and Human-approved goals; stable deployment.'
-  assert.ok(scope.length > 200 && scope.length < 512)
-  const ref = '2026-10-21 actual Advisor conversation reference'
-  const criteria = [
-    'Status: DRAFT',
-    '## Approval',
-    '- Human decision: APPROVE — after advice.',
-    '- Technical Advisor: ADVISED — delivered to Human.',
-    '- ADVISOR SIGNED: ADVISED — prior Advisor acknowledgement (not Human approval).',
-    '  - advisor_baseline_sha: ' + String.fromCharCode(96) + baseline + String.fromCharCode(96),
-    '  - delta_scope: ' + String.fromCharCode(96) + scope + String.fromCharCode(96),
-    '  - advice_reference: ' + String.fromCharCode(96) + ref + String.fromCharCode(96),
-    '  - Subsequent wording change consistent with advice.',
-    '- Planner only writes approved status after independent readback.'
+  const scope = 'INITIAL_APPROVAL — complete CadGPT Criteria scope, formerly captured in a long receipt'
+  const receipt = [
+    '## Approval', '- Human decision: APPROVE — after advice.',
+    '- ADVISOR SIGNED: ADVISED — historic Advisor acknowledgement.',
+    '  - advisor_baseline_sha: ' + baseline,
+    '  - delta_scope: ' + scope,
+    '  - advice_reference: historic-CadGPT-consultation',
   ].join('\n')
-  const input = { project_id: cadId, criteria_path: 'projects/' + cadId + '/CRITERIA.md',
-    criteria_current_sha: '9'.repeat(40), criteria_text: criteria,
-    intent: 'INITIAL_APPROVAL', human_decision: 'APPROVE' }
-  const r = h.projectCriteriaAdvisoryDecision(cadId, input)
-  assert.equal(r.status, 'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK')
-  assert.equal(r.receipt_format, 'LEGACY_MARKDOWN')
-  assert.equal(r.receipt_scope, scope)
-  assert.equal(r.receipt_baseline_sha, baseline)
-  assert.equal(r.criteria_write_prepared, false, 'Markdown shape does not prove actual advice or Human decision')
-  assert.equal(r.external_advice_check_required, true)
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, delta_scope: 'INITIAL_APPROVAL short summary' }).status,'ADVISOR_SCOPE_MISMATCH')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, advisor_baseline_sha: 'a'.repeat(40) }).status,'ADVISOR_BASELINE_MISMATCH')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, delta_scope: '' }).status,'ADVISOR_SCOPE_MISSING')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, delta_scope: 'x'.repeat(513) }).status,'ADVISOR_SCOPE_TOO_LONG')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, advisor_baseline_sha: '' }).status,'ADVISOR_BASELINE_SHA_MISSING')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, advisor_baseline_sha: 'short' }).status,'ADVISOR_BASELINE_SHA_INVALID')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, human_decision:'PENDING' }).status,'HUMAN_DECISION_PENDING')
-  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{ ...input, criteria_text:criteria+'\n'+criteria }).status,'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  const input = { criteria_path:'projects/'+cadId+'/CRITERIA.md', criteria_current_sha:'9'.repeat(40),
+    criteria_text: receipt, intent:'INITIAL_APPROVAL',human_decision:'APPROVE' }
+  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,input).status,'ADVISOR_CONSULTATION_REQUIRED')
+  const acknowledged = { ...input, human_advisor_acknowledged:true }
+  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,acknowledged).status,'HUMAN_ADVISOR_ACKNOWLEDGED')
+  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{...acknowledged,delta_scope:'Newly confirmed scope'}).status,'HUMAN_ADVISOR_ACKNOWLEDGED')
+  assert.equal(h.projectCriteriaAdvisoryDecision(cadId,{...acknowledged,human_decision:'PENDING'}).status,'HUMAN_DECISION_PENDING')
 })
 
-test('M6 Advisor–Planner shared canonical formatter round-trips without granting approval', () => {
-  const baseline = 'a'.repeat(40),scope = 'INITIAL_APPROVAL whole first Criteria',adviceRef = '2026-10-21 advisor human conversation'
+test('M6: legacy receipt parser stays readable but does not authorize Criteria writes', () => {
+  const baseline = 'a'.repeat(40), scope = 'Old advisory scope', adviceRef = 'historic conversation'
   const line = h.formatAdvisorAdviceReceipt(baseline,scope,adviceRef)
   assert.equal(line, 'ADVISOR SIGNED: ADVISED | BASELINE='+baseline+' | SCOPE='+scope+' | ADVICE_REF='+adviceRef)
   const parsed = h.parseAdvisorAdviceReceipts('## Approval\n'+line)
   assert.equal(parsed.malformed,false)
   assert.equal(parsed.receipts.length,1)
   assert.equal(parsed.receipts[0].scope,scope)
-  const input={ criteria_path:'projects/'+id+'/CRITERIA.md', criteria_current_sha:'b'.repeat(40),criteria_text:line,
-    intent:'INITIAL_APPROVAL',human_decision:'APPROVE' }
-  assert.equal(h.projectCriteriaAdvisoryDecision(id,input).status,'SCOPED_ADVICE_REQUIRES_INDEPENDENT_READBACK')
-  assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,criteria_text:line+'\n'+line}).status,
-    'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
-  assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,criteria_text:line.replace('ADVICE_REF','ANOTHER')}).status,
-    'ADVISOR_RECEIPT_MISSING_STALE_OR_OUT_OF_SCOPE')
+  const input = {criteria_path:'projects/'+id+'/CRITERIA.md',criteria_current_sha:'b'.repeat(40),
+    criteria_text:line,intent:'MATERIAL_CHANGE',human_decision:'APPROVE'}
+  assert.equal(h.projectCriteriaAdvisoryDecision(id,input).status,'ADVISOR_CONSULTATION_REQUIRED')
+  assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,human_advisor_acknowledged:true}).status,'HUMAN_ADVISOR_ACKNOWLEDGED')
+  assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,human_advisor_acknowledged:true}).criteria_write_prepared,false)
   assert.equal(h.formatAdvisorAdviceReceipt(baseline,'scope | injection',adviceRef),null)
-  for(const intent of ['DISCUSSION','DRAFT_EDIT','PLAN_OR_TASK_CHANGE']){
-    assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,intent}).advisor_required,false)
-  }
-  assert.equal(h.projectCriteriaAdvisoryDecision(id,{...input,intent:'HUMAN_KEEP_CRITERIA'}).status,'HUMAN_KEEPS_CRITERIA_NO_WRITE')
 })
 
-test('M6 Advisor and Planner prompts share receipt contract with pre-commit verification', () => {
-  const planner = source.slice(source.indexOf('  planner: {'),source.indexOf('  advisor: {'))
-  const advisor = source.slice(source.indexOf('  advisor: {'),source.indexOf('  designer: {'))
-  const check = source.slice(source.indexOf("'project_criteria_advice_check',"),source.indexOf("'project_role_addins_resolve',"))
-  assert.ok(planner.includes('formatAdvisorAdviceReceipt'))
+test('M6: Advisor and Planner prompts share minimal Human acknowledgement contract', () => {
+  const planner = harnessSource.slice(harnessSource.indexOf('  planner: {'),harnessSource.indexOf('  advisor: {'))
+  const advisor = harnessSource.slice(harnessSource.indexOf('  advisor: {'),harnessSource.indexOf('  designer: {'))
+  const check = setupSource.slice(setupSource.indexOf("'project_criteria_advice_check',"),setupSource.indexOf("'project_role_addins_resolve',"))
+  assert.ok(planner.includes('human_advisor_acknowledged=true'))
   assert.ok(planner.includes('project_criteria_advice_check'))
-  assert.ok(advisor.includes('ADVISOR SIGNED: ADVISED | BASELINE='))
-  assert.ok(check.includes('Legacy') || check.includes('legacy'))
-  assert.ok(check.includes('Independently verify the actual Advisor message'))
+  assert.ok(advisor.includes('No signed receipt or message-reference verification'))
+  assert.ok(check.includes('No Advisor receipt'))
   assert.ok(check.includes('criteria_write_prepared: z.literal(false)'))
+  assert.ok(!check.includes('delivered_advice: z.object'))
 })
 
 test('M5: Coder and source-write boundaries must consume Project Bootstrap evidence', () => {
@@ -616,11 +601,13 @@ test('M5: Coder and source-write boundaries must consume Project Bootstrap evide
 })
 
 test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelated roles remain intact', () => {
-  const scope = source.slice(source.indexOf("'authorize_project_scope',"), source.indexOf("'authorize_memory_mutation',"))
+  const authSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-auth-tools.ts'), 'utf8')
+  const scope = authSource.slice(authSource.indexOf("'authorize_project_scope',"), authSource.indexOf("'authorize_memory_mutation',"))
   assert.match(scope, /operation === 'MUTATE_SOURCE'/)
   assert.match(scope, /projectBootstrapExecutionError/)
   assert.match(scope, /allowed: false, mutation_allowed: false/)
-  const begin = source.slice(source.indexOf("'run_begin',"), source.indexOf("'relationship_knowledge_prepare',"))
+  const runSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/run-execution-tools.ts'), 'utf8')
+  const begin = runSource.slice(runSource.indexOf("'run_begin',"), runSource.indexOf("'relationship_knowledge_prepare',"))
   assert.match(begin, /role === 'coder'/)
   assert.match(begin, /projectBootstrapExecutionError/)
   assert.match(begin, /if \(blocked\) return \{ content:/)
@@ -670,14 +657,15 @@ test('M6: deployed Hono matcher serves exact production and isolated staging slu
 })
 
 test('M4: Critic harness and selftest recognize milestone Human preauthorization without generic CR auto-dispatch', () => {
-  const critic = source.slice(source.indexOf('  critic_reviewer: {'), source.indexOf('  tester: {'))
+  const critic = harnessSource.slice(harnessSource.indexOf('  critic_reviewer: {'), harnessSource.indexOf('  tester: {'))
   assert.ok(critic.includes('HUMAN AUTHORITY:'))
   assert.ok(critic.includes('Human-preauthorized milestone crl'))
   assert.ok(critic.includes('persisted current Reviewer PASS'))
   assert.ok(!critic.includes('must never auto-dispatch this role'))
-  assert.ok(source.includes('critic_human_authority_scoped:'))
-  assert.ok(source.includes('critic_harness_present:'))
-  assert.ok(source.includes('Orchestrator may continue an approved AUTO milestone'))
+  const selftestSource = fs.readFileSync('supabase/functions/gsa-mcp/selftest.ts', 'utf8')
+  assert.ok(selftestSource.includes('critic_human_authority_scoped:'))
+  assert.ok(selftestSource.includes('critic_harness_present:'))
+  assert.ok(harnessSource.includes('Orchestrator may continue an approved AUTO milestone'))
 })
 
 test('Brownfield four-check Bootstrap adopts approved existing source docs without registration gates', () => {
@@ -709,4 +697,75 @@ test('M5 four-check ready is separate from Human execution and branch scope', ()
   assert.match(g({...evidence,assessment:{...assessment,coder:'UNVERIFIED'}}),/CAPABILITY_NOT_READY/)
   assert.match(g(evidence,'main'),/BOOTSTRAP_SOURCE_BRANCH_INVALID/)
   assert.match(g(undefined),/BOOTSTRAP_REQUIRED/)
+})
+
+
+test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot bypass membership', () => {
+  const runTools = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8')
+  const criteriaSchema = runTools.slice(runTools.indexOf("'goal_recheck_record',"),runTools.indexOf("'run_verification_record',"))
+  const occurrences = criteriaSchema.match(/^\s*task_id: z\.string\(\)\.min\(1\)\.optional\(\),/gm) || []
+  assert.equal(occurrences.length,2, 'owning Task and criteria Task use nonempty IDs')
+  assert.doesNotMatch(criteriaSchema,/^\s*task_id: z\.string\(\)\.uuid\(\)/m)
+  const setup = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
+  assert.match(setup,/task_id: z\.string\(\)\.min\(1\)\.optional\(\)/)
+  assert.match(setup,/task_id: z\.string\(\)\.min\(1\)/)
+  const found = ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
+  assert.ok(found)
+  const js=ts.transpileModule(found.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const check=vm.runInNewContext(js+'\ngoalRecheckCoverageError', { jobExecutionContract: job=>job.execution_contract })
+  const criterion='Human confirmation and decision sufficient'
+  const j={execution_contract:'NEXT',project_id:id,job_id:'reviewed-job',
+    planning_revision:1,tasks:[{task_id:'ADVISOR-FIX',completion_criteria:[criterion]}],
+    topology:[{task_id:'ADVISOR-FIX',handler:'coder'}]}
+  const r={project_id:id,job_id:'reviewed-job',planning_revision:1,primary_task_id:'ADVISOR-FIX',affected_task_refs:[]}
+  assert.equal(check(j,r,[{task_id:'ADVISOR-FIX',criterion}]),null)
+  assert.match(check(j,r,[{task_id:'UNRELATED',criterion}]),/criteria must exactly cover/)
+  assert.match(check(j,r,[{task_id:'',criterion}]),/every NEXT criterion requires task_id/)
+  assert.match(check(j,r,[{task_id:'ADVISOR-FIX',criterion},{task_id:'ADVISOR-FIX',criterion}]),/duplicate Task criterion/)
+  assert.match(check(j,{...r,primary_task_id:'WRONG'},[{task_id:'WRONG',criterion}]),/not current Coder-owned topology/)
+  assert.equal(check({...j,tasks:[{task_id:'T-1',completion_criteria:[criterion]}],
+    topology:[{task_id:'T-1',handler:'coder'}]},
+    {...r,primary_task_id:'T-1'},[{task_id:'T-1',criterion}]),null)
+})
+
+test('M5 brownfield existing reviewed source Plan and Milestones bootstrap without duplicate PROJECT_PLAN or future capabilities', () => {
+  const criteria={criteria_path:'projects/'+id+'/CRITERIA.md',criteria_blob_sha:'a'.repeat(40),approval_status:'APPROVED'}
+  // Product source Plan: reviewed, not a fabricated GSA Project Plan Job.
+  const plan={planning_revision:2,planning_review:{status:'PASS',reviewed_revision:2},
+    tasks:[
+      {task_id:'MAC-M2',lifecycle:'READY',dependencies:[],completion_criteria:['Mac implementation']},
+      {task_id:'MAC-M3',lifecycle:'READY',dependencies:['MAC-M2'],completion_criteria:['Mac integration']},
+      {task_id:'WIN-M6',lifecycle:'READY',dependencies:['MAC-M3'],completion_criteria:['Future Windows build']}
+    ],
+    milestones:[{milestone_id:'M2',node_ids:['MAC-M2','MAC-M3']},
+      {milestone_id:'M6',node_ids:['WIN-M6']}]}
+  const evidence={criteria,criteria_human_approved:true,criteria_current_blob_sha:criteria.criteria_blob_sha,
+    plan,capabilities:[{task_id:'MAC-M2',readiness:'GENERIC_READY'}],human_execution_approved:false}
+  const ready=h.projectBootstrapReadinessDecision(id,evidence)
+  assert.equal(ready.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(ready.source_write_authorized,false)
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,human_execution_approved:true}).status,
+    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[]}).status,'CAPABILITY_NOT_READY')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[{task_id:'WIN-M6',readiness:'GENERIC_READY'}]}).status,'CAPABILITY_NOT_READY')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_human_approved:false}).status,'CRITERIA_HUMAN_APPROVAL_UNVERIFIED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_current_blob_sha:'b'.repeat(40)}).status,'CRITERIA_STALE_OR_UNVERIFIED')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,planning_review:{status:'PENDING',reviewed_revision:1}}}).status,'PLAN_REVIEW_PENDING')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'PROJECT_PLAN'}}).status,'PLAN_CRITERIA_MISMATCH')
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'JOB'}}).status,'PLAN_CRITERIA_MISMATCH')
+  const withBinding={...plan,plan_kind:'PROJECT_PLAN',criteria_binding:criteria}
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:withBinding}).status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  const futureOnly={...plan,tasks:plan.tasks.map(t=>({...t,lifecycle:t.task_id==='MAC-M2'?'COMPLETED':t.lifecycle}))}
+  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:futureOnly}).status,'CAPABILITY_NOT_READY',
+    'After MAC-M2 completion, next MAC-M3 requires newly verified capability')
+})
+
+test('M5 four-check Bootstrap accepts existing Criteria, Plan, Milestones and Proposal without a fifth gate', () => {
+  const assessment={criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
+  const ok=h.projectBootstrapReadinessDecision(id,{assessment,proposal:'Already reviewed detailed proposal'})
+  assert.equal(ok.status,'BOOTSTRAP_READY')
+  assert.equal(ok.bootstrapped,false,'prepare-only, independently verify before code')
+  assert.equal(ok.source_write_authorized,false)
+  assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,tester:'UNVERIFIED'}}).status,
+    'CAPABILITY_NOT_READY')
 })

@@ -7,8 +7,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
-const sf = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const source = fs.readFileSync('supabase/functions/gsa-mcp/planning-guards.ts', 'utf8');
+const runtimeSource = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
+const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts', 'utf8');
+const harnessAst = ts.createSourceFile('harness-catalog.ts', harnessSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const sf = ts.createSourceFile('planning-guards.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 assert.equal(sf.parseDiagnostics.length, 0, 'Exact GSA runtime source parses');
 const functionDecl = sf.statements.find(s => ts.isFunctionDeclaration(s) &&
   s.name?.text === 'planningLoopContinuationDecision');
@@ -18,7 +21,7 @@ function loadDecision(sourceFunction = functionDecl.getText(sf)) {
   const js = ts.transpileModule(sourceFunction, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText;
-  return vm.runInNewContext(js + '\nplanningLoopContinuationDecision', { Number });
+  return vm.runInNewContext(js + '\nplanningLoopContinuationDecision', { Number, exports: {} });
 }
 const decide = loadDecision();
 
@@ -35,22 +38,23 @@ function assertRoute(input, wantAction, wantRole, wantContinue = true) {
   return d;
 }
 function toolBody(name) {
-  const start = source.indexOf("  server.registerTool(\n    '" + name + "'");
+  const ownerSource = name === 'job_prepare' ? fs.readFileSync('supabase/functions/gsa-mcp/job-prepare-tool.ts', 'utf8') : name === 'job_transition' ? fs.readFileSync('supabase/functions/gsa-mcp/job-transition-tool.ts', 'utf8') : name === 'job_revise_plan' ? fs.readFileSync('supabase/functions/gsa-mcp/job-revise-plan-tool.ts', 'utf8') : name === 'plan_review_record' ? fs.readFileSync('supabase/functions/gsa-mcp/plan-review-record-tool.ts', 'utf8') : runtimeSource;
+  const start = ownerSource.indexOf("  server.registerTool(\n    '" + name + "'");
   assert.ok(start >= 0, 'Live tool registered: ' + name);
-  const end = source.indexOf('\n  server.registerTool(', start + 10);
-  assert.ok(end > start, 'Next tool boundary for ' + name);
-  return source.slice(start, end);
+  const end = ownerSource.indexOf('\n  server.registerTool(', start + 10);
+  assert.ok(end > start || name === 'job_prepare' || name === 'job_transition' || name === 'job_revise_plan' || name === 'plan_review_record', 'Next tool boundary for ' + name);
+  return ownerSource.slice(start, end > start ? end : undefined);
 }
 function constantBody(name) {
-  const decls = sf.statements.filter(ts.isVariableStatement)
+  const decls = harnessAst.statements.filter(ts.isVariableStatement)
     .flatMap(x => [...x.declarationList.declarations])
     .filter(x => ts.isIdentifier(x.name) && x.name.text === name);
   assert.equal(decls.length, 1, name + ' source definition must be unique');
   const compiled = ts.transpileModule(
-    'const ' + name + ' = ' + decls[0].initializer.getText(sf) + ';\n' + name,
+    'const ' + name + ' = ' + decls[0].initializer.getText(harnessAst) + ';\n' + name,
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }
   ).outputText;
-  return vm.runInNewContext(compiled, {});
+  return vm.runInNewContext(compiled, {exports: {}});
 }
 const shared = constantBody('BASE_AGENT_HARNESS');
 const roles = constantBody('ROLE_HARNESSES');
@@ -84,8 +88,8 @@ test('rl is a Planner review-loop modifier, never a source or merge authorizatio
   assert.match(rules, /including a draft discussed in chat/);
   assert.match(rules, /ephemeral drafts receive bounded same-turn review without falsely claiming persisted verification/);
   assert.match(rules, /HUMAN EXECUTION APPROVAL/);
-  assert.match(source, /'PLANNER RL: recognize rl as a planning review-loop modifier/);
-  assert.match(source, /planner \[pl\].*rl = review\/repair loop/);
+  assert.match(runtimeSource, /'PLANNER RL: recognize rl as a planning review-loop modifier/);
+  assert.match(runtimeSource, /planner \[pl\].*rl = review\/repair loop/);
   assert.match(roles.orchestrator.loop.join('\n'), /CHANGES_REQUIRED routes back to Planner/);
   const doc = fs.readFileSync('docs/architecture/AGENT-HARNESSES.md', 'utf8');
   assert.match(doc, /### `rl` — explicit Planner review-loop shortcut/);

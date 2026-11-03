@@ -1,0 +1,113 @@
+'use strict'
+// R-01: source-bound module wiring guard. Runtime parity must be verified later.
+const {test}=require('node:test')
+const assert=require('node:assert/strict')
+const fs=require('node:fs')
+const path=require('node:path')
+const ts=require('typescript')
+const root=path.join(__dirname,'../supabase/functions/gsa-mcp')
+const index=fs.readFileSync(path.join(root,'index.ts'),'utf8')
+const owners={
+  'project-utils.ts':['knowledgePath','safeProjectName','validIntegrationBranch','isRetiredSourceBranch','parseRetiredBranchRows','resolveProjectCriteriaIntake','projectTaskCapabilityAssessment','projectCriteriaBindingError'],
+  'record-handles.ts':['projectHandle','jobHandle','runHandle','uuidv7'],
+  'advisor-receipt.ts':['formatAdvisorAdviceReceipt','parseAdvisorAdviceReceipts','projectCriteriaAdvisoryDecision'],
+  'platform-utils.ts':['edgeFunctionSlug','normalizeGithubRepo'],
+  'execution-guards.ts':['goalRecheckRunMatches','uxFirstTemporaryUiGateRequired','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'],
+  'planning-guards.ts':['validateExecutionTopology','milestoneLoopDecision','normalizeNextPlanningModel','planningLoopContinuationDecision'],
+  'bootstrap.ts':['projectBootstrapChecklistDecision','projectBootstrapReadinessDecision']
+}
+test('GSA1 extracted modules have TypeScript parseable syntax and unique exports',()=>{
+  const claimed=new Set()
+  for(const [file,names] of Object.entries(owners)){
+    const text=fs.readFileSync(path.join(root,file),'utf8')
+    const tree=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+    assert.equal(tree.parseDiagnostics.length,0,file+' parse error')
+    for(const name of names){
+      assert.ok(!claimed.has(name),'duplicated owner: '+name)
+      claimed.add(name)
+      assert.match(text,new RegExp('^export function '+name+'\\(','m'))
+      assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
+      assert.match(index,new RegExp('\\b'+name+'\\b'))
+    }
+    assert.match(index,new RegExp("from './"+file.replace(/\./g,'\\.')+"'"))
+  }
+  assert.equal(ts.createSourceFile('index.ts',index,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS).parseDiagnostics.length,0)
+})
+test('GSA1-S2 Plan Change and Recovery modules are owned and imported without duplication',()=>{
+  const recovery=fs.readFileSync(path.join(root,'recovery-decisions.ts'),'utf8')
+  const planning=fs.readFileSync(path.join(root,'plan-change-decisions.ts'),'utf8')
+  for(const [file,content] of [['recovery-decisions.ts',recovery],['plan-change-decisions.ts',planning]]){
+    const ast=ts.createSourceFile(file,content,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+    assert.equal(ast.parseDiagnostics.length,0,file+' parse failure')
+    assert.match(index,new RegExp("from './"+file.replace(/\./g,'\\.')+"'"))
+  }
+  for(const name of ['sourceMutationRecoveryDecision','orchestrationProgressDecision']){
+    assert.match(recovery,new RegExp('^export function '+name+'\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
+  }
+  assert.match(planning,/^export function createPlanChangeDecisions\(/m)
+  for(const name of ['isRecognizedJobRecordShape','assessHumanPlanChangeJobs',
+    'prepareHumanPlanChangeIntent','prepareHumanPlanChangeFenceDecision',
+    'validatePlanChangeSupersession','resumeHumanPlanChangeIntent']){
+    assert.match(planning,new RegExp('^function '+name+'\\(','m'))
+    assert.doesNotMatch(index,new RegExp('^function '+name+'\\(','m'))
+  }
+  assert.match(index,/createPlanChangeDecisions\(\{ jobExecutionContract,/)
+})
+
+test('MCP public tool names retain the pinned static-plus-transition order',()=>{
+  const pinned=JSON.parse(fs.readFileSync(path.join(__dirname,'gsa1-tool-name-inventory.json'),'utf8'))
+  const positions=[
+    ...[...index.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g)].map(m=>({name:m[1],pos:m.index})),
+    ...[...index.matchAll(/transitionTool\(\s*'([^']+)'/g)].map(m=>({name:m[1],pos:m.index}))
+  ]
+  // Count delegated registrations at their exact entrypoint call positions.
+  // Missing/duplicate module tool names or changed order must fail closed.
+  const delegatedGroups=[
+    ['registerRepositoryEvidenceTools','evidence-repository-tools.ts',[
+      'evidence_repository_publish_prepare',
+      'evidence_repository_publish_finalize',
+      'evidence_repository_probe_verification_prepare']],
+    ['registerEvidenceBundleAttestationTool','evidence-bundle-tool.ts',[
+      'evidence_bundle_attestation_prepare']],
+    ['registerHarnessSkillTools','harness-skill-tools.ts',['get_agent_harness','get_skill_catalog','load_skill']],
+    ['registerJobPrepareTool','job-prepare-tool.ts',['job_prepare']],
+    ['registerJobTransitionTool','job-transition-tool.ts',['job_transition']],
+    ['registerJobRevisePlanTool','job-revise-plan-tool.ts',['job_revise_plan']],
+    ['registerPlanReviewRecordTool','plan-review-record-tool.ts',['plan_review_record']],
+    ['registerCriticReviewTools','critic-review-tools.ts',['start_critic_review','critic_review_record']],
+    ['registerCheckpointTools','checkpoint-tools.ts',['checkpoint_claim_prepare','checkpoint_verification_prepare','checkpoint_gate_evaluate']],
+    ['registerRunExecutionTools','run-execution-tools.ts',['run_begin','relationship_knowledge_prepare','goal_recheck_record','run_verification_record','run_complete']],
+    ['registerPlanChangeTools','plan-change-tools.ts',['job_plan_change_fence_prepare','job_plan_change_resume_evaluate','job_plan_change_prepare','job_plan_change_assess']],
+    ['registerExecutionCursorTools','execution-cursor-tools.ts',['execution_cursor_prepare','execution_cursor_resume_evaluate','execution_recovery_evaluate','orchestration_progress_evaluate']],
+    ['registerBrowserTestTools','browser-test-tools.ts',['browser_ui_inspect','browser_test_flow']],
+    ['registerProjectSetupTools','project-setup-tools.ts',[
+      'project_setup_prepare','project_criteria_advice_check','project_role_addins_resolve','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','project_branch_policy_prepare']],
+    ['registerProjectLifecycleTools','project-lifecycle-tools.ts',[
+      'project_open', 'project_status', 'project_pause', 'project_resume', 'project_archive', 'project_delete']],
+    ['registerProjectManagementTools','project-management-tools.ts',[
+      'project_list',
+      'project_create',
+      'project_register_repositories']],
+    ['registerProjectAuthorizationTools','project-auth-tools.ts',[
+      'get_memory_repo_config',
+      'set_memory_repo_config',
+      'authorize_project_scope',
+      'authorize_memory_mutation']]
+  ]
+  for(const [fn,file,expected] of delegatedGroups){
+    const moduleSource=fs.readFileSync(path.join(root,file),'utf8')
+    const ast=ts.createSourceFile(file,moduleSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+    assert.equal(ast.parseDiagnostics.length,0,file+' must parse')
+    const matches=[...index.matchAll(new RegExp(fn+'\\(\\s*\\{','g'))]
+    assert.equal(matches.length,1,fn+' must be invoked exactly once')
+    const names=[...moduleSource.matchAll(/server\.registerTool\(\s*['"]([^'"]+)['"]/g), ...moduleSource.matchAll(/transitionTool\(\s*'([^']+)'/g)].sort((a,b)=>a.index-b.index).map(m=>m[1])
+    assert.deepEqual(names,expected,file+' tool inventory changed')
+    assert.ok(index.includes("from './"+file+"'"),file+' import absent')
+    names.forEach((name,i)=>positions.push({name,pos:matches[0].index+i/10000}))
+  }
+  const names=positions.sort((a,b)=>a.pos-b.pos).map(x=>x.name)
+  assert.deepEqual(names,pinned.names)
+  assert.equal(new Set(names).size,names.length)
+  assert.equal(names.length,58)
+})

@@ -8,8 +8,9 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
-const sf = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-assert.equal(sf.parseDiagnostics.length, 0, 'Runtime TypeScript parses');
+const catalog = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts', 'utf8');
+const sf = ts.createSourceFile('harness-catalog.ts', catalog, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+assert.equal(sf.parseDiagnostics.length, 0, 'Runtime harness catalog TypeScript parses');
 
 function extractedConstant(name) {
   const decls = sf.statements

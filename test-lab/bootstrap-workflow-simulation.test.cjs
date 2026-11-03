@@ -8,12 +8,12 @@ const os=require('node:os')
 const path=require('node:path')
 const vm=require('node:vm')
 const ts=require('typescript')
-const code=fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/index.ts'),'utf8')
-const tree=ts.createSourceFile('index.ts',code,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+const code=fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/bootstrap.ts'),'utf8')
+const tree=ts.createSourceFile('bootstrap.ts',code,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
 assert.equal(tree.parseDiagnostics.length,0)
 const declaration=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='projectBootstrapChecklistDecision')
 assert.ok(declaration)
-const transpiled=ts.transpileModule(declaration.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+const transpiled=ts.transpileModule(declaration.getText(tree).replace(/^export\s+/, ''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
 const decide=vm.runInNewContext(transpiled+'\nprojectBootstrapChecklistDecision')
 const copy=o=>JSON.parse(JSON.stringify(o))
 function validatePlan(criteria,plan) {

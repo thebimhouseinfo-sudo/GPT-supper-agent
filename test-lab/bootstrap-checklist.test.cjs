@@ -4,12 +4,12 @@ const assert=require('node:assert/strict')
 const fs=require('node:fs')
 const ts=require('typescript')
 const vm=require('node:vm')
-const source=fs.readFileSync('supabase/functions/gsa-mcp/index.ts','utf8')
-const tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+const source=fs.readFileSync('supabase/functions/gsa-mcp/bootstrap.ts','utf8')
+const tree=ts.createSourceFile('bootstrap.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
 assert.equal(tree.parseDiagnostics.length,0,'runtime must parse')
 const f=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='projectBootstrapChecklistDecision')
 assert.ok(f,'bootstrap coordinator exists in runtime')
-const fn=ts.transpileModule(f.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+const fn=ts.transpileModule(f.getText(tree).replace(/^export\s+/, ''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
 const route=vm.runInNewContext(fn+'\nprojectBootstrapChecklistDecision')
 const PASS={status:'PASS',observation:'Verified existing document or role capability'}
 const IN_PROGRESS={status:'IN_PROGRESS'}
