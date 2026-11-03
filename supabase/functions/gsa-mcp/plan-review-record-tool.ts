@@ -130,6 +130,9 @@ export function registerPlanReviewRecordTool(deps: any) {
         ...(current.criteria_binding ? [
           'Reviewer independently fetches approved Criteria revision at exact configured path/blob SHA and compares Overall/Phase GOAL coverage before accepting a Project Plan. Historical source code alone is not Criteria approval.',
         ] : []),
+        ...(result === 'PASS' ? [
+          'Reviewer must discover the current authorized Project Memory DEC index even when the Job contains no DECISION_REF. Compare all applicable Human-accepted decisions and exceptions with the current Job/Phase/Milestone/Task; a missing reference or unresolved contradiction disallows PASS. Preserve readback proof.',
+        ] : []),
         ...((current.repository_discovery?.selected_source_evidence ?? []).some((x: string) => x.startsWith(DECISION_PREFIX)) ? [
           'Reviewer independently reads exact original DEC source_sha/path, complete Human accepted method/rationale and all exceptions, and validates each existing relationship_assessment DECISION_COVERAGE edge against the full source; structural validation alone is not sufficient for PASS.',
         ] : []),

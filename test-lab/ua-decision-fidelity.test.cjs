@@ -139,3 +139,10 @@ test('existing public Zod schemas unchanged',async()=>{
   const s=fs.readFileSync(path.join(root,'plan-review-record-tool.ts'),'utf8');
   assert.ok(s.includes('decisionFidelityError(current)'));
 });
+test('reviewer checks Project DEC index when a Job omits refs',()=>{
+  const review=fs.readFileSync(path.join(root,'plan-review-record-tool.ts'),'utf8');
+  const harness=fs.readFileSync(path.join(root,'harness-catalog.ts'),'utf8');
+  assert.ok(review.includes('even when the Job contains no DECISION_REF'));
+  assert.ok(review.includes('a missing reference or unresolved contradiction disallows PASS'));
+  assert.ok(harness.includes('even when a Job has NO references'));
+});
