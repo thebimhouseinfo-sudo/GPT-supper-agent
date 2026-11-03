@@ -278,7 +278,7 @@ export const ROLE_HOST_SKILLS: Record<string, string[]> = {
 
 export const RUNTIME_SKILLS: Record<string, { description: string; body: string }> = {
   'debugging': {
-    description: 'Optional Coder root-cause and call-chain debugging protocol for nontrivial bugs and failed hotfix retests. Not a separate role.',
+    description: 'Optional Coder root-cause/call-chain debug for complex bugs or failed retests; not a role.',
     body: [
       '# Debugging — conditional Coder skill',
       'Load only for a reproducible nontrivial defect or failed hotfix retest; do not run for ordinary feature work.',
@@ -293,22 +293,21 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'critic-review': {
-    description: 'Run a Human-invoked or Human-preauthorized milestone CR using durable source evidence, then compare with the prior Reviewer only after independently forming a verdict.',
+    description: 'Human-invoked/preapproved Critic Review: independently inspect durable evidence before prior Reviewer.',
     body: [
       '# Critic Review',
       'CR is an independent peer-review path only when Human invokes it OR a milestone explicitly Human-approved for crl is reached with current Reviewer PASS.',
       '',
       '1. Require direct Human invocation via cr/crl OR Human-approved current Job milestone marked crl with exact Reviewer PASS Verification; verify durable Job/snapshot readback before CR. No global auto CR.',
       '2. Ignore conversation history as evidence. Reconstruct the review target from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
-      '3. Reconstruct the target only from durable Project Memory, exact Job/revision, Verification artifacts and live source truth.',
-      '4. Do not read or rely on the prior Reviewer verdict until independent criteria, findings and verdict are already formed.',
-      '5. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
-      '6. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
-      '7. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
+      '3. Do not read or rely on the prior Reviewer verdict until independent criteria, findings and verdict are already formed.',
+      '4. Then compare against the prior Reviewer and record agreement/disagreement with evidence.',
+      '5. CR is read-only for source and Job state. Persist only CRITIC_REVIEW evidence.',
+      '6. CR result never mutates Job lifecycle itself. After CR PASS, Orchestrator may continue an approved AUTO milestone; HUMAN milestones still require a Human decision.',
     ].join('\n'),
   },
   'critical-challenge': {
-    description: 'Planner: challenge unproven user-proposed technical solutions constructively before a plan; evidence-calibrated feasibility, cost and alternatives. Not a new review gate.',
+    description: 'Planner challenges unproven technical assumptions, feasibility, cost and alternatives; not a review gate.',
     body: [
       '# Planner Critical Challenge',
       'Apply this during brainstorming, feasibility checks, new feature proposals and plan changes when the Human proposes a technical mechanism. It is NOT a reason to block ordinary status answers or activate another agent.',
@@ -323,7 +322,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'job-planning': {
-    description: 'Turn a user objective into one finite durable Job with bounded Tasks, dependencies, gates and acceptance evidence.',
+    description: 'Create a bounded durable Job: Tasks, dependencies, gates and acceptance evidence.',
     body: [
       '# Job Planning',
       'Use this skill only for durable Project work.',
@@ -353,7 +352,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'coding-loop': {
-    description: 'Execute a bounded code Task through read, edit, verification, diff review, Goal Recheck and repair loops.',
+    description: 'Coder Task loop: read, edit, verify, diff review, Goal Recheck and repair.',
     body: [
       '# Coding Loop',
       'A code Run is not “edit once then report”. Use an evidence-driven loop.',
@@ -405,7 +404,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   delegation: {
-    description: 'Brief another GSA role or specialist with enough context to work autonomously without duplicating or outsourcing parent understanding.',
+    description: 'Brief another role with scope, evidence and output; retain parent understanding.',
     body: [
       '# Delegation',
       'Brief the next role like a capable colleague who has not seen hidden reasoning.',
@@ -422,7 +421,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'planning-review': {
-    description: 'Role-isolated review of one exact Job planning revision before it may become READY; normally executed automatically in the same user turn.',
+    description: 'Same-turn role-isolated review of the exact Job planning revision before READY.',
     body: [
       '# Planning Review',
       'Review the durable Job plan, not the Planner reasoning. Planning review is role-isolated and normally runs in the SAME USER TURN; a fresh Human chat is NOT required for this planning-review gate. Reconstruct from the persisted Job/revision/source, never previous Planner reasoning. Independent source/code reviews retain their own context-isolation requirements.',
@@ -445,7 +444,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'review-evidence': {
-    description: 'Review an exact revision from actual diff/evidence and produce high-confidence actionable findings without source modification.',
+    description: 'Review exact diff/revision and evidence: actionable findings, no source edits.',
     body: [
       '# Review Evidence',
       '- Bind review to one exact target revision.',
@@ -462,7 +461,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'testing-evidence': {
-    description: 'Plan and execute VERIFY/MEASURE/PROBE evidence with explicit readiness, failure classification, structured reporting and revision-bound Retest.',
+    description: 'VERIFY/MEASURE/PROBE with readiness, failure classification, evidence and revision-bound Retest.',
     body: [
       '# Testing Evidence',
       '',
@@ -504,7 +503,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'tester-lab': {
-    description: 'Stand-alone Test Lab capability for Tester to design empirical capability experiments and independently verify UI/runtime evidence without production lifecycle authority.',
+    description: 'Standalone Tester Lab for capability experiments and UI/runtime evidence; no production lifecycle writes.',
     body: [
       '# Tester Lab',
       'This skill is explicit Test Lab capacity only. It is not auto-loaded by the production Tester role and cannot mutate production Job/Run lifecycle.',
@@ -543,7 +542,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
     ].join('\n'),
   },
   'ui-coder-frontend': {
-    description: 'Task-specific UI Coder overlay for direct frontend implementation in target source with browser-backed development self-QA and independent Tester/Human acceptance.',
+    description: 'Task-specific frontend Coder: target-source UI, browser self-QA and independent Tester/Human acceptance.',
     body: [
       '# UI Coder Frontend',
       'Load this skill only when Planner/Orchestrator or the active handoff explicitly classifies the Task as frontend / UI Coder work and names ui-coder-frontend.',
