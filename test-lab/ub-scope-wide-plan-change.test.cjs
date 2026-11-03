@@ -87,6 +87,9 @@ function register(file,fn,depsExtra={}){
   const schema=stubZ().object({});
   init({...deps,...depsExtra,z:stubZ(),req:{},AUTH_SCOPES:[],
     DURABLE_RECORD_SNAPSHOT_SCHEMA:schema,PLANNING_LOOP_CONTINUATION_SCHEMA:schema,
+    CRITERIA_BINDING_SCHEMA:schema,EVIDENCE_NEED_SCHEMA:schema,
+    TEST_CHECKPOINT_SPEC_SCHEMA:schema,EVIDENCE_REQUIREMENT_SCHEMA:schema,
+    MILESTONE_SCHEMA:schema,PLANNING_TOPOLOGY_NODE_SCHEMA:schema,
     authContext:async()=>({user_id:'test'}),
     server:{registerTool:(name,definition,handler)=>handlers.set(name,handler)},
     authError:()=>({isError:true}),prettyJson:o=>JSON.stringify(o),
