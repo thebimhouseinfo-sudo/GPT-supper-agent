@@ -182,7 +182,7 @@ export function projectBootstrapReadinessDecision(projectId: string, input: any)
     return !Array.isArray(dependencies) || new Set(dependencies).size !== dependencies.length ||
       dependencies.some((id: any) => typeof id !== 'string' || !taskIds.has(id) || id === t.task_id)
   })) return result('PLAN_DEPENDENCIES_INVALID', 'Task dependencies must be unique, current, and non-self-referential.')
-  const byTaskId = new Map(tasks.map((t: any) => [t.task_id, t]))
+  const byTaskId = new Map<string, any>(tasks.map((t: any) => [t.task_id, t]))
   const visiting = new Set<string>(), visited = new Set<string>()
   const hasCycle = (id: string): boolean => {
     if (visiting.has(id)) return true
