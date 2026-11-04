@@ -1,0 +1,38 @@
+'use strict'
+const {test}=require('node:test')
+const assert=require('node:assert/strict')
+const fs=require('node:fs')
+const path=require('node:path')
+const {loadSourceModule}=require('./helpers/harness-ts-loader.cjs')
+const root=path.join(__dirname,'../supabase/functions/gsa-mcp')
+const {RUNTIME_SKILLS,ROLE_HARNESSES,ROLE_SKILLS,renderHarness}=loadSourceModule('harness-catalog.ts')
+const body=RUNTIME_SKILLS['coding-loop'].body
+
+test('U-C positive: engineering context and domain boundary are loaded only in Coder coding-loop',()=>{
+  assert.equal(Object.keys(ROLE_HARNESSES).length,8)
+  assert.equal(Object.keys(RUNTIME_SKILLS).length,11)
+  assert.ok(ROLE_SKILLS.coder.includes('coding-loop'))
+  assert.match(body,/ENGINEERING CONTEXT \/ SOLUTION CLARIFICATION/)
+  assert.match(body,/approved Goal\/Tasks, accepted expert decisions and exceptions/)
+  assert.match(body,/observed host behavior, direct callers and affected contracts/)
+  assert.match(body,/Coder owns ordinary software engineering HOW/)
+  assert.match(body,/Ask Human one narrow question only if an unresolved professional/)
+  assert.match(body,/Do not re-ask answered facts or require approval for routine implementation choices/)
+  assert.doesNotMatch(renderHarness('coder',{includeProgressiveSkills:false}),/DEV SOURCE \/ OPERATION ARTIFACTS/)
+  assert.doesNotMatch(JSON.stringify(Object.values(ROLE_HARNESSES)),/ENGINEERING CONTEXT \/ SOLUTION CLARIFICATION/)
+  assert.ok(!Object.keys(ROLE_HARNESSES).includes('domain_expert'))
+})
+
+test('U-C negative: no DEV write permission relaxation or invented registry for Host deliverables',()=>{
+  assert.match(body,/Nothing here grants source-write authority/)
+  assert.match(body,/exact Git SHA\/CAS, branch, Run\/Cursor and independent Reviewer\/Tester/)
+  assert.match(body,/within granted file and program permissions/)
+  assert.match(body,/Temp\/Custom JOB\.md, LISP or Python, DWG, DOCX, DWF and DWT/)
+  assert.match(body,/Do not impose a generic Run UUID, Registry\/promotion step, content hash/)
+  assert.match(body,/authorized same-name LISP may be reloaded/)
+  assert.match(body,/same-name collision or overwrite could materially affect user data/)
+  assert.match(body,/recoverable BAK with lock files/)
+  const source=fs.readFileSync(path.join(root,'harness/skills/coding-loop.ts'),'utf8')
+  assert.ok(source.includes('].join('),'skill remains deferred, source-owned text')
+  assert.ok(!fs.readFileSync(path.join(root,'harness/roles/coder.ts'),'utf8').includes('ENGINEERING CONTEXT / SOLUTION CLARIFICATION'))
+})
