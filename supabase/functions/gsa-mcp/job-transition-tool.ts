@@ -160,6 +160,20 @@ export function registerJobTransitionTool(deps: any) {
                   retired_reason: planSupersession.action.reason }
               : task
           }),
+          // Scope-wide RETIRE is atomic at Job CAS boundary. Completed Tasks
+          // and Milestones retain history; unfinished milestone nodes are retired.
+          ...(target_lifecycle==='RETIRED'?{
+            milestones:(current.milestones??[]).map((milestone:any)=>{
+              const related=(current.tasks??[]).filter((task:any)=>
+                (milestone.node_ids??[]).includes(task.task_id))
+              const completed=related.length>0?
+                related.every((task:any)=>task.lifecycle==='COMPLETED'):
+                milestone.lifecycle==='COMPLETED'||milestone.status==='PASS'||milestone.result==='PASS'
+              return completed?milestone:{...milestone,lifecycle:'RETIRED',
+                retired_by_plan_change_id:JSON.parse(plan_change_context.intent_record_text).change_id,
+                retired_reason:planSupersession.action.reason}
+            }),
+          }:{}),
         } : {}),
         lifecycle: target_lifecycle,
         result: target_lifecycle === 'RETIRED' ? 'RETIRED' : result ?? current.result ?? null,
@@ -176,7 +190,8 @@ export function registerJobTransitionTool(deps: any) {
           'Independently read exact persisted Plan Change intent, require its blob SHA equals plan_change_context.intent_record_sha and bytes match before ANY Job transition.',
           'Independently enumerate active Runs and Job cursor; require no ACTIVE/UNKNOWN Runs and no PENDING/UNKNOWN source mutation.',
           'Independently confirm current source HEAD/tree and dependencies are consistent with the reviewed Plan; do not trust cursor_state/active_run_state caller assertions.',
-          'After terminal transition, read back lifecycle and Plan Change lineage; RETIRED must have a reason and no successor.',
+          'After terminal transition, independently read back lifecycle, unfinished Task/Milestone retirement and Plan Change lineage; RETIRED has no successor.',
+          'A delayed successful Run must never override a persisted Plan fence; preserve historical PASS only for original completed work.',
         )
       }
       if (target_lifecycle === 'COMPLETED') {
