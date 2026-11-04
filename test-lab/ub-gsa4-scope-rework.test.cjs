@@ -220,3 +220,76 @@ test('UB-03 late NEXT Run completion is denied for any role on pending/stale/ter
  const failedSettlement=await out({...args,lifecycle:'FAILED',job_record_text:null,job_record_sha:null})
  assert.ok(failedSettlement.structuredContent,'failed/cancelled settlement remains possible')
 })
+
+test('UB-04 fresh successor preserves non-1:1 intent lineage, requires complete retiring evidence and fresh identifiers',async()=>{
+ counter=0
+ const prepared=domain.prepareHumanPlanChangeIntent(input())
+ assert.equal(prepared.allowed,true,prepared.reason)
+ const intent=JSON.parse(prepared.intent_record_text)
+ const retired=jobs.filter(j=>intent.actions.find(a=>a.predecessor_job_id===j.job_id).decision==='RETIRE')
+   .map(j=>{
+     const action=intent.actions.find(a=>a.predecessor_job_id===j.job_id)
+     return {...j,lifecycle:'RETIRED',result:'RETIRED',retired_by_plan_change_id:intent.change_id,
+       tasks:j.tasks.map(t=>t.lifecycle==='COMPLETED'?t:{...t,lifecycle:'RETIRED'}),
+       milestones:j.milestones.map(m=>({...m,lifecycle:'RETIRED'}))}
+   })
+ const registerJob=register('job-prepare-tool.ts','registerJobPrepareTool',{
+   readMemoryConfig:async()=>({data:{memory_repo_full_name:'someowner/memory'}}),
+   normalizeGithubRepo:u=>({url:u}),
+   resolveExecutionContract:c=>['NEXT','V2_STABLE'].includes(c)?c:null,
+   jobCreationExecutionContractDefault:()=> 'NEXT',
+   nextMemoryNamespaceForRequest:()=> 'PRODUCTION',
+   jobHandle:handle,uuidv7:()=> 'fresh-id-unused',
+   validIntegrationBranch:()=>true,projectCriteriaBindingError:()=>null,
+   cutoverInventoryError:()=>null,validateExecutionTopology:()=>null,
+   normalizeNextPlanningModel:(x)=>x,validateNextPlanningModel:()=>null,
+   recordPath:(_p,collection,id)=>collection+'/'+id,
+   executionMemoryRoot:root,jobExecutionContract:contract,
+   planningLoopContinuationDecision:()=>({next_action_after_readback:'REVIEW_CURRENT_REVISION'}),
+   prettyJson:x=>JSON.stringify(x),DEFAULT_NEXT_MEMORY_NAMESPACE:'PRODUCTION'
+ }).get('job_prepare')
+ assert.equal(typeof registerJob,'function')
+ const ctx={intent_record_text:prepared.intent_record_text,intent_record_sha:intentSha,
+   intent_memory_path:prepared.intent_memory_path,reviewed_plan_sha:sha,
+   successor_job_id:successor1,retired_job_snapshots:retired.map(snapshot)}
+ const url='https://github.com/thebimhouseinfo-sudo/GPT-supper-agent'
+ const draft={project_id:pid,type:'code',objective:'New reviewed work',
+   scope:['fresh'],non_goals:[],execution_contract:'NEXT',plan_kind:'JOB',
+   integration_branch:'upgrade/gsa-context-efficiency',work_context:'NEW',
+   phase:'A',milestone:'m1',relationship_scan_summary:'No other callers',
+   job_sizing:{size:'SMALL',rationale:'bounded'},brownfield_logic_review:[],
+   relationship_assessment:[],repository_structure_evidence:['known'],
+   project_repository_mode:'SINGLE',registered_repositories:[url],
+   working_repository_url:url,cross_repo_impact:[{repository_url:url,impact:'NONE'}],
+   tasks:[{task_id:'NEW-T',objective:'new',completion_criteria:['Pass']}],
+   milestones:[{milestone_id:'NEW-M',name:'new',node_ids:['NEW-T']}],
+   // A canonical TASK topology node has the SAME identity as its owning Task.
+   planning_topology:[{node_id:'NEW-T',node_type:'TASK'}],
+   evidence_needs:[],test_checkpoints:[],evidence_requirements:[],
+   completion_requirements:['Pass'],
+   scope_change_context:ctx}
+ const good=await registerJob(draft)
+ assert.ok(good.structuredContent,'valid scope descendant must produce DRAFT Job: '+good.content?.[0]?.text)
+ const job=JSON.parse(good.structuredContent.job_record_text)
+ assert.equal(job.job_id,successor1)
+ assert.equal(job.scope_supersession_id,intent.change_id)
+ assert.deepEqual(plain(job.scope_predecessor_job_ids).sort(),[A,B,E].sort())
+ assert.equal(job.planning_review.status,'PENDING')
+ assert.equal(job.lifecycle,'DRAFT')
+ assert.equal(job.tasks[0].task_id,'NEW-T')
+ assert.equal(job.planning_topology[0].node_id,'NEW-T')
+ assert.equal(good.structuredContent.external_steps.some(s=>s.includes('independently reread immutable Plan intent')),false)
+ assert.equal(good.structuredContent.external_steps.some(s=>s.includes('Independently reread immutable Plan intent')),true)
+ const incomplete=await registerJob({...draft,scope_change_context:{...ctx,
+   retired_job_snapshots:ctx.retired_job_snapshots.slice(1)}})
+ assert.equal(incomplete.isError,true)
+ assert.match(incomplete.content[0].text,/SCOPE_CHANGE_REVIEWED_INTENT_OR_COMPLETE_RETIREMENT_REQUIRED/)
+ const reused=await registerJob({...draft,tasks:[{task_id:A+'-T',objective:'old',completion_criteria:['x']}]})
+ assert.equal(reused.isError,true)
+ assert.match(reused.content[0].text,/SCOPE_CHANGE_FRESH_JOB_TASK_MILESTONE_TOPOLOGY_IDS_REQUIRED/)
+ const stale=await registerJob({...draft,scope_change_context:{...ctx,intent_record_sha:'wrong'}})
+ assert.equal(stale.isError,true)
+ const oneToOne=await registerJob({...draft,replacement_context:{intent_record_text:'{}'}})
+ assert.equal(oneToOne.isError,true)
+ assert.match(oneToOne.content[0].text,/SCOPE_CHANGE_AND_ONE_TO_ONE_REPLACEMENT_CONFLICT/)
+})
