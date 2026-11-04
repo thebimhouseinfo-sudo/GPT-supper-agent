@@ -310,7 +310,7 @@ function prepareHumanPlanChangeIntent(input: any) {
     }
   })
   if (actions.some((x: any) => x === null)) return deny('PLAN_CHANGE_RESERVED_ID_COLLISION')
-  const scopeSummary=impact.scope_summary??null
+  const scopeSummary=('scope_summary' in impact ? impact.scope_summary : null)
   const successorIds:string[]=[]
   if(input.scope_change){
     if(!scopeSummary)return deny('SCOPE_CHANGE_SUMMARY_MISSING')
