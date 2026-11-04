@@ -2,6 +2,7 @@
 
 **Status:** RESEARCH PLAN — Human requested detailed refinement of the existing approved-criteria implementation plan (2026-11-04). Research authorization is distinct from product code-change authorization.  
 **Owner:** GSA Context Efficiency Track R / CX-04.
+**Scope of THIS document:** **RESEARCH PHASE OF THE GSA4 UPGRADE ONLY**. The unchanged GSA4 product goal is to **reduce Agent context and improve execution speed/efficiency while preserving quality, correctness and required controls**. This file does **not** redefine GSA4 as a standalone research project or replace its later architecture, implementation and benchmark phases. **Current action: refine and review research METHODOLOGY only**; no measurements, simulations, implementation, physical file split, or code changes in this step.
 **R0 progress:** [Initial source/meter/simulate capability findings](./GSA4-R0-INITIAL-RESEARCH-20261104.md) — research started, independent method review pending; no implementation or simulate PASS.  
 **Canonical parent:** [DETAIL-PLAN.md](./DETAIL-PLAN.md). This is its **GSA4 detailed research section**, not a second competing Project Plan or a new Job/approval gate.  
 **Baseline:** Source-pinned GSA3 on main (observed GSA3 v58 at commit `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`); re-pin live branch SHAs before every test.  
@@ -152,7 +153,7 @@ Choose the simplest safe grouping based on recorded outcomes, not intuition.
 
 **Decision:** select candidate **for design** or KEEP/no build with evidence; do not implement yet. Pin decision and reviewed source revision.
 
-## Phase R5 — Modularization design and parity-test plan
+## Phase R5 — Research the modularization design and parity-test method (paper only)
 
 ### GOAL
 Turn selected grouping into a **behavior-preserving extraction specification**, with no semantic reallocation yet.
@@ -161,7 +162,7 @@ Turn selected grouping into a **behavior-preserving extraction specification**, 
 
 **Separate later implementation checkpoint:** write only after valid implementation authorization. Physical file extraction ≠ reduced model-facing context; never claim a win until later measurement.
 
-## Phase R6 — Context organization after grouping (new multi-option study)
+## Phase R6 — Research context organization after choosing a hypothetical grouping
 
 ### GOAL
 Investigate selective loading **after** cohesive grouping is understood.
@@ -177,14 +178,31 @@ Examine other oversized source/knowledge files **only when actual same-task co-r
 
 For each candidate hotspot, record real file size, responsibility clusters, callers/consumers, observed co-read sequence, candidate grouping alternatives A/B/C/KEEP, import cycle risk and required parity tests. Options → independent review → scenario simulation → documented choice. Do not split unrelated files solely to chase smaller numbers or claim savings from tree structure alone.
 
-## Phase R8 — CT-00 evaluation, technical choice and next authorization
+## Phase R8 — Define the later CT-00 evaluation and technical-decision protocol
 
 ### GOAL
 Evaluate expected end-to-end benefit, risk and implementation cost before proposing GSA4 code.
 
-Reuse CT-00's existing executable/fixtures. Verify it is operational. Measure source-pinned baseline and comparable candidates where source-executed tests are authorized and available; theory stays separately labeled. Record chars/bytes, token estimate, call counts/rereads/navigation, instrumented latency and scenario quality. Distinguish agent orchestration cost from model-input text size. Preserve the earlier narrow selector NO_BUILD as one evaluated option.
+Specify how the later research/experimental step will reuse CT-00's existing executable/fixtures, verify it is operational and compare source-pinned baseline and candidates only in a separately initiated, authorized measurement step. **This methodology-plan edit performs no measurement and runs no test or simulation.** When measurement does occur, theory remains separately labeled. Record chars/bytes, token estimate, call counts/rereads/navigation, instrumented latency and scenario quality. Distinguish agent orchestration cost from model-input text size. Preserve the earlier narrow selector NO_BUILD as one evaluated option.
 
 **Deliverables:** design rationale with options ruled out, revised Technical Proposal, source/contract impact, Reviewer findings, measurement evidence, PROCEED/NARROW/STOP decision and the **separate** later implementation/benchmark plan if applicable. No automatic GSA4 code, merge or deploy.
+
+## Method-plan review — 2026-11-04 (paper review only)
+
+**Scope of review:** review the **method and sequencing** against the existing approved Criteria and current Human clarification. **Not** a technical simulation, context measurement, independent role-isolated Reviewer verification, implementation PASS or selection of a grouping. Review is performed in the current planning discussion, so no separate-Agent independence is claimed.
+
+| Check | Finding | Disposition |
+| --- | --- | --- |
+| GSA4 product objective preserved | Research document must not substitute for the parent upgrade. | **REPAIRED:** explicit unchanged GSA4 context/speed/quality objective at top. |
+| Research precedes code | Proposed R0–R8 work is methodology; physical extraction and runtime changes must not be implied by writing a Plan. | **REPAIRED:** R5/R6/R8 titles/wording distinguish paper research from later execution. |
+| More than one grouping candidate | A/B/C/D/KEEP are hypotheses; no fixed six-file split. | **METHOD OK:** maintain equal fixture inputs, cost and safety comparisons before choosing. |
+| Skill simulation | Original Bootstrap `simulate` source is documented; source availability is not active skill installation or successful execution. | **METHOD OK, CAPABILITY UNVERIFIED:** use source-blind Designer → freeze → Tracer; report theoretical fallback accurately. |
+| Shared Harness vs actual role need | Map eight roles and mandatory delivery before classifying any instruction unnecessary. | **METHOD OK:** no early removal or assuming tool enforcement. |
+| Other large files | Size/imports alone must not be counted as model co-read evidence. | **METHOD OK:** seek real workload navigation observations before selecting extra files. |
+| Existing CT-00 | Original meter already exists; no redevelopment and no claims of ChatGPT host token use. | **METHOD OK:** plan a later protocol; do not run it in this edit. |
+| Phase exit / safety | Review each option, record why selected/rejected, and carry unresolved uncertainties. | **METHOD OK:** no new Human/Bootstrap/implementation gate invented. |
+
+**Paper review verdict:** **METHOD CONSISTENT WITH HUMAN-CLARIFIED GSA4 SCOPE; detailed execution evidence NOT YET COLLECTED.** This verdict does not claim independent review by another Agent or PASS on implementation/measurement. **Next actual phase when requested:** research execution R0/R1, then option comparison and simulated activation; not code.
 
 ## 3. Gate / reporting format
 
