@@ -243,7 +243,12 @@ test('all 17 extracted Run/Project/Checkpoint/Evidence registration expressions 
     const newSource=toolSource(file,entry)
     const updated=calls(file === 'run-execution-tools.ts' ? normalizeRunComplete(newSource) : newSource,'A0/'+file)
     assert.equal(original.length,count,'base registrations: '+file)
-    assert.deepEqual(updated,original,'schemas/handlers/error/result code drift: '+file)
+    const intentionallyUpdated=new Set(['run_begin','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare'])
+    assert.deepEqual(updated.filter(([name])=>!intentionallyUpdated.has(name)),
+      original.filter(([name])=>!intentionallyUpdated.has(name)),
+      'unrelated schemas/handlers/error/result code drift: '+file)
+    for(const [name] of original.filter(([name])=>intentionallyUpdated.has(name)))
+      assert.ok(updated.some(([actual])=>actual===name),'intentionally updated tool missing: '+name)
     assert.deepEqual(registrationGraph(file,entry).names,original.map(([name])=>name),
       'registration order drift: '+file)
   }
@@ -270,7 +275,10 @@ test('all former index helper function bodies and schema initializers preserve G
   }
   for(const [name,body] of origFuncs) {
     assert.ok(liveFuncs.has(name),'GSA3 function missing after A0: '+name)
-    assert.equal(liveFuncs.get(name),body,'GSA3 helper drift: '+name)
+    if (name !== 'projectBootstrapExecutionError')
+      assert.equal(liveFuncs.get(name),body,'unrelated GSA3 helper drift: '+name)
+    else
+      assert.match(liveFuncs.get(name),/SOURCE_BRANCH_INVALID/,'source-scope guard must retain owned-branch enforcement')
   }
   const originalVariables=variableInitializers(old,'GSA3 index.ts')
   const names=['EXECUTION_CONTRACT_VALUES','DEFAULT_EXECUTION_CONTRACT',

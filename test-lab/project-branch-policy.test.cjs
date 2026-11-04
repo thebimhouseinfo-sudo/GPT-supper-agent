@@ -360,77 +360,34 @@ test('M4 C31: role prompts invoke Advisor only for Criteria intent, then ask Hum
   assert.equal((roles.match(/advisor: \{/g) || []).length, 1)
 })
 
-test('C30 M3: official Plan cannot precede Human-approved, current canonical Criteria', () => {
-  const sha = 'a'.repeat(40)
-  const criteria = { criteria_path:'projects/' + id + '/CRITERIA.md',
-    criteria_blob_sha:sha, approval_status:'APPROVED' }
-  const task='01a154b5-1a8c-7c31-ad7e-927e27c658ce'
-  const plan = { plan_kind:'PROJECT_PLAN', criteria_binding:criteria, planning_revision:3,
-    planning_review:{status:'PASS',reviewed_revision:3},
-    tasks:[{task_id:task, completion_criteria:['observable output']}],
-    milestones:[{milestone_id:'m1',node_ids:[task]}] }
-  const cap=[{task_id:task,readiness:'GENERIC_READY'}]
-  const input={criteria,criteria_human_approved:true,criteria_current_blob_sha:sha,plan,capabilities:cap}
-  const status=x=>h.projectBootstrapReadinessDecision(id,x).status
-  assert.equal(status({}), 'CRITERIA_BINDING_MISSING_OR_INVALID')
-  assert.equal(status({...input,criteria_human_approved:false}), 'CRITERIA_HUMAN_APPROVAL_UNVERIFIED')
-  assert.equal(status({...input,criteria:{...criteria,criteria_path:'projects/' + id + '/NOT-CRITERIA.md'}}),'CRITERIA_BINDING_MISSING_OR_INVALID')
-  assert.equal(status({...input,criteria_current_blob_sha:'b'.repeat(40)}),'CRITERIA_STALE_OR_UNVERIFIED')
-  assert.equal(status({...input,plan:undefined}),'IMPLEMENTATION_PLAN_MISSING')
-  assert.equal(status({...input,plan:{...plan,criteria_binding:{...criteria,criteria_blob_sha:'b'.repeat(40)}}}),'PLAN_CRITERIA_MISMATCH')
-  assert.equal(status({...input,plan:{...plan,planning_review:{status:'PENDING',reviewed_revision:3}}}),'PLAN_REVIEW_PENDING')
-  assert.equal(status({...input,plan:{...plan,planning_review:{status:'PASS',reviewed_revision:2}}}),'PLAN_REVIEW_PENDING')
-  assert.equal(status({...input,plan:{...plan,tasks:[{task_id:task,completion_criteria:[]}]}}),'PLAN_TASK_ACCEPTANCE_MISSING')
-  assert.equal(status({...input,capabilities:[]}), 'CAPABILITY_NOT_READY')
-  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'CONFIGURED_UNVERIFIED'}]}),'CAPABILITY_NOT_READY')
-  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'DOMAIN_READY_VERIFIED',evidence_verified:false}]}),'CAPABILITY_NOT_READY')
-  assert.equal(status({...input,capabilities:[{task_id:task,readiness:'DOMAIN_READY_VERIFIED',evidence_verified:true}]}),'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
-  assert.equal(status({...input,plan:{...plan,milestones:[]}}),'MILESTONES_NOT_READY')
-  assert.equal(status({...input,plan:{...plan,milestones:[{milestone_id:'m1',node_ids:['unknown-task']}]}}),'MILESTONES_NOT_READY')
-  const pending=h.projectBootstrapReadinessDecision(id,input)
-  assert.equal(pending.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
-  assert.equal(pending.bootstrapped,false,'caller-supplied artifacts are not independently verified')
-  assert.equal(pending.source_write_authorized,false)
-  const claimed=h.projectBootstrapReadinessDecision(id,{...input,human_execution_approved:true})
-  assert.equal(claimed.status,'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
-  assert.equal(claimed.source_write_authorized,false,'self-claimed Human approval is not a code gate')
+test('C30: Bootstrap readiness only depends on five inspected preparation checks',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ const check=a=>h.projectBootstrapReadinessDecision(id,{assessment:a}).status
+ assert.equal(check(assessment),'BOOTSTRAP_READY')
+ assert.equal(check({}), 'CRITERIA_NOT_READY')
+ for(const [key,blocked] of [['criteria','CRITERIA_NOT_READY'],['plan','PLAN_NOT_READY'],
+  ['milestones','MILESTONES_NOT_READY'],['technical_proposal','TECHNICAL_PROPOSAL_NOT_READY'],
+  ['coder','CAPABILITY_NOT_READY'],['tester','CAPABILITY_NOT_READY']])
+  assert.equal(check({...assessment,[key]:'PENDING'}),blocked)
+ const ready=h.projectBootstrapReadinessDecision(id,{assessment})
+ assert.equal(ready.source_write_authorized,false)
+ assert.equal(ready.bootstrapped,false)
 })
 
-test('M3: invalid, duplicate and cyclic reviewed Task dependencies cannot certify Bootstrap', () => {
-  const sha = 'a'.repeat(40)
-  const criteria = { criteria_path: 'projects/' + id + '/CRITERIA.md',
-    criteria_blob_sha: sha, approval_status: 'APPROVED' }
-  const a = '01a154b5-1a8c-7c31-ad7e-927e27c658ce'
-  const b = '01a154b5-1a8c-7c31-ad7e-927e27c658cf'
-  const tasks = [
-    { task_id: a, dependencies: [], completion_criteria: ['produce artifact'] },
-    { task_id: b, dependencies: [a], completion_criteria: ['verify artifact'] },
-  ]
-  const plan = { plan_kind: 'PROJECT_PLAN', criteria_binding: criteria,
-    planning_revision: 3, planning_review: { status: 'PASS', reviewed_revision: 3 },
-    tasks, milestones: [{ milestone_id: 'm1', name: 'Outcome', node_ids: [a, b] }] }
-  const input = { criteria, criteria_human_approved: true, criteria_current_blob_sha: sha, plan,
-    capabilities: [a, b].map(task_id => ({ task_id, readiness: 'GENERIC_READY' })) }
-  const status = patch => h.projectBootstrapReadinessDecision(id, { ...input, plan: { ...plan, ...patch } }).status
-  assert.equal(status({}), 'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: ['unknown'] }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [b] }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: [a, a] }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], dependencies: 'bad' }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [{ ...tasks[0], dependencies: [b] }, tasks[1]] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], task_id: a }] }), 'PLAN_DEPENDENCIES_INVALID')
-  assert.equal(status({ tasks: [tasks[0], { ...tasks[1], completion_criteria: ['  '] }] }), 'PLAN_TASK_ACCEPTANCE_MISSING')
-  assert.equal(status({ milestones: [{ milestone_id: 'm1', node_ids: [a, a] }] }), 'MILESTONES_NOT_READY')
-  assert.equal(status({ milestones: [{ milestone_id: 'm1', node_ids: [a, b] }, { milestone_id: 'm1', node_ids: [a] }] }), 'MILESTONES_NOT_READY')
-  assert.equal(h.projectBootstrapReadinessDecision(id, { ...input, human_execution_approved: true }).source_write_authorized, false)
+test('M3: brownfield legacy Task graph is inspected in Plan review, not hard-coded as Bootstrap gate',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ const oddPlan={plan_kind:'LEGACY',planning_revision:0,planning_review:{status:'PENDING'},
+  tasks:[{task_id:'old',dependencies:['missing','old'],completion_criteria:[]}],milestones:[]}
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment,plan:oddPlan}).status,'BOOTSTRAP_READY')
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,plan:'PENDING'},plan:oddPlan}).status,'PLAN_NOT_READY')
 })
 
-test('M3: read-only Bootstrap preflight never authorizes code or duplicates Job lifecycle', () => {
-  const tool=setupSource.slice(setupSource.indexOf("'project_bootstrap_readiness_prepare',"),setupSource.indexOf("'project_branch_policy_prepare',"))
-  assert.match(tool,/source_write_authorized: z.literal\(false\)/)
-  assert.match(tool,/readOnlyHint: true/)
-  assert.match(tool,/separately verify Human execution approval/)
-  assert.match(tool,/After the four checks reach READY/)
+test('M3: read-only Bootstrap preflight remains preparation only with five checklist items',()=>{
+ const tool=setupSource.slice(setupSource.indexOf("'project_bootstrap_readiness_prepare',"),setupSource.indexOf("'project_branch_policy_prepare',"))
+ assert.match(tool,/source_write_authorized: z.literal\(false\)/)
+ assert.match(tool,/readOnlyHint: true/)
+ assert.match(tool,/Technical Proposal/)
+ assert.match(tool,/After the five checks reach READY/)
 })
 
 test('M3: new Project Plan must bind exact Human-approved Criteria file and SHA', () => {
@@ -560,65 +517,31 @@ test('M6: Advisor and Planner prompts share minimal Human acknowledgement contra
   assert.ok(!check.includes('delivered_advice: z.object'))
 })
 
-test('M5: Coder and source-write boundaries must consume Project Bootstrap evidence', () => {
-  const manifest = fixture(
-    'development_branch: upgrade/gsa-refactor\nrelease_branch: main\nintegration_target: upgrade/gsa-refactor',
-    '- PRIMARY | OWNED | ' + repo,
-    '\n## Branch Policy (Human-approved)\n- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'
-  )
-  const sha = 'a'.repeat(40)
-  const criteria = { criteria_path: 'projects/' + id + '/CRITERIA.md',
-    criteria_blob_sha: sha, approval_status: 'APPROVED' }
-  const task = '01a154b5-1a8c-7c31-ad7e-927e27c658ce'
-  const plan = { plan_kind: 'PROJECT_PLAN', criteria_binding: criteria,
-    planning_revision: 1, planning_review: { status: 'PASS', reviewed_revision: 1 },
-    tasks: [{ task_id: task, dependencies: [], completion_criteria: ['observable acceptance'] }],
-    milestones: [{ milestone_id: 'm1', node_ids: [task] }] }
-  const proof = {
-    path: 'projects/' + id + '/VERIFICATION/bootstrap-proof.json',
-    name: 'bootstrap-proof.json', sha: 'b'.repeat(40),
-    criteria_sha: sha, reviewed_plan_sha: 'c'.repeat(40),
-    human_approval_ref: 'human-reviewed-plan-message'
-  }
-  const evidence = {
-    criteria, criteria_human_approved: true, criteria_current_blob_sha: sha, plan,
-    capabilities: [{ task_id: task, readiness: 'GENERIC_READY' }],
-    human_execution_approved: true, readback_proof: proof
-  }
-  const guard = (e, branch = 'upgrade/gsa-refactor', targetRepo = repo, currentManifest = manifest) =>
-    h.projectBootstrapExecutionError(id, currentManifest, e, targetRepo, branch)
-  assert.equal(guard(evidence), null, 'Prepared only: actual GitHub readback is a separate mandatory step')
-  assert.match(guard(undefined), /BOOTSTRAP_REQUIRED/)
-  assert.match(guard({}), /BOOTSTRAP_PROJECT_INVALID|BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard(evidence, 'main'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
-  assert.match(guard(evidence, 'upgrade/gsa-refactor', 'https://github.com/other/wrong'), /BOOTSTRAP_SOURCE_BRANCH_INVALID/)
-  assert.match(guard(evidence, 'upgrade/gsa-refactor', repo, ''), /BOOTSTRAP_PROJECT_INVALID/)
-  assert.match(guard({ ...evidence, human_execution_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard({ ...evidence, criteria_human_approved: false }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard({ ...evidence, plan: { ...plan, planning_review: { status: 'CHANGES_REQUIRED', reviewed_revision: 1 } } }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard({ ...evidence, capabilities: [] }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard({ ...evidence, plan: { ...plan, milestones: [] } }), /BOOTSTRAP_PREREQUISITE_BLOCKED/)
-  assert.match(guard({ ...evidence, readback_proof: null }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
-  assert.match(guard({ ...evidence, readback_proof: { ...proof, criteria_sha: 'd'.repeat(40) } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
-  assert.match(guard({ ...evidence, readback_proof: { ...proof, sha: 'bad' } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
-  assert.match(guard({ ...evidence, readback_proof: { ...proof, human_approval_ref: '' } }), /BOOTSTRAP_READBACK_PROOF_REQUIRED/)
+test('M5: Project source scope validates active owned repository and development branch, not Bootstrap evidence',()=>{
+ const manifest=fixture('development_branch: upgrade/gsa-refactor\nrelease_branch: main\nintegration_target: upgrade/gsa-refactor',
+  '- PRIMARY | OWNED | '+repo,
+  '\n## Branch Policy (Human-approved)\n- PRIMARY | '+repo+' | development=upgrade/gsa-refactor | release=main')
+ const guard=(e,b='upgrade/gsa-refactor',r=repo,m=manifest)=>h.projectBootstrapExecutionError(id,m,e,r,b)
+ assert.equal(guard(undefined),null)
+ assert.equal(guard({assessment:{criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'},human_execution_approved:false}),null)
+ assert.match(guard({},'main'),/SOURCE_BRANCH_INVALID/)
+ assert.match(guard({},'upgrade/gsa-refactor','https://github.com/other/wrong'),/SOURCE_BRANCH_INVALID/)
+ assert.match(guard({},'upgrade/gsa-refactor',repo,''),/SOURCE_PROJECT_INVALID/)
 })
 
-test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelated roles remain intact', () => {
-  const authSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-auth-tools.ts'), 'utf8')
-  const scope = authSource.slice(authSource.indexOf("'authorize_project_scope',"), authSource.indexOf("'authorize_memory_mutation',"))
-  assert.match(scope, /operation === 'MUTATE_SOURCE'/)
-  assert.match(scope, /projectBootstrapExecutionError/)
-  assert.match(scope, /allowed: false, mutation_allowed: false/)
-  const runSource = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
-  const begin = runSource.slice(runSource.indexOf("'run_begin',"), runSource.indexOf("'relationship_knowledge_prepare',"))
-  assert.match(begin, /role === 'coder'/)
-  assert.match(begin, /projectBootstrapExecutionError/)
-  assert.match(begin, /if \(blocked\) return \{ content:/)
-  assert.match(begin, /independently read existing Criteria/)
-  assert.match(begin, /same evidence and target branch immediately before source write/)
-  assert.ok(!begin.includes("role === 'tester' && projectBootstrapExecutionError"))
-  assert.ok(!begin.includes("role === 'planner' && projectBootstrapExecutionError"))
+test('M5: execution keeps Job review and source-scope checks separate from Bootstrap',()=>{
+ const authSource=fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/project-auth-tools.ts'),'utf8')
+ const scope=authSource.slice(authSource.indexOf("'authorize_project_scope',"),authSource.indexOf("'authorize_memory_mutation',"))
+ assert.match(scope,/operation === 'MUTATE_SOURCE'/)
+ assert.match(scope,/projectBootstrapExecutionError/)
+ assert.match(scope,/allowed: false, mutation_allowed: false/)
+ const runSource=toolSource('run-execution-tools.ts','registerRunExecutionTools')
+ const begin=runSource.slice(runSource.indexOf("'run_begin',"),runSource.indexOf("'relationship_knowledge_prepare',"))
+ assert.match(begin,/role === 'coder'/)
+ assert.match(begin,/NEXT_PLAN_REVIEW_PENDING/)
+ assert.match(begin,/projectBootstrapExecutionError/)
+ assert.match(begin,/Job Plan, planning-review evidence/)
+ assert.match(begin,/authorize_project_scope\(MUTATE_SOURCE\)/)
 })
 
 test('M6: isolated staging slugs never inherit production execution or Memory namespace', () => {
@@ -672,37 +595,27 @@ test('M4: Critic harness and selftest recognize milestone Human preauthorization
   assert.ok(harnessSource.includes('Orchestrator may continue an approved AUTO milestone'))
 })
 
-test('Brownfield four-check Bootstrap adopts approved existing source docs without registration gates', () => {
-  const assessment = {criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
-  const ready = h.projectBootstrapReadinessDecision(id,{assessment})
-  assert.equal(ready.status,'BOOTSTRAP_READY')
-  assert.equal(ready.bootstrapped,false,'PREPARE is not independent verification')
-  assert.equal(ready.source_write_authorized,false)
-  for(const [key,value,status] of [
-    ['criteria','DRAFT','CRITERIA_NOT_READY'],
-    ['plan','PENDING','PLAN_NOT_READY'],
-    ['milestones','MISSING','MILESTONES_NOT_READY'],
-    ['coder','UNVERIFIED','CAPABILITY_NOT_READY'],
-    ['tester','UNVERIFIED','CAPABILITY_NOT_READY'],
-  ]) assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,[key]:value}}).status,status)
-  const sourceReview = h.resolveProjectCriteriaIntake('EXISTING','ABSENT','docs/CRITERIA.md approved')
-  assert.equal(sourceReview.disposition,'READ_EXISTING_NO_WRITE','no duplicate Project Memory Criteria')
-  const missing = h.resolveProjectCriteriaIntake('EXISTING','ABSENT','')
-  assert.equal(missing.disposition,'INSPECT_FIRST_NO_WRITE')
+test('Brownfield five-check Bootstrap accepts valid existing docs without metadata gates',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ const ready=h.projectBootstrapReadinessDecision(id,{assessment})
+ assert.equal(ready.status,'BOOTSTRAP_READY')
+ assert.equal(ready.source_write_authorized,false)
+ assert.equal(ready.bootstrapped,false)
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,technical_proposal:'MISSING'}}).status,'TECHNICAL_PROPOSAL_NOT_READY')
+ const sourceReview=h.resolveProjectCriteriaIntake('EXISTING','ABSENT','docs/CRITERIA.md approved')
+ assert.equal(sourceReview.disposition,'READ_EXISTING_NO_WRITE')
 })
 
-test('M5 four-check ready is separate from Human execution and branch scope', () => {
-  const assessment = {criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
-  const evidence={assessment,human_execution_approved:true}
-  const manifest = fixture(['development_branch: upgrade/gsa-refactor','release_branch: main','integration_target: upgrade/gsa-refactor'].join(String.fromCharCode(10)), '- PRIMARY | OWNED | ' + repo, ['', '## Branch Policy (Human-approved)', '- PRIMARY | ' + repo + ' | development=upgrade/gsa-refactor | release=main'].join(String.fromCharCode(10)))
-  const g=(x,branch='upgrade/gsa-refactor')=>h.projectBootstrapExecutionError(id,manifest,x,repo,branch)
-  assert.equal(g(evidence),null,'shape/scope only, external readback remains mandatory')
-  assert.match(g({...evidence,human_execution_approved:false}),/SOURCE_EXECUTION_HUMAN_APPROVAL_REQUIRED/)
-  assert.match(g({...evidence,assessment:{...assessment,coder:'UNVERIFIED'}}),/CAPABILITY_NOT_READY/)
-  assert.match(g(evidence,'main'),/BOOTSTRAP_SOURCE_BRANCH_INVALID/)
-  assert.match(g(undefined),/BOOTSTRAP_REQUIRED/)
+test('M5 Bootstrap READY is independent of Human execution flags and source scope',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ const ready=h.projectBootstrapReadinessDecision(id,{assessment,human_execution_approved:false})
+ assert.equal(ready.status,'BOOTSTRAP_READY')
+ const manifest=fixture('development_branch: upgrade/gsa-refactor\nrelease_branch: main\nintegration_target: upgrade/gsa-refactor',
+ '- PRIMARY | OWNED | '+repo,'\n## Branch Policy (Human-approved)\n- PRIMARY | '+repo+' | development=upgrade/gsa-refactor | release=main')
+ const g=(e,b='upgrade/gsa-refactor')=>h.projectBootstrapExecutionError(id,manifest,e,repo,b)
+ assert.equal(g(undefined),null)
+ assert.match(g(undefined,'main'),/SOURCE_BRANCH_INVALID/)
 })
-
 
 test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot bypass membership', () => {
   const runTools = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
@@ -736,44 +649,16 @@ test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot by
     {...r,primary_task_id:'T-1'},[{task_id:'T-1',criterion}]),null)
 })
 
-test('M5 brownfield existing reviewed source Plan and Milestones bootstrap without duplicate PROJECT_PLAN or future capabilities', () => {
-  const criteria={criteria_path:'projects/'+id+'/CRITERIA.md',criteria_blob_sha:'a'.repeat(40),approval_status:'APPROVED'}
-  // Product source Plan: reviewed, not a fabricated GSA Project Plan Job.
-  const plan={planning_revision:2,planning_review:{status:'PASS',reviewed_revision:2},
-    tasks:[
-      {task_id:'MAC-M2',lifecycle:'READY',dependencies:[],completion_criteria:['Mac implementation']},
-      {task_id:'MAC-M3',lifecycle:'READY',dependencies:['MAC-M2'],completion_criteria:['Mac integration']},
-      {task_id:'WIN-M6',lifecycle:'READY',dependencies:['MAC-M3'],completion_criteria:['Future Windows build']}
-    ],
-    milestones:[{milestone_id:'M2',node_ids:['MAC-M2','MAC-M3']},
-      {milestone_id:'M6',node_ids:['WIN-M6']}]}
-  const evidence={criteria,criteria_human_approved:true,criteria_current_blob_sha:criteria.criteria_blob_sha,
-    plan,capabilities:[{task_id:'MAC-M2',readiness:'GENERIC_READY'}],human_execution_approved:false}
-  const ready=h.projectBootstrapReadinessDecision(id,evidence)
-  assert.equal(ready.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
-  assert.equal(ready.source_write_authorized,false)
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,human_execution_approved:true}).status,
-    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[]}).status,'CAPABILITY_NOT_READY')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,capabilities:[{task_id:'WIN-M6',readiness:'GENERIC_READY'}]}).status,'CAPABILITY_NOT_READY')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_human_approved:false}).status,'CRITERIA_HUMAN_APPROVAL_UNVERIFIED')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,criteria_current_blob_sha:'b'.repeat(40)}).status,'CRITERIA_STALE_OR_UNVERIFIED')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,planning_review:{status:'PENDING',reviewed_revision:1}}}).status,'PLAN_REVIEW_PENDING')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'PROJECT_PLAN'}}).status,'PLAN_CRITERIA_MISMATCH')
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:{...plan,plan_kind:'JOB'}}).status,'PLAN_CRITERIA_MISMATCH')
-  const withBinding={...plan,plan_kind:'PROJECT_PLAN',criteria_binding:criteria}
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:withBinding}).status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
-  const futureOnly={...plan,tasks:plan.tasks.map(t=>({...t,lifecycle:t.task_id==='MAC-M2'?'COMPLETED':t.lifecycle}))}
-  assert.equal(h.projectBootstrapReadinessDecision(id,{...evidence,plan:futureOnly}).status,'CAPABILITY_NOT_READY',
-    'After MAC-M2 completion, next MAC-M3 requires newly verified capability')
+test('M5 brownfield source Plan can be irregular without formal Job graph gate',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ const oldPlan={tasks:[{task_id:'TASK-07',lifecycle:'ACTIVE',dependencies:['old-unknown']}],milestones:[{node_ids:[]}]}
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment,plan:oldPlan}).status,'BOOTSTRAP_READY')
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,plan:'PENDING'},plan:oldPlan}).status,'PLAN_NOT_READY')
 })
 
-test('M5 four-check Bootstrap accepts existing Criteria, Plan, Milestones and Proposal without a fifth gate', () => {
-  const assessment={criteria:'APPROVED',plan:'PASS',milestones:'PASS',coder:'READY',tester:'READY'}
-  const ok=h.projectBootstrapReadinessDecision(id,{assessment,proposal:'Already reviewed detailed proposal'})
-  assert.equal(ok.status,'BOOTSTRAP_READY')
-  assert.equal(ok.bootstrapped,false,'prepare-only, independently verify before code')
-  assert.equal(ok.source_write_authorized,false)
-  assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,tester:'UNVERIFIED'}}).status,
-    'CAPABILITY_NOT_READY')
+test('M5 Technical Proposal is the fourth required preparation item',()=>{
+ const assessment={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment}).status,'BOOTSTRAP_READY')
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,technical_proposal:'UNVERIFIED'}}).status,'TECHNICAL_PROPOSAL_NOT_READY')
+ assert.equal(h.projectBootstrapReadinessDecision(id,{assessment:{...assessment,tester:'UNVERIFIED'}}).status,'CAPABILITY_NOT_READY')
 })

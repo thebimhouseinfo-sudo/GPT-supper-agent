@@ -213,8 +213,8 @@ export function registerRunBegin(deps: any) {
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
           'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
           ...(role === 'coder' ? [
-            'M5: independently read existing Criteria, reviewed Plan, Milestones and Coder/Tester readiness, as well as actual Human execution approval and configured Development Branch. Legacy proof readback applies only to legacy evidence; caller-supplied claims are not sufficient.',
-            'Use authorize_project_scope(MUTATE_SOURCE) with the same evidence and target branch immediately before source write; do not bypass this via an alternate GSA-owned write route.',
+            'Independently read the current Job Plan, planning-review evidence and actual Human execution approval for this Job before code. Bootstrap checklist status is not execution authorization; caller-supplied claims are not sufficient.',
+            'Use authorize_project_scope(MUTATE_SOURCE) to check current Project-owned repository and development branch before source write; do not infer Human execution approval from scope ALLOW.',
           ] : []),
         ],
       }

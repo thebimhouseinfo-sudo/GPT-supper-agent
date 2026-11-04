@@ -14,7 +14,7 @@ const route=vm.runInNewContext(fn+'\nprojectBootstrapChecklistDecision')
 const PASS={status:'PASS',observation:'Verified existing document or role capability'}
 const IN_PROGRESS={status:'IN_PROGRESS'}
 const NEED_HUMAN={status:'NEED_HUMAN'}
-const complete={criteria:PASS,plan:PASS,milestones:PASS,capabilities:PASS}
+const complete={criteria:PASS,plan:PASS,milestones:PASS,technical_proposal:PASS,capabilities:PASS}
 const b=(checklist={},rest={})=>route({project_context:'BROWNFIELD',checklist,...rest})
 const g=(checklist={},rest={})=>route({project_context:'GREENFIELD',checklist,...rest})
 const keep={existing_approved:true,human_update_choice:'KEEP'}
@@ -25,14 +25,14 @@ test('greenfield starts Criteria investigation with no invented PASS or Job gate
  assert.equal(d.human_question,null)
  assert.equal(d.continue_same_turn,true)
  assert.equal(d.completed,0)
- assert.equal(d.total,4)
+ assert.equal(d.total,5)
  assert.equal(d.source_write_authorized,false)
 })
-test('brownfield approved Criteria asks owner once before changing anything',()=>{
+test('brownfield approved Criteria continues automatically',()=>{
  const d=b({criteria:PASS},{criteria_intake:{existing_approved:true}})
- assert.equal(d.next_action,'ASK_HUMAN')
- assert.match(d.human_question,/cập nhật/)
- assert.equal(d.continue_same_turn,false)
+ assert.equal(d.next_action,'PLAN_CRL')
+ assert.equal(d.human_question,null)
+ assert.equal(d.continue_same_turn,true)
  const next=b({criteria:PASS},{criteria_intake:keep})
  assert.equal(next.next_action,'PLAN_CRL')
  assert.equal(next.human_question,null)
@@ -46,7 +46,7 @@ test('retained legacy Criteria is not reformatted or blocked',()=>{
 test('Human update request produces draft then Advisor only before Criteria write',()=>{
  const x=b({criteria:PASS},{criteria_intake:{existing_approved:true,human_update_choice:'UPDATE'}})
  assert.equal(x.next_action,'PREPARE_CRITERIA_REVISION')
- assert.match(x.instruction,/Technical Advisor/)
+ assert.match(x.instruction,/Criteria/)
  assert.equal(x.next_owner,'planner')
  assert.equal(x.human_question,null)
 })
@@ -67,7 +67,7 @@ test('Milestones auto CRL without restarting Plan',()=>{
  assert.equal(x.completed,2)
 })
 test('Coder Tester capability preparation is automatic, not extra metadata gate',()=>{
- const x=b({criteria:PASS,plan:PASS,milestones:PASS},{criteria_intake:keep})
+ const x=b({criteria:PASS,plan:PASS,milestones:PASS,technical_proposal:PASS},{criteria_intake:keep})
  assert.equal(x.next_action,'PREPARE_CODER_TESTER')
  assert.match(x.instruction,/skills/)
  assert.equal(x.human_question,null)
@@ -88,7 +88,7 @@ test('irreconcilable, investigated Plan conflict reports alternatives and asks H
  assert.equal(x.status,'NEED_HUMAN')
 })
 test('a reported NEED_HUMAN in coding capability is not accepted without evidence',()=>{
- const x=b({criteria:PASS,plan:PASS,milestones:PASS,capabilities:NEED_HUMAN},{criteria_intake:keep})
+ const x=b({criteria:PASS,plan:PASS,milestones:PASS,technical_proposal:PASS,capabilities:NEED_HUMAN},{criteria_intake:keep})
  assert.equal(x.next_action,'VERIFY_BLOCKER')
  assert.equal(x.human_question,null)
 })
@@ -96,7 +96,7 @@ test('complete checklist prepares READY, but never source authorization',()=>{
  const x=b(complete,{criteria_intake:keep})
  assert.equal(x.next_action,'BOOTSTRAP_READY')
  assert.equal(x.status,'BOOTSTRAP_READY')
- assert.equal(x.completed,4)
+ assert.equal(x.completed,5)
  assert.equal(x.continue_same_turn,false)
  assert.equal(x.source_write_authorized,false)
  assert.equal(x.requires_external_readback,true)
@@ -114,18 +114,18 @@ test('bare PASS statuses never establish READY without real observations',()=>{
  assert.equal(x.next_item,'criteria')
  assert.equal(x.status,'IN_PROGRESS')
 })
-test('all four bare PASS statuses get verification work rather than fabricated READY',()=>{
+test('all five bare PASS statuses get verification work rather than fabricated READY',()=>{
  const x=g({criteria:{status:'PASS'},plan:{status:'PASS'},milestones:{status:'PASS'},capabilities:{status:'PASS'}})
  assert.equal(x.next_action,'VERIFY_EVIDENCE')
 })
-test('missing brownfield Criteria intake cannot silently imply Human KEEP',()=>{
+test('missing brownfield Criteria intake does not create a bootstrap gate',()=>{
  const x=b(complete)
- assert.equal(x.next_action,'INSPECT_CRITERIA_INTAKE')
+ assert.equal(x.next_action,'BOOTSTRAP_READY')
  assert.equal(x.human_question,null)
 })
-test('brownfield contradictory approval cannot certify Criteria PASS',()=>{
+test('bootstrap does not require legacy criteria approval flag',()=>{
  const x=b(complete,{criteria_intake:{existing_approved:false}})
- assert.equal(x.next_action,'RECHECK_CRITERIA')
+ assert.equal(x.next_action,'BOOTSTRAP_READY')
 })
 test('same action and snapshot pauses rather than loops',()=>{
  const x=b({criteria:PASS,plan:IN_PROGRESS},{criteria_intake:keep})
@@ -138,7 +138,7 @@ test('same action and snapshot pauses rather than loops',()=>{
 })
 test('capability NEED_HUMAN without concrete conflict pauses on unchanged retry',()=>{
  const input={criteria_intake:keep}
- const c={criteria:PASS,plan:PASS,milestones:PASS,capabilities:NEED_HUMAN}
+ const c={criteria:PASS,plan:PASS,milestones:PASS,technical_proposal:PASS,capabilities:NEED_HUMAN}
  const d=b(c,input)
  assert.equal(d.next_action,'VERIFY_BLOCKER')
  const second=b(c,{...input,previous_attempt:{action:d.next_action,signature:d.progress_signature}})
@@ -162,10 +162,16 @@ test('CRL action identifies independent reviewer path without requiring a duplic
  assert.match(x.instruction,/DIRECT_AGENT/)
  assert.match(x.instruction,/human_invoked/)
 })
+test('technical proposal is a separate preparation item',()=>{
+ const x=b({criteria:PASS,plan:PASS,milestones:PASS})
+ assert.equal(x.next_action,'TECHNICAL_PROPOSAL_REVIEW')
+ assert.equal(x.completed,3)
+})
 test('runtime exposes coordinator tool and self-driving bootstrap harness',()=>{
- assert.match(source,/'project_bootstrap_checklist_prepare'/)
- assert.match(source,/follow next_action immediately in the SAME TURN/)
- assert.match(source,/TASK operation, never an additional Bootstrap gate/)
+ const registry=fs.readFileSync('supabase/functions/gsa-mcp/project-setup/bootstrap-checklist.ts','utf8')
+ assert.match(registry,/'project_bootstrap_checklist_prepare'/)
+ assert.match(registry,/five-item autonomous Bootstrap checklist/)
+ assert.match(source,/TECHNICAL_PROPOSAL_REVIEW/)
  const guide=fs.readFileSync('skills/gsa-job-runtime/SKILL.md','utf8')
  assert.match(guide,/Autonomous Bootstrap checklist/)
  assert.match(guide,/run[s]? \*\*CRL\*\*/)

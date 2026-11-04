@@ -1,5 +1,5 @@
 'use strict'
-// Golden handler-body fingerprint is pinned to GSA3 run-execution-tools.ts blob 29434ca7fe558b5e669eab99daf2091d4936bd7d.
+// Golden handler-body fingerprint is pinned to GSA3; run_begin has a scoped Bootstrap-v5 instruction-only delta.
 // This scoped migration guard intentionally does NOT modify gsa1-module-boundary.test.cjs.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
@@ -12,7 +12,7 @@ const {normalizeRunComplete} = require('./helpers/three-pr-approved-deltas.cjs')
 const root = path.resolve(__dirname, '../supabase/functions/gsa-mcp')
 const names = ['run_begin','relationship_knowledge_prepare','goal_recheck_record','run_verification_record','run_complete']
 const golden = {
-  "run_begin": { file: "run/run-begin.ts", length: 13028, fnv1a32: 'dd3128ce' },
+  "run_begin": { file: "run/run-begin.ts", length: 12995, fnv1a32: 'a2549c94' },
   "relationship_knowledge_prepare": { file: "run/relationship-knowledge.ts", length: 3365, fnv1a32: '22f8eae2' },
   "goal_recheck_record": { file: "run/goal-recheck.ts", length: 7918, fnv1a32: 'ee6b1117' },
   "run_verification_record": { file: "run/verification.ts", length: 7363, fnv1a32: '07aab975' },

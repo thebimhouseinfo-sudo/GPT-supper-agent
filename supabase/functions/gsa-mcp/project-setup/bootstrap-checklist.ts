@@ -4,14 +4,15 @@ export function registerProjectBootstrapChecklistPrepare(deps: any) {
   server.registerTool(
     'project_bootstrap_checklist_prepare',
     {
-      title: 'Continue the four-item autonomous Bootstrap checklist',
-      description: 'PREPARE ONLY: select the NEXT Bootstrap action, not another gate. Inspect original Criteria/Plan/Milestones/capabilities, skip completed work, run Plan/Milestone CRL autonomously and ask Human only for Criteria decisions or irreconcilable sources. No Job/metadata registration or write authorization. Pass previous_attempt to detect non-progress; bare PASS without observations triggers ordinary verification Task.',
+      title: 'Continue the five-item autonomous Bootstrap checklist',
+      description: 'PREPARE ONLY: select the NEXT Bootstrap action, not another gate. Inspect original Criteria/Plan/Milestones/Technical Proposal/capabilities, skip completed work, run Plan/Milestone CRL autonomously and ask Human only for genuine unresolved product decisions or irreconcilable sources. No Job/metadata registration or write authorization. Pass previous_attempt to detect non-progress; bare PASS without observations triggers ordinary verification Task.',
       inputSchema: {
         project_context: z.enum(['GREENFIELD','BROWNFIELD']),
         checklist: z.object({
           criteria: z.object({ status: z.enum(['PENDING','IN_PROGRESS','PASS','NEED_HUMAN']), observation: z.string().optional() }).optional(),
           plan: z.object({ status: z.enum(['PENDING','IN_PROGRESS','PASS','NEED_HUMAN']), observation: z.string().optional() }).optional(),
           milestones: z.object({ status: z.enum(['PENDING','IN_PROGRESS','PASS','NEED_HUMAN']), observation: z.string().optional() }).optional(),
+          technical_proposal: z.object({ status: z.enum(['PENDING','IN_PROGRESS','PASS','NEED_HUMAN']), observation: z.string().optional() }).optional(),
           capabilities: z.object({ status: z.enum(['PENDING','IN_PROGRESS','PASS','NEED_HUMAN']), observation: z.string().optional() }).optional(),
         }).default({}),
         criteria_intake: z.object({
@@ -21,7 +22,7 @@ export function registerProjectBootstrapChecklistPrepare(deps: any) {
         }).optional(),
         previous_attempt: z.object({ action: z.string(), signature: z.string() }).optional(),
         conflicts: z.array(z.object({
-          item: z.enum(['criteria','plan','milestones','capabilities']),
+          item: z.enum(['criteria','plan','milestones','technical_proposal','capabilities']),
           candidates: z.array(z.string()).min(2),
           unresolved: z.boolean(),
           investigated: z.boolean(),

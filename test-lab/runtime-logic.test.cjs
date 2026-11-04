@@ -225,48 +225,32 @@ const bootstrapExecution = load('projectBootstrapExecutionError', {
 function admission(data) {
   return bootstrapExecution(cadProjectId,'verified manifest fixture',data,cadRepo,cadBranch);
 }
-test('P0 approved CadGPT Criteria + current replacement Project Plan + T1 capability are ready',()=>{
-  assert.equal(bootstrapReadiness(cadProjectId,cadEvidence).status,
-    'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED');
-  assert.equal(admission(cadEvidence),null);
+const preparedCad={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
+test('Bootstrap v5: CadGPT plan and capability preparation are READY without source authorization',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,{assessment:preparedCad}).status,'BOOTSTRAP_READY')
+  assert.equal(bootstrapReadiness(cadProjectId,{assessment:preparedCad}).source_write_authorized,false)
   const cadT1={execution_contract:'NEXT',planning_revision:1,
-    tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]};
-  assert.equal(dispatch(cadT1,'coder',['T1'],1,sha,sha,[]),null);
-});
-test('P0 canonical Criteria binding, Human confirmation and SHA are separate fail-closed gates',()=>{
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria:undefined}).status,
-    'CRITERIA_BINDING_MISSING_OR_INVALID');
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_human_approved:false}).status,
-    'CRITERIA_HUMAN_APPROVAL_UNVERIFIED');
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
-    'CRITERIA_STALE_OR_UNVERIFIED');
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,plan:{...cadPlan,plan_kind:'JOB'}}).status,
-    'PLAN_CRITERIA_MISMATCH');
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,capabilities:[]}).status,
-    'CAPABILITY_NOT_READY');
-  assert.equal(bootstrapReadiness(cadProjectId,{...cadEvidence,human_execution_approved:false}).status,
-    'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING');
-  assert.match(admission({...cadEvidence,readback_proof:null}),/BOOTSTRAP_READBACK_PROOF_REQUIRED/);
-});
-test('P0 historical M1 capability-only snapshot is NOT accepted as source approval',()=>{
-  const old={type:'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE',
-    status:'M1_CONFIGURED_AND_READBACK_VERIFIED; SOURCE_EXECUTION_NOT_AUTHORIZED',
-    plan:{job_id:'01a15dd5-2189-703a-ab28-a58c4f4b07c5'}};
-  assert.match(admission(old),/BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED/);
-  assert.match(admission(null),/BOOTSTRAP_REQUIRED/);
-});
-test('P0 bootstrap negative control detects removing canonical current SHA check',()=>{
-  const bootstrapAst=ts.createSourceFile('bootstrap.ts',fs.readFileSync('supabase/functions/gsa-mcp/bootstrap.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
-  const node=bootstrapAst.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='projectBootstrapReadinessDecision');
-  assert.ok(node);
-  const good=node.getText(bootstrapAst).replace(/^export\s+/, '');
-  const mutant=good.replace('input?.criteria_current_blob_sha !== c.criteria_blob_sha','false');
-  assert.notEqual(good,mutant);
-  const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-  const broken=vm.runInNewContext(js+'\nprojectBootstrapReadinessDecision',{projectCriteriaBindingError:criteriaBinding,JSON,Array,Set,Map,Number,String});
-  assert.throws(() => assert.equal(broken(cadProjectId,{...cadEvidence,criteria_current_blob_sha:sha}).status,
-    'CRITERIA_STALE_OR_UNVERIFIED'),assert.AssertionError);
-});
+    tasks:[{task_id:'T1',dependencies:[]}],topology:[{task_id:'T1',handler:'coder'}]}
+  assert.equal(dispatch(cadT1,'coder',['T1'],1,sha,sha,[]),null)
+})
+test('Bootstrap v5: required five checklist items fail at missing element',()=>{
+  for(const [key,fail] of [['criteria','CRITERIA_NOT_READY'],['plan','PLAN_NOT_READY'],
+    ['milestones','MILESTONES_NOT_READY'],['technical_proposal','TECHNICAL_PROPOSAL_NOT_READY'],
+    ['coder','CAPABILITY_NOT_READY'],['tester','CAPABILITY_NOT_READY']]) {
+    assert.equal(bootstrapReadiness(cadProjectId,{assessment:{...preparedCad,[key]:'PENDING'}}).status,fail)
+  }
+})
+test('Bootstrap readiness ignores Human execution flag and legacy SHA fields',()=>{
+  assert.equal(bootstrapReadiness(cadProjectId,{assessment:preparedCad,human_execution_approved:false}).status,'BOOTSTRAP_READY')
+  assert.equal(bootstrapReadiness(cadProjectId,{assessment:preparedCad,criteria_current_blob_sha:sha,plan:{plan_kind:'JOB'}}).status,'BOOTSTRAP_READY')
+  assert.equal(admission(null),null,'scope check is separate from Bootstrap evidence')
+})
+test('Source scope still rejects wrong Project, repo and branch',()=>{
+  assert.equal(admission(null),null)
+  assert.match(bootstrapExecution('wrong','verified manifest fixture',null,cadRepo,cadBranch),/SOURCE_PROJECT_INVALID/)
+  assert.match(bootstrapExecution(cadProjectId,'verified manifest fixture',null,'https://github.com/other/repo',cadBranch),/SOURCE_BRANCH_INVALID/)
+  assert.match(bootstrapExecution(cadProjectId,'verified manifest fixture',null,cadRepo,'main'),/SOURCE_BRANCH_INVALID/)
+})
 test('P0 run_begin and handoff schema use Job-bound nonempty Task IDs, not UUID-only',()=>{
   const runStart=runSource.indexOf("'run_begin'");
   const runEnd=runSource.indexOf("'relationship_knowledge_prepare'",runStart);
