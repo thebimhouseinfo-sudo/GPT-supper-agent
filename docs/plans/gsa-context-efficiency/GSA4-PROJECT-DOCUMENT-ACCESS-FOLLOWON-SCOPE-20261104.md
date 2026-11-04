@@ -36,6 +36,28 @@ Each parent receives or owns an objective and delegates a smaller **scope of res
 
 GSA roles (Planner, Orchestrator, Coder, Reviewer, Tester, etc.) are **responsibilities**, not literal positions in the MEP org chart. A Coder can be a delegated implementer in one Job and need broad system context in another. Reviewers and Testers require independently sufficient evidence and must not simply accept a delegate's summary.
 
+## 2A. Human clarification — REVERSE research from Member/Lead task needs, NOT top-down document assignment
+
+**Research starting point:** for each **concrete work item**, discover what the actual assignee at each responsibility level must know to (a) execute correctly and (b) recognize *before starting* when they lack the information, authority or interface decisions to proceed. Only then work **upward** to identify what the immediate Leader, Manager and upper Project owner must prepare, reference, decide or hand off. **Do not** begin by dividing a large Criteria/Plan into named roles and guessing who should read which file.
+
+**Proposed bottom-up study order, repeating at each level (Member → Leader → Manager → Project owner):**
+
+1. **Define the real task and expected outcome:** scope, deliverables, applicable acceptance and failure modes, correct/incorrect examples. User/request and Criteria are the oracle, not current code or a guessed document hierarchy.
+2. **Determine the minimum essential working facts:** inputs and relevant revisions, constraints, interfacing disciplines, approved decisions, and evidence needed to complete the specific task. Distinguish `NEED_BEFORE_START` from `NEED_DURING_EXECUTION` and `VERIFY_BEFORE_FINISH`.
+3. **Determine the *uncertainty detector*:** what facts/decisions must the assignee be able to recognize as **unknown, ambiguous, conflicting, stale or outside delegated scope**? Define when they **MUST ASK BEFORE DOING** rather than continue on an unsupported assumption. Insufficient knowledge to *notice* a problem is a stronger failure than merely lacking a source reference.
+4. **Define the next question and ownership:** exactly what should be asked, to which owning Lead/Manager/discipline/Human, with what evidence and a pointer to authoritative upstream source. Prefer a bounded targeted lookup; no general prohibition against reading parent documents.
+5. **Map upstream handoff obligations:** only after Member requirements are clear, ask what their Lead needs to know to supply those facts, reject or escalate assumptions, and check the delivered result. Repeat this upward through management levels and laterally for interfaces.
+6. **Infer document structure from the resulting access patterns:** choose parent index, cohesive reference leaves, Goal/Task briefs, provenance links or precise section retrieval only when justified by tasks. Store a single authoritative source per decision; avoid copies that may drift.
+7. **Simulate and review end-to-end:** include routine Task, missing input, conflicting revision, cross-discipline constraint, unauthorized request, independent review, and an execution that requires a broad parent source read. Verify correct result or correctly triggered ASK/STOP, and measure **sum of context and handoff effort across all participants**, not just Member context.
+
+**Illustrative MEP task, not a fixed architecture:** HVAC Member receives "coordinate air outlets in room A" plus approved outlet schedule, current reflected ceiling plan and installation constraints. Before drawing, they must check if ceiling/lighting coordination and airflow/type data are sufficient. If architectural revision conflicts with approved equipment data, their expected behavior is to **identify the conflict and ask the discipline Lead**; the Lead may need to consult MEP Manager/Architectural owner. The study asks which facts/reference links must accompany the original assignment to make this decision possible *without forcing the Member to read the whole multidisciplinary plan*.
+
+**Research deliverables:** for every test Task, construct a **Task-Need Matrix** with columns `Level/assignee | Task | Must know before start | Red flags / must ask | Authoritative reference | Who answers | Allowed action | Completion evidence | Read-context cost`; then derive a **handoff lineage diagram** showing exactly which upper-level facts were translated, retained as source links, or escalated. Document a counterexample where a "minimal" packet is dangerously insufficient.
+
+**Key quality test:** reduction of reading load is **invalid** if the assignee can no longer detect a missing prerequisite, silently performs the wrong work, or shifts disproportionate context/repair effort to another level. The correct result can be ASK, STOP or READ_MORE — not necessarily immediate execution.
+
+This research method is **deferred to Group 3**. It does not establish runtime rules or ban any Agent from reading Criteria, Plan or other authorized upstream materials.
+
 ## 3. Delegation contract: what each level passes down
 
 Treat this as an **illustrative packet**, not a mandated new schema or duplicate authoritative document:
@@ -75,7 +97,7 @@ All proposals should compare aggregate context (not just the deepest member), to
 
 ## 6. Later simulation scope and acceptance questions
 
-Use four User journeys already identified (Bootstrap; Continue Coding; Test → Fix → Retest; New Feature), and add illustrative multi-level MEP delegation, cross-discipline change, incomplete instruction and source revision conflict. First establish User goals and expected outcomes independent of code; then trace actual context reads. Separate real observed reads from paper assumptions.
+Start with the **concrete Task-Need Matrix and pre-execution uncertainty/ASK conditions at the lowest relevant responsibility level**, then work upward to Lead, Manager and Project owner before selecting a document architecture. Use four User journeys already identified (Bootstrap; Continue Coding; Test → Fix → Retest; New Feature), and add illustrative multi-level MEP delegation, cross-discipline change, incomplete instruction and source revision conflict. First establish User goals, acceptance and ASK/STOP expectations independent of code; then trace actual context reads, parent handoffs and escalation. Separate real observed reads from paper assumptions.
 
 The eventual study should establish: (1) reusable document taxonomy and owner links, (2) role + **responsibility-level + Task-state** read decisions, (3) no loss of parent-goal traceability, authority, Reviewer/Tester independence or safety, and (4) a measurable end-to-end improvement or KEEP decision.
 
