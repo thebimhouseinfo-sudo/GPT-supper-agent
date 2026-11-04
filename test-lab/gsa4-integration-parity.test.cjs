@@ -142,6 +142,13 @@ function normalizeUAResponse(name,args,response,after) {
   return result
 }
 
+function normalizeUETestingSkillBody(body) {
+  const oldText="For renewed scenario discovery, invoke the *real* ChatGPT-installed scenario-tester when host availability is confirmed; otherwise mark that coverage UNVERIFIED."
+  const newText="For user-triggered scenario discovery load the GSA simulate skill on demand, and invoke the separate host-managed scenario-tester only when its actual ChatGPT host availability is confirmed. A GSA simulation never certifies native host behavior; label REAL_HOST_UNVERIFIED without evidence."
+  assert.equal(body.split(newText).length,2,'one and only one U-E testing-evidence clause')
+  return body.replace(newText,oldText)
+}
+
 test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',async()=>{
   const before=baselineModule(base('harness-catalog.ts'))
   const after=loadSourceModule('harness-catalog.ts')
@@ -168,7 +175,11 @@ test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',
     }
   }
   for(const skill of skills) {
-    const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
+    const actual = skill === 'coding-loop'
+      ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)}
+      : skill === 'testing-evidence'
+        ? {...after.RUNTIME_SKILLS[skill], body:normalizeUETestingSkillBody(after.RUNTIME_SKILLS[skill].body)}
+        : after.RUNTIME_SKILLS[skill]
     assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
   }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
@@ -181,12 +192,14 @@ test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    if(name === 'load_skill' && args?.name === 'coding-loop') {
+    if(name === 'load_skill' && ['coding-loop','testing-evidence'].includes(args?.name)) {
       assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
       const normalized = JSON.parse(JSON.stringify(b))
-      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+      normalized.structuredContent.skill_text = args.name === 'coding-loop'
+        ? normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+        : normalizeUETestingSkillBody(normalized.structuredContent.skill_text)
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
-      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
+      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'explicit U-C/U-E on-demand Skill deltas only')
     } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
   }
   const simulate=await newTools.get('load_skill').fn({name:'simulate'})
