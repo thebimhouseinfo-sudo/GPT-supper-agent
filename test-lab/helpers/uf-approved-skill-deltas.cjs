@@ -17,7 +17,7 @@ function fnv64(s) {
 }
 function approve(name, lines) {
   const expected=hashes[name]||[]
-  const got=lines.map(line=>fnv64(line))
+  const got=Array.from(lines,line=>fnv64(line)) // copy VM-realm arrays to host realm
   assert.deepEqual(got,expected,'U-F exact approved delta absent/modified/duplicated for '+name)
 }
 function normalizeUFInitializer(name,source) {
