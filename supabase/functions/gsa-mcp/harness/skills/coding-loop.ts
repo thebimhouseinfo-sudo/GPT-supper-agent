@@ -43,7 +43,7 @@ export const codingLoopSkill = {
       '- If a real command failed, isolate the failing test/config/source boundary; Coder owns scoped source/test repair, checks diff, reruns the objective command and inspects fresh CI evidence. TEST_FAILURE is repairable by owning Coder, not an automatic Human Retest.',
       '- For blocked hosted CI, discover a safe authorized execution capability (local/remote sandbox only when available), run bounded exact-revision repo commands and clearly mark alternative-environment evidence. It does not change the hosted CI conclusion.',
       '- Ask Human only for irreducible authority, secret, inaccessible host/device or exhausted evidence-backed alternatives, giving a minimal concrete request. Keep source/Memory authorization, Job cursor and Reviewer/Tester gates.',
-      '- Limit repeated retry of the same failure to bounded evidence-changing attempts; if hotfix retest fails, use debugging and full call-chain cause analysis rather than piecemeal patch churn.',
+      '- Before another patch for a repeated defect, read all Project Memory Tester/Retest history (cross-Chat/Job) for the same original symptom + reproduction + first failure ref. Only independent exact-revision Tester PRODUCT_FAILURE reruns after authorized Coder patches count; own self-check or CI green is not Tester closure. After three completed failed cycles, STOP ordinary patch #4; load existing debugging, trace first causal divergence and prepare advanced report/proposal. Early race/architecture evidence may escalate sooner. Never use a renamed bug/Job as a fresh counter.',
       '',
       'SELF-REVIEW CLOSURE',
       '- Re-read the original Job objective and active Task criteria before success handoff.',
