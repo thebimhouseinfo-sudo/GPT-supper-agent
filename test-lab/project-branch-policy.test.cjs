@@ -23,7 +23,7 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts'].map(file =>
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts','planning-preflight.ts','project-manifest-scope.ts'].map(file =>
   ts.createSourceFile(file,
     fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
@@ -34,7 +34,7 @@ for (const owner of sources) {
       extracted.push(node.getText(owner).replace(/^export\s+/, ''))
     if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
       ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
-      extracted.push(node.getText(owner))
+      extracted.push(node.getText(owner).replace(/^export\s+/, ''))
   }
 }
 for (const name of names) assert.ok(extracted.some(x => x.includes('function ' + name + '(')), 'Missing runtime function: ' + name)
@@ -482,7 +482,7 @@ test('M4: Human CR fallback and milestone invocation record distinct provenance'
   assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
   assert.ok(record.includes("'APPROVED_MILESTONE'"))
   assert.ok(record.includes('Re-fetch the exact current Job SHA'))
-  assert.ok(source.includes("review_loop: z.enum(['none','rl','crl'])"))
+  assert.ok(fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/planning-schemas.ts'),'utf8').includes("review_loop: z.enum(['none','rl','crl'])"))
 })
 
 test('M4 loop: Reviewer FAIL repairs then re-reviews; CR FAIL returns to rl before CR again', () => {
@@ -712,9 +712,13 @@ test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot by
   const setup = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)\.optional\(\)/)
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)/)
-  const found = ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
-  assert.ok(found)
-  const js=ts.transpileModule(found.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const ownerFile = 'supabase/functions/gsa-mcp/run-dispatch-closure-guards.ts'
+  const ownerAst = ts.createSourceFile(ownerFile, fs.readFileSync(ownerFile, 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  assert.equal(ownerAst.parseDiagnostics.length, 0)
+  const found = ownerAst.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
+  assert.ok(found, 'real Goal Recheck helper exists in its extracted source owner')
+  const js=ts.transpileModule(found.getText(ownerAst).replace(/^export\s+/, ''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
   const check=vm.runInNewContext(js+'\ngoalRecheckCoverageError', { jobExecutionContract: job=>job.execution_contract })
   const criterion='Human confirmation and decision sufficient'
   const j={execution_contract:'NEXT',project_id:id,job_id:'reviewed-job',

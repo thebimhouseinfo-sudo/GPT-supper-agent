@@ -9,6 +9,15 @@ const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
 const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
+const indexHelperOwners = {
+  resolveExecutionContract: 'runtime-contract.ts',
+  jobExecutionContract: 'runtime-contract.ts',
+  checkpointVerificationOutcome: 'checkpoint-evidence-gates.ts',
+  nextDispatchPreflightError: 'run-dispatch-closure-guards.ts',
+  milestoneCrlEvidenceError: 'planning-preflight.ts',
+  projectBootstrapExecutionError: 'planning-preflight.ts',
+  parseProjectManifest: 'project-manifest-scope.ts',
+};
 function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
     ? 'execution-guards.ts'
@@ -17,7 +26,7 @@ function load(name, injected = {}) {
       : ['projectCriteriaBindingError','parseRetiredBranchRows','isRetiredSourceBranch'].includes(name)
         ? 'project-utils.ts'
         : ['projectBootstrapReadinessDecision','projectBootstrapChecklistDecision'].includes(name)
-          ? 'bootstrap.ts' : null;
+          ? 'bootstrap.ts' : indexHelperOwners[name] ?? null;
   const ast = owner ? ts.createSourceFile(owner,
     fs.readFileSync('supabase/functions/gsa-mcp/'+owner,'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
@@ -61,6 +70,30 @@ test('NEXT dispatch rejects absent/stale SHA, role, prerequisites and revision',
   assert.match(decision(job,'coder'),/WRONG_ROLE/);
   assert.match(decision(job,'tester',[{task:'A'}],sha,sha,6),/STALE_PLANNING_REVISION/);
   assert.equal(dispatch({...job,execution_contract:'V2_STABLE'},'coder',['B'],null,null,null,[]),null);
+});
+test('GSA4 moved NEXT dispatch rejects RETIRED task with mutation-sensitive real helper', () => {
+  const retiredJob = {
+    execution_contract: 'NEXT', planning_revision: 7,
+    tasks: [{task_id: 'B', lifecycle: 'RETIRED', dependencies: []}],
+    topology: [{task_id: 'B', handler: 'tester'}],
+  };
+  const args = [retiredJob, 'tester', ['B'], 7, sha, sha, []];
+  assert.match(dispatch(...args), /NEXT_DISPATCH_TASK_RETIRED/);
+  const owner = 'supabase/functions/gsa-mcp/run-dispatch-closure-guards.ts';
+  const actual = ts.createSourceFile(owner, fs.readFileSync(owner, 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const decl = actual.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === 'nextDispatchPreflightError');
+  assert.ok(decl, 'test must execute the physically extracted runtime helper');
+  const good = decl.getText(actual).replace(/^export\s+/, '');
+  const mutant = good.replace("task.lifecycle === 'RETIRED'", 'false');
+  assert.notEqual(mutant, good, 'negative mutation must hit the current source');
+  const js = ts.transpileModule(mutant, {compilerOptions: {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None
+  }}).outputText;
+  const broken = vm.runInNewContext(js + '\nnextDispatchPreflightError',
+    { jobExecutionContract, validateCompletedTaskRunSnapshots: prereqs, Number, Set, String });
+  assert.throws(() => assert.match(broken(...args), /NEXT_DISPATCH_TASK_RETIRED/),
+    assert.AssertionError);
 });
 test('PRODUCT_FAILURE, PLAN_GAP and OBSERVED use distinct routes', () => {
   assert.equal(checkpointOutcome('FAIL','PRODUCT_FAILURE').state,'FAILED_PRODUCT');
@@ -130,9 +163,10 @@ test('M1 CRL evidence is exact job/milestone/revision AND source SHA bound', () 
   assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({result:'FAIL'}),sha),/REVIEW_INVALID/);
 });
 test('M1 negative control: removing source SHA comparison makes stale-evidence assertion RED', () => {
-  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
+  const preflightSource = ts.createSourceFile('planning-preflight.ts',fs.readFileSync('supabase/functions/gsa-mcp/planning-preflight.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  const node=preflightSource.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
   assert.ok(node);
-  const good=node.getText(parsed);
+  const good=node.getText(preflightSource).replace(/^export\s+/, '');
   const mutant=good.replace('review.target_revision !== targetRevision','false');
   assert.notEqual(mutant,good,'mutation must alter the actual code');
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
