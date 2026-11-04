@@ -122,8 +122,8 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
     JSON.stringify(after.RUNTIME_SKILLS[skill]),'unchanged skill '+skill)
   // U-C is the only intentional skill-body change. Existing GSA3 instructions
   // must remain byte-for-byte identical when the scoped insertion is removed.
-  const previous=before.RUNTIME_SKILLS['coding-loop'].body.split('\\n')
-  const revised=after.RUNTIME_SKILLS['coding-loop'].body.split('\\n')
+  const previous=before.RUNTIME_SKILLS['coding-loop'].body.split('\n')
+  const revised=after.RUNTIME_SKILLS['coding-loop'].body.split('\n')
   const insertedFrom=revised.indexOf('ENGINEERING CONTEXT / SOLUTION CLARIFICATION (at Goal/Job-Pack design; not an approval gate)')
   const insertedUntil=revised.indexOf('ACT',insertedFrom+1)
   assert.ok(insertedFrom>=0 && insertedUntil>insertedFrom,'scoped U-C addition present')
