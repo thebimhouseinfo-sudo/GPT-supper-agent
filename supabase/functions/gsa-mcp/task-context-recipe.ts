@@ -25,6 +25,10 @@ type Input = {
   requires_domain_addin?: boolean
 }
 const validSha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
+const validProjectId = (v: unknown) => typeof v === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(v)
+const safeOwner = (v: unknown) => typeof v === 'string' &&
+  /^[A-Za-z0-9_./-]+\.ts$/.test(v) && !v.startsWith('/') &&
+  !v.split('/').some((x) => x === '.' || x === '..' || !x)
 const nonempty = (v: unknown) => typeof v === 'string' && v.trim().length > 0
 const arrayOfStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => nonempty(x)) : []
@@ -56,7 +60,7 @@ export function buildTaskContextRecipe(input: Input) {
   const projectId = input?.project_id
   const taskId = input?.task_id ?? null
   if (!Object.hasOwn(ROLE_HARNESSES, role)) stop('ROLE_UNKNOWN', 'No matching existing GSA role contract.')
-  if (!nonempty(projectId) || !job || typeof job !== 'object' || Array.isArray(job) ||
+  if (!validProjectId(projectId) || !job || typeof job !== 'object' || Array.isArray(job) ||
       job.project_id !== projectId || !nonempty(job.job_id)) {
     stop('JOB_IDENTITY_UNVERIFIED', 'Current Project and owning Job identity must be read from authoritative Project Memory.')
   }
@@ -76,9 +80,12 @@ export function buildTaskContextRecipe(input: Input) {
   if (!validSha(snapshotSha) || !validSha(currentSha) || snapshotSha !== currentSha) {
     read('JOB_SHA_REVALIDATE', 'Read back the current Job Git blob SHA; supplied SHA values cannot prove freshness.')
   }
-  addRef('JOB', input?.job_record_path, snapshotSha, 'Owning Job, current planning revision and acceptance criteria')
-  if (!nonempty(input?.job_record_path)) {
-    read('JOB_PATH_MISSING', 'Locate current canonical Job record by Project/Job identity.')
+  if (nonempty(input?.job_record_path) && validProjectId(projectId) &&
+      input.job_record_path.startsWith('projects/' + projectId + '/') &&
+      !input.job_record_path.split('/').includes('..')) {
+    addRef('JOB', input.job_record_path, snapshotSha, 'Owning Job, current planning revision and acceptance criteria')
+  } else {
+    read('JOB_PATH_MISSING', 'Locate current canonical Job record inside the owning Project prefix.')
   }
   if (job?.execution_contract === 'NEXT' &&
       (!Number.isInteger(job.planning_revision) || job.planning_revision < 1)) {
@@ -108,6 +115,9 @@ export function buildTaskContextRecipe(input: Input) {
   }
   const run = input?.run
   if (run) {
+    if (run.lifecycle !== 'IN_PROGRESS') {
+      read('RUN_LIFECYCLE_REVALIDATE', 'Read current active Run lifecycle; old/closed Run context cannot justify execution.')
+    }
     if (run.project_id !== projectId || run.job_id !== job?.job_id ||
         run.role !== role || (taskId && run.primary_task_id !== taskId) ||
         (job?.execution_contract === 'NEXT' && run.planning_revision !== job.planning_revision)) {
@@ -117,7 +127,7 @@ export function buildTaskContextRecipe(input: Input) {
     read('RUN_OR_DISPATCH_UNVERIFIED', 'Confirm current Run/dispatch or planning-only context; never infer executable scope.', 'orchestrator')
   }
 
-  if (nonempty(projectId) && job?.project_id === projectId) {
+  if (validProjectId(projectId) && job?.project_id === projectId) {
     addRef('PROJECT', 'projects/' + projectId + '/PROJECT.md', null,
       'Project lifecycle, repository registry and configured integration branch')
     addRef('CRITERIA', 'projects/' + projectId + '/CRITERIA.md',
@@ -169,14 +179,14 @@ export function buildTaskContextRecipe(input: Input) {
     if (!loc || loc.schema !== 'gsa4-a1-source-locator/v1' ||
         !Array.isArray(loc.tool_owners) ||
         !nonempty(input?.source_locator_ref) ||
-        !nonempty(input?.current_source_ref) ||
+        !validSha(input?.current_source_ref) ||
         input.source_locator_ref !== input.current_source_ref) {
       read('SOURCE_LOCATOR_REVALIDATE',
         'Fetch A1 locator and current target source at the same revision before selecting source owners.')
     } else {
       for (const name of tools) {
         const owner = loc.tool_owners.find((x) => x?.name === name)
-        if (!owner || !nonempty(owner.owner) || !nonempty(owner.facade)) {
+        if (!owner || !safeOwner(owner.owner) || !safeOwner(owner.facade)) {
           read('SOURCE_OWNER_UNKNOWN', 'A1 index lacks requested tool ' + name + '; search live source.')
           continue
         }
