@@ -1,0 +1,47 @@
+name: GSA3-GSA4 independent U-B cross-arm check
+on:
+  pull_request:
+    paths:
+      - 'test-lab/three-pr-cross-arm-review.cjs'
+      - '.github/workflows/gsa3-gsa4-cross-arm-evaluation.yml'
+      - 'docs/reviews/GSA3-GSA4-THREE-PR-RESULT-20261104.md'
+  workflow_dispatch:
+jobs:
+  cross-arm-source-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout independent evaluator
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: evaluator
+      - name: Checkout pinned GSA3 CONTROL
+        uses: actions/checkout@v4
+        with:
+          ref: ade7fcdf71bb0273594edc390424c8d8c605c37c
+          path: control
+      - name: Checkout pinned GSA4 CANDIDATE
+        uses: actions/checkout@v4
+        with:
+          ref: b9df63862e3a7368b5ea91b7f545520a887844e1
+          path: candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install TypeScript for source replay (no product dependency modifications)
+        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa3-gsa4-review typescript@5.9.3
+      - name: Independently replay same negative fixture on both actual U-B classifiers
+        env:
+          NODE_PATH: /tmp/gsa3-gsa4-review/node_modules
+        run: |
+          test "$(git -C evaluator rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git -C control rev-parse HEAD)" = "ade7fcdf71bb0273594edc390424c8d8c605c37c"
+          test "$(git -C candidate rev-parse HEAD)" = "b9df63862e3a7368b5ea91b7f545520a887844e1"
+          node evaluator/test-lab/three-pr-cross-arm-review.cjs control candidate "$RUNNER_TEMP/gsa3-gsa4-cross-arm.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gsa3-gsa4-independent-cross-arm
+          path: ${{ runner.temp }}/gsa3-gsa4-cross-arm.json
+          retention-days: 30
+          if-no-files-found: error
