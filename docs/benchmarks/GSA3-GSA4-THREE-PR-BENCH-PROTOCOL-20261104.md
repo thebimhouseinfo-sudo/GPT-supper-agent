@@ -61,7 +61,7 @@ No simplistic fastest-wins scoring. Publish comparable table of per-pack test co
 
 ## Integration, winner and retirement (separate later decision)
 
-Human compares both independent result PRs and selects a winner **after** results. Only winner is eligible for an integration/review gate; do not automatically merge it. Keep all evidence and old PR reference links. Retire losing experiment branch and original #34/#38/#40 branches **only after** winner fully preserves accepted behavior, provenance and evidence. Branch deletion/PR closing is a distinct destructive cleanup after validation; do not do so during the benchmark. Never retire `main`, development, the review docs branch or a live Job branch.
+Human compares both independent result PRs and selects a winner **after** results. Only winner is eligible for an integration/review gate; do not automatically merge it. Keep all evidence and old PR reference links. Retire the losing experiment branch and **original PR #34 and #38 source branches** only after the accepted winner preserves behavior/provenance/evidence. **PR #40 has source branch `main`: NEVER delete or retire `main`; close the stale PR #40 after extracting its accepted lesson.** Branch deletion/PR closing is a distinct destructive cleanup after validation; do not do so during the benchmark. Never retire `main`, development, the review docs branch or a live Job branch.
 
 ## CP retirement snapshot
 
