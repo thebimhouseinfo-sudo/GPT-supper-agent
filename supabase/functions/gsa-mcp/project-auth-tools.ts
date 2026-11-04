@@ -135,7 +135,7 @@ export function registerProjectAuthorizationTools(deps: any) {
           target_repository_url ?? null, target_development_branch ?? null)
         if (blocked) {
           const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha,
-            external_steps: ['No GSA-controlled source write or Coder dispatch until the named Bootstrap prerequisites are satisfied.'] }
+            external_steps: ['Source mutation denied by Project ownership or development branch scope.'] }
           return { structuredContent: denied, content: [{ type: 'text', text: 'DENY: ' + blocked }] }
         }
       }
@@ -149,8 +149,8 @@ export function registerProjectAuthorizationTools(deps: any) {
       })
       const out = { ...decision, project_id, project_manifest_sha,
         external_steps: operation === 'MUTATE_SOURCE' ? [
-          'This checks Project scope and Bootstrap claim SHAPE only; ALLOW is NOT an attestation that caller-supplied approval, receipt or GitHub snapshots are genuine.',
-          'Independently inspect existing Criteria, Plan, Milestones and Coder/Tester readiness in the source or Project Memory, and verify actual Human execution authorization. The four-check assessment is caller-supplied, not server attestation; legacy proof records must still be read back when used.',
+          'This checks Project ownership/branch scope only; ALLOW does not authorize a Job execution or attest Human approval.',
+          'Before executing a Job, independently verify its current reviewed Plan and real Human execution authorization; do not infer execution permission from Bootstrap or caller-provided boolean.',
           'Verify live target source HEAD is on the configured Development Branch; do not write or merge to the Release Branch by inference.',
         ] : [] }
       return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW SCOPE (readback required): ' : 'DENY: ') + decision.reason }] }
