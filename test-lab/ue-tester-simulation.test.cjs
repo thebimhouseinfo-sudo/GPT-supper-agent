@@ -87,6 +87,7 @@ class FakeBoundary {
     this.emit('HOST_CLOSED', { session: this.session })
   }
   reconnect() { this.emit('HOST_RECONNECTED', { session: this.session }); return true }
+  reopen() { this.emit('REOPEN', { persisted: this.saved }); return this.saved }
   rootCadChildren(root) { return this.events.filter(e => e.kind === 'SPAWN' && e.root === root && e.flow_kind === 'CAD') }
   hostSends(root) { return this.events.filter(e => e.kind === 'HOST_SEND' && e.root === root) }
   report() { return { fidelity: 'SIMULATED', nativeHost: 'REAL_HOST_UNVERIFIED', events: this.events } }
@@ -155,6 +156,7 @@ test('UE-S2: create -> run -> save -> reopen; failed save is not a saved PASS', 
     assert.equal(task.state, 'DONE')
   }
   assert.equal(h.saved, true, 'synthetic persistence acknowledged')
+  assert.equal(h.reopen(), true, 'synthetic reopen reads acknowledged save')
   assert.deepEqual(h.hostSends('journey-1').map(e => e.id), ['create:1', 'run:1', 'save:1'])
   const failed = new FakeBoundary()
   failed.submit({ root: 'journey-2', id: 'create:2' }); failed.ack('create:2', 'ok')
@@ -163,6 +165,7 @@ test('UE-S2: create -> run -> save -> reopen; failed save is not a saved PASS', 
   failed.ack('save:2', 'fail')
   assert.equal(save.state, 'FAIL')
   assert.equal(failed.saved, false, 'mock fail cannot be promoted to saved')
+  assert.equal(failed.reopen(), false, 'failed save not available on reopen')
 })
 
 test('UE-S3: two-chat CAD serialization, harmless SYSTEM overlap and duplicate root negative controls', () => {
@@ -207,6 +210,11 @@ test('UE-S4: bad request, stale revision, cancel, close/reconnect and late ACK c
   h.close(); h.reconnect()
   assert.equal(h.ack(old.id, 'ok'), false)
   assert.equal(old.state, 'CANCELED')
+  const closing = h.submit({ root: 'r-close', id: 'draw:closing' })
+  assert.equal(closing.state, 'ACTIVE')
+  h.close(); h.reconnect()
+  assert.equal(h.ack(closing.id, 'ok'), false, 'close suppresses in-flight late ACK')
+  assert.equal(closing.state, 'CANCELED')
   const fresh = h.submit({ root: 'r3', id: 'draw:new' })
   assert.equal(fresh.state, 'ACTIVE', 'reconnect has no stranded CAD lock')
   h.ack(fresh.id, 'ok')
