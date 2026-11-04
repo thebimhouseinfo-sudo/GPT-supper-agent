@@ -66,6 +66,23 @@ export function registerRunComplete(deps: any) {
       if (executionContract === 'NEXT' && !nextMemoryNamespace) {
         return { content: [{ type: 'text', text: 'RUN_COMPLETION_BLOCKED: NEXT Run memory_namespace is invalid.' }], isError: true }
       }
+      // U-B RUN COMPLETION FENCE START: no late NEXT success may resurrect
+      // an intent-fenced, terminal or stale Job (ALL roles, not just Coder).
+      if (lifecycle==='COMPLETED' && executionContract==='NEXT') {
+        if(!job_record_text||!/^[0-9a-f]{40}$/.test(String(job_record_sha??'')))
+          return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_REQUIRES_CURRENT_JOB_SHA.'}],isError:true}
+        let owner:any
+        try {owner=JSON.parse(job_record_text)} catch {
+          return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_JOB_JSON_INVALID.'}],isError:true}
+        }
+        if(owner.project_id!==project_id||owner.job_id!==job_id||
+            owner.plan_change_pending||!['READY','IN_PROGRESS'].includes(owner.lifecycle)||
+            owner.planning_revision!==current.planning_revision||
+            jobExecutionContract(owner)!==executionContract||
+            recordNextMemoryNamespace(owner)!==nextMemoryNamespace)
+          return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB.'}],isError:true}
+      }
+      // U-B RUN COMPLETION FENCE END
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
         let goalRef: string | null = null
@@ -243,6 +260,10 @@ export function registerRunComplete(deps: any) {
       }
       const externalSteps = [
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
+        ...(lifecycle==='COMPLETED'?[
+          'Independently reread CURRENT owning Job at contract-derived path and exact SHA immediately before persisting successful Run; reject any Plan fence, terminal lifecycle or stale revision.',
+          'A delayed callback after Plan supersession cannot reuse old PASS/evidence on a fresh topology; a caller-supplied Job snapshot alone is never mutation authority.',
+        ]:[]),
         ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),
         ...durableSnapshotReadbackSteps(run_verification_snapshot ? [run_verification_snapshot] : [], 'Reviewer/Tester Run Verification snapshot'),
         ...durableSnapshotReadbackSteps(
