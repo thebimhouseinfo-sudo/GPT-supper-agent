@@ -122,6 +122,26 @@ function historicalRender(after,role,options={}) {
       ...skills.map(x=>'- '+x+': load only when relevant to the current Run.')])
   ].join('\n')
 }
+// U-D is a later functional extension to TWO existing on-demand skill bodies.
+// The GSA3 golden remains immutable: only an explicitly identified appended
+// section can be removed before comparing the original whole skill/tool result.
+// New U-D behavioral negative controls are in ud-precode-cr.test.cjs.
+function normalizeUDSkillBody(name,body) {
+  const markers = {
+    'coding-loop': '\nU-D — PRE_CODE_TECHNICAL / DESCRIPTIVE PROPOSAL (UD-01)',
+    'critic-review': '\nPRE_CODE_TECHNICAL (U-D): review the complete connected descriptive Markdown design',
+  }
+  if (!Object.hasOwn(markers,name)) return body
+  const marker = markers[name]
+  assert.equal(body.split(marker).length,2,'U-D exact source extension missing/duplicated: '+name)
+  const start = body.indexOf(marker)
+  const addition = body.slice(start+1)
+  assert.match(addition, /Critic/)
+  assert.match(addition, /reviewed/i)
+  assert.match(addition, /no new|No new|not an automatically created/i)
+  assert.ok(addition.split('\n').length >= 6,'U-D extension cannot be a placeholder')
+  return body.slice(0,start)
+}
 function normalizeUAResponse(name,args,response,after) {
   const result=JSON.parse(JSON.stringify(response))
   const out=result.structuredContent
@@ -158,7 +178,8 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
     }
   }
   for(const skill of skills) {
-    const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
+    const originalBody = normalizeUDSkillBody(skill,after.RUNTIME_SKILLS[skill].body)
+    const actual = {...after.RUNTIME_SKILLS[skill], body:skill === 'coding-loop' ? normalizeCodingSkillBody(originalBody) : originalBody}
     assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
   }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
@@ -171,12 +192,14 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    if(name === 'load_skill' && args?.name === 'coding-loop') {
-      assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
+    if(name === 'load_skill' && ['coding-loop','critic-review'].includes(args?.name)) {
+      assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-D fallback remains exact JSON')
       const normalized = JSON.parse(JSON.stringify(b))
-      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+      let skillBody = normalizeUDSkillBody(args.name,normalized.structuredContent.skill_text)
+      if(args.name === 'coding-loop') skillBody = normalizeCodingSkillBody(skillBody)
+      normalized.structuredContent.skill_text = skillBody
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
-      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
+      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C/U-D additive skill deltas only')
     } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
   }
   const secretary=await newTools.get('load_skill').fn({name:'secretary'})
