@@ -18,7 +18,120 @@ function isRecognizedJobRecordShape(job: any): boolean {
     ['DRAFT','READY','IN_PROGRESS','COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(job.lifecycle)
 }
 
+
+/**
+ * U-B: read-only scope-wide impact classifier. The caller MUST independently
+ * enumerate all Project Job records and verify the Human-approved boundary;
+ * caller-supplied inventory/approval metadata never grants mutation authority.
+ */
+function assessScopeWidePlanChange(input: any) {
+  const fail=(reason: string)=>({allowed:false,reason,decisions:[],mutation_authorized:false})
+  const cfg=input?.scope_change
+  const validSha=(v: unknown)=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v)
+  if (!input?.project_id || !input.change_ref || !validSha(input.reviewed_plan_sha) ||
+      !cfg || !['PLAN','PHASE'].includes(cfg.boundary) ||
+      typeof cfg.plan_job_id!=='string'||!cfg.plan_job_id ||
+      typeof cfg.human_approval_ref!=='string'||!cfg.human_approval_ref.trim()||
+      !Number.isInteger(cfg.successor_job_count ?? 1)||
+      (cfg.successor_job_count ?? 1)<1||(cfg.successor_job_count ?? 1)>16||
+      (cfg.boundary==='PHASE'?
+        typeof cfg.phase_id!=='string'||!cfg.phase_id.trim() : cfg.phase_id!=null))
+    return fail('SCOPE_CHANGE_REVIEWED_HUMAN_BOUNDARY_REQUIRED')
+  if (!Array.isArray(cfg.inventory_job_ids)||!cfg.inventory_job_ids.length||
+      !Array.isArray(input.job_snapshots)||!input.job_snapshots.length)
+    return fail('SCOPE_CHANGE_COMPLETE_INVENTORY_REQUIRED')
+  const inventory=new Set<string>(cfg.inventory_job_ids)
+  const members=new Set<string>(cfg.plan_member_job_ids??[])
+  if (!Array.isArray(cfg.plan_member_job_ids)||!cfg.plan_member_job_ids.length||
+      members.size!==cfg.plan_member_job_ids.length||
+      cfg.plan_member_job_ids.some((id: any)=>typeof id!=='string'||!inventory.has(id)||id===cfg.plan_job_id))
+    return fail('SCOPE_CHANGE_REVIEWED_PLAN_MEMBERSHIP_REQUIRED')
+  if (inventory.size!==cfg.inventory_job_ids.length||
+      cfg.inventory_job_ids.some((id: any)=>typeof id!=='string'||!id||id===cfg.plan_job_id)||
+      inventory.size!==input.job_snapshots.length)
+    return fail('SCOPE_CHANGE_INVENTORY_MISMATCH')
+  const jobs: any[]=[]
+  const seen=new Set<string>()
+  for (const snapshot of input.job_snapshots) {
+    let job: any
+    try {job=JSON.parse(snapshot.job_record_text)} catch{return fail('SCOPE_CHANGE_JOB_JSON_INVALID')}
+    if (!isRecognizedJobRecordShape(job)||job.project_id!==input.project_id||
+        !validSha(snapshot.job_record_sha)||!inventory.has(job.job_id)||seen.has(job.job_id))
+      return fail('SCOPE_CHANGE_JOB_IDENTITY_OR_INVENTORY_INVALID')
+    if (members.has(job.job_id)&&cfg.boundary==='PHASE'&&
+        (typeof job.planning_context?.phase!=='string'||!job.planning_context.phase.trim()))
+      return fail('SCOPE_CHANGE_PHASE_MAPPING_INCOMPLETE')
+    seen.add(job.job_id)
+    jobs.push({job,snapshot})
+  }
+  const terminal=new Set(['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'])
+  const retiring=new Set<string>(),initial=new Set<string>(),completed=new Set<string>()
+  for(const {job} of jobs) {
+    const selected=members.has(job.job_id)&&
+      (cfg.boundary==='PLAN'||job.planning_context?.phase===cfg.phase_id)
+    if(selected&&job.lifecycle==='COMPLETED')completed.add(job.job_id)
+    if(selected&&!terminal.has(job.lifecycle)){retiring.add(job.job_id);initial.add(job.job_id)}
+  }
+  if(!initial.size&&!completed.size)return fail('SCOPE_CHANGE_NOTHING_IN_BOUNDARY')
+  const refs=(item:any):string[]=>{
+    if(typeof item==='string')return [item]
+    if(!item||typeof item!=='object')return []
+    return [item.job_id,item.task_id,item.node_id,item.id].filter((x:any)=>typeof x==='string')
+  }
+  const dependencies=(job:any):string[]=>[
+    ...(job.dependencies??[]).flatMap(refs),
+    ...(job.tasks??[]).flatMap((task:any)=>(task.dependencies??[]).flatMap(refs)),
+    ...(job.topology??[]).flatMap((node:any)=>(node.depends_on??[]).flatMap(refs)),
+    ...(job.planning_topology??[]).flatMap((node:any)=>(node.depends_on??[]).flatMap(refs)),
+  ]
+  for(let expand=true;expand;) {
+    expand=false
+    const retiringTasks=new Set<string>(jobs.filter(({job})=>retiring.has(job.job_id))
+      .flatMap(({job})=>(job.tasks??[]).filter((task:any)=>!terminal.has(task.lifecycle))
+        .map((task:any)=>task.task_id)))
+    for(const {job} of jobs) {
+      if(terminal.has(job.lifecycle)||retiring.has(job.job_id))continue
+      if(dependencies(job).some(id=>retiring.has(id)||retiringTasks.has(id))) {
+        retiring.add(job.job_id);expand=true
+      }
+    }
+  }
+  const decisions=jobs.map(({job,snapshot})=>{
+    const affected=retiring.has(job.job_id)
+    const reason=affected
+      ? (initial.has(job.job_id)?'Human-reviewed '+cfg.boundary+' supersession':
+        'Unfinished cross-boundary dependency on retired work')
+      : (completed.has(job.job_id)?'Preserve completed outcome for explicit reuse review':
+        'Unchanged scope and historical evidence preserved')
+    const retired_task_ids=affected?(job.tasks??[])
+      .filter((t:any)=>!terminal.has(t.lifecycle)).map((t:any)=>t.task_id):[]
+    return {job_id:job.job_id,job_sha:snapshot.job_record_sha,
+      planning_revision:job.planning_revision,lifecycle:job.lifecycle,
+      execution_contract:jobExecutionContract(job),decision:affected?'RETIRE':'KEEP',reason,
+      next_action:!affected?'KEEP_UNCHANGED':
+        job.lifecycle==='IN_PROGRESS'&&!['ABSENT','STABLE'].includes(snapshot.cursor_state)
+          ?'RECONCILE_PENDING_CURSOR_BEFORE_SUPERSEDE':
+        job.lifecycle==='IN_PROGRESS'&&!['NONE','TERMINAL'].includes(snapshot.active_run_state)
+          ?'SETTLE_ACTIVE_RUN_BEFORE_SUPERSEDE':'RETIRE_WITHOUT_REPLACEMENT',
+      retired_task_ids,old_evidence_applicable_to_new_job:false,
+      completed_outcome_review_required:completed.has(job.job_id),
+      cross_boundary_dependency:affected&&!initial.has(job.job_id),
+      supplied_decision:snapshot.decision}
+  })
+  if(decisions.some((x:any)=>x.supplied_decision!=null&&x.supplied_decision!==x.decision))
+    return fail('SCOPE_CHANGE_PER_JOB_DECISION_CONFLICT')
+  return {allowed:true,reason:'SCOPE_CHANGE_REQUIRES_INDEPENDENT_INVENTORY_READBACK',
+    decisions:decisions.map(({supplied_decision,...decision}:any)=>decision),
+    scope_summary:{boundary:cfg.boundary,phase_id:cfg.phase_id??null,
+      inventory_job_ids:[...inventory].sort(),plan_member_job_ids:[...members].sort(),
+      retiring_job_ids:[...retiring].sort(),
+      cross_boundary_job_ids:[...retiring].filter(id=>!initial.has(id)).sort(),
+      completed_outcome_job_ids:[...completed].sort()},
+    mutation_authorized:false}
+}
+
 function assessHumanPlanChangeJobs(input: any) {
+  if (input?.scope_change) return assessScopeWidePlanChange(input)
   const sha = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
   const reject = (reason: string) => ({ allowed: false, reason, decisions: [], mutation_authorized: false })
   if (!input?.project_id || !input?.change_ref || !sha(input?.reviewed_plan_sha))
@@ -131,6 +244,8 @@ function prepareHumanPlanChangeIntent(input: any) {
   const path = executionMemoryRoot(input.project_id, contract,
     ns ?? DEFAULT_NEXT_MEMORY_NAMESPACE) +
     '/WORK/PLAN_RECONCILIATIONS/' + changeId + '.json'
+  if(input.scope_change && input.scope_change.plan_job_id!==planJob.job_id)
+    return deny('SCOPE_CHANGE_PLAN_JOB_MISMATCH')
   if (input.existing_intent_record_text != null) {
     let old: any
     try { old = JSON.parse(input.existing_intent_record_text) }
@@ -141,7 +256,15 @@ function prepareHumanPlanChangeIntent(input: any) {
         old.reviewed_plan_sha !== input.reviewed_plan_sha ||
         old.plan_review_ref !== expectedRef ||
         old.work_branch !== input.work_branch ||
-        !Array.isArray(old.actions))
+        !Array.isArray(old.actions) ||
+        (input.scope_change ? (!old.scope_change ||
+          old.scope_change.boundary!==input.scope_change.boundary ||
+          old.scope_change.phase_id!==(input.scope_change.phase_id??null) ||
+          old.scope_change.human_approval_ref!==input.scope_change.human_approval_ref ||
+          old.scope_change.successor_job_count!==(input.scope_change.successor_job_count??1) ||
+          JSON.stringify(old.scope_change.inventory_job_ids)!==JSON.stringify([...input.scope_change.inventory_job_ids].sort()) ||
+          JSON.stringify(old.scope_change.plan_member_job_ids)!==JSON.stringify([...input.scope_change.plan_member_job_ids].sort())
+          ) : old.scope_change!=null))
       return deny('PLAN_CHANGE_EXISTING_INTENT_CONFLICT')
     return {
       allowed: true, reason: 'EXISTING_INTENT_REUSE_REQUIRES_FRESH_READBACK',
@@ -158,6 +281,12 @@ function prepareHumanPlanChangeIntent(input: any) {
   if (impact.decisions.some((row: any) => row.decision === 'HUMAN_DECISION'))
     return deny('PLAN_CHANGE_HUMAN_DECISION_UNRESOLVED')
   const known = new Set(impact.decisions.map((row: any) => row.job_id))
+  known.add(planJob.job_id)
+  if(input.scope_change)for(const snapshot of input.job_snapshots){
+    const job=JSON.parse(snapshot.job_record_text)
+    for(const task of job.tasks??[])if(task.task_id)known.add(task.task_id)
+    for(const m of job.milestones??[])if(m.milestone_id)known.add(m.milestone_id)
+  }
   const actions = impact.decisions.map((row: any) => {
     let replacement: any = null
     if (row.decision === 'REPLACE') {
@@ -181,6 +310,17 @@ function prepareHumanPlanChangeIntent(input: any) {
     }
   })
   if (actions.some((x: any) => x === null)) return deny('PLAN_CHANGE_RESERVED_ID_COLLISION')
+  const scopeSummary=impact.scope_summary??null
+  const successorIds:string[]=[]
+  if(input.scope_change){
+    if(!scopeSummary)return deny('SCOPE_CHANGE_SUMMARY_MISSING')
+    for(let n=0;n<(input.scope_change.successor_job_count??1);n++){
+      let id=uuidv7()
+      for(let k=0;k<4&&known.has(id);k++)id=uuidv7()
+      if(known.has(id))return deny('SCOPE_CHANGE_RESERVED_SUCCESSOR_ID_COLLISION')
+      known.add(id);successorIds.push(id)
+    }
+  }
   const intent = {
     kind: 'PLAN_RECONCILIATION_INTENT', version: 1,
     project_id: input.project_id, change_id: changeId,
@@ -191,6 +331,16 @@ function prepareHumanPlanChangeIntent(input: any) {
     execution_contract: contract,
     ...(contract === 'NEXT' ? { memory_namespace: ns } : {}),
     work_branch: input.work_branch,
+    ...(input.scope_change?{scope_change:{
+      boundary:input.scope_change.boundary,phase_id:input.scope_change.phase_id??null,
+      human_approval_ref:input.scope_change.human_approval_ref,
+      successor_job_count:successorIds.length,successor_job_ids:successorIds,
+      inventory_job_ids:scopeSummary.inventory_job_ids,
+      plan_member_job_ids:scopeSummary.plan_member_job_ids,
+      retiring_job_ids:scopeSummary.retiring_job_ids,
+      cross_boundary_job_ids:scopeSummary.cross_boundary_job_ids,
+      completed_outcome_job_ids:scopeSummary.completed_outcome_job_ids,
+    }}:{}),
     actions, created_at: new Date().toISOString(),
   }
   return {
@@ -205,6 +355,11 @@ function prepareHumanPlanChangeIntent(input: any) {
       'Independently read back exact intent bytes/blob SHA before any Run/Job lifecycle or replacement writes.',
       'Before SUPERSEDED or RETIRED, settle active Run and cursor PENDING with authoritative Git readback; use exact Job SHA CAS.',
       'RETIRE creates no replacement Job. Only REPLACE creates a reserved successor with the same immutable intent and exact readback.',
+      ...(input.scope_change?[
+        'Independently verify a COMPLETE Project Job inventory, reviewed Plan/Phase membership, Human approval, dependency closure and actual current Job SHA before persisting intent.',
+        'After settling pending Runs and cursors, retire all unfinished Tasks/Milestones in the approved scope; preserve completed evidence. Then prepare fresh successor topology from reserved immutable IDs.',
+        'Never infer write permission from caller-supplied snapshots; do not delete shared, main, release or development Git refs.',
+      ]:[]),
     ],
   }
 }
@@ -312,6 +467,15 @@ function validatePlanChangeSupersession(input: any) {
     return invalid('PLAN_CHANGE_PREDECESSOR_DRIFT_OR_REPLACEMENT_INVALID')
   if (!['DRAFT','READY','IN_PROGRESS'].includes(old.lifecycle))
     return invalid('PLAN_CHANGE_PREDECESSOR_TERMINAL')
+  if(intent.scope_change){
+    const unfinished=(old.tasks??[]).filter((t:any)=>
+      !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(t.lifecycle))
+      .map((t:any)=>t.task_id)
+    if(a.decision!=='RETIRE'||!intent.scope_change.retiring_job_ids?.includes(old.job_id)||
+        unfinished.length!==(a.retired_task_ids??[]).length||
+        unfinished.some((id:string)=>!a.retired_task_ids.includes(id)))
+      return invalid('SCOPE_CHANGE_UNFINISHED_TASK_COVERAGE_MISMATCH')
+  }
   // UNKNOWN is as unsafe as ACTIVE/PENDING. Caller must independently
   // enumerate Runs and cursor and revalidate Git source HEAD before writing.
   if (!['ABSENT','STABLE'].includes(input.cursor_state))
@@ -350,6 +514,24 @@ function resumeHumanPlanChangeIntent(input: any) {
       return stop('PLAN_CHANGE_CURRENT_JOB_INVALID_OR_DUPLICATE')
     jobs.set(job.job_id, { job, sha: s.job_record_sha })
   }
+  if(intent.scope_change) {
+    const cfg=intent.scope_change
+    const ids=cfg.inventory_job_ids
+    if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length||
+        !Array.isArray(cfg.plan_member_job_ids)||!cfg.plan_member_job_ids.length||
+        cfg.plan_member_job_ids.some((id:any)=>!ids.includes(id))||
+        !Array.isArray(cfg.retiring_job_ids)||
+        !Number.isInteger(cfg.successor_job_count)||cfg.successor_job_count<1||
+        cfg.successor_job_count>16||!Array.isArray(cfg.successor_job_ids)||
+        cfg.successor_job_ids.length!==cfg.successor_job_count||
+        new Set(cfg.successor_job_ids).size!==cfg.successor_job_count||
+        cfg.successor_job_ids.some((id:any)=>typeof id!=='string'||!id||ids.includes(id))||
+        ids.some((id:any)=>!jobs.has(id))||intent.actions.length!==ids.length||
+        intent.actions.some((a:any)=>!ids.includes(a.predecessor_job_id)||
+          !['KEEP','RETIRE'].includes(a.decision)||
+          cfg.retiring_job_ids.includes(a.predecessor_job_id)!==(a.decision==='RETIRE')))
+      return stop('SCOPE_CHANGE_INVENTORY_OR_ACTION_DRIFT')
+  }
   const actions: any[] = [], seenOld = new Set<string>(), seenNew = new Set<string>()
   for (const a of intent.actions) {
     if (!a?.predecessor_job_id || seenOld.has(a.predecessor_job_id) ||
@@ -374,6 +556,18 @@ function resumeHumanPlanChangeIntent(input: any) {
       if (retiring && old.lifecycle === 'RETIRED') {
         if (old.result !== 'RETIRED' || old.retired_by_plan_change_id !== intent.change_id || old.retired_reason !== a.reason ||
             old.retired_by_replacement_job_id != null) return stop('PLAN_CHANGE_RETIREMENT_LINEAGE_CONFLICT')
+        if(intent.scope_change){
+          const tasks=old.tasks??[]
+          if((a.retired_task_ids??[]).some((id:string)=>
+              !tasks.some((t:any)=>t.task_id===id&&t.lifecycle==='RETIRED'))||
+              tasks.some((t:any)=>!['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(t.lifecycle))||
+              (old.milestones??[]).some((m:any)=>{
+                const related=tasks.filter((t:any)=>(m.node_ids??[]).includes(t.task_id))
+                const done=related.length?related.every((t:any)=>t.lifecycle==='COMPLETED'):
+                  m.lifecycle==='COMPLETED'||m.status==='PASS'||m.result==='PASS'
+                return !done&&m.lifecycle!=='RETIRED'
+              }))return stop('SCOPE_CHANGE_TERMINAL_TASK_OR_MILESTONE_ZOMBIE')
+        }
         next = 'RETIRED_NO_REPLACEMENT'
       } else if (!retiring && old.lifecycle === 'SUPERSEDED') {
         if (old.superseded_by_plan_change_id !== intent.change_id ||
@@ -417,9 +611,13 @@ function resumeHumanPlanChangeIntent(input: any) {
     actions.push({ action_key: a.action_key, job_id: old.job_id, decision: a.decision,
       replacement_job_id: a.replacement?.job_id ?? null, next_action: next })
   }
+  const scopeReady=!!intent.scope_change&&actions.every((a:any)=>
+    a.decision==='KEEP'||a.next_action==='RETIRED_NO_REPLACEMENT')
   return { allowed: true, reason: 'FRESH_READBACK_RECONCILIATION_ONLY',
-    actions, mutation_authorized: false }
+    actions,...(intent.scope_change?{scope_ready_for_new_topology:scopeReady,
+      next_scope_action:scopeReady?'CREATE_FRESH_REVIEWED_TOPOLOGY':'SETTLE_AND_RETIRE_REMAINING_SCOPE'}:{}),
+    mutation_authorized: false }
 }
 
-  return { isRecognizedJobRecordShape, assessHumanPlanChangeJobs, prepareHumanPlanChangeIntent, prepareHumanPlanChangeFenceDecision, validatePlanChangeSupersession, resumeHumanPlanChangeIntent }
+  return { isRecognizedJobRecordShape, assessScopeWidePlanChange, assessHumanPlanChangeJobs, prepareHumanPlanChangeIntent, prepareHumanPlanChangeFenceDecision, validatePlanChangeSupersession, resumeHumanPlanChangeIntent }
 }
