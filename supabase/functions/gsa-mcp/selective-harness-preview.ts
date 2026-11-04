@@ -98,7 +98,7 @@ export function previewSelectiveHarness(input: PreviewInput) {
   const r=input?.repair_context
   const wanted =
     role==='coder' && input?.workflow==='PRODUCT_DEFECT_REPAIR' &&
-    (input.human_message_kind===undefined || input.human_message_kind==='SAME_APPROVED_TASK') &&
+    input.human_message_kind==='SAME_APPROVED_TASK' &&
     t?.schema==='gsa4-a2-task-context-recipe/v1' &&
     t.advisory_only===true && t.execution_authorized===false &&
     t.decision!=='STOP' &&
