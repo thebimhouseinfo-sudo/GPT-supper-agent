@@ -54,7 +54,7 @@ function newState(){
   return {job,project_id:PROJECT,job_sha:BLOB,current_job_sha:BLOB,
     run:{project_id:PROJECT,job_id:JOB,role:'coder',primary_task_id:'repair',
       planning_revision:2,lifecycle:'IN_PROGRESS'},humanMessageType:'FOLLOWUP',
-    role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',tool:'run_begin',
+    role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',tool:'run_begin',
     stopchatRequested:false,freshChat:false,
     error:'NEXT_DISPATCH_STALE_JOB_SHA',classification:'PRODUCT_FAILURE',
     observed:true,failedRetest:false,hostAvailable:true,hadVerifiedRepro:true,
@@ -79,7 +79,7 @@ function evaluate(state,arm){
   const output=arm==='FULL'?{
     mode:'FULL',harness_text:catalog.renderHarness(state.role,{includeProgressiveSkills:false}),
     execution_authorized:false
-  }:plain(compileA4({role:state.role,workflow:state.workflow,task_context:a2,
+  }:plain(compileA4({role:state.role,workflow:state.workflow,human_message_kind:state.human_message_kind,task_context:a2,
     repair_context:a3,current_source_ref:REF}))
   assert.equal(output.execution_authorized,false)
   // STOPCHAT is a chat-size checkpoint/handoff protocol, NOT a global
