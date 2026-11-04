@@ -366,3 +366,19 @@ test('UB-03 high-risk mutation negative control: removing Task-coverage guard tu
   assert.equal(mutant.validatePlanChangeSupersession(context).allowed,true,
     'The actual Task coverage guard is what rejects the forged intent');
 });
+
+
+test('UB-01 compatibility: historical cross-Phase node_id dependency retires downstream Job',()=>{
+  // Source and current schema generate string dependencies; externally
+  // persisted old Job snapshots may contain object-shaped task/node refs.
+  // Under-inclusive closure must not keep dependent unfinished work alive.
+  const variant=jobs.map(job=>job.job_id===b?{...job,dependencies:[{node_id:tOpen}]}:job);
+  const impact=api.assessHumanPlanChangeJobs({...base,
+    job_snapshots:variant.map(job=>({job_record_text:JSON.stringify(job),job_record_sha:sha}))});
+  assert.equal(impact.allowed,true,impact.reason);
+  const downstream=impact.decisions.find(x=>x.job_id===b);
+  assert.equal(downstream.decision,'RETIRE');
+  assert.equal(downstream.cross_boundary_dependency,true);
+  assert.ok(impact.scope_summary.retiring_job_ids.includes(b));
+  assert.equal(impact.mutation_authorized,false);
+});
