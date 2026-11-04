@@ -15,6 +15,8 @@ const mod = {exports:{}}
 vm.runInNewContext(compiled.outputText,{module:mod,exports:mod.exports},
   {filename:src,timeout:2500})
 const {defectIdentity,assessDefectRetests,advancedDefectReport}=mod.exports
+const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/uf-independent-tester-cases.json'),'utf8'))
+assert.equal(fixture.schema,'uf-independent-tester-fixtures/v1')
 const same = x=>JSON.parse(JSON.stringify(x))
 const original = {project_id:'project-a', original_failure_ref:'projects/project-a/WORK/VERIFICATIONS/first-fail.json',
   original_revision:'a'.repeat(40),actual_error:'ERR_TIMEOUT on user open',
@@ -24,6 +26,7 @@ const original = {project_id:'project-a', original_failure_ref:'projects/project
 const revisions=['b','c','d','e'].map(x=>x.repeat(40))
 function cycle(i,result='FAIL',opts={}) {
   const rev=revisions[i]
+  const sample=fixture.cases[result==='FAIL'?'failed':result==='PASS'?'successful':'unverified']
   return {origin:original,job_id:'job-'+i,chat_id:'chat-'+i,bug_title:'Ticket rename '+i,
     patch:{coder_role:'coder',coder_run_id:'coder-'+i,revision:rev,
       authorization_ref:'memory:authorized-patch-'+i,goal_recheck_ref:'memory:goal-'+i,
@@ -31,9 +34,10 @@ function cycle(i,result='FAIL',opts={}) {
     tester:{producer:'tester',run_id:'tester-'+i,
       verification_ref:'projects/project-a/WORK/VERIFICATIONS/retest-'+i+'.json',
       verification_readback_sha:(i+1).toString(16).repeat(40),
-      target_revision:rev,result, failure_class:result==='FAIL'?'PRODUCT_FAILURE':undefined,
-      original_trigger_replayed:true,affected_regressions_replayed:true,
-      execution_surface:'SIMULATED',scenario_seed_ref:'fixtures/uf-origin-scenario',
+      target_revision:rev,result, failure_class:sample.failure_class ?? undefined,
+      original_trigger_replayed:sample.original_trigger_replayed,
+      affected_regressions_replayed:sample.affected_regressions_replayed,
+      execution_surface:sample.surface,scenario_seed_ref:'fixtures/uf-origin-scenario',
       evidence_refs:[original.original_failure_ref,'tester:replay-'+i],
       tested_at:'2026-11-04T0'+(i+1)+':00:00Z'},
     ...opts}
