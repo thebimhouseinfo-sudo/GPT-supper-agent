@@ -12,6 +12,8 @@ const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tool
 const indexHelperOwners = {
   resolveExecutionContract: 'runtime-contract.ts',
   jobExecutionContract: 'runtime-contract.ts',
+  checkpointVerificationOutcome: 'checkpoint-evidence-gates.ts',
+  nextDispatchPreflightError: 'run-dispatch-closure-guards.ts',
 };
 function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
