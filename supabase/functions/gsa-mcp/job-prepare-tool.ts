@@ -187,7 +187,7 @@ export function registerJobPrepareTool(deps: any) {
           ...(planning_topology??[]).map((n:any)=>n.node_id)]
         if((tasks??[]).some((t:any)=>!t.task_id)||!(milestones??[]).length||
             freshIds.some((id:any)=>!id||oldIds.has(id))||
-            new Set(freshIds).size!==freshIds.length)
+            (tasks??[]).some((t:any)=>(milestones??[]).some((m:any)=>m.milestone_id===t.task_id)))
           return {content:[{type:'text',text:'SCOPE_CHANGE_FRESH_JOB_TASK_MILESTONE_TOPOLOGY_IDS_REQUIRED.'}],isError:true}
         scopeSuccessor={intent,jobId:scope_change_context.successor_job_id,predecessors:[...observed]}
       }
