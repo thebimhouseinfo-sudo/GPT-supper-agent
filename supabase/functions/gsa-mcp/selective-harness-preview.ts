@@ -18,6 +18,7 @@ type PreviewInput = {
     schema: string
     advisory_only: boolean
     execution_authorized: boolean
+    decision?: string
     identity?: { role?: string; task_id?: string | null; phase?: string }
     findings?: Array<{code?: string}>
   }
@@ -25,7 +26,10 @@ type PreviewInput = {
     schema: string
     advisory_only: boolean
     repair_authorized: boolean
+    test_pass_claimed?: boolean
     root_cause_confirmed: boolean
+    classification?: string
+    decision?: string
     source_ref?: string | null
     source_candidates?: unknown[]
     findings?: Array<{code?: string}>
@@ -93,10 +97,12 @@ export function previewSelectiveHarness(input: PreviewInput) {
     role==='coder' && input?.workflow==='PRODUCT_DEFECT_REPAIR' &&
     t?.schema==='gsa4-a2-task-context-recipe/v1' &&
     t.advisory_only===true && t.execution_authorized===false &&
+    t.decision!=='STOP' &&
     t.identity?.role==='coder' && safeTask(t.identity.task_id) &&
     r?.schema==='gsa4-a3-repair-context/v1' &&
     r.advisory_only===true && r.repair_authorized===false &&
-    r.root_cause_confirmed===false &&
+    r.test_pass_claimed===false && r.root_cause_confirmed===false &&
+    r.classification==='PRODUCT_FAILURE' && r.decision!=='STOP' &&
     SHA.test(input?.current_source_ref??'') &&
     r.source_ref===input.current_source_ref &&
     Array.isArray(r.source_candidates) && r.source_candidates.length>0 &&
