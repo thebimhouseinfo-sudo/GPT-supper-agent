@@ -5,10 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const {harnessSource: readHarnessSource, toolSource} = require('./helpers/gsa4-source-views.cjs');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
-const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
+const harnessSource = readHarnessSource();
+const runSource = toolSource('run-execution-tools.ts', 'registerRunExecutionTools');
 const indexHelperOwners = {
   resolveExecutionContract: 'runtime-contract.ts',
   jobExecutionContract: 'runtime-contract.ts',
@@ -363,7 +364,7 @@ test('retirement record parser rejects duplicate or malformed rows instead of ig
   assert.equal(parseRetiredBranchRows(retirementManifest('main', retirementRecord + '\n' + retirementRecord)), null);
   assert.equal(parseRetiredBranchRows(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
   assert.equal(parseProjectManifestWithRetirement(retirementManifest('main', '- ' + retirementRepo + ' | branch=old-feature | status=RETIRED')), null);
-  assert.match(fs.readFileSync('supabase/functions/gsa-mcp/project-setup-tools.ts', 'utf8'), /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
+  assert.match(toolSource('project-setup-tools.ts', 'registerProjectSetupTools'), /BRANCH_RETIRED: a retired source branch cannot be selected as Development or Release Branch/);
 });
 
 
