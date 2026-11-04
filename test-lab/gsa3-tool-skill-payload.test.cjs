@@ -12,8 +12,9 @@ function sourceModule(name) {
 }
 const catalog = sourceModule('harness-catalog.ts')
 const handlers = sourceModule('harness-skill-tools.ts')
-const names = ['debugging','critic-review','critical-challenge','job-planning','coding-loop',
+const originalNames = ['debugging','critic-review','critical-challenge','job-planning','coding-loop',
   'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend']
+const names = [...originalNames,'secretary']
 const roles = ['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
 const { RUNTIME_SKILLS, ROLE_HARNESSES, ROLE_SKILLS, ROLE_HOST_SKILLS, renderHarness } = catalog.exports
 const chain = new Proxy({}, { get: () => () => chain })
@@ -35,7 +36,7 @@ function exactFallback(result) {
   assert.equal(result.content[0].type, 'text')
   assert.equal(result.content[0].text, JSON.stringify(result.structuredContent))
 }
-test('GSA3 catalog keeps all 11 discoverable skills, exact names and source-owned bodies', async () => {
+test('GSA3 original 11 skills remain unchanged; optional U-A Secretary is additive', async () => {
   assert.equal(JSON.stringify(Object.keys(RUNTIME_SKILLS)), JSON.stringify(names))
   const tools=setup()
   const result=await tools.get_skill_catalog.handler()
@@ -46,12 +47,13 @@ test('GSA3 catalog keeps all 11 discoverable skills, exact names and source-owne
     assert.ok(item.description.length > 30)
     assert.ok(RUNTIME_SKILLS[item.name].body.length > 80)
   }
-  const descriptionChars=result.structuredContent.skills.reduce((n,x)=>n+x.description.length,0)
+  const descriptionChars=result.structuredContent.skills.filter(x=>originalNames.includes(x.name)).reduce((n,x)=>n+x.description.length,0)
+  assert.ok(result.structuredContent.skills.find(x=>x.name==='secretary')?.description.length>30)
   assert.ok(descriptionChars < 1100, 'catalog description payload must be smaller than GSA2 1558-char baseline')
   assert.ok(1558-descriptionChars >= 400)
   console.log('GSA3_SOURCE_CATALOG_PROXY '+JSON.stringify({
     gsa2_description_chars:1558,gsa3_description_chars:descriptionChars,
-    saved_chars:1558-descriptionChars,host_model_tokens:'UNKNOWN'
+    saved_chars:1558-descriptionChars,additive_ua_secretary_description_chars:RUNTIME_SKILLS.secretary.description.length,host_model_tokens:'UNKNOWN'
   }))
 })
 test('all load_skill tool bodies and metadata still delivered with identical JSON fallback', async () => {
