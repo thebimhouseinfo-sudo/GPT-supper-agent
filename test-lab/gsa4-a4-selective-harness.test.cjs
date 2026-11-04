@@ -61,7 +61,7 @@ function contexts(tool='run_begin',error='NEXT_DISPATCH_STALE_JOB_SHA'){
   return {task_context:task,repair_context:repair}
 }
 const preview=(tool,error)=>
-  plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...contexts(tool,error)}))
 const cases=[
   ['RUN','run_begin','NEXT_DISPATCH_STALE_JOB_SHA'],
@@ -108,7 +108,7 @@ test('A4 + real A2/A3: four defect routes receive role-complete literal preview,
 test('A4 unknown/other Roles and unknown workflow have full Harness fallback',()=>{
   for(const role of Object.keys(catalog.ROLE_HARNESSES)){
     const context=contexts()
-    const p=plain(previewSelectiveHarness({role,workflow:'PRODUCT_DEFECT_REPAIR',
+    const p=plain(previewSelectiveHarness({role,workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
       current_source_ref:REVISION,...context}))
     if(role==='coder')assert.equal(p.mode,'SELECTIVE_REPAIR_PREVIEW')
     else {
@@ -120,9 +120,9 @@ test('A4 unknown/other Roles and unknown workflow have full Harness fallback',()
   const coderFull=catalog.renderHarness('coder',{includeProgressiveSkills:false})
   assert.equal(previewSelectiveHarness({role:'coder',workflow:'BOOTSTRAP',
     current_source_ref:REVISION,...contexts()}).harness_text,coderFull)
-  assert.equal(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  assert.equal(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:'b'.repeat(40),...contexts()}).harness_text,coderFull)
-  assert.equal(previewSelectiveHarness({role:'unrecognized',workflow:'PRODUCT_DEFECT_REPAIR',
+  assert.equal(previewSelectiveHarness({role:'unrecognized',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...contexts()}).mode,'INVALID_ROLE')
 })
 
@@ -130,15 +130,15 @@ test('A4 respects blocked/stale Task and A3 routing: fallback to unchanged sourc
   const original=catalog.renderHarness('coder',{includeProgressiveSkills:false})
   const blocked=contexts();blocked.task_context.decision='STOP'
   blocked.task_context.findings.push({code:'JOB_NOT_CURRENT'})
-  const c=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  const c=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...blocked}))
   assert.equal(c.mode,'FULL_FALLBACK');assert.equal(c.harness_text,original)
   const stale=contexts();stale.repair_context.findings.push({code:'LOCATOR_REVISION_MISMATCH'})
-  const s=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  const s=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...stale}))
   assert.equal(s.mode,'FULL_FALLBACK')
   const empty=contexts();empty.repair_context.source_candidates=[]
-  assert.equal(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  assert.equal(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...empty}).mode,'FULL_FALLBACK')
 })
 
@@ -149,7 +149,7 @@ test('A4 policy source drift or missing mandatory clauses fails CLOSED',()=>{
     return full?full.replace(catalog.BASE_AGENT_HARNESS,fake.BASE_AGENT_HARNESS):null
   }
   const drift=compileCurrent('selective-harness-preview.ts',{'./harness-catalog.ts':fake})
-  const p=plain(drift.previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  const p=plain(drift.previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...contexts()}))
   assert.equal(p.mode,'FULL_FALLBACK')
   assert.equal(p.saved_chars,0)
@@ -160,7 +160,7 @@ test('A4 policy source drift or missing mandatory clauses fails CLOSED',()=>{
     return full?full.replace(catalog.BASE_AGENT_HARNESS,removed.BASE_AGENT_HARNESS):null
   }
   const missing=compileCurrent('selective-harness-preview.ts',{'./harness-catalog.ts':removed})
-  const m=plain(missing.previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+  const m=plain(missing.previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
     current_source_ref:REVISION,...contexts()}))
   assert.equal(m.mode,'FULL_FALLBACK')
   assert.equal(m.saved_chars,0)
@@ -171,7 +171,7 @@ test('A4 + A3 measures exact real source/harness chars without inventing token o
   let full=0,select=0,sources=0
   for(const [id,tool,error] of cases){
     const ctx=contexts(tool,error)
-    const p=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+    const p=plain(previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',human_message_kind:'SAME_APPROVED_TASK',
       current_source_ref:REVISION,...ctx}))
     full+=p.original_chars
     select+=p.selected_chars
@@ -202,4 +202,13 @@ test('A4 does not change the existing eight Role/eleven Skill API contracts',()=
     assert.ok(catalog.renderHarness(role).includes(catalog.BASE_AGENT_HARNESS))
   assert.ok(fs.readFileSync(path.join(base,'harness-skill-tools.ts'),'utf8')
     .includes('renderHarness(role, { includeProgressiveSkills: false })'))
+})
+
+
+test('A4 fails closed when fresh Human message has not been classified',()=>{
+  const x=contexts()
+  const p=previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+    current_source_ref:REVISION,...x})
+  assert.equal(p.mode,'FULL_FALLBACK')
+  assert.equal(p.saved_chars,0)
 })
