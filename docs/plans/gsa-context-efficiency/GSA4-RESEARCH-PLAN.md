@@ -70,7 +70,7 @@ Log **expected vs observed** separately. Record policy violations and missing ma
 ### GOAL
 Lock the research question, baseline, candidate-neutral scenario matrix and review method **before choosing a grouping**.
 
-**Tasks:** read approved Criteria and live plans; verify development branch/production baseline; locate and verify existing CT-00 entrypoint (do not guess from illustrative paths); search installed ChatGPT skills and repository for the original `simulate.skill` / scenario-tester; distinguish an advertised skill from successfully loaded capability. Define independent Reviewer checklist and a bounded way to record reproducible outcomes.
+**Tasks:** read approved Criteria and live plans; verify development branch/production baseline; reuse the verified CT-00 entrypoints `test-lab/context-meter.cjs`, `test-lab/context-run-report.cjs`, `test-lab/mcp-context-capture.cjs` and `CONTEXT-METER.md`; validate existing test status rather than rebuilding the meter. The original `simulate` source is in `thebimhouseinfo-sudo/bootstrap/project-template/.agents/skills/simulate/SKILL.md` (found at blob `5b55a25057d2a33b320e54840f5578d81269c8b0`), but that source file does **not** prove the skill is installed/usable in this ChatGPT session. Distinguish source availability from installed and actually loaded capability; similarly for host `scenario-tester`. Define independent Reviewer checklist and a bounded way to record reproducible outcomes.
 
 **Options:** (a) scope only Harness, (b) Harness + Skills, (c) complete end-to-end role/context loading. Compare investigation effort vs risk of optimizing the wrong source; propose (c) as audit scope while narrowing first experiments to high-value path. Also decide real `simulate` vs explicit theoretical substitute based on evidence, not name.
 
@@ -115,7 +115,7 @@ For every candidate document: proposed tree, parent facade, exported APIs, impor
 ### GOAL
 Prove or falsify each grouping's proposed activation with **identical** User scenarios before coding.
 
-**Fixture matrix** (expand with negative cases):
+**Fixture matrix** (expand with negative cases): **source-blind Designer** derives personas, User inputs and expected outcomes from Human decisions/Criteria **before** tracing code. Freeze design fixtures (ID/hash/version), then a separate Tracer maps actual paths. This conversation already inspected GSA source before research planning; thus this initial fixture list is only a **coverage sketch**, not proof of source-blind independent simulate design. Obtain an appropriately isolated source-blind pass before claiming full `simulate`-method fidelity.
 1. Ordinary status/question in discussion (no new Job).
 2. New feature / unclear requirement / clarification.
 3. New or material Criteria change invoking Technical Advisor.
@@ -136,7 +136,7 @@ Prove or falsify each grouping's proposed activation with **identical** User sce
 18. Missing/stale Task/Phase and untrusted/forged caller metadata.
 
 For each scenario, log expected and simulated:
-`user_input → router/role → base/role/phase rules → suggested/loaded skill → Project/Job/Run/context files → extra calls → output/gate`; assess omissions, unnecessary loads and number of files opened. **Use original simulate skill only if genuinely available**. Simulated quality is NOT source-executed or host-observed PASS.
+`user_input → router/role → base/role/phase rules → suggested/loaded skill → Project/Job/Run/context files → extra calls → output/gate`; assess omissions, unnecessary loads and number of files opened. **Use original simulate skill only if genuinely available as a callable/loaded skill**; otherwise follow a documented, source-cited simulation-method proposal without claiming the host skill ran. The Bootstrap skill source requires Designer/Tracer isolation, frozen scenarios, and two-sided pass/fail external-boundary mock continuation. Simulated quality is NOT source-executed or host-observed PASS.
 
 **Gate:** Reviewer checks negative cases, false activations, completeness, comparison fairness and no host claims.
 
