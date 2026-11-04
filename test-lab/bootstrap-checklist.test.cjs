@@ -168,9 +168,10 @@ test('technical proposal is a separate preparation item',()=>{
  assert.equal(x.completed,3)
 })
 test('runtime exposes coordinator tool and self-driving bootstrap harness',()=>{
- assert.match(source,/'project_bootstrap_checklist_prepare'/)
- assert.match(source,/follow next_action immediately in the SAME TURN/)
- assert.match(source,/TASK operation, never an additional Bootstrap gate/)
+ const registry=fs.readFileSync('supabase/functions/gsa-mcp/project-setup/bootstrap-checklist.ts','utf8')
+ assert.match(registry,/'project_bootstrap_checklist_prepare'/)
+ assert.match(registry,/five-item autonomous Bootstrap checklist/)
+ assert.match(source,/TECHNICAL_PROPOSAL_REVIEW/)
  const guide=fs.readFileSync('skills/gsa-job-runtime/SKILL.md','utf8')
  assert.match(guide,/Autonomous Bootstrap checklist/)
  assert.match(guide,/run[s]? \*\*CRL\*\*/)
