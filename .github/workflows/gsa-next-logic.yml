@@ -15,6 +15,7 @@ on:
       - 'skills/gsa-job-runtime/SKILL.md'
       - 'docs/architecture/AGENT-HARNESSES.md'
       - 'docs/architecture/EXECUTION-AND-REVIEW.md'
+      - 'docs/benchmarks/THREE-PR-REWORK-GSA3-CONTROL-EVIDENCE.md'
       - '.github/workflows/gsa-next-logic.yml'
   workflow_dispatch:
 
