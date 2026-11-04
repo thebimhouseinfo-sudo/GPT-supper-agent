@@ -93,7 +93,7 @@ test('UD-01: loaded Coder skill describes one cohesive Markdown proposal and com
     'small independent Task uses a short subsection', 'no new Job, Registry, service, gate',
     'No application code before necessary review completion'])
     assert.ok(skill.includes(term), 'missing Coder guidance: ' + term)
-  assert.ok(rendered.includes('U-D PRE-CODE:'))
+  assert.ok(rendered.includes('ROLE: CODER')) // U-D remains on-demand in existing coding-loop skill
   assert.ok(ROLE_SKILLS.coder.includes('coding-loop'), 'pre-code remains progressive')
   assert.equal(preCodeTechnicalError(inventory(['SMALL-T1'])), null)
 })
@@ -108,7 +108,7 @@ test('UD-02: existing CR admission and PRE_CODE_TECHNICAL focus, no Planning Rev
   assert.equal(start.structuredContent.review_focus, 'PRE_CODE_TECHNICAL')
   assert.match(RUNTIME_SKILLS['critic-review'].body, /PRE_CODE_TECHNICAL \(U-D\)/)
   assert.match(RUNTIME_SKILLS['critic-review'].body, /Planning Reviewer/)
-  assert.ok(renderHarness('critic_reviewer').includes('U-D PRE_CODE_TECHNICAL'))
+  assert.ok(ROLE_SKILLS.critic_reviewer.includes('critic-review')) // Critic specialization is progressive
 })
 test('UD-03: valid whole-related Critic PASS yields reviewed inventory only in existing Verification', async () => {
   const tools = setup(), review = inventory()
