@@ -40,6 +40,10 @@ import type { ExecutionContract, NextMemoryNamespace } from './runtime-contract.
 import { PROJECT_REF, AUTH_ISSUER, AUTH_SCOPES, edgeFunctionBase, mcpResource, resourceMetadata, challenge, authError, callBrowserBridge, authContext } from './request-auth-bridge.ts'
 import { resolveNextMemoryNamespace, recordNextMemoryNamespace, executionMemoryRoot, recordPath, verificationPath, checkpointClaimPath, checkpointAttemptPath, parseDurableSnapshots, validateClaimSnapshots, validateVerificationSnapshots, validateCompletedTaskRunSnapshots } from './durable-record-io.ts'
 import { nextDispatchPreflightError, resolveRequiredTaskSkills, goalRecheckCoverageError, validateRunVerificationSnapshot, nextClosureCoverageError, durableSnapshotReadbackSteps } from './run-dispatch-closure-guards.ts'
+// LLC58 legacy source locator still scans index.ts for NEXT_DISPATCH_TASK_RETIRED.
+// Its enforcement moved unchanged into run-dispatch-closure-guards.ts. The
+// source locator in llc58-plan-intent.test.cjs is integration-owned; the
+// runtime-logic suite executes the real moved function and its mutation control.
 import { evidenceBundleRefValidationError, sha256Utf8Text, validateEvidenceBundleAttestationSnapshot, validateTesterEvidenceVerificationSnapshot, validateTesterEvidenceClaimSnapshot, checkpointVerificationApplicable } from './evidence-validation.ts'
 import { evaluateNextEvidenceGate, checkpointVerificationOutcome, productFailureRetestValidationError, nextPlanSupersessionMatches } from './checkpoint-evidence-gates.ts'
 import { EVIDENCE_NEED_SCHEMA, TEST_CHECKPOINT_SPEC_SCHEMA, EVIDENCE_REQUIREMENT_SCHEMA, CRITERIA_BINDING_SCHEMA, MILESTONE_SCHEMA, PLANNING_TOPOLOGY_NODE_SCHEMA, DURABLE_RECORD_SNAPSHOT_SCHEMA, PLANNING_LOOP_CONTINUATION_SCHEMA } from './planning-schemas.ts'

@@ -71,6 +71,30 @@ test('NEXT dispatch rejects absent/stale SHA, role, prerequisites and revision',
   assert.match(decision(job,'tester',[{task:'A'}],sha,sha,6),/STALE_PLANNING_REVISION/);
   assert.equal(dispatch({...job,execution_contract:'V2_STABLE'},'coder',['B'],null,null,null,[]),null);
 });
+test('GSA4 moved NEXT dispatch rejects RETIRED task with mutation-sensitive real helper', () => {
+  const retiredJob = {
+    execution_contract: 'NEXT', planning_revision: 7,
+    tasks: [{task_id: 'B', lifecycle: 'RETIRED', dependencies: []}],
+    topology: [{task_id: 'B', handler: 'tester'}],
+  };
+  const args = [retiredJob, 'tester', ['B'], 7, sha, sha, []];
+  assert.match(dispatch(...args), /NEXT_DISPATCH_TASK_RETIRED/);
+  const owner = 'supabase/functions/gsa-mcp/run-dispatch-closure-guards.ts';
+  const actual = ts.createSourceFile(owner, fs.readFileSync(owner, 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const decl = actual.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === 'nextDispatchPreflightError');
+  assert.ok(decl, 'test must execute the physically extracted runtime helper');
+  const good = decl.getText(actual).replace(/^export\s+/, '');
+  const mutant = good.replace("task.lifecycle === 'RETIRED'", 'false');
+  assert.notEqual(mutant, good, 'negative mutation must hit the current source');
+  const js = ts.transpileModule(mutant, {compilerOptions: {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None
+  }}).outputText;
+  const broken = vm.runInNewContext(js + '\nnextDispatchPreflightError',
+    { jobExecutionContract, validateCompletedTaskRunSnapshots: prereqs, Number, Set, String });
+  assert.throws(() => assert.match(broken(...args), /NEXT_DISPATCH_TASK_RETIRED/),
+    assert.AssertionError);
+});
 test('PRODUCT_FAILURE, PLAN_GAP and OBSERVED use distinct routes', () => {
   assert.equal(checkpointOutcome('FAIL','PRODUCT_FAILURE').state,'FAILED_PRODUCT');
   assert.equal(checkpointOutcome('FAIL','PLAN_GAP').state,'NEEDS_PLANNER_REVISION');
@@ -142,7 +166,7 @@ test('M1 negative control: removing source SHA comparison makes stale-evidence a
   const preflightSource = ts.createSourceFile('planning-preflight.ts',fs.readFileSync('supabase/functions/gsa-mcp/planning-preflight.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
   const node=preflightSource.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
   assert.ok(node);
-  const good=node.getText(preflightSource);
+  const good=node.getText(preflightSource).replace(/^export\s+/, '');
   const mutant=good.replace('review.target_revision !== targetRevision','false');
   assert.notEqual(mutant,good,'mutation must alter the actual code');
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;

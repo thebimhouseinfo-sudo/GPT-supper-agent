@@ -34,7 +34,7 @@ for (const owner of sources) {
       extracted.push(node.getText(owner).replace(/^export\s+/, ''))
     if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
       ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
-      extracted.push(node.getText(owner))
+      extracted.push(node.getText(owner).replace(/^export\s+/, ''))
   }
 }
 for (const name of names) assert.ok(extracted.some(x => x.includes('function ' + name + '(')), 'Missing runtime function: ' + name)
