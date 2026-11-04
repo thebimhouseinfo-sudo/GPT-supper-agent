@@ -61,6 +61,7 @@ export const codingLoopSkill = {
       '- If the gap is within scope, make a focused fix and repeat INSPECT → VERIFY → GOAL RECHECK.',
       '- Do not repeat an identical failed action without a changed diagnosis.',
       '- Stop and route material scope/contract/authority blockers.',
+      'U-F THREE-CYCLE DEFECT LIMIT: before another fix, read the original user-visible symptom/repro and ALL existing durable same-defect Tester failures across Chat and Job changes. Count only authorized Coder revision/Goal Recheck followed by independent Tester original-trigger and regression rerun. After third complete PRODUCT_FAILURE retest STOP ordinary patch four, use debugging and first-causal-event report; do not relabel issue to reset counter. Coder selftest or CI green cannot close the Tester defect.',
     ].join('\n'),
   }
 
