@@ -41,7 +41,7 @@ function loadModule(relative) {
       assert.ok(name.startsWith('./'), 'module import must be relative')
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(relative), name.replace(/\.ts$/, '')))
       assert.ok(target === 'evidence-repository-tools' || target.startsWith('evidence-repo/'))
-      return loadModule(target).exports
+      return loadModule(target)
     }
   }, { timeout: 3000, filename: file })
   return mod.exports
