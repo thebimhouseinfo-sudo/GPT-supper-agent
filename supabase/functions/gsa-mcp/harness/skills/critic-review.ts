@@ -16,7 +16,7 @@ export const criticReviewSkill = {
 // U-D: special subject for the existing independent Critic, without new CR authority.
 criticReviewSkill.body += [
   '',
-  'PRE_CODE_TECHNICAL (U-D): review the complete connected descriptive Markdown design, never a planning-review substitute or a Reviewer-of-Reviewer.',
+  'PRE_CODE_TECHNICAL (U-D): review the complete connected descriptive Markdown design, never a Planning Reviewer substitute or a Reviewer-of-Reviewer.',
   '- Require the SAME Human cr/crl or Human-approved milestone authority. Reconstruct exact proposal revision, complete related Task IDs, accepted decisions, existing owner/call graph and host/source evidence independently before any prior Reviewer opinion.',
   '- Check whole-related Task coverage, precise CREATE/MODIFY/REUSE_AS_IS/KEEP/REMOVE paths, existing vs proposed functions, callers, actually consumed interfaces, missing input/output and source evidence; missing material source is UNKNOWN, not PASS.',
   '- Detect duplicate cross-Task services, unused interfaces, cycles, unneeded gates/Registry and disproportionate SMALL FUNCTION -> BIG SOLUTION -> LARGER SYSTEM IMPACT. A second DWG in the same AutoCAD process is not crash isolation; UNDO is not rollback of external files or process crashes. Prefer simple native/manual solutions when adequate.',
