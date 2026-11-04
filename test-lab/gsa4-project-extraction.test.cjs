@@ -1,5 +1,5 @@
 'use strict'
-// GSA4 A0-P: locked original-source parity and executable registration/auth checks.
+// GSA4 A0-P: source parity with explicitly reviewed Bootstrap-v5 tool contract deltas and executable registration/auth checks.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -41,16 +41,16 @@ const expected = [
     "name": "project_bootstrap_checklist_prepare",
     "file": "bootstrap-checklist.ts",
     "fn": "registerProjectBootstrapChecklistPrepare",
-    "length": 3045,
-    "hash": "a8fc3dcb",
+    "length": 3257,
+    "hash": "12258be8",
     "auth": "Authentication required for Bootstrap checklist."
   },
   {
     "name": "project_bootstrap_readiness_prepare",
     "file": "bootstrap-readiness.ts",
     "fn": "registerProjectBootstrapReadinessPrepare",
-    "length": 3411,
-    "hash": "df6ce9a0",
+    "length": 3576,
+    "hash": "bef97a0a",
     "auth": "Authentication required for Project Bootstrap readiness."
   },
   {
