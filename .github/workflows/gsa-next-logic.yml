@@ -44,4 +44,4 @@ jobs:
         with:
           deno-version: v2.x
       - name: Typecheck Supabase GSA MCP Edge Function
-        run: deno check supabase/functions/gsa-mcp/index.ts
+        run: deno check supabase/functions/gsa-mcp/index.ts supabase/functions/gsa-mcp/task-context-recipe.ts
