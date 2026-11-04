@@ -23,7 +23,7 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts'].map(file =>
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts','planning-preflight.ts','project-manifest-scope.ts'].map(file =>
   ts.createSourceFile(file,
     fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
@@ -482,7 +482,7 @@ test('M4: Human CR fallback and milestone invocation record distinct provenance'
   assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
   assert.ok(record.includes("'APPROVED_MILESTONE'"))
   assert.ok(record.includes('Re-fetch the exact current Job SHA'))
-  assert.ok(source.includes("review_loop: z.enum(['none','rl','crl'])"))
+  assert.ok(fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/planning-schemas.ts'),'utf8').includes("review_loop: z.enum(['none','rl','crl'])"))
 })
 
 test('M4 loop: Reviewer FAIL repairs then re-reviews; CR FAIL returns to rl before CR again', () => {

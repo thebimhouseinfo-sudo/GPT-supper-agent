@@ -14,6 +14,9 @@ const indexHelperOwners = {
   jobExecutionContract: 'runtime-contract.ts',
   checkpointVerificationOutcome: 'checkpoint-evidence-gates.ts',
   nextDispatchPreflightError: 'run-dispatch-closure-guards.ts',
+  milestoneCrlEvidenceError: 'planning-preflight.ts',
+  projectBootstrapExecutionError: 'planning-preflight.ts',
+  parseProjectManifest: 'project-manifest-scope.ts',
 };
 function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
@@ -136,9 +139,10 @@ test('M1 CRL evidence is exact job/milestone/revision AND source SHA bound', () 
   assert.match(crlEvidence(crlJob,'M1',reviewSnapshot({result:'FAIL'}),sha),/REVIEW_INVALID/);
 });
 test('M1 negative control: removing source SHA comparison makes stale-evidence assertion RED', () => {
-  const node=parsed.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
+  const preflightSource = ts.createSourceFile('planning-preflight.ts',fs.readFileSync('supabase/functions/gsa-mcp/planning-preflight.ts','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  const node=preflightSource.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='milestoneCrlEvidenceError');
   assert.ok(node);
-  const good=node.getText(parsed);
+  const good=node.getText(preflightSource);
   const mutant=good.replace('review.target_revision !== targetRevision','false');
   assert.notEqual(mutant,good,'mutation must alter the actual code');
   const js=ts.transpileModule(mutant,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
