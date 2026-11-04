@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const {loadSourceModule}=require('./helpers/harness-ts-loader.cjs');
 const read = (name) => fs.readFileSync('supabase/functions/gsa-mcp/' + name, 'utf8');
 const sha = 'a'.repeat(40), fencedSha='b'.repeat(40);
 const pid='11000000-0000-4000-8000-000000000001';
@@ -91,7 +92,11 @@ function stubZ(){const chain=new Proxy(function(){return chain},{
 function register(file,fn,depsExtra={}){
   const handlers=new Map();
   const js=toJS(read(file));
-  const init=vm.runInNewContext(js+'\n'+fn,{JSON,Date,Array,Set,Map,Number,String});
+  const init=vm.runInNewContext(js+'\n'+fn,{JSON,Date,Array,Set,Map,Number,String,exports:{},
+    require:(name)=>{
+      assert.equal(name,'./decision-fidelity.ts','U-B source registration may import only the reviewed U-A decision helper');
+      return loadSourceModule('decision-fidelity.ts');
+    }});
   const schema=stubZ().object({});
   init({...deps,...depsExtra,z:stubZ(),req:{},AUTH_SCOPES:[],
     DURABLE_RECORD_SNAPSHOT_SCHEMA:schema,PLANNING_LOOP_CONTINUATION_SCHEMA:schema,
