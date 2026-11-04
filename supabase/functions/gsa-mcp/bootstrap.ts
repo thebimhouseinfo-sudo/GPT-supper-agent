@@ -4,7 +4,7 @@
 export function projectBootstrapChecklistDecision(input: any) {
   const mode = input?.project_context === 'GREENFIELD' ? 'GREENFIELD' : 'BROWNFIELD'
   const phases = [
-    { id: 'criteria', label: 'Human-approved Criteria' },
+    { id: 'criteria', label: 'Valid Criteria aligned with the project GOAL' },
     { id: 'plan', label: 'Plan consistent with Criteria' },
     { id: 'milestones', label: 'Milestones consistent with Plan' },
     { id: 'technical_proposal', label: 'Technical Proposal consistent with Criteria and Plan' },
@@ -49,7 +49,7 @@ export function projectBootstrapChecklistDecision(input: any) {
       next_item: active, next_action: stalled ? 'REPORT_BLOCKER' : action,
       next_owner: stalled ? 'orchestrator' : owner,
       instruction: stalled
-        ? 'This exact action produced no observed progress. Report the tool failure or inaccessible source; preserve PASS work. Do not ask Human to perform routine agent work or create an extra gate.'
+        ? 'This exact action produced no observed progress. Report the tool failure or inaccessible source; preserve PASS work. Do not ask Human to perform routine agent work or create a Bootstrap approval gate.'
         : instruction,
       human_question: stalled ? null : question,
       continue_same_turn: !stalled && !question && action !== 'BOOTSTRAP_READY',
@@ -90,8 +90,8 @@ export function projectBootstrapChecklistDecision(input: any) {
   if (next.id === 'criteria') {
     if (next.status === 'NEED_HUMAN')
       return output('criteria', 'ASK_HUMAN', 'human',
-        'Present the Criteria draft or precise missing product decision. Technical Advisor must advise before Human-approved Criteria is written, never for mere discussion.',
-        next.observation || 'Bạn xác nhận Criteria dự thảo này hay muốn điều chỉnh mục tiêu sản phẩm?')
+        'Request Human input only for an actual unresolved product GOAL or WHAT/WHY decision. Do not require a separate Human Bootstrap approval.',
+        next.observation || 'Cần làm rõ yêu cầu sản phẩm nào để hoàn thiện Criteria?')
     if (next.status === 'PENDING')
       return output('criteria', 'INSPECT_CRITERIA', 'planner',
         mode === 'GREENFIELD'
@@ -105,7 +105,7 @@ export function projectBootstrapChecklistDecision(input: any) {
       'Investigate the specific missing source or tool evidence once. Provide real conflicting candidate sources if Human must decide; otherwise report a technical blocker. Repeated unchanged VERIFY_BLOCKER becomes PAUSED_NO_PROGRESS, not an infinite loop.')
   if (next.id === 'plan')
     return output('plan', 'PLAN_CRL', 'planner',
-      'Inspect existing Plan; keep it if reviewed and aligned with Criteria. Otherwise repair/create only necessary sections and run independent Reviewer and Critic Reviewer CRL until PASS. Human explicitly requested Bootstrap with CRL; this grants review of Plan/Milestones, NOT product code writes. When there is a valid Job use existing human_invoked CR for that Human-directed scope; without a Job run role-isolated DIRECT_AGENT reviews of real documents, without fabricating durable receipts or a duplicate Job.')
+      'Inspect existing Plan against Criteria and actual project state. For brownfield inventory old Tasks/Jobs, migrate them into appropriate Plan positions and reconcile their true status. Retain reviewed, aligned Plan; otherwise repair/create necessary sections and run independent Reviewer and Critic Reviewer CRL until PASS. Human explicitly requested Bootstrap with CRL; this grants review of Plan/Milestones, NOT product code writes. When there is a valid Job use existing human_invoked CR for that Human-directed scope; without a Job run role-isolated DIRECT_AGENT reviews of real documents, without fabricating durable receipts or a duplicate Job.')
   if (next.id === 'milestones')
     return output('milestones', 'MILESTONES_CRL', 'planner',
       'Inspect Milestones against PASS Plan and keep valid ones; otherwise repair then Reviewer → Critic Reviewer CRL until PASS. Human Bootstrap request authorizes this review, not code execution. Without an existing Job use independent DIRECT_AGENT Critic Reviewer on actual documents; do not create a Job just to satisfy CR tooling or fabricate signed review evidence.')
