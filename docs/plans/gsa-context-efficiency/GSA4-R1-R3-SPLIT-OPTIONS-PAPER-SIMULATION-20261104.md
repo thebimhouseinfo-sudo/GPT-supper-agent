@@ -104,6 +104,8 @@ The following source ranges are source-grounded at the pinned GSA3 commit. They 
 
 **Bounded Review (method, not independent role review):** prioritize `harness-catalog.ts` and `index.ts` for complete ownership maps because they dominate the source-facing reading surface. Do not predetermine that `selftest.ts` or large Markdown should split; a cohesive large file used atomically may legitimately be optimal. For large documentation, a short navigable parent with stable links could help more than numerous small files, but only scenario evidence may justify that claim.
 
+**A/B conditional post-split comparison (paper research only):** [GSA4-A-B-FOLLOWON-FORECAST-20261104.md](./GSA4-A-B-FOLLOWON-FORECAST-20261104.md). This is a forecast to inform splitting design, **not actual R6–R8 execution**.
+
 ## Remaining Stage-1 research before physical split
 
 1. **Finish R1** for index/tools/selftest/knowledge/long documents: construct caller/import/document reference graphs and **specific alternate splitting trees per hotspot**; mark actual co-read/reread UNKNOWN unless observed.
