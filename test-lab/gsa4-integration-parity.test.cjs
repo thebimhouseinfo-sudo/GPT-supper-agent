@@ -162,7 +162,16 @@ test('all 17 extracted Run/Project/Checkpoint/Evidence registration expressions 
     const original=calls(base(file),'GSA3/'+file)
     const updated=calls(toolSource(file,entry),'A0/'+file)
     assert.equal(original.length,count,'base registrations: '+file)
-    assert.deepEqual(updated,original,'schemas/handlers/error/result code drift: '+file)
+    // U-B deliberately augments ONLY the extracted run_complete handler.
+    // The other 16 A0 registrations remain byte-exact to GSA3.
+    if(file==='run-execution-tools.ts'){
+      assert.deepEqual(updated.filter(([name])=>name!=='run_complete'),
+        original.filter(([name])=>name!=='run_complete'),
+        'four unmodified Run registrations retain exact pinned GSA3 behavior')
+      const completion=updated.find(([name])=>name==='run_complete')?.[1]
+      assert.match(completion,/PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB/)
+      assert.match(completion,/Independently reread CURRENT owning Job/)
+    } else assert.deepEqual(updated,original,'schemas/handlers/error/result code drift: '+file)
     assert.deepEqual(registrationGraph(file,entry).names,original.map(([name])=>name),
       'registration order drift: '+file)
   }
