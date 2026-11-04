@@ -712,9 +712,13 @@ test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot by
   const setup = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)\.optional\(\)/)
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)/)
-  const found = ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
-  assert.ok(found)
-  const js=ts.transpileModule(found.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const ownerFile = 'supabase/functions/gsa-mcp/run-dispatch-closure-guards.ts'
+  const ownerAst = ts.createSourceFile(ownerFile, fs.readFileSync(ownerFile, 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  assert.equal(ownerAst.parseDiagnostics.length, 0)
+  const found = ownerAst.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
+  assert.ok(found, 'real Goal Recheck helper exists in its extracted source owner')
+  const js=ts.transpileModule(found.getText(ownerAst).replace(/^export\s+/, ''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
   const check=vm.runInNewContext(js+'\ngoalRecheckCoverageError', { jobExecutionContract: job=>job.execution_contract })
   const criterion='Human confirmation and decision sufficient'
   const j={execution_contract:'NEXT',project_id:id,job_id:'reviewed-job',
