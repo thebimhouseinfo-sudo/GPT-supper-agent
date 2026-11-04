@@ -259,3 +259,6 @@ for(const c of measured) console.log('GSA4_BENCHMARK_CASE '+JSON.stringify({id:c
     coverage:c.strategies[s].coverage_count+'/'+c.strategies[s].coverage_total}))}))
 assert.equal(measured.length,4)
 assert.ok(strategies.every(s=>summary[s].full_source_chars>0))
+assert.equal(summary.A1_A2_A3.scenarios_complete,4,'A3 must cover all frozen source dependencies')
+assert.ok(summary.A0.full_source_chars < summary.GSA3.full_source_chars,
+  'Actual A0 fine modules must reduce source-read chars for these same fixed diagnostic signals')
