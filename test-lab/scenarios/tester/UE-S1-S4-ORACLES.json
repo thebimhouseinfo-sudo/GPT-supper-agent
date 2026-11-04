@@ -1,0 +1,92 @@
+{
+  "schema": "ue-oracle-v1",
+  "scope": "Tester Simulation source-independent expected-user behavior",
+  "source": [
+    "Human request: GSA U-E UE-01..03, 2026-11-04",
+    "DETAIL-PLAN.md U-E/U-07/BP-07, base 36e98c16577583432c73e2b93522ef408f60414c"
+  ],
+  "source_independence": "Expected results authored from user request and plan wording, not copied from code. Same session had inspected source before freeze: independent blind-Designer execution remains UNVERIFIED.",
+  "mock_boundary": "CAD/Host deliberately synthetic; no actual Autodesk or GSA Job/Run execution",
+  "scenarios": [
+    {
+      "id": "S1",
+      "tier": "T0-T2",
+      "persona": "Engineer runs one safe command",
+      "why_a_user_does_this": "Needs one CAD change and wants success only after the command finishes",
+      "entrypoint": "User submits one Create command",
+      "criteria": [
+        "one requested CAD write, no duplicate",
+        "success confirmed only after host acknowledges"
+      ],
+      "positive": "single authorized CAD child; one success ACK; DONE after confirmation",
+      "negative": "host failure yields FAIL; zero asserted saved success",
+      "boundary_profiles": [
+        "host-success",
+        "host-fail"
+      ]
+    },
+    {
+      "id": "S2",
+      "tier": "T3",
+      "persona": "Engineer returns to a created result",
+      "why_a_user_does_this": "Creates and runs a task, then saves and later reopens work",
+      "entrypoint": "Create -> Run -> Save -> Reopen",
+      "criteria": [
+        "ordered effects and saved revision only on acknowledged save",
+        "failure of save is not reported as saved"
+      ],
+      "positive": "create, run, save each acknowledge in order; persisted state can be reopened",
+      "negative": "save failure leaves no saved-complete claim; reconnection does not invent persistence",
+      "boundary_profiles": [
+        "save-success",
+        "save-fail"
+      ]
+    },
+    {
+      "id": "S3",
+      "tier": "T4-T6",
+      "persona": "Engineer has two chat windows",
+      "why_a_user_does_this": "Repeats an uncertain action while another chat is manipulating the same drawing",
+      "entrypoint": "One click plus repeated request and interleaved second-chat action",
+      "criteria": [
+        "one root action must not cause accidental second CAD child",
+        "conflicting CAD commands serialized",
+        "independent SYSTEM work may overlap CAD",
+        "duplicate callbacks do not duplicate effects"
+      ],
+      "positive": "CAD active maximum 1; intentional second-chat CAD waits; independent SYSTEM progresses; duplicate command id ignored",
+      "negative": "injected double-spawn is detected even if queue serializes; injected concurrent CAD is detected",
+      "boundary_profiles": [
+        "delayed-host",
+        "duplicate-response"
+      ]
+    },
+    {
+      "id": "S4",
+      "tier": "T1-T2-T4-T6",
+      "persona": "Engineer loses connection during a command",
+      "why_a_user_does_this": "Cancels, closes and reconnects, then retries with old and new state",
+      "entrypoint": "Malformed request; active request cancel/close/reconnect; late ACK; stale planning revision",
+      "criteria": [
+        "invalid/stale requests never launch CAD writes",
+        "cancel/close settles request and blocks late callback",
+        "new session can issue another command without stranded lease"
+      ],
+      "positive": "invalid and stale blocked; late completion ignored; new valid request succeeds",
+      "negative": "injected late-ACK acceptance or stale-revision bypass is detected",
+      "boundary_profiles": [
+        "invalid-input",
+        "host-cancel",
+        "late-response",
+        "stale-plan"
+      ]
+    }
+  ],
+  "evidence_rules": [
+    "STATIC != SIMULATED != REAL_HOST_UNVERIFIED",
+    "Mock PASS does not mean AutoCAD/Revit native PASS",
+    "Frozen design block never revised from implementation behavior",
+    "Test double has explicit injected-bug negative controls",
+    "Always identify root, child, callback, queue, wait-for, persistence and terminal state"
+  ]
+}

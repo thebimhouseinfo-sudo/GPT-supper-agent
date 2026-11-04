@@ -63,3 +63,20 @@ export const codingLoopSkill = {
       '- Stop and route material scope/contract/authority blockers.',
     ].join('\n'),
   }
+
+// U-D: additive guidance preserves the pinned GSA3 initializer and existing A0-A4 policies.
+codingLoopSkill.body += [
+  '',
+  'U-D — PRE_CODE_TECHNICAL / DESCRIPTIVE PROPOSAL (UD-01)',
+  '- BEFORE application-source changes for a Goal and its related Tasks, create ONE descriptive Markdown proposal in the existing Plan/Task artifact flow; no new Job, Registry, service, gate, empty source skeleton or duplicate per-Task architecture.',
+  '- Inspect actual approved Goal/Tasks, full accepted decisions/exceptions, exact existing source revisions, real owner paths, functions, direct callers/consumers, interfaces, input/output, dependencies, host behavior and test contracts. Clearly distinguish EXISTING versus PROPOSED and UNKNOWN versus verified facts.',
+  '- Each affected Task names exact file actions CREATE | MODIFY | REUSE_AS_IS | KEEP | REMOVE, actual/proposed functions, callers and interface consumers (or explicitly justified N/A), inputs/outputs, dependency/call graph, host/operational side effects, source evidence, checks and exclusions.',
+  '- Cohesive cross-Task proposal owns shared functionality once. A small independent Task uses a short subsection, not a giant design template. Do not create .ts/.py/.lsp/.cs stubs or test source during descriptive pre-code.',
+  '',
+  'U-D — FINAL CRITIC REVIEW AND REVIEWED INVENTORY (UD-02/UD-03)',
+  '- Submit the whole related-Task Markdown proposal and source/decision evidence for independent PRE_CODE_TECHNICAL using the EXISTING Critic Reviewer. start_critic_review and critic_review_record require direct Human cr/crl or previously Human-approved milestone crl; Planning Reviewer and Coder self-review do NOT substitute. Never auto-invoke Critic or invent an approval.',
+  '- Critic checks omitted Task/file/function/caller/consumer, duplicate machinery, unused interfaces, dependency cycles, unnecessary services/Registry/gates and SMALL FUNCTION -> BIG SOLUTION -> LARGER SYSTEM IMPACT including Host state and native rollback limits.',
+  '- CHANGES_REQUIRED maps to the existing Critic FAIL: repair the SAME proposal and re-submit the entire interacting Task set for a fresh Critic review. HUMAN_ESCALATION maps to existing BLOCKED/Human routing for real disproportionate risk, not an invented sandbox.',
+  '- Only after genuine Critic PASS (or PASS_WITH_FINDINGS limited to MINOR), immutable CRITIC_REVIEW Verification persistence and exact proposal-revision readback, derive the reviewed file/function/interface/caller inventory from that corrected proposal; use it as Coder reference, NOT a new technical Registry or source-write grant.',
+  '- No application code before necessary review completion. A material later design change invalidates affected coverage and returns through the SAME bounded Critic review, while routine Coder HOW does not add another gate. Existing Human, Run, Job, cursor, CAS, Criteria and Tester authority continue unchanged.',
+].join('\n')

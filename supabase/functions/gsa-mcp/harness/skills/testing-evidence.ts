@@ -33,7 +33,7 @@ export const testingEvidenceSkill = {
       '',
       'RETEST / ROUTE',
       '- Bind Retest evidence to the exact target revision/state.',
-      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected. Tester reruns the failing case and impacted regression matrix. For renewed scenario discovery, invoke the *real* ChatGPT-installed scenario-tester when host availability is confirmed; otherwise mark that coverage UNVERIFIED. Repeat repairs for every within-scope new defect until complete or genuinely blocked.',
+      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected. Tester reruns the failing case and impacted regression matrix. For user-triggered scenario discovery load the GSA simulate skill on demand, and invoke the separate host-managed scenario-tester only when its actual ChatGPT host availability is confirmed. A GSA simulation never certifies native host behavior; label REAL_HOST_UNVERIFIED without evidence. Repeat repairs for every within-scope new defect until complete or genuinely blocked.',
       '- PLAN_GAP/SPEC_GAP: route to Planner superseding planning_revision; old revision claim/evidence becomes non-applicable.',
       '- TEST_FAILURE: owning Coder repairs faulty test/config within scope; rerun and obtain independent Tester evidence. ENVIRONMENT_FAILURE / INTEGRATION_NOT_READY: try an authorized safe alternative execution surface before issuing Human Retest, while keeping blocked hosted evidence UNVERIFIED.',
       '- PASS_RETEST_REQUIRED cannot satisfy a mandatory EvidenceRequirement/checkpoint gate.',
