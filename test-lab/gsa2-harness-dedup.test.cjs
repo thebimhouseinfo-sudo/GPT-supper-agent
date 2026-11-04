@@ -5,23 +5,14 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
 const ts = require('typescript')
 
 const dir = path.join(__dirname, '../supabase/functions/gsa-mcp')
 const catalogSource = fs.readFileSync(path.join(dir, 'harness-catalog.ts'), 'utf8')
 const handlerSource = fs.readFileSync(path.join(dir, 'harness-skill-tools.ts'), 'utf8')
 const rootSource = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8')
-const parsed = ts.createSourceFile('harness-catalog.ts', catalogSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-assert.equal(parsed.parseDiagnostics.length, 0, 'catalog TypeScript must parse')
-const translated = ts.transpileModule(catalogSource, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  reportDiagnostics: true,
-})
-assert.equal((translated.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0)
-const mod = { exports: {} }
-vm.runInNewContext(translated.outputText, { module: mod, exports: mod.exports }, { timeout: 2500 })
-const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = mod.exports
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
+const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = loadSourceModule('harness-catalog.ts')
 const roles = ['orchestrator', 'planner', 'advisor', 'designer', 'coder', 'reviewer', 'critic_reviewer', 'tester']
 
 test('only redundant skill hints are removed from the bundled response', () => {
