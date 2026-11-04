@@ -137,3 +137,28 @@ test('A2 is pure, read-only and cannot change input snapshots or current Tool re
   assert.equal(Object.hasOwn(result,'authorization'),false)
   assert.equal(Object.hasOwn(result,'new_mcp_tools'),false)
 })
+
+test('A2 rejects forged locator paths, invalid Git SHA and wrong Project record prefix',()=>{
+  const input=makeInput()
+  input.source_locator=JSON.parse(JSON.stringify(locator))
+  const entry=input.source_locator.tool_owners.find(x=>x.name==='run_begin')
+  assert.ok(entry)
+  entry.owner='../other-repo/secret.ts'
+  const injected=asPlain(buildTaskContextRecipe(input))
+  assert.ok(codes(injected).includes('SOURCE_OWNER_UNKNOWN'))
+  assert.ok(injected.source_candidates.every(x=>x.tool!=='run_begin'))
+  input.current_source_ref='not-a-commit'
+  input.source_locator_ref='not-a-commit'
+  assert.ok(codes(asPlain(buildTaskContextRecipe(input))).includes('SOURCE_LOCATOR_REVALIDATE'))
+  input.job_record_path='projects/other-project/WORK/JOBS/malicious.json'
+  const wrong=asPlain(buildTaskContextRecipe(input))
+  assert.ok(codes(wrong).includes('JOB_PATH_MISSING'))
+  assert.ok(!wrong.required_reads.some(x=>x.kind==='JOB'))
+})
+test('A2 refuses non-current Run as sufficient execution context',()=>{
+  const input=makeInput()
+  input.run.lifecycle='COMPLETED'
+  const result=asPlain(buildTaskContextRecipe(input))
+  assert.ok(codes(result).includes('RUN_LIFECYCLE_REVALIDATE'))
+  assert.equal(result.execution_authorized,false)
+})
