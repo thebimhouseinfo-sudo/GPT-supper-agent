@@ -393,7 +393,7 @@
       ]
     },
     {
-      "code": "AUTH_REQUIRED",
+      "code": "invalid_token",
       "owner": "request-auth-bridge.ts",
       "related": [
         "harness-skill-tools.ts",
