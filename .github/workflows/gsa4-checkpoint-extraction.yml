@@ -1,0 +1,28 @@
+name: GSA4 checkpoint extraction regression
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/gsa-mcp/checkpoint-tools.ts'
+      - 'supabase/functions/gsa-mcp/checkpoint/**'
+      - 'test-lab/gsa4-checkpoint-extraction.test.cjs'
+      - '.github/workflows/gsa4-checkpoint-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint-source-execution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated TypeScript transpiler
+        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa4-checkpoint typescript@5.9.3
+      - name: Execute actual checkpoint registrations, gate negatives, and source parity
+        env:
+          NODE_PATH: /tmp/gsa4-checkpoint/node_modules
+        run: node --test test-lab/gsa4-checkpoint-extraction.test.cjs

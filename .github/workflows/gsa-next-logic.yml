@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # pinned GSA3 source baseline required by A0 project parity
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -32,7 +34,7 @@ jobs:
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
-        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs
+        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/ub-scope-wide-plan-change.test.cjs test-lab/llc61-assetgen-bootstrap.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs test-lab/gsa4-run-extraction.test.cjs test-lab/gsa4-project-extraction.test.cjs test-lab/gsa4-checkpoint-extraction.test.cjs test-lab/gsa4-evidence-extraction.test.cjs test-lab/gsa4-integration-parity.test.cjs test-lab/gsa4-a1-source-locator.test.cjs test-lab/gsa4-a2-task-context.test.cjs test-lab/gsa4-a3-repair-context.test.cjs test-lab/gsa4-a4-selective-harness.test.cjs test-lab/gsa4-a4-four-scenario-simulation.cjs test-lab/gsa4-a4-workflow-simulation.test.cjs
   deno-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -42,4 +44,31 @@ jobs:
         with:
           deno-version: v2.x
       - name: Typecheck Supabase GSA MCP Edge Function
-        run: deno check supabase/functions/gsa-mcp/index.ts
+        run: deno check supabase/functions/gsa-mcp/index.ts supabase/functions/gsa-mcp/task-context-recipe.ts supabase/functions/gsa-mcp/repair-context-route.ts supabase/functions/gsa-mcp/selective-harness-preview.ts
+  navigation-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0 # access real pre-A0 GSA3 source through git show
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated TypeScript executor
+        run: npm install --no-save --ignore-scripts --no-package-lock --prefix /tmp/gsa4-nav-bench typescript@5.9.3
+      - name: Benchmark identical diagnostic signals against GSA3, A0, A1, A2 and A3
+        env:
+          NODE_PATH: /tmp/gsa4-nav-bench/node_modules
+          BENCHMARK_OUTPUT: ${{ runner.temp }}/gsa4-navigation-benchmark.json
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          node test-lab/gsa4-navigation-benchmark.cjs "$BENCHMARK_OUTPUT"
+      - name: Upload reproducible navigation trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: gsa4-navigation-benchmark
+          path: ${{ runner.temp }}/gsa4-navigation-benchmark.json
+          if-no-files-found: error
+          retention-days: 30

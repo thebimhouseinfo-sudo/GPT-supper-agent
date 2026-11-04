@@ -5,23 +5,15 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
 const ts = require('typescript')
 
 const dir = path.join(__dirname, '../supabase/functions/gsa-mcp')
 const catalogSource = fs.readFileSync(path.join(dir, 'harness-catalog.ts'), 'utf8')
 const handlerSource = fs.readFileSync(path.join(dir, 'harness-skill-tools.ts'), 'utf8')
 const rootSource = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8')
-const parsed = ts.createSourceFile('harness-catalog.ts', catalogSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-assert.equal(parsed.parseDiagnostics.length, 0, 'catalog TypeScript must parse')
-const translated = ts.transpileModule(catalogSource, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  reportDiagnostics: true,
-})
-assert.equal((translated.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0)
-const mod = { exports: {} }
-vm.runInNewContext(translated.outputText, { module: mod, exports: mod.exports }, { timeout: 2500 })
-const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = mod.exports
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
+const { normalizeCodingSkillSource } = require('./helpers/three-pr-approved-deltas.cjs')
+const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = loadSourceModule('harness-catalog.ts')
 const roles = ['orchestrator', 'planner', 'advisor', 'designer', 'coder', 'reviewer', 'critic_reviewer', 'tester']
 
 test('only redundant skill hints are removed from the bundled response', () => {
@@ -86,4 +78,69 @@ test('measured source-response reduction is strictly the duplicate skill list, n
     identical_workload_runner_comparison: 'NOT_YET_OBSERVED',
     samples, totals,
   }))
+})
+
+test('GSA4 A0: all live module literals match the pinned GSA3 source exactly', () => {
+  // Frozen from 6b352a3a1f9b791564b4e8b1682af875adf73da7, before physical extraction.
+  // Fingerprints are computed from exact TypeScript initializer text (including newlines).
+  function fnv64(s) {
+    let hash = 0xcbf29ce484222325n
+    for (let i = 0; i < s.length; i++) {
+      hash = BigInt.asUintN(64, (hash ^ BigInt(s.charCodeAt(i))) * 0x100000001b3n)
+    }
+    return hash.toString(16).padStart(16, '0')
+  }
+  function declarationInitializer(file, name) {
+    const text = fs.readFileSync(path.join(dir, file), 'utf8')
+    const ast = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+    assert.equal(ast.parseDiagnostics.length, 0, file + ' must parse')
+    const declarations = ast.statements.filter(ts.isVariableStatement)
+      .flatMap(s => [...s.declarationList.declarations])
+      .filter(d => ts.isIdentifier(d.name) && d.name.text === name)
+    assert.equal(declarations.length, 1, name + ' declaration exists exactly once in ' + file)
+    return declarations[0].initializer.getText(ast)
+  }
+  const hashes = {
+    'harness/shared.ts': ['BASE_AGENT_HARNESS', '9746b3061be44cb4'],
+    'harness/roles/orchestrator.ts': ['orchestratorHarness', '3c848c01485082f5'],
+    'harness/roles/planner.ts': ['plannerHarness', 'c2f8aae581a49ddb'],
+    'harness/roles/advisor.ts': ['advisorHarness', '3f3a9b9c771d5829'],
+    'harness/roles/designer.ts': ['designerHarness', '7f2bd7dac6889e78'],
+    'harness/roles/coder.ts': ['coderHarness', '62ddc891d73b2119'],
+    'harness/roles/reviewer.ts': ['reviewerHarness', '05eae8d37351aca9'],
+    'harness/roles/critic_reviewer.ts': ['critic_reviewerHarness', '6fc1163ef1c87365'],
+    'harness/roles/tester.ts': ['testerHarness', '94d3059a420ded83'],
+    'harness/skills/debugging.ts': ['debuggingSkill', '0651a03a3d44eb6a'],
+    'harness/skills/critic-review.ts': ['criticReviewSkill', '677983e7d2b00d9a'],
+    'harness/skills/critical-challenge.ts': ['criticalChallengeSkill', 'c21c14865ac48584'],
+    'harness/skills/job-planning.ts': ['jobPlanningSkill', '70ebb16a8b7e98c8'],
+    'harness/skills/coding-loop.ts': ['codingLoopSkill', 'b3fae2ed6ac72e1c'],
+    'harness/skills/delegation.ts': ['delegationSkill', 'a3dcb65cddef4908'],
+    'harness/skills/planning-review.ts': ['planningReviewSkill', '55c6fa608f72ff5a'],
+    'harness/skills/review-evidence.ts': ['reviewEvidenceSkill', '49d8f7a2dbf4760d'],
+    'harness/skills/testing-evidence.ts': ['testingEvidenceSkill', 'b5195853a1ddf00b'],
+    'harness/skills/tester-lab.ts': ['testerLabSkill', 'afce8f0b9d1caa88'],
+    'harness/skills/ui-coder-frontend.ts': ['uiCoderFrontendSkill', 'ac9853bdf04f3ac6'],
+    'harness-catalog.ts': ['ROLE_SKILLS', '0d05b22107d15b13'],
+  }
+  for (const [file, [name, expected]] of Object.entries(hashes)) {
+    const initializer = declarationInitializer(file, name)
+    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(initializer) : initializer
+    assert.equal(fnv64(original), expected, name + ' differs from GSA3 baseline (approved U-C delta exempted by exact-byte oracle)')
+  }
+  assert.equal(fnv64(declarationInitializer('harness-catalog.ts', 'ROLE_HOST_SKILLS')),
+    '3afe197634894634', 'host Skill suggestion mapping changed')
+  const facade = ts.createSourceFile('harness-catalog.ts', catalogSource,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const renderer = facade.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === 'renderHarness')
+  assert.ok(renderer, 'public renderHarness remains in the facade')
+  assert.equal(fnv64(renderer.getText(facade)), '641a2319574c160b',
+    'renderHarness text must remain identical to GSA3')
+  const expectedRoles = ['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
+  const expectedSkills = ['debugging','critic-review','critical-challenge','job-planning','coding-loop',
+    'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend']
+  const live = loadSourceModule('harness-catalog.ts')
+  assert.equal(JSON.stringify(Object.keys(live.ROLE_HARNESSES)), JSON.stringify(expectedRoles))
+  assert.equal(JSON.stringify(Object.keys(live.RUNTIME_SKILLS)), JSON.stringify(expectedSkills))
+  assert.equal(JSON.stringify(Object.keys(live.ROLE_SKILLS)), JSON.stringify(expectedRoles))
 })

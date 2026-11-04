@@ -3,23 +3,12 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
-const ts = require('typescript')
 
 // GSA3: source-executed tool/skill response check; NOT ChatGPT host token measurement.
 const sourceDir = path.join(__dirname, '../supabase/functions/gsa-mcp')
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
 function sourceModule(name) {
-  const text = fs.readFileSync(path.join(sourceDir, name), 'utf8')
-  const parsed = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  assert.equal(parsed.parseDiagnostics.length, 0, name + ' must parse as TypeScript')
-  const out = ts.transpileModule(text, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    reportDiagnostics: true
-  })
-  assert.equal((out.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0)
-  const mod = { exports: {} }
-  vm.runInNewContext(out.outputText, { module: mod, exports: mod.exports }, { timeout: 2500 })
-  return { exports: mod.exports, text }
+  return { exports: loadSourceModule(name), text: fs.readFileSync(path.join(sourceDir, name), 'utf8') }
 }
 const catalog = sourceModule('harness-catalog.ts')
 const handlers = sourceModule('harness-skill-tools.ts')
@@ -108,4 +97,52 @@ test('negative authority: unauthenticated callers never obtain catalog, skill or
     assert.equal(r.isError,true)
     assert.equal(r.structuredContent,undefined)
   }
+})
+
+
+test('UC-01: engineering context is scoped to on-demand Coder skill, not every harness or catalog', async () => {
+  const tools = setup()
+  assert.ok(ROLE_SKILLS.coder.includes('coding-loop'))
+  const role = await tools.get_agent_harness.handler({ role: 'coder', mode: 'JOB' })
+  exactFallback(role)
+  const catalogResponse = await tools.get_skill_catalog.handler()
+  exactFallback(catalogResponse)
+  const body = RUNTIME_SKILLS['coding-loop'].body
+  assert.match(body, /ENGINEERING CONTEXT \/ SOLUTION CLARIFICATION/)
+  assert.match(body, /actual approved Goal\/Tasks, complete accepted expert decisions and exceptions/)
+  assert.match(body, /real host behavior, direct callers and affected contracts/)
+  assert.match(body, /Coder owns ordinary software-engineering HOW/)
+  assert.match(body, /Coder is not the Domain Expert/)
+  assert.doesNotMatch(role.structuredContent.harness_text, /ENGINEERING CONTEXT \/ SOLUTION CLARIFICATION/)
+  assert.doesNotMatch(JSON.stringify(catalogResponse.structuredContent), /complete accepted expert decisions and exceptions/)
+  const loaded = await tools.load_skill.handler({ name: 'coding-loop' })
+  exactFallback(loaded)
+  assert.equal(loaded.structuredContent.skill_text, body)
+})
+
+test('UC-02: consequential clarification only, never routine interrogation or new gate', () => {
+  const body = RUNTIME_SKILLS['coding-loop'].body
+  assert.match(body, /Ask Human once, narrowly, only if an unresolved domain\/host\/operation choice/)
+  assert.match(body, /cannot be determined from approved decisions or verified source/)
+  assert.match(body, /do not re-ask answered facts, interview for routine coding choices or introduce an extra approval gate/)
+  assert.match(body, /Mark material missing evidence UNKNOWN/)
+  assert.ok(!Object.keys(ROLE_HARNESSES).includes('domain_expert'), 'no new specialist role')
+})
+
+test('UC-03: DEV source protections remain distinct from Human-owned operational artifacts', async () => {
+  const body = RUNTIME_SKILLS['coding-loop'].body
+  assert.match(body, /classify by phase and purpose, not file extension or creator/)
+  assert.match(body, /DEV internal application source.*Git SHA\/CAS, branch, cursor, Reviewer and Tester contracts/)
+  assert.match(body, /never relaxes source-write security/)
+  assert.match(body, /OPERATION Human-owned deliverables.*Temp\/Custom Job JOB\.md, LISP\/Python scripts and DWG\/DOCX\/DWF\/DWT/)
+  assert.match(body, /Open, Edit, Save, Load, Export and Import workflow/)
+  assert.match(body, /Never impose an internal Run UUID, content hash, Registry entry, persistent identity, promotion or original source SHA/)
+  assert.match(body, /an authorized revised same-name LISP may be reloaded/)
+  assert.match(body, /consequential same-name collision or overwrite.*clarify that conflict once/)
+  assert.match(body, /recoverable AutoCAD BAK is not equivalent to DWL\/DWL2 lock files/)
+  assert.match(body, /OPERATION permissions are not waived/)
+  assert.match(body, /stop on denied folders, files or program controls/)
+  const denied = await setup(false).load_skill.handler({ name: 'coding-loop' })
+  assert.equal(denied.isError, true)
+  assert.equal(denied.structuredContent, undefined)
 })

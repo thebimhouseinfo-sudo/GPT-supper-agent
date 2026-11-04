@@ -1,0 +1,429 @@
+{
+  "schema": "gsa4-a1-source-locator/v1",
+  "source_root": "supabase/functions/gsa-mcp",
+  "basis_a0_merge": "6fbd5d8e55a0515ac03db9bb383764c10a5b6b86",
+  "advisory_only": true,
+  "validation": "Before acting, resolve paths and symbols at CURRENT Git ref/blob SHA. This index is not an authorization record. On mismatch, search current code and read upstream callers/tests; never hide a missing precondition.",
+  "tool_owners": [
+    {
+      "name": "get_cli_root",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "get_runtime_status",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "job_plan_change_fence_prepare",
+      "owner": "plan-change-tools.ts",
+      "facade": "plan-change-tools.ts"
+    },
+    {
+      "name": "job_plan_change_resume_evaluate",
+      "owner": "plan-change-tools.ts",
+      "facade": "plan-change-tools.ts"
+    },
+    {
+      "name": "job_plan_change_prepare",
+      "owner": "plan-change-tools.ts",
+      "facade": "plan-change-tools.ts"
+    },
+    {
+      "name": "job_plan_change_assess",
+      "owner": "plan-change-tools.ts",
+      "facade": "plan-change-tools.ts"
+    },
+    {
+      "name": "execution_cursor_prepare",
+      "owner": "execution-cursor-tools.ts",
+      "facade": "execution-cursor-tools.ts"
+    },
+    {
+      "name": "execution_cursor_resume_evaluate",
+      "owner": "execution-cursor-tools.ts",
+      "facade": "execution-cursor-tools.ts"
+    },
+    {
+      "name": "execution_recovery_evaluate",
+      "owner": "execution-cursor-tools.ts",
+      "facade": "execution-cursor-tools.ts"
+    },
+    {
+      "name": "orchestration_progress_evaluate",
+      "owner": "execution-cursor-tools.ts",
+      "facade": "execution-cursor-tools.ts"
+    },
+    {
+      "name": "browser_ui_inspect",
+      "owner": "browser-test-tools.ts",
+      "facade": "browser-test-tools.ts"
+    },
+    {
+      "name": "browser_test_flow",
+      "owner": "browser-test-tools.ts",
+      "facade": "browser-test-tools.ts"
+    },
+    {
+      "name": "evidence_repository_publish_prepare",
+      "owner": "evidence-repo/publish-prepare.ts",
+      "facade": "evidence-repository-tools.ts"
+    },
+    {
+      "name": "evidence_repository_publish_finalize",
+      "owner": "evidence-repo/publish-finalize.ts",
+      "facade": "evidence-repository-tools.ts"
+    },
+    {
+      "name": "evidence_repository_probe_verification_prepare",
+      "owner": "evidence-repo/probe.ts",
+      "facade": "evidence-repository-tools.ts"
+    },
+    {
+      "name": "evidence_bundle_attestation_prepare",
+      "owner": "evidence-bundle-tool.ts",
+      "facade": "evidence-bundle-tool.ts"
+    },
+    {
+      "name": "get_profile",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "get_memory_repo_config",
+      "owner": "project-auth-tools.ts",
+      "facade": "project-auth-tools.ts"
+    },
+    {
+      "name": "set_memory_repo_config",
+      "owner": "project-auth-tools.ts",
+      "facade": "project-auth-tools.ts"
+    },
+    {
+      "name": "authorize_project_scope",
+      "owner": "project-auth-tools.ts",
+      "facade": "project-auth-tools.ts"
+    },
+    {
+      "name": "authorize_memory_mutation",
+      "owner": "project-auth-tools.ts",
+      "facade": "project-auth-tools.ts"
+    },
+    {
+      "name": "project_list",
+      "owner": "project-management-tools.ts",
+      "facade": "project-management-tools.ts"
+    },
+    {
+      "name": "project_create",
+      "owner": "project-management-tools.ts",
+      "facade": "project-management-tools.ts"
+    },
+    {
+      "name": "project_register_repositories",
+      "owner": "project-management-tools.ts",
+      "facade": "project-management-tools.ts"
+    },
+    {
+      "name": "milestone_loop_evaluate",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "stopchat_handoff_prepare",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "project_setup_prepare",
+      "owner": "project-setup/setup.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_criteria_advice_check",
+      "owner": "project-setup/criteria-advice.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_role_addins_resolve",
+      "owner": "project-setup/role-addins.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_bootstrap_checklist_prepare",
+      "owner": "project-setup/bootstrap-checklist.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_bootstrap_readiness_prepare",
+      "owner": "project-setup/bootstrap-readiness.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_branch_policy_prepare",
+      "owner": "project-setup/branch-policy.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
+      "name": "project_open",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "project_status",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "project_pause",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "project_resume",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "project_archive",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "project_delete",
+      "owner": "project-lifecycle-tools.ts",
+      "facade": "project-lifecycle-tools.ts"
+    },
+    {
+      "name": "get_agent_harness",
+      "owner": "harness-skill-tools.ts",
+      "facade": "harness-skill-tools.ts"
+    },
+    {
+      "name": "get_skill_catalog",
+      "owner": "harness-skill-tools.ts",
+      "facade": "harness-skill-tools.ts"
+    },
+    {
+      "name": "load_skill",
+      "owner": "harness-skill-tools.ts",
+      "facade": "harness-skill-tools.ts"
+    },
+    {
+      "name": "job_prepare",
+      "owner": "job-prepare-tool.ts",
+      "facade": "job-prepare-tool.ts"
+    },
+    {
+      "name": "job_transition",
+      "owner": "job-transition-tool.ts",
+      "facade": "job-transition-tool.ts"
+    },
+    {
+      "name": "job_revise_plan",
+      "owner": "job-revise-plan-tool.ts",
+      "facade": "job-revise-plan-tool.ts"
+    },
+    {
+      "name": "plan_review_record",
+      "owner": "plan-review-record-tool.ts",
+      "facade": "plan-review-record-tool.ts"
+    },
+    {
+      "name": "start_critic_review",
+      "owner": "critic-review-tools.ts",
+      "facade": "critic-review-tools.ts"
+    },
+    {
+      "name": "critic_review_record",
+      "owner": "critic-review-tools.ts",
+      "facade": "critic-review-tools.ts"
+    },
+    {
+      "name": "checkpoint_claim_prepare",
+      "owner": "checkpoint/claim.ts",
+      "facade": "checkpoint-tools.ts"
+    },
+    {
+      "name": "checkpoint_verification_prepare",
+      "owner": "checkpoint/verification-gate.ts",
+      "facade": "checkpoint-tools.ts"
+    },
+    {
+      "name": "checkpoint_gate_evaluate",
+      "owner": "checkpoint/verification-gate.ts",
+      "facade": "checkpoint-tools.ts"
+    },
+    {
+      "name": "run_begin",
+      "owner": "run/run-begin.ts",
+      "facade": "run-execution-tools.ts"
+    },
+    {
+      "name": "relationship_knowledge_prepare",
+      "owner": "run/relationship-knowledge.ts",
+      "facade": "run-execution-tools.ts"
+    },
+    {
+      "name": "goal_recheck_record",
+      "owner": "run/goal-recheck.ts",
+      "facade": "run-execution-tools.ts"
+    },
+    {
+      "name": "run_verification_record",
+      "owner": "run/verification.ts",
+      "facade": "run-execution-tools.ts"
+    },
+    {
+      "name": "run_complete",
+      "owner": "run/complete.ts",
+      "facade": "run-execution-tools.ts"
+    },
+    {
+      "name": "start_direct_agent",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "get_instruction",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    },
+    {
+      "name": "get_command_help",
+      "owner": "index.ts",
+      "facade": "index.ts"
+    }
+  ],
+  "helper_owners": [
+    {
+      "symbol": "resolveExecutionContract",
+      "owner": "runtime-contract.ts"
+    },
+    {
+      "symbol": "recordPath",
+      "owner": "durable-record-io.ts"
+    },
+    {
+      "symbol": "verificationPath",
+      "owner": "durable-record-io.ts"
+    },
+    {
+      "symbol": "nextDispatchPreflightError",
+      "owner": "run-dispatch-closure-guards.ts"
+    },
+    {
+      "symbol": "resolveRequiredTaskSkills",
+      "owner": "run-dispatch-closure-guards.ts"
+    },
+    {
+      "symbol": "validateEvidenceBundleAttestationSnapshot",
+      "owner": "evidence-validation.ts"
+    },
+    {
+      "symbol": "evaluateNextEvidenceGate",
+      "owner": "checkpoint-evidence-gates.ts"
+    },
+    {
+      "symbol": "projectBootstrapExecutionError",
+      "owner": "planning-preflight.ts"
+    },
+    {
+      "symbol": "PLANNING_LOOP_CONTINUATION_SCHEMA",
+      "owner": "planning-schemas.ts"
+    },
+    {
+      "symbol": "prepareExecutionCursorDecision",
+      "owner": "cursor-decisions.ts"
+    },
+    {
+      "symbol": "resumeExecutionCursorDecision",
+      "owner": "cursor-decisions.ts"
+    },
+    {
+      "symbol": "parseProjectManifest",
+      "owner": "project-manifest-scope.ts"
+    },
+    {
+      "symbol": "authContext",
+      "owner": "request-auth-bridge.ts"
+    },
+    {
+      "symbol": "renderHarness",
+      "owner": "harness-catalog.ts"
+    },
+    {
+      "symbol": "validateRepositoryProbeSnapshot",
+      "owner": "index.ts"
+    }
+  ],
+  "error_routes": [
+    {
+      "code": "NEXT_DISPATCH_STALE_JOB_SHA",
+      "owner": "run-dispatch-closure-guards.ts",
+      "related": [
+        "durable-record-io.ts",
+        "runtime-contract.ts"
+      ],
+      "tests": [
+        "test-lab/runtime-logic.test.cjs"
+      ]
+    },
+    {
+      "code": "PENDING_MUTATION_REQUIRES_RECONCILIATION",
+      "owner": "cursor-decisions.ts",
+      "related": [
+        "recovery-decisions.ts",
+        "durable-record-io.ts"
+      ],
+      "tests": [
+        "test-lab/reliability-cursor.test.cjs"
+      ]
+    },
+    {
+      "code": "CHECKPOINT_CLAIM_REJECTED",
+      "owner": "checkpoint/claim.ts",
+      "related": [
+        "checkpoint/verification-gate.ts",
+        "checkpoint-evidence-gates.ts"
+      ],
+      "tests": [
+        "test-lab/gsa4-checkpoint-extraction.test.cjs"
+      ]
+    },
+    {
+      "code": "invalid_token",
+      "owner": "request-auth-bridge.ts",
+      "related": [
+        "harness-skill-tools.ts",
+        "run/run-begin.ts"
+      ],
+      "tests": [
+        "test-lab/gsa3-tool-skill-payload.test.cjs"
+      ]
+    }
+  ],
+  "tests_by_area": {
+    "harness": [
+      "test-lab/gsa4-integration-parity.test.cjs",
+      "test-lab/gsa2-harness-dedup.test.cjs"
+    ],
+    "run": [
+      "test-lab/gsa4-run-extraction.test.cjs"
+    ],
+    "project": [
+      "test-lab/gsa4-project-extraction.test.cjs"
+    ],
+    "checkpoint": [
+      "test-lab/gsa4-checkpoint-extraction.test.cjs"
+    ],
+    "evidence": [
+      "test-lab/gsa4-evidence-extraction.test.cjs"
+    ],
+    "shared": [
+      "test-lab/gsa1-module-boundary.test.cjs",
+      "test-lab/gsa4-integration-parity.test.cjs"
+    ]
+  }
+}

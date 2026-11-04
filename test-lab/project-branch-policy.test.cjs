@@ -7,10 +7,11 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+const {harnessSource: readHarnessSource, toolSource} = require('./helpers/gsa4-source-views.cjs')
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
-const harnessSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-catalog.ts'), 'utf8')
-const setupSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-setup-tools.ts'), 'utf8')
+const harnessSource = readHarnessSource()
+const setupSource = toolSource('project-setup-tools.ts', 'registerProjectSetupTools')
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
@@ -23,7 +24,7 @@ const names = [
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts'].map(file =>
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts','planning-preflight.ts','project-manifest-scope.ts'].map(file =>
   ts.createSourceFile(file,
     fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
@@ -34,7 +35,7 @@ for (const owner of sources) {
       extracted.push(node.getText(owner).replace(/^export\s+/, ''))
     if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
       ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
-      extracted.push(node.getText(owner))
+      extracted.push(node.getText(owner).replace(/^export\s+/, ''))
   }
 }
 for (const name of names) assert.ok(extracted.some(x => x.includes('function ' + name + '(')), 'Missing runtime function: ' + name)
@@ -482,7 +483,7 @@ test('M4: Human CR fallback and milestone invocation record distinct provenance'
   assert.ok(start.includes('PENDING_MILESTONE_EVIDENCE_READBACK'))
   assert.ok(record.includes("'APPROVED_MILESTONE'"))
   assert.ok(record.includes('Re-fetch the exact current Job SHA'))
-  assert.ok(source.includes("review_loop: z.enum(['none','rl','crl'])"))
+  assert.ok(fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/planning-schemas.ts'),'utf8').includes("review_loop: z.enum(['none','rl','crl'])"))
 })
 
 test('M4 loop: Reviewer FAIL repairs then re-reviews; CR FAIL returns to rl before CR again', () => {
@@ -609,7 +610,7 @@ test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelat
   assert.match(scope, /operation === 'MUTATE_SOURCE'/)
   assert.match(scope, /projectBootstrapExecutionError/)
   assert.match(scope, /allowed: false, mutation_allowed: false/)
-  const runSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/run-execution-tools.ts'), 'utf8')
+  const runSource = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
   const begin = runSource.slice(runSource.indexOf("'run_begin',"), runSource.indexOf("'relationship_knowledge_prepare',"))
   assert.match(begin, /role === 'coder'/)
   assert.match(begin, /projectBootstrapExecutionError/)
@@ -704,7 +705,7 @@ test('M5 four-check ready is separate from Human execution and branch scope', ()
 
 
 test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot bypass membership', () => {
-  const runTools = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8')
+  const runTools = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
   const criteriaSchema = runTools.slice(runTools.indexOf("'goal_recheck_record',"),runTools.indexOf("'run_verification_record',"))
   const occurrences = criteriaSchema.match(/^\s*task_id: z\.string\(\)\.min\(1\)\.optional\(\),/gm) || []
   assert.equal(occurrences.length,2, 'owning Task and criteria Task use nonempty IDs')
@@ -712,9 +713,13 @@ test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot by
   const setup = setupSource.slice(setupSource.indexOf("'project_role_addins_resolve',"),setupSource.indexOf("'project_bootstrap_checklist_prepare',"))
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)\.optional\(\)/)
   assert.match(setup,/task_id: z\.string\(\)\.min\(1\)/)
-  const found = ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
-  assert.ok(found)
-  const js=ts.transpileModule(found.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const ownerFile = 'supabase/functions/gsa-mcp/run-dispatch-closure-guards.ts'
+  const ownerAst = ts.createSourceFile(ownerFile, fs.readFileSync(ownerFile, 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  assert.equal(ownerAst.parseDiagnostics.length, 0)
+  const found = ownerAst.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='goalRecheckCoverageError')
+  assert.ok(found, 'real Goal Recheck helper exists in its extracted source owner')
+  const js=ts.transpileModule(found.getText(ownerAst).replace(/^export\s+/, ''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
   const check=vm.runInNewContext(js+'\ngoalRecheckCoverageError', { jobExecutionContract: job=>job.execution_contract })
   const criterion='Human confirmation and decision sufficient'
   const j={execution_contract:'NEXT',project_id:id,job_id:'reviewed-job',
