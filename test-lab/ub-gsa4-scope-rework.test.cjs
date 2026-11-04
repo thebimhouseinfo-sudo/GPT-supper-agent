@@ -184,6 +184,10 @@ function register(file,name,deps){
  const stubSchema=chain
  fn({server:{registerTool:(n,_def,h)=>handlers.set(n,h)},z,req:{},
    AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:stubSchema,
+   CRITERIA_BINDING_SCHEMA:stubSchema,EVIDENCE_NEED_SCHEMA:stubSchema,
+   TEST_CHECKPOINT_SPEC_SCHEMA:stubSchema,EVIDENCE_REQUIREMENT_SCHEMA:stubSchema,
+   MILESTONE_SCHEMA:stubSchema,PLANNING_TOPOLOGY_NODE_SCHEMA:stubSchema,
+   PLANNING_LOOP_CONTINUATION_SCHEMA:stubSchema,
    authContext:async()=>({id:'test'}),authError:()=>({isError:true}),
    ...deps})
  return handlers
