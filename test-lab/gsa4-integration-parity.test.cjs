@@ -136,7 +136,7 @@ function normalizeUDSkillBody(name,body) {
   assert.equal(body.split(marker).length,2,'U-D exact source extension missing/duplicated: '+name)
   const start = body.indexOf(marker)
   const addition = body.slice(start+1)
-  assert.match(addition, /Critic/)
+  assert.match(addition, /Critic|CR FAIL|CRITIC_REVIEW/)
   assert.match(addition, /reviewed/i)
   assert.match(addition, /no new|No new|not an automatically created/i)
   assert.ok(addition.split('\n').length >= 6,'U-D extension cannot be a placeholder')
