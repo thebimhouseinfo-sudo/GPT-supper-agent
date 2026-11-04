@@ -4,30 +4,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const vm = require('node:vm');
-const ts = require('typescript');
 
 const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
-const catalog = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts', 'utf8');
-const sf = ts.createSourceFile('harness-catalog.ts', catalog, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-assert.equal(sf.parseDiagnostics.length, 0, 'Runtime harness catalog TypeScript parses');
-
-function extractedConstant(name) {
-  const decls = sf.statements
-    .filter(ts.isVariableStatement)
-    .flatMap(statement => [...statement.declarationList.declarations])
-    .filter(decl => ts.isIdentifier(decl.name) && decl.name.text === name);
-  assert.equal(decls.length, 1, 'Exactly one live source declaration: ' + name);
-  assert.ok(decls[0].initializer, 'Initializer exists: ' + name);
-  const compiled = ts.transpileModule(
-    'const ' + name + ' = ' + decls[0].initializer.getText(sf) + ';\n' + name,
-    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }
-  ).outputText;
-  return vm.runInNewContext(compiled, {});
-}
-const shared = extractedConstant('BASE_AGENT_HARNESS');
-const roles = extractedConstant('ROLE_HARNESSES');
-const skills = extractedConstant('RUNTIME_SKILLS');
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs');
+const { BASE_AGENT_HARNESS: shared, ROLE_HARNESSES: roles, RUNTIME_SKILLS: skills } = loadSourceModule('harness-catalog.ts');
 
 const harness = role => [
   shared,

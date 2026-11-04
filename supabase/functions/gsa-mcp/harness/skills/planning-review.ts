@@ -1,0 +1,23 @@
+export const planningReviewSkill = {
+    description: 'Same-turn role-isolated review of the exact Job planning revision before READY.',
+    body: [
+      '# Planning Review',
+      'Review the durable Job plan, not the Planner reasoning. Planning review is role-isolated and normally runs in the SAME USER TURN; a fresh Human chat is NOT required for this planning-review gate. Reconstruct from the persisted Job/revision/source, never previous Planner reasoning. Independent source/code reviews retain their own context-isolation requirements.',
+      '',
+      '- Bind to exact job_id + planning_revision.',
+      '- Require L0 repository-structure evidence: top-level folders, relevant subtree/file names, config/test/docs/assets/CI-deploy surfaces as applicable.',
+      '- Read the Project repository registry. If discovery suggests unregistered sibling/dependent repos, return HUMAN_REVIEW_REQUIRED so the user can confirm the Project repo set.',
+      '- For multi-repo Projects, require exactly one declared working repository for the Job and a cross-repo impact assessment covering every registered repo.',
+      '- If Planner skipped structure discovery and planned only from README/TASKS/known descriptions, return CHANGES_REQUIRED.',
+      '- Re-read Project contract and selectively open files needed to test Planner assumptions.',
+      '- Check objective, scope, non-goals, progressive context evidence, brownfield logic review, relationship/precedence assessment, Objective→Phase→Task→Job Pack→Milestone decomposition, Job sizing/context boundary, dependencies, topology, completion criteria, verification requirements, UI_FIRST/UX_FIRST policy and Human Gates.',
+      '- Require ## GOAL immediately after plan title/front matter and ### GOAL immediately below each Phase heading before Tasks. Compare both with the Human-approved goals and all Tasks after every revision. Missing goal anchors or unauthorized drift => CHANGES_REQUIRED; an actual request to change approved goals => HUMAN_REVIEW_REQUIRED, not a silently rewritten goal.',
+      '- Detect stale roadmap assumptions, trusting existing brownfield behavior without review, wrong contract direction, duplicated already-implemented work, missing implementation work, mega-Job scope, meaningless micro-Job fragmentation, orphan criteria, impossible ordering and silent material product decisions.',
+      '- PASS only when the plan is executable and internally coherent for its stated finite objective.',
+      '- CHANGES_REQUIRED for fixable planning defects; give concrete findings to Planner and do not rewrite the plan yourself.',
+      '- HUMAN_REVIEW_REQUIRED only for a genuine material product/architecture/subjective choice that Planner cannot decide.',
+      '- BLOCKED only when required evidence/capability is unavailable.',
+      '- A revised planning_revision invalidates the prior review and must be reviewed again.',
+      '- After plan_review_record, authorized external Verification CREATE + Job UPDATE and exact independent readback must complete first. Then return control to Orchestrator in the same turn to follow continuation.next_action_after_readback, never issue a terminal user report merely because Reviewer returned CHANGES_REQUIRED or PASS. Reviewer does not revise the plan.',
+    ].join('\n'),
+  }

@@ -3,23 +3,12 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
-const ts = require('typescript')
 
 // GSA3: source-executed tool/skill response check; NOT ChatGPT host token measurement.
 const sourceDir = path.join(__dirname, '../supabase/functions/gsa-mcp')
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
 function sourceModule(name) {
-  const text = fs.readFileSync(path.join(sourceDir, name), 'utf8')
-  const parsed = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  assert.equal(parsed.parseDiagnostics.length, 0, name + ' must parse as TypeScript')
-  const out = ts.transpileModule(text, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    reportDiagnostics: true
-  })
-  assert.equal((out.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0)
-  const mod = { exports: {} }
-  vm.runInNewContext(out.outputText, { module: mod, exports: mod.exports }, { timeout: 2500 })
-  return { exports: mod.exports, text }
+  return { exports: loadSourceModule(name), text: fs.readFileSync(path.join(sourceDir, name), 'utf8') }
 }
 const catalog = sourceModule('harness-catalog.ts')
 const handlers = sourceModule('harness-skill-tools.ts')

@@ -5,9 +5,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const {harnessSource: readHarnessSource} = require('./helpers/gsa4-source-views.cjs');
 const source = fs.readFileSync('supabase/functions/gsa-mcp/recovery-decisions.ts', 'utf8');
 const cursorTools = fs.readFileSync('supabase/functions/gsa-mcp/execution-cursor-tools.ts','utf8');
-const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
+const harnessSource = readHarnessSource();
 const harnessTools = fs.readFileSync('supabase/functions/gsa-mcp/harness-skill-tools.ts','utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 function runtimeFunction(name, transform = body => body) {
