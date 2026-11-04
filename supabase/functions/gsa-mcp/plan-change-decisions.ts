@@ -83,7 +83,7 @@ function assessScopeWidePlanChange(input: any) {
   const referencedIds = (value: any): string[] => {
     if (typeof value === 'string') return [value]
     if (!value || typeof value !== 'object') return []
-    return [value.job_id, value.task_id, value.id].filter((v: any) => typeof v === 'string')
+    return [value.job_id, value.task_id, value.node_id, value.id].filter((v: any) => typeof v === 'string')
   }
   const refsFor = (job: any): string[] => [
     ...(job.dependencies ?? []).flatMap(referencedIds),
