@@ -34,7 +34,7 @@ jobs:
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
-        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs test-lab/gsa4-run-extraction.test.cjs test-lab/gsa4-project-extraction.test.cjs test-lab/gsa4-checkpoint-extraction.test.cjs test-lab/gsa4-evidence-extraction.test.cjs test-lab/gsa4-integration-parity.test.cjs test-lab/gsa4-a1-source-locator.test.cjs
+        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs test-lab/gsa4-run-extraction.test.cjs test-lab/gsa4-project-extraction.test.cjs test-lab/gsa4-checkpoint-extraction.test.cjs test-lab/gsa4-evidence-extraction.test.cjs test-lab/gsa4-integration-parity.test.cjs test-lab/gsa4-a1-source-locator.test.cjs test-lab/gsa4-a2-task-context.test.cjs
   deno-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
