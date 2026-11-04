@@ -7,10 +7,11 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+const {harnessSource: readHarnessSource, toolSource} = require('./helpers/gsa4-source-views.cjs')
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/index.ts'), 'utf8')
-const harnessSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/harness-catalog.ts'), 'utf8')
-const setupSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/project-setup-tools.ts'), 'utf8')
+const harnessSource = readHarnessSource()
+const setupSource = toolSource('project-setup-tools.ts', 'registerProjectSetupTools')
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
@@ -609,7 +610,7 @@ test('M5: both GSA-owned source mutation and Coder dispatch fail closed; unrelat
   assert.match(scope, /operation === 'MUTATE_SOURCE'/)
   assert.match(scope, /projectBootstrapExecutionError/)
   assert.match(scope, /allowed: false, mutation_allowed: false/)
-  const runSource = fs.readFileSync(path.join(__dirname, '../supabase/functions/gsa-mcp/run-execution-tools.ts'), 'utf8')
+  const runSource = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
   const begin = runSource.slice(runSource.indexOf("'run_begin',"), runSource.indexOf("'relationship_knowledge_prepare',"))
   assert.match(begin, /role === 'coder'/)
   assert.match(begin, /projectBootstrapExecutionError/)
@@ -704,7 +705,7 @@ test('M5 four-check ready is separate from Human execution and branch scope', ()
 
 
 test('M6 NEXT Goal Recheck supports exact Job-owned readable Task IDs; cannot bypass membership', () => {
-  const runTools = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8')
+  const runTools = toolSource('run-execution-tools.ts', 'registerRunExecutionTools')
   const criteriaSchema = runTools.slice(runTools.indexOf("'goal_recheck_record',"),runTools.indexOf("'run_verification_record',"))
   const occurrences = criteriaSchema.match(/^\s*task_id: z\.string\(\)\.min\(1\)\.optional\(\),/gm) || []
   assert.equal(occurrences.length,2, 'owning Task and criteria Task use nonempty IDs')
