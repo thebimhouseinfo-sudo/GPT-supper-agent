@@ -38,5 +38,7 @@ export const testingEvidenceSkill = {
       '- TEST_FAILURE: owning Coder repairs faulty test/config within scope; rerun and obtain independent Tester evidence. ENVIRONMENT_FAILURE / INTEGRATION_NOT_READY: try an authorized safe alternative execution surface before issuing Human Retest, while keeping blocked hosted evidence UNVERIFIED.',
       '- PASS_RETEST_REQUIRED cannot satisfy a mandatory EvidenceRequirement/checkpoint gate.',
       '- If required execution is unavailable AFTER relevant tool discovery, safe capability probe and eligible alternative check, create concise Human Retest steps that ask only for a genuinely inaccessible manual/secret/host action. Do not use Human as a courier for agent-accessible CI logs.',
+      'U-F RETEST: preserve immutable first failure ref, original symptom and user-trigger repro, exact Coder authorization/Goal Recheck/patch revision, independent Tester Run and read-back Test/Retest Verification with original plus impacted-regression replay. Scan matching existing Project Memory evidence across Chat/Job; use read-only retest-history.ts, not an in-chat counter.',
+      'U-F STOP: third completed patch plus independent Tester PRODUCT_FAILURE rerun triggers existing debugging skill and Advanced Defect Report, not blind repair four. Host/Test/Environment UNVERIFIED is not Product FAIL; Coder CI green or selftest is not independent Tester PASS; a different original defect gets separate history. U-E scenarios must be rerun after integration; do not import unmerged U-E.',
     ].join('\n'),
   }
