@@ -16,6 +16,7 @@ import { delegationSkill } from './harness/skills/delegation.ts'
 import { planningReviewSkill } from './harness/skills/planning-review.ts'
 import { reviewEvidenceSkill } from './harness/skills/review-evidence.ts'
 import { testingEvidenceSkill } from './harness/skills/testing-evidence.ts'
+import { simulateSkill } from './harness/skills/simulate.ts'
 import { testerLabSkill } from './harness/skills/tester-lab.ts'
 import { uiCoderFrontendSkill } from './harness/skills/ui-coder-frontend.ts'
 import { secretarySkill } from './harness/skills/secretary.ts'
@@ -41,7 +42,7 @@ export const ROLE_SKILLS: Record<string, string[]> = {
   coder: ['coding-loop', 'delegation'],
   reviewer: ['review-evidence', 'planning-review'],
   critic_reviewer: ['review-evidence', 'critic-review'],
-  tester: ['testing-evidence'],
+  tester: ['testing-evidence', 'simulate'],
 }
 
 // Host-managed ChatGPT Skills are references, not executable GSA skill bodies.
@@ -60,6 +61,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
   'planning-review': planningReviewSkill,
   'review-evidence': reviewEvidenceSkill,
   'testing-evidence': testingEvidenceSkill,
+  simulate: simulateSkill,
   'tester-lab': testerLabSkill,
   'ui-coder-frontend': uiCoderFrontendSkill,
   secretary: secretarySkill,
