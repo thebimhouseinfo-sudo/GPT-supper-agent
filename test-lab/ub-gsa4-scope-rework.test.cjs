@@ -202,5 +202,18 @@ test('UB-03 late NEXT Run completion is denied for any role on pending/stale/ter
  assert.match(rejected.content[0].text,/REQUIRES_CURRENT_JOB_SHA/)
  const owner=jobs[0]
  const accepted=await out({...args,job_record_text:JSON.stringify(owner),job_record_sha:sha})
- assert.equal(accepted.isError,true,'IN_PROGRESS alone cannot supply wrong owning plan state') // reset below
+ assert.ok(accepted.structuredContent,'legal current Job can settle this planner Run')
+ assert.equal(JSON.parse(accepted.structuredContent.terminal_run_record_text).lifecycle,'COMPLETED')
+ for(const bad of [
+   {...owner,plan_change_pending:{change_id:'new-plan'}},
+   {...owner,lifecycle:'RETIRED'},
+   {...owner,planning_revision:2},
+   {...owner,memory_namespace:'TEST_LAB'},
+ ]) {
+   const res=await out({...args,job_record_text:JSON.stringify(bad),job_record_sha:sha})
+   assert.equal(res.isError,true)
+   assert.match(res.content[0].text,/PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB/)
+ }
+ const failedSettlement=await out({...args,lifecycle:'FAILED',job_record_text:null,job_record_sha:null})
+ assert.ok(failedSettlement.structuredContent,'failed/cancelled settlement remains possible')
 })
