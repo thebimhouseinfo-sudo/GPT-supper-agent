@@ -9,8 +9,8 @@ const ts = require('typescript');
 
 const source = fs.readFileSync('supabase/functions/gsa-mcp/planning-guards.ts', 'utf8');
 const runtimeSource = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
-const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts', 'utf8');
-const harnessAst = ts.createSourceFile('harness-catalog.ts', harnessSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs');
+const liveHarness = loadSourceModule('harness-catalog.ts');
 const sf = ts.createSourceFile('planning-guards.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 assert.equal(sf.parseDiagnostics.length, 0, 'Exact GSA runtime source parses');
 const functionDecl = sf.statements.find(s => ts.isFunctionDeclaration(s) &&
@@ -45,20 +45,9 @@ function toolBody(name) {
   assert.ok(end > start || name === 'job_prepare' || name === 'job_transition' || name === 'job_revise_plan' || name === 'plan_review_record', 'Next tool boundary for ' + name);
   return ownerSource.slice(start, end > start ? end : undefined);
 }
-function constantBody(name) {
-  const decls = harnessAst.statements.filter(ts.isVariableStatement)
-    .flatMap(x => [...x.declarationList.declarations])
-    .filter(x => ts.isIdentifier(x.name) && x.name.text === name);
-  assert.equal(decls.length, 1, name + ' source definition must be unique');
-  const compiled = ts.transpileModule(
-    'const ' + name + ' = ' + decls[0].initializer.getText(harnessAst) + ';\n' + name,
-    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }
-  ).outputText;
-  return vm.runInNewContext(compiled, {exports: {}});
-}
-const shared = constantBody('BASE_AGENT_HARNESS');
-const roles = constantBody('ROLE_HARNESSES');
-const skills = constantBody('RUNTIME_SKILLS');
+const shared = liveHarness.BASE_AGENT_HARNESS;
+const roles = liveHarness.ROLE_HARNESSES;
+const skills = liveHarness.RUNTIME_SKILLS;
 
 test('Plan GOAL anchors are served to Planner and planning Reviewer and documented for every Phase', () => {
   const plan = roles.planner.loop.join('\n');
