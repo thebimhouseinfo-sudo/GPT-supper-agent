@@ -105,7 +105,14 @@ function initializer(file, variable, facade) {
     .flatMap(s => s.declarationList.declarations)
     .find(d => ts.isIdentifier(d.name) && d.name.text === variable)
   assert.ok(decl && decl.initializer, file + ' must declare ' + variable)
-  assert.ok(ts.isArrayLiteralExpression(decl.initializer) || ts.isObjectLiteralExpression(decl.initializer),
+  const literalJoinedArray = ts.isCallExpression(decl.initializer) &&
+    ts.isPropertyAccessExpression(decl.initializer.expression) &&
+    ts.isArrayLiteralExpression(decl.initializer.expression.expression) &&
+    decl.initializer.expression.name.text === 'join' &&
+    decl.initializer.arguments.length === 1 &&
+    ts.isStringLiteral(decl.initializer.arguments[0]) &&
+    decl.initializer.arguments[0].text === '\n'
+  assert.ok(ts.isArrayLiteralExpression(decl.initializer) || ts.isObjectLiteralExpression(decl.initializer) || literalJoinedArray,
     'expected literal owner: ' + file)
   return decl.initializer.getText(m.ast)
 }
