@@ -1,3 +1,4 @@
+import { decisionFidelityError, DECISION_PREFIX } from './decision-fidelity.ts'
 // GSA1: Job creation tool retains original schema and handler.
 export function registerJobPrepareTool(deps: any) {
   const { server, z, req, AUTH_SCOPES, authContext, authError, jobCreationExecutionContractDefault, CRITERIA_BINDING_SCHEMA, EVIDENCE_NEED_SCHEMA, TEST_CHECKPOINT_SPEC_SCHEMA, EVIDENCE_REQUIREMENT_SCHEMA, MILESTONE_SCHEMA, PLANNING_TOPOLOGY_NODE_SCHEMA, PLANNING_LOOP_CONTINUATION_SCHEMA, DEFAULT_NEXT_MEMORY_NAMESPACE, uuidv7, jobHandle, validIntegrationBranch, parseProjectManifest, projectCriteriaBindingError, planningLoopContinuationDecision, normalizeGithubRepo, renderHarness, jobExecutionContract, resolveExecutionContract, nextMemoryNamespaceForRequest, validateExecutionTopology, readMemoryConfig, invalidExecutionContract, cutoverInventoryError, executionMemoryRoot, normalizeNextPlanningModel, validateNextPlanningModel, recordPath, prettyJson } = deps
@@ -343,9 +344,14 @@ export function registerJobPrepareTool(deps: any) {
         created_at: now,
         updated_at: now,
       }
+      const decisionError = decisionFidelityError(record)
+      if (decisionError) return { content: [{ type: 'text', text: decisionError }], isError: true }
       const path = recordPath(project_id, 'JOBS', jobId, executionContract, nextMemoryNamespace ?? DEFAULT_NEXT_MEMORY_NAMESPACE)
       const externalSteps = [
         'Re-read current PROJECT.md and require lifecycle=ACTIVE before persisting the Job.',
+        ...((record.repository_discovery.selected_source_evidence ?? []).some((x: string) => x.startsWith(DECISION_PREFIX)) ? [
+          'Read each DECISION_REF full source at pinned Git SHA from authorized Project Memory. Check actual Human acceptance, full method, rationale, negative exceptions and supersession before Git CAS Job CREATE/readback. The caller metadata and structural validation are not proof of Human consent.',
+        ] : []),
         ...(integration_branch ? ['Verify this Job integration_branch equals the registered working repository Development Branch in exact current PROJECT.md, and that GitHub live branch exists. Readback must be independent of caller-provided input; do not use GitHub default.'] : []),
         ...(criteria_binding ? [
           'Fetch exact Project CRITERIA.md from the configured Memory Repo at criteria_binding.criteria_path; verify blob SHA=' + criteria_binding.criteria_blob_sha + ' and actual Human APPROVED content. An input approval_status flag is not reliable evidence by itself.',
