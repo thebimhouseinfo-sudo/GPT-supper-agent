@@ -26,7 +26,7 @@ Test four common GSA workflow sequences rather than static text length, by execu
 
 The experimental `selective-harness-preview.ts` now accepts optional `human_message_kind`. New Human `NEW_FEATURE`, `MATERIAL_UPDATE`, `REFACTOR`, `BOOTSTRAP`, `QUESTION` or `UNKNOWN` prevents selecting the old Coder repair-only abbreviated Harness. Stale Job/Run/Plan SHA or pending-review conditions likewise force Full. In particular, a Human may introduce a Refactor request while the caller still labels the preceding state `PRODUCT_DEFECT_REPAIR`: **the newly classified Human intent wins**.
 
-**Limit:** The new intent field is optional for backward compatibility with other A4 preview tests; when absent the pure function **cannot independently detect an unclassified new Human message**. A safe future caller must supply an actually classified current message, verify current source and Job context, and never treat A4 output as authority. No changes to the existing runtime's `get_agent_harness`, `run_begin`, existing Shared/Role text, Criteria, Tool inventory or permissions.
+**Limit:** The new intent field is optional syntactically but **required to activate selective preview**: when absent or not `SAME_APPROVED_TASK`, the pure function fails closed to Full Harness. It still cannot independently prove that the supplied classification matches the actual Human message. A safe future caller must supply an actually classified current message, verify current source and Job context, and never treat A4 output as authority. No changes to the existing runtime's `get_agent_harness`, `run_begin`, existing Shared/Role text, Criteria, Tool inventory or permissions.
 
 ## Conclusions and limitations
 
