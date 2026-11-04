@@ -195,7 +195,10 @@ test('No new Tool/Role/gate: ordinary Critic remains backward compatible', async
   assert.deepEqual(Object.keys(tools), ['start_critic_review','critic_review_record'])
   assert.deepEqual(Object.keys(ROLE_HARNESSES), [
     'orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester'])
-  assert.equal(Object.keys(RUNTIME_SKILLS).length, 12)
+  assert.deepEqual(Object.keys(RUNTIME_SKILLS), [
+    'debugging','critic-review','critical-challenge','job-planning','coding-loop',
+    'delegation','planning-review','review-evidence','testing-evidence','tester-lab',
+    'ui-coder-frontend','secretary','simulate'])
   const result = await tools.critic_review_record.handler({
     project_id:p,job_id:j,job_record_text,planning_revision:1,human_invoked:true,
     result:'PASS', findings:[], limitations:[],prior_review_comparison:comparison,
