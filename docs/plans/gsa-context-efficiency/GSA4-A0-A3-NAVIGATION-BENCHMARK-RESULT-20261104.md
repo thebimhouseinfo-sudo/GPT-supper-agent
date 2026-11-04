@@ -5,7 +5,7 @@
 **Benchmark execution SHA:** `3cf05dc0e9b80e6f670a8a28d682e14f73e1bddc` (first successful run); subsequent assertions added on benchmark PR head and must re-run.  
 **Pinned original GSA3 source:** `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`.  
 **GitHub Actions:** [Run #41813601289](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41813601289), **SUCCESS** for Navigation Benchmark, Node regression and Deno typecheck. **Artifact:** `gsa4-navigation-benchmark` (ID `13312818560`, downloadable from that run, 30-day retention).  
-**Reproducible runner:** [test-lab/gsa4-navigation-benchmark.cjs](../../../../test-lab/gsa4-navigation-benchmark.cjs); [benchmark protocol](../../../../docs/architecture/GSA4-NAVIGATION-BENCHMARK.md).
+**Reproducible runner:** [test-lab/gsa4-navigation-benchmark.cjs](../../../test-lab/gsa4-navigation-benchmark.cjs); [benchmark protocol](../../../docs/architecture/GSA4-NAVIGATION-BENCHMARK.md).
 
 ## 1. Exact comparison and scope
 
