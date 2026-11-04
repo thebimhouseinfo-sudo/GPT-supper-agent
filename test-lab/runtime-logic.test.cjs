@@ -9,6 +9,10 @@ const source = fs.readFileSync('supabase/functions/gsa-mcp/index.ts', 'utf8');
 const parsed = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 const harnessSource = fs.readFileSync('supabase/functions/gsa-mcp/harness-catalog.ts','utf8');
 const runSource = fs.readFileSync('supabase/functions/gsa-mcp/run-execution-tools.ts','utf8');
+const indexHelperOwners = {
+  resolveExecutionContract: 'runtime-contract.ts',
+  jobExecutionContract: 'runtime-contract.ts',
+};
 function load(name, injected = {}) {
   const owner = ['uxFirstTemporaryUiGateRequired','goalRecheckRunMatches','checkpointLeaseExpired','checkpointBoundaryPrerequisiteIds','requiredCheckpointIds'].includes(name)
     ? 'execution-guards.ts'
@@ -17,7 +21,7 @@ function load(name, injected = {}) {
       : ['projectCriteriaBindingError','parseRetiredBranchRows','isRetiredSourceBranch'].includes(name)
         ? 'project-utils.ts'
         : ['projectBootstrapReadinessDecision','projectBootstrapChecklistDecision'].includes(name)
-          ? 'bootstrap.ts' : null;
+          ? 'bootstrap.ts' : indexHelperOwners[name] ?? null;
   const ast = owner ? ts.createSourceFile(owner,
     fs.readFileSync('supabase/functions/gsa-mcp/'+owner,'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS) : parsed;
