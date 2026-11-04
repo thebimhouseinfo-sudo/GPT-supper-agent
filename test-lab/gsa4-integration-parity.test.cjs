@@ -12,6 +12,7 @@ const ts = require('typescript')
 const {loadSourceModule} = require('./helpers/harness-ts-loader.cjs')
 const {registrationGraph, toolSource} = require('./helpers/gsa4-source-views.cjs')
 const {normalizeRunComplete, normalizeCodingSkillBody} = require('./helpers/three-pr-approved-deltas.cjs')
+const {normalizeUFBody, normalizeUFRole} = require('./helpers/uf-approved-skill-deltas.cjs')
 
 const repoRoot = path.resolve(__dirname, '..')
 const srcRoot = path.join(repoRoot, 'supabase/functions/gsa-mcp')
@@ -107,9 +108,12 @@ const uaRoleClauses = {
   "reviewer": "U-A REVIEWER: independently discover applicable current Project Memory DEC index even when a Job has NO references; inspect pinned original full DEC source, rationale, exceptions, provenance and supersession before confirming Plan/Task coverage. Reject omitted applicable decisions, heading-only fidelity, undocumented accepted changes or missing source readback even if metadata says COVERED."
 }
 function withoutUA(h,role) {
-  if(!uaRoleClauses[role])return h
-  assert.equal(h.loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
-  return {...h,loop:h.loop.filter(x=>x!==uaRoleClauses[role])}
+  let prior=h
+  if(uaRoleClauses[role]) {
+    assert.equal(h.loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
+    prior={...h,loop:h.loop.filter(x=>x!==uaRoleClauses[role])}
+  }
+  return normalizeUFRole(role,prior)
 }
 function historicalRender(after,role,options={}) {
   const h=withoutUA(after.ROLE_HARNESSES[role],role)
@@ -126,6 +130,8 @@ function normalizeUAResponse(name,args,response,after) {
   const result=JSON.parse(JSON.stringify(response))
   const out=result.structuredContent
   if(name==='get_skill_catalog') out.skills=out.skills.filter(x=>x.name!=='secretary')
+  if(name==='load_skill' && ['debugging','testing-evidence'].includes(args?.name))
+    out.skill_text=normalizeUFBody(args.name,out.skill_text)
   if(name==='get_agent_harness' && after.ROLE_HARNESSES[args.role]) {
     out.harness_text=historicalRender(after,args.role,{includeProgressiveSkills:false})
     out.suggested_skills=(out.suggested_skills??[]).filter(x=>x!=='secretary')
@@ -158,7 +164,8 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
     }
   }
   for(const skill of skills) {
-    const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
+    const ufBody=normalizeUFBody(skill,after.RUNTIME_SKILLS[skill].body)
+    const actual = {...after.RUNTIME_SKILLS[skill], body:skill === 'coding-loop' ? normalizeCodingSkillBody(ufBody) : ufBody}
     assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
   }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
@@ -174,7 +181,7 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
     if(name === 'load_skill' && args?.name === 'coding-loop') {
       assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
       const normalized = JSON.parse(JSON.stringify(b))
-      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalizeUFBody('coding-loop',normalized.structuredContent.skill_text))
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
       assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
     } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
