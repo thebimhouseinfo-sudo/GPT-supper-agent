@@ -12,6 +12,7 @@ const ts = require('typescript')
 const {loadSourceModule} = require('./helpers/harness-ts-loader.cjs')
 const {registrationGraph, toolSource} = require('./helpers/gsa4-source-views.cjs')
 const {normalizeRunComplete, normalizeCodingSkillBody} = require('./helpers/three-pr-approved-deltas.cjs')
+const {normalizeUFBody, normalizeUFRole} = require('./helpers/uf-approved-skill-deltas.cjs')
 
 const repoRoot = path.resolve(__dirname, '..')
 const srcRoot = path.join(repoRoot, 'supabase/functions/gsa-mcp')
@@ -115,9 +116,9 @@ function withoutUA(h,role) {
     assert.match(current[0],/load GSA simulate on demand/,'U-E on-demand addition is not optional')
     loop=loop.map(x=>x.startsWith('SCENARIO DISCOVERY:')?historicalTesterDiscovery:x)
   }
-  if(!uaRoleClauses[role])return {...h,loop}
+  if(!uaRoleClauses[role])return normalizeUFRole(role,{...h,loop})
   assert.equal(loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
-  return {...h,loop:loop.filter(x=>x!==uaRoleClauses[role])}
+  return normalizeUFRole(role,{...h,loop:loop.filter(x=>x!==uaRoleClauses[role])})
 }
 function historicalRender(after,role,options={}) {
   const h=withoutUA(after.ROLE_HARNESSES[role],role)
@@ -134,6 +135,7 @@ function normalizeUAResponse(name,args,response,after) {
   const result=JSON.parse(JSON.stringify(response))
   const out=result.structuredContent
   if(name==='get_skill_catalog') out.skills=out.skills.filter(x=>x.name!=='secretary' && x.name!=='simulate')
+  if(name==='load_skill' && out?.skill_text)out.skill_text=normalizeHistoricalSkill(args.name,out.skill_text)
   if(name==='get_agent_harness' && after.ROLE_HARNESSES[args.role]) {
     out.harness_text=historicalRender(after,args.role,{includeProgressiveSkills:false})
     out.suggested_skills=(out.suggested_skills??[]).filter(x=>x!=='secretary' && x!=='simulate')
@@ -149,7 +151,31 @@ function normalizeUETestingSkillBody(body) {
   return body.replace(newText,oldText)
 }
 
-test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',async()=>{
+function normalizeUDSkillBody(name,body) {
+  const markers = {
+    'coding-loop': '\nU-D — PRE_CODE_TECHNICAL / DESCRIPTIVE PROPOSAL (UD-01)',
+    'critic-review': '\nPRE_CODE_TECHNICAL (U-D): review the complete connected descriptive Markdown design',
+  }
+  if (!Object.hasOwn(markers,name)) return body
+  const marker = markers[name]
+  assert.equal(body.split(marker).length,2,'U-D exact source extension missing/duplicated: '+name)
+  const start = body.indexOf(marker)
+  const addition = body.slice(start+1)
+  assert.match(addition, /Critic|CR FAIL|CRITIC_REVIEW/)
+  assert.match(addition, /reviewed/i)
+  assert.match(addition, /no new|No new|not an automatically created/i)
+  assert.ok(addition.split('\n').length >= 6,'U-D extension cannot be a placeholder')
+  return body.slice(0,start)
+}
+function normalizeHistoricalSkill(name,body) {
+  const withoutUF=normalizeUFBody(name,body)
+  const withoutUD=normalizeUDSkillBody(name,withoutUF)
+  if(name==='testing-evidence')return normalizeUETestingSkillBody(withoutUD)
+  if(name==='coding-loop')return normalizeCodingSkillBody(withoutUD)
+  return withoutUD
+}
+
+test('GSA3 golden 8 Roles and 11 Skills, with explicit U-A/B/C/D/E/F reviewed deltas',async()=>{
   const before=baselineModule(base('harness-catalog.ts'))
   const after=loadSourceModule('harness-catalog.ts')
   const roles=['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
@@ -175,11 +201,7 @@ test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',
     }
   }
   for(const skill of skills) {
-    const actual = skill === 'coding-loop'
-      ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)}
-      : skill === 'testing-evidence'
-        ? {...after.RUNTIME_SKILLS[skill], body:normalizeUETestingSkillBody(after.RUNTIME_SKILLS[skill].body)}
-        : after.RUNTIME_SKILLS[skill]
+    const actual = {...after.RUNTIME_SKILLS[skill],body:normalizeHistoricalSkill(skill,after.RUNTIME_SKILLS[skill].body)}
     assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
   }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
@@ -192,14 +214,12 @@ test('GSA3 golden 8 Roles and 11 Skills, with normalized U-A/U-C/U-E additions',
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    if(name === 'load_skill' && ['coding-loop','testing-evidence'].includes(args?.name)) {
+    if(name === 'load_skill' && ['coding-loop','testing-evidence','critic-review'].includes(args?.name)) {
       assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
       const normalized = JSON.parse(JSON.stringify(b))
-      normalized.structuredContent.skill_text = args.name === 'coding-loop'
-        ? normalizeCodingSkillBody(normalized.structuredContent.skill_text)
-        : normalizeUETestingSkillBody(normalized.structuredContent.skill_text)
+      normalized.structuredContent.skill_text = normalizeHistoricalSkill(args.name,normalized.structuredContent.skill_text)
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
-      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'explicit U-C/U-E on-demand Skill deltas only')
+      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'U-C/U-D/U-E/U-F on-demand Skill deltas checked')
     } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
   }
   const simulate=await newTools.get('load_skill').fn({name:'simulate'})
