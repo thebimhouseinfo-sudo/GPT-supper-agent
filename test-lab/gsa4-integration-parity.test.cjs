@@ -118,8 +118,18 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
     for(const options of [undefined,{includeProgressiveSkills:false},{includeProgressiveSkills:true}])
       assert.equal(before.renderHarness(role,options),after.renderHarness(role,options),'render '+role)
   }
-  for(const skill of skills) assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),
-    JSON.stringify(after.RUNTIME_SKILLS[skill]),'skill '+skill)
+  for(const skill of skills.filter(s=>s!=='coding-loop')) assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),
+    JSON.stringify(after.RUNTIME_SKILLS[skill]),'unchanged skill '+skill)
+  // U-C is the only intentional skill-body change. Existing GSA3 instructions
+  // must remain byte-for-byte identical when the scoped insertion is removed.
+  const previous=before.RUNTIME_SKILLS['coding-loop'].body.split('\\n')
+  const revised=after.RUNTIME_SKILLS['coding-loop'].body.split('\\n')
+  const insertedFrom=revised.indexOf('ENGINEERING CONTEXT / SOLUTION CLARIFICATION (at Goal/Job-Pack design; not an approval gate)')
+  const insertedUntil=revised.indexOf('ACT',insertedFrom+1)
+  assert.ok(insertedFrom>=0 && insertedUntil>insertedFrom,'scoped U-C addition present')
+  assert.deepEqual([...revised.slice(0,insertedFrom),...revised.slice(insertedUntil)],previous,
+    'all preexisting coding-loop instructions remain byte-identical')
+  assert.equal(before.RUNTIME_SKILLS['coding-loop'].description,after.RUNTIME_SKILLS['coding-loop'].description)
   const oldTools=harnessTools(before),newTools=harnessTools(after)
   for(const [name,args] of [
     ['get_skill_catalog',undefined],
@@ -130,7 +140,14 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    assert.equal(JSON.stringify(a),JSON.stringify(b),'public result '+name+':'+JSON.stringify(args))
+    if(name==='load_skill' && args.name==='coding-loop') {
+      assert.equal(a.structuredContent.skill_text,before.RUNTIME_SKILLS['coding-loop'].body)
+      assert.equal(b.structuredContent.skill_text,after.RUNTIME_SKILLS['coding-loop'].body)
+      const expected={...b.structuredContent,skill_text:a.structuredContent.skill_text}
+      assert.equal(JSON.stringify(a.structuredContent),JSON.stringify(expected),
+        'only coding-loop payload text may differ')
+      assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'JSON fallback remains exact')
+    } else assert.equal(JSON.stringify(a),JSON.stringify(b),'public result '+name+':'+JSON.stringify(args))
   }
   const deniedBefore=harnessTools(before,false),deniedAfter=harnessTools(after,false)
   for(const [name,args] of [['get_agent_harness',{role:'coder',mode:'JOB'}],
