@@ -103,3 +103,13 @@ Links:
 | Competing arm comparison / winner | NOT_OBSERVED; do not infer winner or score against unseen candidate |
 
 **Final verification convention:** On reviewing PR #58, obtain current `head.sha` and its `pull_request` GitHub Actions runs from GitHub. A successful earlier commit is **not** grounds to claim that a later differing HEAD passed unless verified. Draft PR remains unmerged; all reference branches untouched.
+
+## 6. Evidence-inclusive HEAD check and benchmark clock
+
+At **2026-11-04T12:39:16Z**, the first evidence-inclusive HEAD `43e3bd25b43f0b88a01be3d9fb13e9ea311d9735` had **both GitHub Actions workflows completed successfully**, following the source-code GREEN checkpoint:
+
+- [GSA NEXT runtime gate #41831060001](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41831060001), completed GitHub timestamp `2026-11-04T12:39:16Z`: **PASS Node 221/221, Deno typecheck, navigation benchmark**.
+- [GSA4 A0-R Run scoped parity #41831060029](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41831060029), completed `2026-11-04T12:39:05Z`: **PASS Run source parity, Deno typecheck**.
+- Compare from immutable base to this evidence-inclusive HEAD: **29 commits, 15 changed files, +887/-22 lines**. Actual workflow path was amended to include this benchmark evidence file so that subsequent evidence-only updates are also checked on their exact HEAD.
+- **Execution UTC start:** `2026-11-04T12:20:37.944Z`. **Observed first evidence-inclusive GREEN checkpoint UTC:** `2026-11-04T12:39:16Z`. Continuous wall-clock interval **18 min 38.056 s** to that checkpoint (PREPARE excluded, hosted CI time included). This is a timestamp difference, **not agent inference/model compute latency**.
+- The act of appending this section creates a newer documentation-only HEAD. **Terminal execution end** is the `updated_at` timestamp of the *latest* successful GitHub Actions runtime-gate run for the final PR #58 `head_sha`. Resolve it on GitHub rather than falsely treating this earlier SHA's success as success for the later HEAD. Preserve CI history as actual evidence; no fixed user-token or tool-call measurement is claimed.
