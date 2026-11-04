@@ -145,6 +145,7 @@ test('GSA4 A0 historical exact literals preserved after normalizing ONLY additiv
     'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend']
   const live = loadSourceModule('harness-catalog.ts')
   assert.equal(JSON.stringify(Object.keys(live.ROLE_HARNESSES)), JSON.stringify(expectedRoles))
-  assert.equal(JSON.stringify(Object.keys(live.RUNTIME_SKILLS)), JSON.stringify(expectedSkills))
+  assert.equal(JSON.stringify(Object.keys(live.RUNTIME_SKILLS)), JSON.stringify([...expectedSkills,'secretary']))
+  assert.ok(live.RUNTIME_SKILLS.secretary.body.includes('Human'))
   assert.equal(JSON.stringify(Object.keys(live.ROLE_SKILLS)), JSON.stringify(expectedRoles))
 })
