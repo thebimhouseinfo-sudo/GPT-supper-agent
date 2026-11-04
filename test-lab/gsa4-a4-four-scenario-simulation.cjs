@@ -12,6 +12,9 @@ const {loadSourceModule}=require('./helpers/harness-ts-loader.cjs')
 const ROOT=path.resolve(__dirname,'..')
 const SOURCE=path.join(ROOT,'supabase/functions/gsa-mcp')
 const catalog=loadSourceModule('harness-catalog.ts')
+const indexSource=fs.readFileSync(path.join(SOURCE,'index.ts'),'utf8')
+assert.ok(indexSource.includes("'stopchat_handoff_prepare'"),'Current runtime must provide stopchat handoff helper')
+assert.ok(indexSource.includes('persist/read back only necessary cursor/Job/Verification state'),'Stopchat must retain safe checkpoint/readback guidance')
 const locator=JSON.parse(fs.readFileSync(path.join(ROOT,'docs/architecture/GSA4-A1-SOURCE-LOCATOR.json'),'utf8'))
 const graph=JSON.parse(fs.readFileSync(path.join(ROOT,'docs/architecture/GSA4-A3-REPAIR-EDGES.json'),'utf8'))
 const REF='f065c3b47c1a541ea44d3f59aac8f7eeb3cb31c4'
@@ -52,6 +55,7 @@ function newState(){
     run:{project_id:PROJECT,job_id:JOB,role:'coder',primary_task_id:'repair',
       planning_revision:2,lifecycle:'IN_PROGRESS'},humanMessageType:'FOLLOWUP',
     role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',tool:'run_begin',
+    stopchatRequested:false,freshChat:false,
     error:'NEXT_DISPATCH_STALE_JOB_SHA',classification:'PRODUCT_FAILURE',
     observed:true,failedRetest:false,hostAvailable:true,hadVerifiedRepro:true,
     expected:'Run must refuse stale Job SHA',actual:'Observed unexpected acceptance'}
@@ -78,10 +82,14 @@ function evaluate(state,arm){
   }:plain(compileA4({role:state.role,workflow:state.workflow,task_context:a2,
     repair_context:a3,current_source_ref:REF}))
   assert.equal(output.execution_authorized,false)
-  const decision=a2.decision==='STOP'||a3.decision==='STOP'?'STOP':
+  // STOPCHAT is a chat-size checkpoint/handoff protocol, NOT a global
+  // project cancellation. A2/A3 select task/source context and are not
+  // themselves the STOPCHAT controller. Keep their raw route separately.
+  const rawRouteDecision=a2.decision==='STOP'||a3.decision==='STOP'?'STOP':
     a3.decision==='PROBE'?'PROBE':
     a3.decision==='READ_MORE'||a2.decision==='READ_MORE'?'READ_MORE':'REVIEW_REFERENCES'
-  return {role:state.role,workflow:state.workflow,decision,mode:output.mode,
+  const decision=state.stopchatRequested && !state.freshChat ? 'PREPARE_SAFE_HANDOFF' : rawRouteDecision
+  return {role:state.role,workflow:state.workflow,decision,raw_route_decision:rawRouteDecision,mode:output.mode,
     harness_chars:output.harness_text?.length??0,
     harness_text:output.harness_text,task_codes:a2.findings.map(x=>x.code),
     repair_codes:a3.findings.map(x=>x.code),source_paths:a3.source_candidates.map(x=>x.path),
@@ -114,26 +122,29 @@ const scenarios=[
       {event:'TESTER_PROBE_HANDOFF',patch:s=>{s.role='tester';s.run={...s.run,role:'tester'};
         s.workflow='TESTER_PROBE';return s},expected:'PROBE',fallback:true},
     ]},
-  {id:'S4_NEW_HUMAN_MESSAGE_STOPCHAT',title:'Human sends stopchat then asks to start a different Project in the current session',
+  {id:'S4_STOPCHAT_SAFE_HANDOFF_RESUME',title:'Human requests stopchat at context limit; checkpoint/handoff is prepared, then next chat revalidates before resume',
     events:[
       {event:'CODER_RUNNING',patch:s=>s,expected:'READ_MORE'},
-      {event:'HUMAN_STOPCHAT',patch:s=>{s.humanMessageType='STOPCHAT';s.workflow='STOPCHAT_HANDOFF';return s},
-        expected:'STOP',fallback:true,requirePolicy:'STOPCHAT',knownGap:'STOPCHAT_NO_RUNTIME_STOP_SIGNAL'},
-      {event:'NEW_PROJECT_REQUEST',patch:s=>{s.humanMessageType='NEW_PROJECT';s.workflow='PROJECT_INTAKE';
-        s.role='orchestrator';s.run=undefined;s.project_id='c2927684-543e-4b9d-ae4e-0150e9910f99';s.current_job_sha=REVIEW;return s},
-        expected:'STOP',fallback:true,requirePolicy:'The explicitly opened Project'},
+      {event:'HUMAN_STOPCHAT',patch:s=>{s.humanMessageType='STOPCHAT';s.stopchatRequested=true;
+        s.workflow='STOPCHAT_HANDOFF';return s},
+        expected:'PREPARE_SAFE_HANDOFF',fallback:true,requirePolicy:'STOPCHAT'},
+      {event:'FRESH_CHAT_REVALIDATION',patch:s=>{s.humanMessageType='RESUME_FROM_HANDOFF';
+        s.stopchatRequested=false;s.freshChat=true;s.workflow='FRESH_CHAT_READBACK';
+        s.role='orchestrator';s.run=undefined;s.current_job_sha=REVIEW;return s},
+        expected:'READ_MORE',fallback:true,requirePolicy:'The explicitly opened Project'},
     ]},
 ]
 const mandatory=['HUMAN EXECUTION APPROVAL','BRANCH AUTHORITY','REVIEW LOOP','STOPCHAT',
   'authorize_project_scope','On unknown Git write outcome',
   'NEXT source work','Agent-authored text never counts as human approval']
-const artifact={schema:'gsa4-a4-four-scenario-replay/v2',model_calls:0,
+const artifact={schema:'gsa4-a4-four-scenario-replay/v3',model_calls:0,
   model_behavior_measured:false,simulation_kind:'DYNAMIC_REAL_GSA_FUNCTION_REPLAY',
   baseline_sha:REF,arms:{FULL:{},SELECTIVE:{}},scenarios:[],caveats:[
     'Real A2/A3/A4 TypeScript executed on a changing multi-turn synthetic Job/Run/Host state.',
     'Actions are assessed against a deterministic boundary oracle, not decisions from independent model instances.',
     'No product source edits, Host MCP calls, Git CAS mutations, actual model tokens or independent Tester took place.',
-    'Full and selective model-facing behavioral equivalence is NOT demonstrated; further LLM A/B trials required.'
+    'Full and selective model-facing behavioral equivalence is NOT demonstrated; further LLM A/B trials required.',
+    'STOPCHAT action is a test-side Human-message protocol oracle; A2/A3 remain advisory and no real checkpoint or handoff was persisted.'
   ]}
 for(const scenario of scenarios){
   const runs={}
@@ -145,6 +156,15 @@ for(const scenario of scenarios){
       const oraclePass=r.decision===step.expected
       if(!oraclePass && !step.knownGap)assert.fail(scenario.id+'/'+arm+'/'+step.event+': expected '+step.expected+' observed '+r.decision)
       if(step.knownGap)assert.equal(oraclePass,false,'Known gap accidentally resolved; re-review test oracle')
+      if(step.event==='HUMAN_STOPCHAT') {
+        assert.equal(r.raw_route_decision,'READ_MORE', 'A2/A3 are source advisors, not stopchat router')
+        assert.ok(indexSource.includes('Re-fetch current PROJECT.md'), 'Handoff must require current Memory readback')
+        assert.ok(indexSource.includes('stopchat_handoff_prepare'), 'Handoff helper must exist')
+      }
+      if(step.event==='FRESH_CHAT_REVALIDATION') {
+        assert.ok(r.task_codes.includes('JOB_SHA_REVALIDATE'), 'Fresh chat must recheck Job SHA')
+        assert.equal(r.harness_text,catalog.renderHarness('orchestrator',{includeProgressiveSkills:false}))
+      }
       if(step.must)assert.ok([...r.task_codes,...r.repair_codes].includes(step.must),
         scenario.id+'/'+arm+'/'+step.event+' lacks '+step.must)
       if(step.fallback&&arm==='SELECTIVE'){
@@ -156,6 +176,7 @@ for(const scenario of scenarios){
         scenario.id+'/'+arm+'/'+step.event+' lost '+required)
       if(r.decision==='PROBE')assert.notEqual(r.decision,'REVIEW_REFERENCES')
       steps.push({event:step.event,role:r.role,mode:r.mode,decision:r.decision,
+        raw_route_decision:r.raw_route_decision,
         expected_decision:step.expected,oracle_pass:oraclePass,
         known_gap:oraclePass?null:(step.knownGap??'UNEXPECTED'),
         task_findings:r.task_codes,repair_findings:r.repair_codes,
@@ -184,5 +205,5 @@ if(out){const p=path.resolve(out);fs.mkdirSync(path.dirname(p),{recursive:true})
 console.log('GSA4_A4_DYNAMIC_SCENARIO_SUMMARY '+JSON.stringify(artifact.summary))
 for(const x of artifact.scenarios)console.log('GSA4_A4_DYNAMIC_SCENARIO '+JSON.stringify({
   id:x.id,steps:x.steps.SELECTIVE.map(x=>({event:x.event,mode:x.mode,decision:x.decision,
-    findingCount:x.task_findings.length+x.repair_findings.length,
+    findingCount:x.task_findings.length+x.repair_findings.length,raw_route:x.raw_route_decision,
     expected:x.expected_decision,known_gap:x.known_gap})),savedChars:x.previews_saved_chars}))

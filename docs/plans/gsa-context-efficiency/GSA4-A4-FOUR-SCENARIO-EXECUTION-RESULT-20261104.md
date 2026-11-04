@@ -39,3 +39,11 @@ The STOPCHAT instruction string is present in both FULL and A4 preview. A2/A3 ar
 ## Decision
 
 **Keep A4 a reversible preview only.** The four multi-step simulation found three expected source-function transition sequences and one clear test coverage gap, so neither static byte savings nor a green Node suite is enough to authorize selective model instructions in production. Continue to use the existing full Harness delivery until actual Agent-behavior equivalence is observed.
+
+## Correction — STOPCHAT interpretation and revised S4 oracle (2026-11-04)
+
+**The earlier S4 FINDING `STOPCHAT_NO_RUNTIME_STOP_SIGNAL` is INVALID as a GSA policy verdict.** STOPCHAT is a **chat-length checkpoint and handoff**: at a safe boundary, independently read active Project/Job/Run/cursor and current Git/Memory; reconcile uncertain writes; persist/read back only necessary durable state; call the existing read-only `stopchat_handoff_prepare` and provide a handoff for another chat to resume. The tool cannot save state or verify caller-reported evidence. If there are no pending writes or required durable updates, **do not invent a redundant checkpoint**. New chat rechecks live SHA, authority, Job/cursor and current task before continuing.
+
+A2/A3 returning `READ_MORE` on a STOPCHAT conversational event is expected for source-context helpers; they do not implement the STOPCHAT protocol. The **old test oracle mistakenly expected `STOP`**, as if STOPCHAT meant cancelling the active Job. The corrected simulation uses a separate test-side `PREPARE_SAFE_HANDOFF` protocol action, verifies the actual `stopchat_handoff_prepare` tool declaration and instructions, and simulates a **fresh chat revalidation** (not an unrelated Project). This corrects the prior S4 finding at the test-specification level only. No actual model invoked, Git checkpoint persisted or live handoff executed.
+
+**Historical evidence above is retained for traceability, but is superseded by this section and the new CI result on the correction PR.** Do not describe the earlier 3/4 as an A4 security regression. The original model-level behavioral equivalence still remains UNVERIFIED.
