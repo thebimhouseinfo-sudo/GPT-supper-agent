@@ -90,7 +90,7 @@ export function buildTaskContextRecipe(input: Input) {
     read('PLANNING_REVIEW_REVALIDATE', 'Read current planning Reviewer result; packet cannot waive Plan gate.', 'planner')
   }
 
-  const task = (job?.tasks ?? []).find((t: any) => t?.task_id === taskId)
+  const task = (Array.isArray(job?.tasks) ? job.tasks : []).find((t: any) => t?.task_id === taskId)
   if (taskId && !task) stop('TASK_NOT_IN_CURRENT_JOB', 'Selected Task does not exist in the current owning Job.', 'planner')
   if (task?.lifecycle === 'RETIRED') stop('TASK_RETIRED', 'Retired Task may not be dispatched.', 'planner')
   if (!taskId && EXECUTION_ROLES.has(role) && job?.execution_contract === 'NEXT') {
@@ -100,7 +100,7 @@ export function buildTaskContextRecipe(input: Input) {
       !Array.isArray(task.completion_criteria) || !arrayOfStrings(task.completion_criteria).length)) {
     read('TASK_ACCEPTANCE_MISSING', 'Find current objective and observable completion criteria; ask Planner when absent.', 'planner')
   }
-  const stage = (job?.topology ?? []).find((t: any) => t?.task_id === taskId)
+  const stage = (Array.isArray(job?.topology) ? job.topology : []).find((t: any) => t?.task_id === taskId)
   if (task && job?.execution_contract === 'NEXT' && !stage) {
     read('TASK_TOPOLOGY_MISSING', 'Read current reviewed Task topology before dispatch.', 'planner')
   } else if (task && stage && EXECUTION_ROLES.has(role) && stage.handler !== role) {
@@ -117,11 +117,13 @@ export function buildTaskContextRecipe(input: Input) {
     read('RUN_OR_DISPATCH_UNVERIFIED', 'Confirm current Run/dispatch or planning-only context; never infer executable scope.', 'orchestrator')
   }
 
-  addRef('PROJECT', 'projects/' + String(projectId ?? '') + '/PROJECT.md', null,
-    'Project lifecycle, repository registry and configured integration branch')
-  addRef('CRITERIA', 'projects/' + String(projectId ?? '') + '/CRITERIA.md',
-    job?.criteria_binding?.criteria_blob_sha,
-    'Applicable approved product WHAT/WHY; read when required by current Task/gate')
+  if (nonempty(projectId) && job?.project_id === projectId) {
+    addRef('PROJECT', 'projects/' + projectId + '/PROJECT.md', null,
+      'Project lifecycle, repository registry and configured integration branch')
+    addRef('CRITERIA', 'projects/' + projectId + '/CRITERIA.md',
+      job?.criteria_binding?.criteria_blob_sha,
+      'Applicable approved product WHAT/WHY; read when required by current Task/gate')
+  }
   const planningPhase = job?.planning_context?.phase
   const phase = nonempty(run?.lifecycle) ? String(run.lifecycle) :
     nonempty(planningPhase) ? String(planningPhase) : 'UNKNOWN'
@@ -150,7 +152,7 @@ export function buildTaskContextRecipe(input: Input) {
       'orchestrator')
   }
   const knowledgeRefs: Ref[] = []
-  for (const k of input?.knowledge_refs ?? []) {
+  for (const k of Array.isArray(input?.knowledge_refs) ? input.knowledge_refs : []) {
     if (!nonempty(k?.path) || !k.path.startsWith('projects/' + projectId + '/KNOWLEDGE/') ||
         !validSha(k?.sha) || k?.validity !== 'CURRENT') {
       read('KNOWLEDGE_REVALIDATE', 'Knowledge candidate lacks matching Project prefix, current validity or blob SHA.')
