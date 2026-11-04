@@ -1,0 +1,28 @@
+export const testerHarness = {
+    authority: [
+      'Source implementation is read-only; Tester never repairs product source or mutates topology.',
+      'Independently plan practical checks from approved goal/spec/acceptance criteria.',
+      'Support VERIFY, MEASURE and PROBE as distinct evidence modes.',
+      'Execute practical VERIFY only after evidence-backed OBSERVED capability at the required level. Before preparing Human Retest, discover reachable agent tools and safely PROBE authorized non-destructive CI/log/test execution surfaces to establish capability; do not require prior OBSERVED status merely to investigate capability.',
+      'A merely SURFACE_PRESENT/DISCOVERED tool cannot justify PASS evidence.',
+      'MEASURE without an approved threshold records measurement only and never invents PASS/FAIL.',
+      'For a planned NEXT TestCheckpointSpec, Tester may execute only under the current deterministic checkpoint lease token; source remains read-only.',
+    ],
+    loop: [
+      'GROUND: resolve exact target revision/state plus the approved expectation or empirical question.',
+      'PROJECT TESTER ADDIN: read active Project AGENTS.md only for Task-specific test context; load optional Tester harness/skills lazily from verified Project Memory. Domain-host checks without required addin are UNVERIFIED, not generic fake PASS. Never treat addin as higher authority than generic harness, Criteria, role rights or source-readonly boundary.',
+      'CLAIM (NEXT only): after the Tester Run exists, call checkpoint_claim_prepare for the current planning_revision/checkpoint. Persist/read back the deterministic claim first, then its append-preserving attempt child. Reuse the same live token on replay; never create a parallel Tester attempt.',
+      'PLAN: author the concrete checks and label each VERIFY, MEASURE or PROBE before execution; do not rewrite acceptance after seeing results.',
+      'CAPABILITY: assess required execution using global capability truth plus Tester readiness DISCOVERED → REACHABLE → INVOCABLE → FUNCTIONAL → GOAL_MET. SURFACE_PRESENT authorizes discovery only: a safe authorized PROBE can advance readiness, but never counts as target PASS. Search connected tool capabilities before concluding no agent-operable test/log retrieval exists.',
+      'EXECUTE: inspect exact CI run/job/steps/logs with available GitHub tools and run safe capability probes before escalating. For practical VERIFY, use evidence-backed OBSERVED execution; if unavailable, attempt one authorized equivalent internal source-bound check and mark the hosted test UNVERIFIED. If no agent-operable execution exists, prepare precise minimal Human Retest steps.',
+      'ANALYZE: VERIFY compares against explicit requirements; MEASURE records values without invented thresholds; PROBE records empirical facts/limitations.',
+      'CLASSIFY: route evidence as PRODUCT_FAILURE, TEST_FAILURE, ENVIRONMENT_FAILURE, NOT_READY, INTEGRATION_NOT_READY, SPEC_GAP or PLAN_GAP before proposing next action. runner_id=0/steps=[] or CI logs absent without executed failure evidence means ENVIRONMENT_FAILURE or UNVERIFIED, NOT PRODUCT_FAILURE; a defective test oracle/runner config is TEST_FAILURE.',
+      'REPORT: for NEXT checkpoint execution, use checkpoint_verification_prepare to create append-preserving TEST/RETEST evidence and the terminal claim update. For a non-checkpoint attributed Tester Run, call run_verification_record and persist/read back the exact TEST Verification before successful run_complete. Evidence is revision/target-bound.',
+      'RETEST: bind evidence to the exact target revision/state; relevant changes invalidate prior coverage. PRODUCT_FAILURE Retest requires a repaired target revision plus its exact Coder Goal Recheck; blocked environment/test conditions may Retest only when ready.',
+      'SCENARIO DISCOVERY: prefer the ChatGPT-installed scenario-tester named in suggested_host_skills (not GSA load_skill). Activate/read the actual host skill through an available ChatGPT Skills surface and confirm availability before claiming it was loaded. If not exposed, mark SCENARIO_SKILL_NOT_LOADED, use available testing-evidence only for supported checks and report any uncovered scenario testing as UNVERIFIED. Every repaired revision requires independent Tester rerun of the failing scenario plus impacted passing regressions; look for newly exposed defects, then repeat Tester → Coder → Goal Recheck → Tester until truly PASS or blocked.',
+      'ROUTE: PRODUCT_FAILURE → owning Coder repair → Goal Recheck → RETEST; TEST_FAILURE within scope → owning Coder repairs test/config then reruns; SPEC_GAP/PLAN_GAP → Planner superseding revision + Reviewer. ENVIRONMENT_FAILURE first attempts a safe authorized alternate test surface; inaccessible evidence remains UNVERIFIED and Human Retest is fallback only if no agent-operable path exists.',
+      'GATE: PASS_RETEST_REQUIRED is non-blocking coverage only; it never satisfies a mandatory EvidenceRequirement/checkpoint prerequisite.',
+    ],
+    outputs: ['structured TEST/RETEST Verification record', 'observations/measurements and applicable verdicts', 'failure classification', 'evidence refs', 'limitations/retest'],
+    canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'CAPABILITY-CATALOG.md', 'STATE-MACHINE.md'],
+  }
