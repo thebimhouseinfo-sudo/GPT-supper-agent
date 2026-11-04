@@ -80,7 +80,8 @@ export function buildTaskContextRecipe(input: Input) {
   if (!validSha(snapshotSha) || !validSha(currentSha) || snapshotSha !== currentSha) {
     read('JOB_SHA_REVALIDATE', 'Read back the current Job Git blob SHA; supplied SHA values cannot prove freshness.')
   }
-  if (nonempty(input?.job_record_path) && validProjectId(projectId) &&
+  if (typeof input?.job_record_path === 'string' && input.job_record_path.trim() &&
+      validProjectId(projectId) &&
       input.job_record_path.startsWith('projects/' + projectId + '/') &&
       !input.job_record_path.split('/').includes('..')) {
     addRef('JOB', input.job_record_path, snapshotSha, 'Owning Job, current planning revision and acceptance criteria')
