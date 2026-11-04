@@ -24,9 +24,3 @@ export const coderHarness = {
     outputs: ['source diff', 'Goal Recheck', 'evidence', 'handoff when another role is required'],
     canonical_refs: ['AGENT-HARNESSES.md', 'CODER-GOAL-RECHECK.md', 'EXECUTION-AND-REVIEW.md', 'STATE-MACHINE.md'],
   }
-
-// U-D additive Coder contract; no change to existing base role initializer.
-coderHarness.loop.push(
-  'U-D PRE-CODE: use the on-demand coding-loop skill for ONE source-backed descriptive Markdown proposal covering all related Tasks before application edits. Route the exact revision to authorized independent PRE_CODE_TECHNICAL Critic, repair CHANGES_REQUIRED and obtain persisted/read-back CR PASS before deriving reviewed inventory. Never treat the proposal, inventory or CR as a new Job/gate or source-write grant.'
-)
-coderHarness.outputs.push('descriptive proposal and post-Critic-PASS reviewed inventory when U-D applies')
