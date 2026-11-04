@@ -1,6 +1,15 @@
 // GSA1: bounded Job Plan Change and supersession tools.
 export function registerPlanChangeTools(deps: any) {
  const { server, z, req, AUTH_SCOPES, authContext, authError, DEFAULT_NEXT_MEMORY_NAMESPACE, assessHumanPlanChangeJobs, jobExecutionContract, prepareHumanPlanChangeFenceDecision, prepareHumanPlanChangeIntent, prettyJson, recordNextMemoryNamespace, recordPath, resumeHumanPlanChangeIntent } = deps
+  // U-B extends LLC58's existing tools. Human boundary and complete inventory
+  // remain external independent-readback requirements, never extra authority.
+  const scopeChangeSchema=z.object({
+    boundary:z.enum(['PLAN','PHASE']),plan_job_id:z.string().uuid(),
+    phase_id:z.string().min(1).optional(),human_approval_ref:z.string().min(1),
+    successor_job_count:z.number().int().min(1).max(16).default(1),
+    inventory_job_ids:z.array(z.string().uuid()).min(1),
+    plan_member_job_ids:z.array(z.string().uuid()).min(1),
+  })
   server.registerTool(
     'job_plan_change_fence_prepare',
     {
@@ -95,11 +104,12 @@ export function registerPlanChangeTools(deps: any) {
     'job_plan_change_prepare',
     {
       title: 'Prepare immutable Human Plan Change reconciliation intent',
-      description: 'LLC58: prepare one deterministic CREATE per reviewed Plan revision. Reserve unique replacement Job IDs; requires PASS planning-review evidence. Only external authorized GitHub CREATE/readback makes it durable; no Job mutation is performed.',
+      description: 'LLC58/U-B: prepare one reviewed immutable Plan Change intent. Optional scope_change classifies Plan/Phase retirement plus cross-boundary unfinished dependents. Human approval and complete inventory require external readback; PREPARE never authorizes writes.',
       inputSchema: {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
         reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        scope_change: scopeChangeSchema.optional(),
         plan_job_record_text: z.string().min(2),
         plan_job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
         plan_review_record_text: z.string().min(2),
@@ -109,8 +119,8 @@ export function registerPlanChangeTools(deps: any) {
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
@@ -140,16 +150,17 @@ export function registerPlanChangeTools(deps: any) {
     'job_plan_change_assess',
     {
       title: 'Assess Jobs affected by a Human-reviewed Plan change',
-      description: 'Read-only LLC58 impact matrix. Distinguish KEEP, REVALIDATE, REPLACE, RETIRE and HUMAN_DECISION for durable Jobs; this tool never transitions Jobs, creates cursors or authorizes writes.',
+      description: 'Read-only LLC58/U-B Job impact: optional reviewed scope_change retires unfinished Plan/Phase members and cross-boundary dependents; completed and unrelated evidence is preserved. No mutation authority.',
       inputSchema: {
         project_id: z.string().uuid(),
         change_ref: z.string().min(1),
         reviewed_plan_sha: z.string().regex(/^[0-9a-f]{40}$/),
+        scope_change: scopeChangeSchema.optional(),
         job_snapshots: z.array(z.object({
           job_record_text: z.string().min(2),
           job_record_sha: z.string().regex(/^[0-9a-f]{40}$/),
-          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']),
-          reason: z.string().min(1),
+          decision: z.enum(['KEEP','REVALIDATE','REPLACE','RETIRE','HUMAN_DECISION']).optional(),
+          reason: z.string().min(1).optional(),
           retired_task_ids: z.array(z.string().min(1)).optional(),
           cursor_state: z.enum(['ABSENT','STABLE','PENDING','UNKNOWN']).optional(),
           active_run_state: z.enum(['NONE','TERMINAL','ACTIVE','UNKNOWN']).optional(),
