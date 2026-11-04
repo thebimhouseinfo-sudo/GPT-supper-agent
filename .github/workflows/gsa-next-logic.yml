@@ -34,7 +34,7 @@ jobs:
       - name: Run executable helper assertions and negative controls
         env:
           NODE_PATH: /tmp/gsa-next-test/node_modules
-        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/ub-scope-wide-plan-change.test.cjs test-lab/llc61-assetgen-bootstrap.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs test-lab/gsa4-run-extraction.test.cjs test-lab/gsa4-project-extraction.test.cjs test-lab/gsa4-checkpoint-extraction.test.cjs test-lab/gsa4-evidence-extraction.test.cjs test-lab/gsa4-integration-parity.test.cjs test-lab/gsa4-a1-source-locator.test.cjs test-lab/gsa4-a2-task-context.test.cjs test-lab/gsa4-a3-repair-context.test.cjs test-lab/gsa4-a4-selective-harness.test.cjs test-lab/gsa4-a4-four-scenario-simulation.cjs test-lab/gsa4-a4-workflow-simulation.test.cjs test-lab/ua-decision-fidelity.test.cjs test-lab/scenario-tester-integration.test.cjs test-lab/ue-tester-simulation.test.cjs
+        run: node --test test-lab/gsa3-tool-skill-payload.test.cjs test-lab/gsa2-harness-dedup.test.cjs test-lab/gsa1-module-boundary.test.cjs test-lab/runtime-logic.test.cjs test-lab/project-branch-policy.test.cjs test-lab/reliability-runtime.test.cjs test-lab/reliability-cursor.test.cjs test-lab/llc58-plan-change.test.cjs test-lab/llc58-plan-intent.test.cjs test-lab/ub-scope-wide-plan-change.test.cjs test-lab/llc61-assetgen-bootstrap.test.cjs test-lab/llc59-autonomy-harness.test.cjs test-lab/llc60-planning-loop.test.cjs test-lab/gsa4-run-extraction.test.cjs test-lab/gsa4-project-extraction.test.cjs test-lab/gsa4-checkpoint-extraction.test.cjs test-lab/gsa4-evidence-extraction.test.cjs test-lab/gsa4-integration-parity.test.cjs test-lab/gsa4-a1-source-locator.test.cjs test-lab/gsa4-a2-task-context.test.cjs test-lab/gsa4-a3-repair-context.test.cjs test-lab/gsa4-a4-selective-harness.test.cjs test-lab/gsa4-a4-four-scenario-simulation.cjs test-lab/gsa4-a4-workflow-simulation.test.cjs test-lab/ua-decision-fidelity.test.cjs test-lab/scenario-tester-integration.test.cjs test-lab/ue-tester-simulation.test.cjs test-lab/ud-precode-cr.test.cjs test-lab/uf-three-cycle-retest.test.cjs
   deno-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -44,7 +44,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Typecheck Supabase GSA MCP Edge Function
-        run: deno check supabase/functions/gsa-mcp/index.ts supabase/functions/gsa-mcp/task-context-recipe.ts supabase/functions/gsa-mcp/repair-context-route.ts supabase/functions/gsa-mcp/selective-harness-preview.ts
+        run: deno check supabase/functions/gsa-mcp/index.ts supabase/functions/gsa-mcp/task-context-recipe.ts supabase/functions/gsa-mcp/repair-context-route.ts supabase/functions/gsa-mcp/selective-harness-preview.ts supabase/functions/gsa-mcp/harness/skills/retest-history.ts
   navigation-benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 10
