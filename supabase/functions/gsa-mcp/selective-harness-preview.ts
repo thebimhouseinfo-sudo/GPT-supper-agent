@@ -14,6 +14,9 @@ import { BASE_AGENT_HARNESS, renderHarness, ROLE_HARNESSES } from './harness-cat
 type PreviewInput = {
   role: string
   workflow: string
+  // An explicitly classified NEW Human message invalidates stale repair-only
+  // context. Caller must still independently classify/read the true message.
+  human_message_kind?: 'SAME_APPROVED_TASK' | 'BOOTSTRAP' | 'NEW_FEATURE' | 'MATERIAL_UPDATE' | 'REFACTOR' | 'QUESTION' | 'UNKNOWN'
   task_context?: {
     schema: string
     advisory_only: boolean
@@ -95,6 +98,7 @@ export function previewSelectiveHarness(input: PreviewInput) {
   const r=input?.repair_context
   const wanted =
     role==='coder' && input?.workflow==='PRODUCT_DEFECT_REPAIR' &&
+    input.human_message_kind==='SAME_APPROVED_TASK' &&
     t?.schema==='gsa4-a2-task-context-recipe/v1' &&
     t.advisory_only===true && t.execution_authorized===false &&
     t.decision!=='STOP' &&
@@ -113,7 +117,16 @@ export function previewSelectiveHarness(input: PreviewInput) {
         x?.code==='JOB_NOT_CURRENT' || x?.code==='TASK_CONTEXT_BLOCKED' ||
         x?.code==='SOURCE_LOCATOR_UNAVAILABLE' ||
         x?.code==='LOCATOR_REVISION_MISMATCH' ||
-        x?.code==='REPAIR_GRAPH_REVISION_MISMATCH')
+        x?.code==='REPAIR_GRAPH_REVISION_MISMATCH' ||
+        x?.code==='PLAN_CHANGE_PENDING' || x?.code==='TASK_RETIRED' ||
+        x?.code==='TASK_NOT_IN_CURRENT_JOB' ||
+        x?.code==='RUN_LIFECYCLE_REVALIDATE' ||
+        x?.code==='PLANNING_REVIEW_REVALIDATE' ||
+        x?.code==='JOB_SHA_REVALIDATE' ||
+        x?.code==='TASK_HANDLER_MISMATCH' ||
+        x?.code==='SOURCE_LOCATOR_REVALIDATE' ||
+        x?.code==='PRODUCT_TARGET_REVALIDATE' ||
+        x?.code==='SPEC_DECISION_REQUIRED')
   if (!wanted) return {
     schema:'gsa4-a4-selective-harness-preview/v1' as const,
     mode:'FULL_FALLBACK' as const, advisory_only:true as const,
