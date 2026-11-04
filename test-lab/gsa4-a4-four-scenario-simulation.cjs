@@ -48,7 +48,7 @@ function newState(){
       scope:['runtime helper'],dependencies:[],required_skills:[],
       completion_criteria:['Reproduce RED and independently retest repaired HEAD'],lifecycle:'READY'}],
     topology:[{task_id:'repair',handler:'coder'}]}
-  return {job,job_sha:BLOB,current_job_sha:BLOB,
+  return {job,project_id:PROJECT,job_sha:BLOB,current_job_sha:BLOB,
     run:{project_id:PROJECT,job_id:JOB,role:'coder',primary_task_id:'repair',
       planning_revision:2,lifecycle:'IN_PROGRESS'},humanMessageType:'FOLLOWUP',
     role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',tool:'run_begin',
@@ -57,7 +57,7 @@ function newState(){
     expected:'Run must refuse stale Job SHA',actual:'Observed unexpected acceptance'}
 }
 function evaluate(state,arm){
-  const a2=plain(compileA2({role:state.role,project_id:PROJECT,job:state.job,
+  const a2=plain(compileA2({role:state.role,project_id:state.project_id,job:state.job,
     task_id:'repair',job_record_path:`projects/${PROJECT}/WORK/JOBS/${JOB}.json`,
     job_record_sha:state.job_sha,current_job_record_sha:state.current_job_sha,
     run:state.run,tool_names:[state.tool],source_locator:locator,
@@ -118,16 +118,16 @@ const scenarios=[
     events:[
       {event:'CODER_RUNNING',patch:s=>s,expected:'READ_MORE'},
       {event:'HUMAN_STOPCHAT',patch:s=>{s.humanMessageType='STOPCHAT';s.workflow='STOPCHAT_HANDOFF';return s},
-        expected:'READ_MORE',fallback:true,requirePolicy:'STOPCHAT'},
+        expected:'STOP',fallback:true,requirePolicy:'STOPCHAT',knownGap:'STOPCHAT_NO_RUNTIME_STOP_SIGNAL'},
       {event:'NEW_PROJECT_REQUEST',patch:s=>{s.humanMessageType='NEW_PROJECT';s.workflow='PROJECT_INTAKE';
-        s.role='orchestrator';s.run=undefined;s.current_job_sha=REVIEW;return s},
-        expected:'READ_MORE',fallback:true,requirePolicy:'The explicitly opened Project'},
+        s.role='orchestrator';s.run=undefined;s.project_id='c2927684-543e-4b9d-ae4e-0150e9910f99';s.current_job_sha=REVIEW;return s},
+        expected:'STOP',fallback:true,requirePolicy:'The explicitly opened Project'},
     ]},
 ]
 const mandatory=['HUMAN EXECUTION APPROVAL','BRANCH AUTHORITY','REVIEW LOOP','STOPCHAT',
   'authorize_project_scope','On unknown Git write outcome',
   'NEXT source work','Agent-authored text never counts as human approval']
-const artifact={schema:'gsa4-a4-four-scenario-replay/v1',model_calls:0,
+const artifact={schema:'gsa4-a4-four-scenario-replay/v2',model_calls:0,
   model_behavior_measured:false,simulation_kind:'DYNAMIC_REAL_GSA_FUNCTION_REPLAY',
   baseline_sha:REF,arms:{FULL:{},SELECTIVE:{}},scenarios:[],caveats:[
     'Real A2/A3/A4 TypeScript executed on a changing multi-turn synthetic Job/Run/Host state.',
@@ -142,7 +142,9 @@ for(const scenario of scenarios){
     for(const step of scenario.events){
       step.patch(state)
       const r=evaluate(state,arm)
-      assert.equal(r.decision,step.expected,scenario.id+'/'+arm+'/'+step.event)
+      const oraclePass=r.decision===step.expected
+      if(!oraclePass && !step.knownGap)assert.fail(scenario.id+'/'+arm+'/'+step.event+': expected '+step.expected+' observed '+r.decision)
+      if(step.knownGap)assert.equal(oraclePass,false,'Known gap accidentally resolved; re-review test oracle')
       if(step.must)assert.ok([...r.task_codes,...r.repair_codes].includes(step.must),
         scenario.id+'/'+arm+'/'+step.event+' lacks '+step.must)
       if(step.fallback&&arm==='SELECTIVE'){
@@ -154,6 +156,8 @@ for(const scenario of scenarios){
         scenario.id+'/'+arm+'/'+step.event+' lost '+required)
       if(r.decision==='PROBE')assert.notEqual(r.decision,'REVIEW_REFERENCES')
       steps.push({event:step.event,role:r.role,mode:r.mode,decision:r.decision,
+        expected_decision:step.expected,oracle_pass:oraclePass,
+        known_gap:oraclePass?null:(step.knownGap??'UNEXPECTED'),
         task_findings:r.task_codes,repair_findings:r.repair_codes,
         sources:r.source_paths,tests:r.regression_tests,harness_chars:r.harness_chars})
     }
@@ -164,11 +168,15 @@ for(const scenario of scenarios){
   assert.deepEqual(runs.FULL.map(x=>x.tests),runs.SELECTIVE.map(x=>x.tests))
   const saved=runs.FULL.reduce((n,x,i)=>n+x.harness_chars-runs.SELECTIVE[i].harness_chars,0)
   artifact.scenarios.push({id:scenario.id,title:scenario.title,steps:runs,previews_saved_chars:saved,
-    source_set_parity:true,deterministic_boundary_oracle:'PASS',actual_model_parity:'UNVERIFIED'})
+    source_set_parity:true,
+    deterministic_boundary_oracle:runs.FULL.every(x=>x.oracle_pass)?'PASS':'FINDING',
+    actual_model_parity:'UNVERIFIED'})
 }
 const all=artifact.scenarios.reduce((x,s)=>x+s.previews_saved_chars,0)
 artifact.summary={scenarios:4,turns_per_arm:12,total_model_calls:0,
-  deterministic_oracle_pass:4,source_set_parity_pass:4,
+  deterministic_oracle_pass:artifact.scenarios.filter(x=>x.deterministic_boundary_oracle==='PASS').length,
+  deterministic_oracle_findings:artifact.scenarios.filter(x=>x.deterministic_boundary_oracle==='FINDING').map(x=>x.id),
+  source_set_parity_pass:4,
   selective_preview_saved_chars:all,actual_llm_equivalence:'UNVERIFIED'}
 const out=process.argv[2]
 if(out){const p=path.resolve(out);fs.mkdirSync(path.dirname(p),{recursive:true});
@@ -176,4 +184,5 @@ if(out){const p=path.resolve(out);fs.mkdirSync(path.dirname(p),{recursive:true})
 console.log('GSA4_A4_DYNAMIC_SCENARIO_SUMMARY '+JSON.stringify(artifact.summary))
 for(const x of artifact.scenarios)console.log('GSA4_A4_DYNAMIC_SCENARIO '+JSON.stringify({
   id:x.id,steps:x.steps.SELECTIVE.map(x=>({event:x.event,mode:x.mode,decision:x.decision,
-    findingCount:x.task_findings.length+x.repair_findings.length})),savedChars:x.previews_saved_chars}))
+    findingCount:x.task_findings.length+x.repair_findings.length,
+    expected:x.expected_decision,known_gap:x.known_gap})),savedChars:x.previews_saved_chars}))
