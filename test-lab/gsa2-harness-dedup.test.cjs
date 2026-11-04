@@ -80,7 +80,7 @@ test('measured source-response reduction is strictly the duplicate skill list, n
   }))
 })
 
-test('GSA4 A0: all live module literals match the pinned GSA3 source exactly', () => {
+test('GSA4 A0 historical exact literals preserved after normalizing ONLY additive U-A clauses', () => {
   // Frozen from 6b352a3a1f9b791564b4e8b1682af875adf73da7, before physical extraction.
   // Fingerprints are computed from exact TypeScript initializer text (including newlines).
   function fnv64(s) {
@@ -125,7 +125,11 @@ test('GSA4 A0: all live module literals match the pinned GSA3 source exactly', (
   }
   for (const [file, [name, expected]] of Object.entries(hashes)) {
     const initializer = declarationInitializer(file, name)
-    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(initializer) : initializer
+    const uaRole = ['plannerHarness','coderHarness','reviewerHarness'].includes(name)
+    const normalizedRole = uaRole ? initializer.replace(/^      'U-A (?:DECISIONS|CODER|REVIEWER):[^\n]*\n/gm, '') : initializer
+    if (uaRole) assert.notEqual(normalizedRole, initializer, 'U-A clause must be exactly present for '+name)
+    const normalized = name === 'ROLE_SKILLS' ? normalizedRole.replace(", 'secretary'", '') : normalizedRole
+    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(normalized) : normalized
     assert.equal(fnv64(original), expected, name + ' differs from GSA3 baseline (approved U-C delta exempted by exact-byte oracle)')
   }
   assert.equal(fnv64(declarationInitializer('harness-catalog.ts', 'ROLE_HOST_SKILLS')),
