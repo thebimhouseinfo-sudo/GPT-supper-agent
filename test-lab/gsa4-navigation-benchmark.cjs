@@ -23,6 +23,8 @@ const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
 const ROOT = path.resolve(__dirname, '..')
 const TSROOT = 'supabase/functions/gsa-mcp'
 const BASE = '0b5cf875402c7735e1ef573ab95df5858c6ac5e8'
+// A0 must remain a fixed code snapshot when later A4 preview files are added.
+const A0_BASE = '37c98d050b34ec77b2cec55cdcf375881c248262'
 const head = git(['rev-parse', 'HEAD']).trim()
 const locator = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/architecture/GSA4-A1-SOURCE-LOCATOR.json'), 'utf8'))
 const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/architecture/GSA4-A3-REPAIR-EDGES.json'), 'utf8'))
@@ -33,11 +35,12 @@ const SHA40 = 'a'.repeat(40)
 function git(args) {
   return execFileSync('git', args, { cwd: ROOT, encoding:'utf8', maxBuffer: 16 * 1024 * 1024 })
 }
-function srcAt(rel, original) {
+function srcAt(rel, version) {
   assert.match(rel, /^[A-Za-z0-9_./-]+\.ts$/)
   assert.ok(!rel.startsWith('/') && !rel.split('/').some(x => !x || x === '.' || x === '..'))
   const full = TSROOT + '/' + rel
-  return original ? git(['show', BASE + ':' + full]) : fs.readFileSync(path.join(ROOT,full), 'utf8')
+  const sha = version==='GSA3' ? BASE : version==='A0' ? A0_BASE : null
+  return sha ? git(['show',sha + ':' + full]) : fs.readFileSync(path.join(ROOT,full),'utf8')
 }
 function realTest(pathRef) {
   assert.match(pathRef, /^test-lab\/[A-Za-z0-9_./-]+\.test\.cjs$/)
@@ -110,8 +113,8 @@ const cases=[
     repro:'test-lab/gsa4-evidence-extraction.test.cjs'},
 ]
 function safeUnique(v) { return [...new Set(v)].sort() }
-function searchOriginal(c, original) {
-  const ref = original ? BASE : null
+function searchOriginal(c, version) {
+  const ref = version==='GSA3' ? BASE : version==='A0' ? A0_BASE : null
   // Both strategies have exactly the same failure label and tool name.
   const args=['grep','-l','-F','-e',c.tool]
   if (c.error) args.push('-e',c.error)
@@ -119,10 +122,10 @@ function searchOriginal(c, original) {
   args.push('--',TSROOT+'/')
   const result=git(args)
   const matches=result.split('\n').filter(Boolean).map(v=>{
-    const full = original ? v.slice(v.indexOf(':')+1) : v
+    const full = ref ? v.slice(v.indexOf(':')+1) : v
     return full.slice(TSROOT.length+1)
   }).filter(x=>x.endsWith('.ts'))
-  assert.ok(matches.length,c.id+' grep must find real source on '+(original?'GSA3':'A0'))
+  assert.ok(matches.length,c.id+' grep must find real source on '+version)
   return {paths:safeUnique(matches),metadataChars:result.length,lookupOperations:1,
     testRefs:[],method:'GIT_GREP_RELEVANT_FULL_FILES'}
 }
@@ -166,10 +169,10 @@ function fromA3(c,a2) {
     method:'A1_PLUS_A2_PLUS_EXECUTED_A3_CAUSAL_ROUTER',
     warningFindings:packet.findings.map(x=>x.code)}
 }
-function measure(candidate, expected, original) {
+function measure(candidate, expected, version) {
   const start=performance.now()
   let fullSourceChars=0
-  for(const p of candidate.paths)fullSourceChars+=srcAt(p,original).length
+  for(const p of candidate.paths)fullSourceChars+=srcAt(p,version).length
   const elapsed=performance.now()-start
   const needed=safeUnique(expected)
   const missing=needed.filter(p=>!candidate.paths.includes(p))
@@ -192,29 +195,30 @@ function measure(candidate, expected, original) {
 assert.equal(locator.schema,'gsa4-a1-source-locator/v1')
 assert.equal(graph.schema,'gsa4-a3-repair-edges/v1')
 git(['cat-file','-e',BASE+'^{commit}'])
+git(['cat-file','-e',A0_BASE+'^{commit}'])
 const measured=[]
 for(const c of cases){
-  const old=searchOriginal(c,true)
-  const split=searchOriginal(c,false)
+  const old=searchOriginal(c,'GSA3')
+  const split=searchOriginal(c,'A0')
   const a1=fromA1(c)
   const a2=fromA2(c,a1)
   const a3=fromA3(c,a2)
-  const sourceBefore=srcAt(c.original[0],true)
+  const sourceBefore=srcAt(c.original[0],'GSA3')
   const currentExpectedFile = c.id==='EVIDENCE_FINALIZE_CALLBACK'?'index.ts':c.current[0]
-  const sourceAfter=srcAt(currentExpectedFile,false)
-  assert.ok(c.original.some(p=>srcAt(p,true).includes(c.originalToken)),
+  const sourceAfter=srcAt(currentExpectedFile,'HEAD')
+  assert.ok(c.original.some(p=>srcAt(p,'GSA3').includes(c.originalToken)),
     'baseline target not present: '+c.id)
-  assert.ok(c.current.some(p=>srcAt(p,false).includes(c.currentToken)),
+  assert.ok(c.current.some(p=>srcAt(p,'HEAD').includes(c.currentToken)),
     'current target not present: '+c.id)
   assert.ok(sourceBefore.length>0&&sourceAfter.length>0)
   measured.push({id:c.id,tool:c.tool,error_code:c.error,fixture_source:'REAL_EXISTING_CODE_PATH',
     no_introduced_product_defect:true,
     strategies:{
-      GSA3:measure(old,c.original,true),
-      A0:measure(split,c.current,false),
-      A1:measure(a1,c.current,false),
-      A1_A2:measure(a2,c.current,false),
-      A1_A2_A3:measure(a3,c.current,false),
+      GSA3:measure(old,c.original,'GSA3'),
+      A0:measure(split,c.current,'A0'),
+      A1:measure(a1,c.current,'HEAD'),
+      A1_A2:measure(a2,c.current,'HEAD'),
+      A1_A2_A3:measure(a3,c.current,'HEAD'),
     }})
 }
 const strategies=['GSA3','A0','A1','A1_A2','A1_A2_A3']
@@ -231,7 +235,7 @@ const summary=Object.fromEntries(strategies.map(s=>{
     local_read_elapsed_ms:v.reduce((a,b)=>a+b.local_read_elapsed_ms,0)}]
 }))
 const report={
-  schema:'gsa4-navigation-benchmark/v1',benchmark_ref:head,gsa3_baseline:BASE,
+  schema:'gsa4-navigation-benchmark/v1',benchmark_ref:head,gsa3_baseline:BASE,a0_baseline:A0_BASE,
   methodology:'GIT_GREP_VS_A1_INDEX_VS_EXECUTED_A2_A3; SAME_SIGNALS; ACTUAL_CODE; WHOLE_FILE_READ_PROXY',
   source_changes:false,repair_mutations_executed:false,independent_agent_repair_rounds:null,
   model_tokens_measured:false,host_network_latency_measured:false,real_root_cause_identified:false,
