@@ -22,8 +22,10 @@ function load(root) {
   const source=fs.readFileSync(file,'utf8')
   const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
   assert.equal(ast.parseDiagnostics.length,0)
-  const fn=ast.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='assessScopeWidePlanChange')
-  assert.ok(fn,'U-B classifier missing '+file)
+  const outer=ast.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='createPlanChangeDecisions')
+  assert.ok(outer?.body,'U-B parent factory missing '+file)
+  const fn=outer.body.statements.find(x=>ts.isFunctionDeclaration(x)&&x.name?.text==='assessScopeWidePlanChange')
+  assert.ok(fn,'U-B nested classifier missing '+file)
   const compiled=ts.transpileModule(fn.getText(ast),{fileName:file,compilerOptions:{
     target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None},reportDiagnostics:true})
   assert.equal((compiled.diagnostics??[]).filter(x=>x.category===ts.DiagnosticCategory.Error).length,0)
