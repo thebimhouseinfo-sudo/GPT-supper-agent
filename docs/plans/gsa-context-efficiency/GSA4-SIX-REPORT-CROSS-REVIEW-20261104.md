@@ -143,3 +143,34 @@ Under this **A-origin workload**, A's narrower modules save **515,442 chars (26.
 5. Decide physical split design and implement it separately under valid scope; require exact behavior/API parity. Only **after** actual physical extraction+PASS research runtime selective loading, CT-00 and Project-doc Group 3 context allocation.
 
 **Final verdict:** **SIX-REPORT CROSS-REVIEW COMPLETE AS A SOURCE-STATIC/PAPER NORMALIZATION.** Direct numerical A/B comparisons have been repaired where the original reports had different role/task denominators, but neither physical architecture nor post-split context optimizer is validated for production. **No source code, Criteria, parent Plan or original six reports modified.**
+
+## 6. Human-proposed composite alternative — **A physical source modules + B logical context selection** (2026-11-04)
+
+**Human clarification after the six-report review:** Prefer studying **A as the physical BASE first** (granular but cohesive responsibility-owned source/Harness/Skill modules), then **B-like logical selection over those modules**, rather than physically grouping into large B lifecycle files and later splitting a few. This is a proposed architectural hypothesis, **not** a final authorization/decision to extract or to shorten mandatory content.
+
+### Distinguish two orthogonal dimensions
+
+1. **Storage / physical ownership (A):** split overlarge source and guidance into cohesive, independently addressable leaves; each normative instruction or source implementation has one canonical owner. Keep stable parent facade/export contract and preserve exact GSA3 output in BASE. Avoid forced microfiles, import cycles and copies of Shared policy.
+2. **Logical context recipes (B-like):** map `Agent Role × Job type × Task × Phase × trusted execution state` to a **set of references to A leaves/sections**, not a newly duplicated monolithic lifecycle file. A logical `Implementation`, `Bug Repair`, `Bootstrap`, or `Verification` bundle can combine multiple physical leaves without relocating the source. For Coding Agent source navigation, recipes may select owner symbols, direct dependencies, APIs and exact tests. For model-facing instructions, any later assembly must deliver all mandatory policies and preserve exact Role/Task authority.
+3. **Progressive expansion:** begin from sufficient instruction/knowledge to execute *and recognize when ASK/STOP/READ_MORE applies*. On real cross-module bugs, stale owner map, unknown Task status or security boundary, expand to the authoritative parents/dependencies/full text. Reviewers/Tester independently reconstruct required references; no hidden cache or previous Coder verdict substitutes for evidence.
+
+### Why this combination differs from B-first
+
+- **A+B has fine physical granularity for all Agent workflows** without forcing a verification, delivery or planning *file group* to be read wholesale.
+- **B-style grouping becomes an index and load plan**; changing Task/Job selection does not require splitting/merging code or keeping two conflicting policy copies.
+- **Tradeoff:** more physical files/import edges/references and likely more reads on wide workflows; a stale or incomplete context recipe may silently omit required constraints. Count index, module hops, dependency expansion and handoff effort rather than assuming an aggregate context win.
+
+### Required fair comparison / decision proposal
+
+Compare at least four combinations on the **same** role/Skill/Task/source/negative scenario fixtures:
+
+| Physical architecture | Agent's read/load strategy | What it isolates |
+| --- | --- | --- |
+| A fine cohesive modules | Read relevant leaves whole | Structural A BASE |
+| A fine cohesive modules | B-like Role/Job/Task/Phase recipe + progressive leaves | **Human proposed A+B** |
+| B cohesive lifecycle modules | Read relevant groups whole | Structural B BASE |
+| B cohesive lifecycle modules | Same trusted recipe + precise symbol/section reads | B+index counterfactual |
+
+For **Group 1**, measure both *delivered* Harness/Skill model text and *separately requested* source/guide docs. For **Group 2**, measure code-navigation source chars, file/range requests, latency, false owner selection and broad cross-module regression behavior. Never add source navigation and already-delivered model payload as one observed quantity. Keep Group 3 task-driven Project documents outside the early source-saving denominator.
+
+**Strict dependency remains:** research → agree on physical splitting architecture → physically extract and prove exact GSA3 behavior/API/golden parity → only then study/implement dynamic Role/Job/Task/Phase instruction delivery and benchmark. This appendix records a new candidate, not execution of the later stages. Do not select A+B merely from one favorable calculation; measure its extra module and selection maintenance cost against B+range on identical fixtures.
