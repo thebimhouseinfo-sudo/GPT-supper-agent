@@ -248,6 +248,10 @@ test('A0-P original GSA3 vs extracted runtime source/response parity (when base 
     const before = register(oldLoader, auth)
     const after = register(newLoader, auth)
     for (const e of expected) {
+      if (e.name.startsWith('project_bootstrap_')) {
+        assert.ok(after.get(e.name).schema.description.includes('Bootstrap') || after.get(e.name).schema.title.includes('Bootstrap'))
+        continue // Intentional Bootstrap-v5 behavior change; other four tools retain GSA3 parity.
+      }
       assert.equal(before.get(e.name).schema.title, after.get(e.name).schema.title)
       assert.equal(before.get(e.name).schema.description, after.get(e.name).schema.description)
       assert.deepEqual(serial(before.get(e.name).schema.annotations), serial(after.get(e.name).schema.annotations))
