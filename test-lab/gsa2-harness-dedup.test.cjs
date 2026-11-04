@@ -13,6 +13,7 @@ const handlerSource = fs.readFileSync(path.join(dir, 'harness-skill-tools.ts'), 
 const rootSource = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8')
 const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
 const { normalizeCodingSkillSource } = require('./helpers/three-pr-approved-deltas.cjs')
+const { normalizeUFInitializer } = require('./helpers/uf-approved-skill-deltas.cjs')
 const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = loadSourceModule('harness-catalog.ts')
 const roles = ['orchestrator', 'planner', 'advisor', 'designer', 'coder', 'reviewer', 'critic_reviewer', 'tester']
 
@@ -129,7 +130,8 @@ test('GSA4 A0 historical exact literals preserved after normalizing ONLY additiv
     const normalizedRole = uaRole ? initializer.replace(/^      'U-A (?:DECISIONS|CODER|REVIEWER):[^\n]*\n/gm, '') : initializer
     if (uaRole) assert.notEqual(normalizedRole, initializer, 'U-A clause must be exactly present for '+name)
     const normalized = name === 'ROLE_SKILLS' ? normalizedRole.replace(", 'secretary'", '') : normalizedRole
-    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(normalized) : normalized
+    const normalizedUF = normalizeUFInitializer(name, normalized)
+    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(normalizedUF) : normalizedUF
     assert.equal(fnv64(original), expected, name + ' differs from GSA3 baseline (approved U-C delta exempted by exact-byte oracle)')
   }
   assert.equal(fnv64(declarationInitializer('harness-catalog.ts', 'ROLE_HOST_SKILLS')),
