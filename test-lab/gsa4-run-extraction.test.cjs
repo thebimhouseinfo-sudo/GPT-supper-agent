@@ -15,7 +15,7 @@ const golden = {
   "relationship_knowledge_prepare": { file: "run/relationship-knowledge.ts", length: 3365, fnv1a32: '22f8eae2' },
   "goal_recheck_record": { file: "run/goal-recheck.ts", length: 7918, fnv1a32: 'ee6b1117' },
   "run_verification_record": { file: "run/verification.ts", length: 7363, fnv1a32: '07aab975' },
-  "run_complete": { file: "run/complete.ts", length: 16549, fnv1a32: 'd6a0a703' },
+  "run_complete": { file: "run/complete.ts", length: 18100, fnv1a32: '8f88ee81' },
 }
 
 function hash32(text) {
@@ -48,7 +48,7 @@ test('five extracted handlers match byte-exact pinned registration blocks', () =
     assert.match(block, new RegExp("^  server\\.registerTool\\(\\s*'" + name + "'"))
   }
   const completion = fs.readFileSync(path.join(root, golden.run_complete.file), 'utf8')
-  for (const guard of ['validateRunVerificationSnapshot(', 'validateTesterEvidenceVerificationSnapshot(', 'validateTesterEvidenceClaimSnapshot(', 'CODER_COMPLETION_BLOCKED:', 'HANDOFF_EVIDENCE_REJECTED:']) {
+  for (const guard of ['validateRunVerificationSnapshot(', 'validateTesterEvidenceVerificationSnapshot(', 'validateTesterEvidenceClaimSnapshot(', 'CODER_COMPLETION_BLOCKED:', 'HANDOFF_EVIDENCE_REJECTED:', 'PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB.']) {
     assert.ok(completion.includes(guard), 'run_complete evidence guard missing: ' + guard)
   }
 })
