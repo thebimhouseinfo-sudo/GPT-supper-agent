@@ -1,0 +1,127 @@
+{
+  "schema": "gsa4-a3-repair-edges/v1",
+  "source_root": "supabase/functions/gsa-mcp",
+  "a0_a2_development_baseline": "e0eb5eddd661548681d865bc1ba6046a701e2a58",
+  "advisory_only": true,
+  "usage": "Edges are source-navigation candidates only; verify current Git blob SHA and actual caller/consumer code before identifying root cause or editing.",
+  "edges": [
+    {
+      "from": "run/run-begin.ts",
+      "to": "run-dispatch-closure-guards.ts",
+      "symbol": "nextDispatchPreflightError",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-run-extraction.test.cjs",
+        "test-lab/runtime-logic.test.cjs"
+      ]
+    },
+    {
+      "from": "run/run-begin.ts",
+      "to": "checkpoint-evidence-gates.ts",
+      "symbol": "evaluateNextEvidenceGate",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-run-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "run-dispatch-closure-guards.ts",
+      "to": "durable-record-io.ts",
+      "symbol": "validateCompletedTaskRunSnapshots",
+      "relation": "STATIC_IMPORT",
+      "tests": [
+        "test-lab/runtime-logic.test.cjs"
+      ]
+    },
+    {
+      "from": "cursor-decisions.ts",
+      "to": "recovery-decisions.ts",
+      "symbol": "sourceMutationRecoveryDecision",
+      "relation": "STATIC_IMPORT",
+      "tests": [
+        "test-lab/reliability-cursor.test.cjs"
+      ]
+    },
+    {
+      "from": "cursor-decisions.ts",
+      "to": "durable-record-io.ts",
+      "symbol": "recordNextMemoryNamespace",
+      "relation": "STATIC_IMPORT",
+      "tests": [
+        "test-lab/reliability-cursor.test.cjs"
+      ]
+    },
+    {
+      "from": "checkpoint/claim.ts",
+      "to": "evidence-validation.ts",
+      "symbol": "checkpointVerificationApplicable",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-checkpoint-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "checkpoint/verification-gate.ts",
+      "to": "evidence-validation.ts",
+      "symbol": "validateEvidenceBundleAttestationSnapshot",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-checkpoint-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "checkpoint/verification-gate.ts",
+      "to": "checkpoint-evidence-gates.ts",
+      "symbol": "evaluateNextEvidenceGate",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-checkpoint-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "checkpoint-evidence-gates.ts",
+      "to": "evidence-validation.ts",
+      "symbol": "checkpointVerificationApplicable",
+      "relation": "STATIC_IMPORT",
+      "tests": [
+        "test-lab/gsa4-checkpoint-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "evidence-repo/publish-finalize.ts",
+      "to": "index.ts",
+      "symbol": "validateRepositoryProbeSnapshot",
+      "relation": "INJECTED_CALLBACK",
+      "tests": [
+        "test-lab/gsa4-evidence-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "evidence-repo/publish-prepare.ts",
+      "to": "index.ts",
+      "symbol": "validateRepositoryProbeSnapshot",
+      "relation": "INJECTED_CALLBACK",
+      "tests": [
+        "test-lab/gsa4-evidence-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "run/complete.ts",
+      "to": "run-dispatch-closure-guards.ts",
+      "symbol": "validateRunVerificationSnapshot",
+      "relation": "INJECTED_CALL",
+      "tests": [
+        "test-lab/gsa4-run-extraction.test.cjs"
+      ]
+    },
+    {
+      "from": "request-auth-bridge.ts",
+      "to": "platform-utils.ts",
+      "symbol": "edgeFunctionSlug",
+      "relation": "STATIC_IMPORT",
+      "tests": [
+        "test-lab/gsa3-tool-skill-payload.test.cjs"
+      ]
+    }
+  ]
+}
