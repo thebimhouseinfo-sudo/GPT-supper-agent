@@ -2,7 +2,7 @@
 
 **Status:** RESEARCH PLAN — Human requested detailed refinement of the existing approved-criteria implementation plan (2026-11-04). Research authorization is distinct from product code-change authorization.  
 **Owner:** GSA Context Efficiency Track R / CX-04.
-**Scope of THIS document:** **RESEARCH PHASE OF THE GSA4 UPGRADE ONLY**. The unchanged GSA4 product goal is to **reduce Agent context and improve execution speed/efficiency while preserving quality, correctness and required controls**. This file does **not** redefine GSA4 as a standalone research project or replace its later architecture, implementation and benchmark phases. **Current action: refine and review research METHODOLOGY only**; no measurements, simulations, implementation, physical file split, or code changes in this step.
+**Scope of THIS document:** **RESEARCH PHASE OF THE GSA4 UPGRADE ONLY**. **Human sequencing 2026-11-04:** Research the best physical split of the oversized files **first** (multiple options → review → user-scenario simulation → selection); next perform a separately authorized behavior-preserving physical extraction and verify parity; **only after the extracted files really exist and parity passes** research selective Agent/Role/Task context-loading and any further context-reduction mechanisms. Do not optimize loading against a merely hypothetical file layout. The unchanged GSA4 product goal is to **reduce Agent context and improve execution speed/efficiency while preserving quality, correctness and required controls**. This file does **not** redefine GSA4 as a standalone research project or replace its later architecture, implementation and benchmark phases. **Current action: refine and review research METHODOLOGY only**; no measurements, simulations, implementation, physical file split, or code changes in this step.
 **R0 progress:** [Initial source/meter/simulate capability findings](./GSA4-R0-INITIAL-RESEARCH-20261104.md) — research started, independent method review pending; no implementation or simulate PASS.  
 **Canonical parent:** [DETAIL-PLAN.md](./DETAIL-PLAN.md). This is its **GSA4 detailed research section**, not a second competing Project Plan or a new Job/approval gate.  
 **Baseline:** Source-pinned GSA3 on main (observed GSA3 v58 at commit `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`); re-pin live branch SHAs before every test.  
@@ -78,7 +78,7 @@ Lock the research question, baseline, candidate-neutral scenario matrix and revi
 
 **Deliverables:** R0 charter, pinned source inventory, fixed representative scenarios, review findings, skill/meter capability states. **R0 gate:** review the research coverage/method, not a product-code approval.
 
-## Phase R1 — As-is Agent activation and co-read/file inventory
+## Phase R1 — As-is Agent activation and ALL large/co-read file inventory
 
 ### GOAL
 Produce an evidence-tagged map of what GSA3 **does**, what the Harness **asks** the Agent to do, and what remains **unknown** about actual host consumption.
@@ -87,7 +87,7 @@ Produce an evidence-tagged map of what GSA3 **does**, what the Harness **asks** 
 - Trace all eight roles (Orchestrator, Planner, Technical Advisor, Designer, Coder, Reviewer, Critic Reviewer, Tester).
 - For every role: entry trigger, dispatcher owner, `get_agent_harness(role,mode)` producer, common/role text, suggested skills, optional actual `load_skill`, `run_begin` Task-skill injection, Project addins, canonical refs and live Git/Memory reads.
 - Annotate: *always loaded*, *recommended*, *loaded on demand*, *not actually observed*. Trace one User request through first output/handoff and its continuation.
-- Audit file hotspots: `harness-catalog.ts`, `index.ts`, `run-execution-tools.ts`, `selftest.ts` and other demonstrably substantial/repeated navigation surfaces.
+- Audit **all** major candidate file hotspots **now**, before selecting any physical splitting plan: `harness-catalog.ts`, `index.ts`, `run-execution-tools.ts`, `selftest.ts`, large tool modules, substantial architecture/knowledge documents and other demonstrably repeated navigation surfaces. Record whether each is code module, referenced document, MCP-delivered content or actually model-read. A later context optimization must not decide this grouping retroactively.
 - Distinguish **runtime import** (TypeScript loads module), **tool-produced text** (reaches the model), **model requested file read** (consumes navigation context). An import edge alone is not proof of co-reading.
 - Identify shared instructions by ID and propose which role/phase owns each; do not remove any yet.
 
@@ -98,7 +98,7 @@ Produce an evidence-tagged map of what GSA3 **does**, what the Harness **asks** 
 ## Phase R2 — Candidate grouping options (paper only)
 
 ### GOAL
-Select **candidate boundaries for evaluation**, without implementing them.
+Select **candidate boundaries for evaluation across Harness, source and documentation hotspots**, without implementing them. For each hotspot include KEEP/no split as a comparator; file-size-only slicing is not a win. Avoid making downstream context decisions before physical modules exist.
 
 At minimum compare:
 - **A — By Agent:** eight role modules, shared core, skills grouped separately; easy role discovery, risk of duplicated cross-role text.
@@ -153,39 +153,57 @@ Choose the simplest safe grouping based on recorded outcomes, not intuition.
 
 **Decision:** select candidate **for design** or KEEP/no build with evidence; do not implement yet. Pin decision and reviewed source revision.
 
-## Phase R5 — Research the modularization design and parity-test method (paper only)
+## Phase R5 — Finalize behavior-preserving extraction specification (end of splitting research)
 
 ### GOAL
 Turn selected grouping into a **behavior-preserving extraction specification**, with no semantic reallocation yet.
 
 **Options:** same parent facade with named exports; small cohesive imports; alternative discovered via dependency graph. Design golden text snapshots (all eight role Harnesses, 11 current skill bodies and mappings), `get_agent_harness/load_skill` schemas, metadata/JSON fallback, registration parity, negative auth/errors, Direct/JOB parity. State exactly what must remain byte/behavior identical and source files affected; review/approve prior to implementation.
 
-**Separate later implementation checkpoint:** write only after valid implementation authorization. Physical file extraction ≠ reduced model-facing context; never claim a win until later measurement.
+**MANDATORY DEPENDENCY / SEPARATE IMPLEMENTATION CHECKPOINT:** After R0–R5 selection/review, physical extraction must **actually be carried out and proven behavior-equivalent** under the existing valid implementation authorization before **any** Phase R6+ research on selective context routing begins. Keep original parent as a linking facade/index; do not delete authoritative content, strip instructions, or optimize them during this parity-only split. This research stage does not itself authorize writing source. Physical extraction alone is not evidence of model-facing savings.
 
-## Phase R6 — Research context organization after choosing a hypothetical grouping
+## Phase R6 — After actual extraction PASS: research selective Agent context loading
 
 ### GOAL
-Investigate selective loading **after** cohesive grouping is understood.
+**DO NOT START R6 until the selected large-file groups have been physically extracted, relevant parent facades preserved, and source/role/runtime parity evidence reviewed.** Then investigate selective loading on the **actual extracted files**, not on hypothetical filenames. This is the next research stage and not part of the current file-splitting research.
 
 **At least these options:** (1) shorter universal core + role-local instruction; (2) existing lazy role/skill loading with better ownership and conditional skills; (3) verified Task/Phase selection with fallback where trustworthy runtime facts exist; (4) tool-enforced authority with minimum model instruction (prove each rule's actual backend enforcement); (5) KEEP. All options preserve required instruction delivery to the responsible role.
 
 Examine Advisor's Human-requested proposal-only boundary as a **contract delta** against existing Agent Contracts; do not silently rewrite already approved canonical behavior. Evaluate all eight roles. Re-run R3 scenarios and independent review for every meaningful option.
 
-## Phase R7 — Large/co-read file hotspots (same experimental method)
+## Phase R7 — After extraction: investigate additional context reductions
 
 ### GOAL
-Examine other oversized source/knowledge files **only when actual same-task co-read/reread evidence** supports costly navigation.
+On the **physically extracted, parity-verified baseline**, investigate extra ways to reduce context **beyond file splitting**: minimal universally delivered rules; phase/task-appropriate role-context assembly; skill/reference progressive disclosure; less repeated tool-result and handoff content; source and knowledge navigation; or KEEP. **All remaining large/co-read file splitting decisions belong to R1–R5, not here.** For each post-split optimization compare multiple options → review → scenario simulate → justify selection, without pretending that moving files alone reduces host tokens.
 
-For each candidate hotspot, record real file size, responsibility clusters, callers/consumers, observed co-read sequence, candidate grouping alternatives A/B/C/KEEP, import cycle risk and required parity tests. Options → independent review → scenario simulation → documented choice. Do not split unrelated files solely to chase smaller numbers or claim savings from tree structure alone.
-
-## Phase R8 — Define the later CT-00 evaluation and technical-decision protocol
+## Phase R8 — After extraction: CT-00 evaluation and technical-decision protocol
 
 ### GOAL
-Evaluate expected end-to-end benefit, risk and implementation cost before proposing GSA4 code.
+Evaluate expected end-to-end context/speed benefit, risk and implementation cost for any **post-split** optimization, using the physically extracted baseline. This phase cannot precede physical extraction parity.
 
 Specify how the later research/experimental step will reuse CT-00's existing executable/fixtures, verify it is operational and compare source-pinned baseline and candidates only in a separately initiated, authorized measurement step. **This methodology-plan edit performs no measurement and runs no test or simulation.** When measurement does occur, theory remains separately labeled. Record chars/bytes, token estimate, call counts/rereads/navigation, instrumented latency and scenario quality. Distinguish agent orchestration cost from model-input text size. Preserve the earlier narrow selector NO_BUILD as one evaluated option.
 
 **Deliverables:** design rationale with options ruled out, revised Technical Proposal, source/contract impact, Reviewer findings, measurement evidence, PROCEED/NARROW/STOP decision and the **separate** later implementation/benchmark plan if applicable. No automatic GSA4 code, merge or deploy.
+
+## Dependency clarification — Human decision 2026-11-04
+
+**Strict order:**
+
+```text
+R0–R1   Observe GSA3 and identify all substantial/co-read files
+R2      Compare multiple cohesive physical splitting options (and KEEP)
+R3      Scenario simulation of file activation, no source edits
+R4      Review and select splitting proposal
+R5      Design exact parent-facade extraction and parity proof
+-------- EXIT FIRST RESEARCH STAGE --------
+IMPL    Execute approved physical extraction; validate exact behavior parity
+-------- PHYSICAL FILES REALLY EXTRACTED AND VERIFIED --------
+R6      Research Role/Agent/Task-specific loading on extracted files
+R7      Research additional post-split context-reduction methods
+R8      Evaluate impact using EXISTING CT-00; choose safe improvements
+```
+
+A file rearrangement, simulation or planned filename is **not** equivalent to completed extraction. R6–R8 must not run before this dependency is satisfied. The present work remains R0–R5 **research only**. No action here authorizes code edits.
 
 ## Method-plan review — 2026-11-04 (paper review only)
 
@@ -218,4 +236,4 @@ For **each R phase**, store:
 | COST | bytes/chars/estimated tokens, calls, navigation and risk; actual vs estimated |
 | DECISION | selected/rejected and why; unmet evidence/unknowns; reversible next step |
 
-**Research exit:** R0–R8 evidence supports an independently reviewable technical choice; implementation follows the existing Plan/Criteria authority and separate Human execution approval, not an extra research-only gate.
+**First research exit (R0–R5):** reviewed and simulated **physical splitting design** for all verified large/co-read files. Then separately authorized **actual extraction and parity PASS**. **Second research entry (R6–R8) is prohibited before that physical milestone**; it studies additional context optimizations on the extracted source and uses existing CT-00. All implementation follows existing Plan/Criteria authority, not an extra research-only gate.
