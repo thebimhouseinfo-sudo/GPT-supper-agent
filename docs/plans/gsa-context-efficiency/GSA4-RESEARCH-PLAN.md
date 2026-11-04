@@ -171,6 +171,12 @@ Turn selected grouping into a **behavior-preserving extraction specification**, 
 
 Examine Advisor's Human-requested proposal-only boundary as a **contract delta** against existing Agent Contracts; do not silently rewrite already approved canonical behavior. Evaluate all eight roles. Re-run R3 scenarios and independent review for every meaningful option.
 
+## Explicit study priority and Project-doc separation — Human decision 2026-11-04
+
+**Current first-stage focus:** **Group 1 (Agent operating guidance)** and **Group 2 (GSA runtime source)**, including A/B grouping options, source-read vs delivered-Harness distinction, four User journeys, future per-Task subsections and behavior-parity extraction. **Do not mix Group 3 (per-Project Criteria/Plan/Job records) into Group 1–2 source-context cost arithmetic.**
+
+**Later Group 3 research:** [Project document structure and role-based reading scope](./GSA4-PROJECT-DOCUMENT-ACCESS-FOLLOWON-SCOPE-20261104.md). This is a proposed *reusable document-template and access-policy investigation*, not a change to current Project Criteria/Plan or to GSA runtime contracts. Key hypothesis: for an already approved Task, Coder reads the exact Goal, acceptance and relevant constraints rather than automatically reopening the entire Criteria; missing/conflicting authority still triggers a targeted authoritative read or Planner escalation. Reviewer/Tester preserve independently sufficient requirements/evidence.
+
 ## Phase R7 — After extraction: investigate additional context reductions
 
 ### GOAL
