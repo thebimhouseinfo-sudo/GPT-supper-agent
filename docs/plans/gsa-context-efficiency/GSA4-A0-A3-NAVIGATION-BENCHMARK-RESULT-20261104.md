@@ -2,9 +2,9 @@
 
 **Date:** 2026-11-04. **Mode:** DIRECT_AGENT source-code benchmark with actual GitHub Actions execution. **Status:** SOURCE_EXECUTED_NAVIGATION_RESULT; **NOT** an autonomous Agent repair benchmark or Host observation.  
 **Development starting SHA:** `37c98d050b34ec77b2cec55cdcf375881c248262`.  
-**Benchmark execution SHA:** `3cf05dc0e9b80e6f670a8a28d682e14f73e1bddc` (first successful run); subsequent assertions added on benchmark PR head and must re-run.  
+**Benchmark execution:** first PASS at `3cf05dc0e9b80e6f670a8a28d682e14f73e1bddc`; **final re-run PASS at `eb4d1c16376931dc44414d672a163825807d6296`**, including new coverage regression assertions.  
 **Pinned original GSA3 source:** `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`.  
-**GitHub Actions:** [Run #41813601289](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41813601289), **SUCCESS** for Navigation Benchmark, Node regression and Deno typecheck. **Artifact:** `gsa4-navigation-benchmark` (ID `13312818560`, downloadable from that run, 30-day retention).  
+**GitHub Actions:** [final verified run #41814015109](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41814015109) and [first run #41813601289](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/actions/runs/41813601289), both **SUCCESS** for Navigation Benchmark, Node regression and Deno typecheck. **Final artifact:** `gsa4-navigation-benchmark` (ID `13312664608` as returned by GitHub Actions, downloadable from the final run; 30-day retention).  
 **Reproducible runner:** [test-lab/gsa4-navigation-benchmark.cjs](../../../test-lab/gsa4-navigation-benchmark.cjs); [benchmark protocol](../../../docs/architecture/GSA4-NAVIGATION-BENCHMARK.md).
 
 ## 1. Exact comparison and scope
@@ -54,7 +54,7 @@ The benchmark records **actual source characters read**, **full-source file read
 
 **Not executed:** independently controlled AI Coding Agent sessions on equivalent real injected bugs, the same patch being edited/reviewed/tested against both architectures, actual ChatGPT/Claude/Codex tool calls, model token receipts, Tool networking latency, Host/CAS E2E, actual RED→fix→GREEN repair iterations. `local_read_elapsed_ms` includes incomparable Git subprocess vs OS file reads and must **not** be represented as Agent timing.
 
-The currently running main Node regression suite is **194 PASS / 0 FAIL / 0 SKIP** on the first benchmark CI commit, with Deno typecheck PASS. It is a check of GSA source parity and negative cases, **not evidence that the benchmark's four signals were independent product bugs**.
+The exact final-source Node regression suite is **194 PASS / 0 FAIL / 0 SKIP** on the benchmark PR CI, with Deno typecheck PASS. It is a check of GSA source parity and negative cases, **not evidence that the benchmark's four signals were independent product bugs**.
 
 ## 4. Interpretation and recommended post-benchmark direction
 
