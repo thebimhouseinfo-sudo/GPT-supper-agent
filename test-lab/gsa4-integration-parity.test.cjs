@@ -147,8 +147,8 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
   assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),[...skills,'secretary'])
   assert.ok(after.RUNTIME_SKILLS.secretary.body.includes('Human'))
   assert.equal(before.BASE_AGENT_HARNESS,after.BASE_AGENT_HARNESS)
-  assert.deepEqual(after.ROLE_SKILLS.planner,[...before.ROLE_SKILLS.planner,'secretary'])
-  for(const role of roles.filter(x=>x!=='planner')) assert.deepEqual(after.ROLE_SKILLS[role],before.ROLE_SKILLS[role])
+  assert.equal(JSON.stringify(after.ROLE_SKILLS.planner),JSON.stringify([...before.ROLE_SKILLS.planner,'secretary']))
+  for(const role of roles.filter(x=>x!=='planner')) assert.equal(JSON.stringify(after.ROLE_SKILLS[role]),JSON.stringify(before.ROLE_SKILLS[role]))
   assert.equal(JSON.stringify(before.ROLE_HOST_SKILLS),JSON.stringify(after.ROLE_HOST_SKILLS))
   for(const role of roles) {
     assert.equal(JSON.stringify(before.ROLE_HARNESSES[role]),JSON.stringify(withoutUA(after.ROLE_HARNESSES[role],role)),role)
