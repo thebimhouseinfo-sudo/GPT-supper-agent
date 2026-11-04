@@ -12,6 +12,7 @@ const catalogSource = fs.readFileSync(path.join(dir, 'harness-catalog.ts'), 'utf
 const handlerSource = fs.readFileSync(path.join(dir, 'harness-skill-tools.ts'), 'utf8')
 const rootSource = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8')
 const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
+const { normalizeCodingSkillSource } = require('./helpers/three-pr-approved-deltas.cjs')
 const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = loadSourceModule('harness-catalog.ts')
 const roles = ['orchestrator', 'planner', 'advisor', 'designer', 'coder', 'reviewer', 'critic_reviewer', 'tester']
 
@@ -123,7 +124,9 @@ test('GSA4 A0: all live module literals match the pinned GSA3 source exactly', (
     'harness-catalog.ts': ['ROLE_SKILLS', '0d05b22107d15b13'],
   }
   for (const [file, [name, expected]] of Object.entries(hashes)) {
-    assert.equal(fnv64(declarationInitializer(file, name)), expected, name + ' differs from GSA3 baseline')
+    const initializer = declarationInitializer(file, name)
+    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(initializer) : initializer
+    assert.equal(fnv64(original), expected, name + ' differs from GSA3 baseline (approved U-C delta exempted by exact-byte oracle)')
   }
   assert.equal(fnv64(declarationInitializer('harness-catalog.ts', 'ROLE_HOST_SKILLS')),
     '3afe197634894634', 'host Skill suggestion mapping changed')

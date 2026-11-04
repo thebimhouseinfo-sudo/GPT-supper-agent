@@ -153,6 +153,8 @@ export function registerJobTransitionTool(deps: any) {
           retired_by_replacement_job_id: null,
         } : {}),
         ...(['SUPERSEDED','RETIRED'].includes(target_lifecycle) && planSupersession?.allowed ? {
+          // Preserve completed Tasks and their evidence; retire EVERY unfinished
+          // Task in the reviewed scope (legacy partial REPLACE remains unchanged).
           tasks: (current.tasks ?? []).map((task: any) => {
             const retire = target_lifecycle === 'RETIRED' || (planSupersession.action.retired_task_ids ?? []).includes(task.task_id)
             return retire && !['COMPLETED','CANCELLED','SUPERSEDED','RETIRED'].includes(task.lifecycle)
@@ -160,6 +162,23 @@ export function registerJobTransitionTool(deps: any) {
                   retired_reason: planSupersession.action.reason }
               : task
           }),
+          // NEXT milestone records are planning nodes, not an independent
+          // lifecycle engine. Record scoped retirement without overwriting
+          // completed milestone/Task history or historical PASS evidence.
+          ...(target_lifecycle === 'RETIRED' ? {
+            milestones: (current.milestones ?? []).map((milestone: any) => {
+              const related = (current.tasks ?? []).filter((task: any) =>
+                (milestone.node_ids ?? []).includes(task.task_id))
+              const completed = related.length > 0
+                ? related.every((task: any) => task.lifecycle === 'COMPLETED')
+                : (milestone.lifecycle === 'COMPLETED' || milestone.status === 'PASS' || milestone.result === 'PASS')
+              return completed ? milestone : {
+                ...milestone, lifecycle: 'RETIRED',
+                retired_by_plan_change_id: JSON.parse(plan_change_context.intent_record_text).change_id,
+                retired_reason: planSupersession.action.reason,
+              }
+            }),
+          } : {}),
         } : {}),
         lifecycle: target_lifecycle,
         result: target_lifecycle === 'RETIRED' ? 'RETIRED' : result ?? current.result ?? null,
@@ -176,7 +195,8 @@ export function registerJobTransitionTool(deps: any) {
           'Independently read exact persisted Plan Change intent, require its blob SHA equals plan_change_context.intent_record_sha and bytes match before ANY Job transition.',
           'Independently enumerate active Runs and Job cursor; require no ACTIVE/UNKNOWN Runs and no PENDING/UNKNOWN source mutation.',
           'Independently confirm current source HEAD/tree and dependencies are consistent with the reviewed Plan; do not trust cursor_state/active_run_state caller assertions.',
-          'After terminal transition, read back lifecycle and Plan Change lineage; RETIRED must have a reason and no successor.',
+          'After terminal transition, read back lifecycle, every unfinished Task/Milestone retirement and Plan Change lineage; RETIRED must have a reason and no successor.',
+          'A delayed successful Run callback must not bypass the Plan fence. Preserve completed historical results; never promote old PASS to fresh Job/Task work.',
         )
       }
       if (target_lifecycle === 'COMPLETED') {

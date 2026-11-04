@@ -11,6 +11,7 @@ const {execFileSync} = require('node:child_process')
 const ts = require('typescript')
 const {loadSourceModule} = require('./helpers/harness-ts-loader.cjs')
 const {registrationGraph, toolSource} = require('./helpers/gsa4-source-views.cjs')
+const {normalizeRunComplete, normalizeCodingSkillBody} = require('./helpers/three-pr-approved-deltas.cjs')
 
 const repoRoot = path.resolve(__dirname, '..')
 const srcRoot = path.join(repoRoot, 'supabase/functions/gsa-mcp')
@@ -99,7 +100,7 @@ const groups = [
   ['evidence-repository-tools.ts','registerRepositoryEvidenceTools',3],
 ]
 
-test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills are byte-identical',async()=>{
+test('GSA3 golden 8 Roles, 11 Skills and exact approved U-C coding-loop extension preserved',async()=>{
   const before=baselineModule(base('harness-catalog.ts'))
   const after=loadSourceModule('harness-catalog.ts')
   const roles=['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
@@ -118,8 +119,10 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
     for(const options of [undefined,{includeProgressiveSkills:false},{includeProgressiveSkills:true}])
       assert.equal(before.renderHarness(role,options),after.renderHarness(role,options),'render '+role)
   }
-  for(const skill of skills) assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),
-    JSON.stringify(after.RUNTIME_SKILLS[skill]),'skill '+skill)
+  for(const skill of skills) {
+    const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
+    assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
+  }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
   for(const [name,args] of [
     ['get_skill_catalog',undefined],
@@ -130,7 +133,13 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    assert.equal(JSON.stringify(a),JSON.stringify(b),'public result '+name+':'+JSON.stringify(args))
+    if(name === 'load_skill' && args?.name === 'coding-loop') {
+      assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
+      const normalized = JSON.parse(JSON.stringify(b))
+      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+      normalized.content[0].text = JSON.stringify(normalized.structuredContent)
+      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
+    } else assert.equal(JSON.stringify(a),JSON.stringify(b),'public result '+name+':'+JSON.stringify(args))
   }
   const deniedBefore=harnessTools(before,false),deniedAfter=harnessTools(after,false)
   for(const [name,args] of [['get_agent_harness',{role:'coder',mode:'JOB'}],
@@ -143,7 +152,8 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
 test('all 17 extracted Run/Project/Checkpoint/Evidence registration expressions equal pinned GSA3 exactly',()=>{
   for(const [file,entry,count] of groups) {
     const original=calls(base(file),'GSA3/'+file)
-    const updated=calls(toolSource(file,entry),'A0/'+file)
+    const newSource=toolSource(file,entry)
+    const updated=calls(file === 'run-execution-tools.ts' ? normalizeRunComplete(newSource) : newSource,'A0/'+file)
     assert.equal(original.length,count,'base registrations: '+file)
     assert.deepEqual(updated,original,'schemas/handlers/error/result code drift: '+file)
     assert.deepEqual(registrationGraph(file,entry).names,original.map(([name])=>name),

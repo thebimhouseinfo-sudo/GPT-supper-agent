@@ -7,6 +7,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+const {normalizeRunComplete} = require('./helpers/three-pr-approved-deltas.cjs')
 
 const root = path.resolve(__dirname, '../supabase/functions/gsa-mcp')
 const names = ['run_begin','relationship_knowledge_prepare','goal_recheck_record','run_verification_record','run_complete']
@@ -42,9 +43,14 @@ test('five extracted handlers match byte-exact pinned registration blocks', () =
     const source = fs.readFileSync(path.join(root, file), 'utf8')
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
     assert.equal(ast.parseDiagnostics.length, 0, file + ': TS parse diagnostics')
-    const block = registrationBlock(source, file)
+    const originalSource = name === 'run_complete' ? normalizeRunComplete(source) : source
+    const block = registrationBlock(originalSource, file)
     assert.equal(block.length, length, name + ': original block length drift')
-    assert.equal(hash32(block), fnv1a32, name + ': pinned body/schema/error strings drift')
+    assert.equal(hash32(block), fnv1a32, name + ': pinned body/schema/error strings drift outside exact U-B delta')
+    if (name === 'run_complete') {
+      assert.match(source, /PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB/)
+      assert.match(source, /PLAN_CHANGE_RUN_COMPLETION_REQUIRES_CURRENT_JOB_SHA/)
+    }
     assert.match(block, new RegExp("^  server\\.registerTool\\(\\s*'" + name + "'"))
   }
   const completion = fs.readFileSync(path.join(root, golden.run_complete.file), 'utf8')
