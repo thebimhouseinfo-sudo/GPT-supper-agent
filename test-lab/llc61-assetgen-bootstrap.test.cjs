@@ -63,3 +63,13 @@ test('LLC61 checklist advisory READY never grants source write, including claime
   assert.equal(checklist.status,'BOOTSTRAP_READY')
   assert.equal(checklist.source_write_authorized,false)
 })
+
+test('LLC61 explicit stale canonical binding cannot be hidden behind legacy untyped source Plan', () => {
+  const stale={...binding,criteria_blob_sha:'f'.repeat(40)}
+  const rejected=decide(project,input({plan:{...plan,criteria_binding:stale}}))
+  assert.equal(rejected.status,'PLAN_CRITERIA_MISMATCH')
+  assert.equal(rejected.source_write_authorized,false)
+  const matched=decide(project,input({plan:{...plan,criteria_binding:binding}}))
+  assert.equal(matched.status,'BOOTSTRAP_EVIDENCE_READY_HUMAN_EXECUTION_PENDING')
+  assert.equal(matched.source_write_authorized,false)
+})
