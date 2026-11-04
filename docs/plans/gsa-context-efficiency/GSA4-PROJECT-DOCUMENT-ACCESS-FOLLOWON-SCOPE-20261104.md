@@ -1,70 +1,82 @@
-# GSA4 — Follow-on scope: Project document structure and role-based reading
+# GSA4 — Follow-on research: hierarchical context delegation in Project documents
 
-**Status:** RESEARCH BACKLOG ONLY — not a document restructuring decision, no application code changes, no new Context routing implementation, no simulation/measurement PASS.  
-**Human direction:** 2026-11-04: **Group 1 and Group 2 first.** Group 3 is project documentation, not runtime source. Later establish a reusable document taxonomy and exactly which role reads which authoritative document; do not let other GSA-managed projects accumulate one enormous Plan/Criteria/knowledge file without deliberate ownership and progressive context.  
+**Status:** RESEARCH BACKLOG ONLY — not a document restructuring decision or fixed Agent/document permission matrix; no implementation, measurement or simulation PASS.  
+**Human clarification (2026-11-04):** The example "Coder may not need to read Criteria" was **illustrative, NOT a rule**. Study **how responsibilities and context flow down a management/task hierarchy**. Every level should normally do the work delegated by its immediate owner with sufficient context, while being able to open higher-level authoritative source **when the work genuinely requires it**. Do not hard-code a role-to-file ban.  
+**Research sequence:** Group 1 (GSA Harness/role/skills) → Group 2 (GSA runtime source) first; Group 3 is a **later study of Project documents across projects**.  
 **Parent:** [GSA4-RESEARCH-PLAN.md](./GSA4-RESEARCH-PLAN.md).
 
-## 1. Three distinct research objects
+## 1. Separate the research objects
 
-| Group | Examples | Reader / desired outcome | Current priority |
+| Group | Content | Goal | Current priority |
 | --- | --- | --- | --- |
-| **1 — GSA Agent operating guidance** | `harness-catalog.ts` contents, `docs/architecture/AGENT-HARNESSES.md`, `docs/architecture/EXECUTION-AND-REVIEW.md`, `skills/gsa-job-runtime/SKILL.md` | Each GSA role receives/opens only correct governing instruction/Skill subsections. Preserve required authority/guards. | **FIRST** |
-| **2 — GSA runtime product source** | `supabase/functions/gsa-mcp/index.ts`, `run-execution-tools.ts`, `project-setup-tools.ts`, `checkpoint-tools.ts`, `selftest.ts` | Coding/testing Agent developing **GSA itself** navigates cohesive modules with fewer irrelevant source reads. Preserve import/API parity. | **SECOND** |
-| **3 — Per-Project planning and delivery records** | Criteria, Project Plan, Milestones, Job/Task/Run, Decisions, handoff, evidence, product knowledge, user artifacts, logs and historical research plans | Define **template/taxonomy** and **role/document reading obligations** across *other projects*, avoiding accidental all-doc loads. This is not GSA runtime source and not the first-stage source-split study. | **LATER**, after Groups 1–2 are understood/split and verified |
+| **1 — Agent operating guidance** | `harness-catalog.ts`, `AGENT-HARNESSES.md`, `EXECUTION-AND-REVIEW.md`, `gsa-job-runtime/SKILL.md` | Cohesive split and eventually deliver the correct task/role instruction sections, preserving mandatory rules | **FIRST** |
+| **2 — GSA source implementation** | `index.ts`, `run-execution-tools.ts`, `project-setup-tools.ts`, tests, other large TypeScript modules | Let GSA development Agents navigate small, coherent implementation surfaces | **SECOND** |
+| **3 — Per-Project documents and records** | Project Criteria, Plan, Milestones, Jobs/Tasks, decisions, implementation design, evidence, logs, historical notes | Develop a reusable **hierarchical responsibility → context** model and avoid monolithic documents for projects managed by GSA | **LATER** |
 
-A GSA repository file can be a **source of operating policy** (Group 1) rather than a per-Project delivery artifact (Group 3). Classify by responsibility/reader, not just extension `.md` vs `.ts`.
+Not all large Markdown documents belong to Group 3: GSA operating instructions (Group 1) are different from the user project's own requirements and project plans (Group 3).
 
-## 2. Hypothesis: Goal-first handoff, not full Criteria for every role
+## 2. Human's MEP organization analogy — the actual research question
 
-**Research hypothesis from Human:** a **Coder implementing an already-approved Task** may not need to reopen the *whole* Criteria or Overall Plan. The Coder should consume the **exact approved Task/Goal**, completion criteria, constraints and relevant implementation references. Planner is responsible for correctly propagating governing requirements into that Task. A Coder must *not* infer permission or omit important requirements because a document was shortened.
-
-Suggested minimal **Task execution packet** (logical shape, not a new schema yet):
+Example of nested accountability:
 
 ```text
-Project / repository / target branch identity
-Exact Job / Task / planning revision and owning Goal
-Relevant approved completion/acceptance criteria
-Constraints / invariants / security / non-goals applicable to this Task
-Required skills / targeted source paths or search references
-Expected evidence, review/test requirements and authoritative refs for escalation
+Site Manager — entire multidisciplinary project
+    ├── Architecture
+    ├── Structure
+    ├── MEP
+    │   └── System / PM / Manager
+    │       └── Discipline Lead
+    │           └── Team Members
+    └── Civil
 ```
 
-If this packet is incomplete, contradictory, stale, or expands scope, the Coder must **stop or escalate to Planner** and read only the relevant missing authoritative section; never blindly ignore Criteria, guess scope or edit a Human-approved governing rule. Direct Agent without an approved packet requires its own bounded scope confirmation.
+Each parent receives or owns an objective and delegates a smaller **scope of responsibility** to children. A Team Member typically needs the delegated deliverable, relevant interfaces/constraints and acceptance criteria, **not all management context of Site Manager**. Equally, a Discipline Lead need not read all information managed by the parent PM/Manager. A complex task or cross-discipline interface may require looking upward or sideways.
 
-## 3. Proposed role/document read matrix — TEST CANDIDATE, not runtime policy
+**Research principle, not an implemented law:** `Context(node, task) = minimum sufficient scope of parent-delegated objective + applicable constraints/acceptance/interfaces + references to authoritative upstream information + relevant current evidence`. Escalate/expand dynamically when missing, inconsistent or cross-team information makes it necessary. **Delegation depth alone does not determine a fixed document allowance.**
 
-Legend: **O** = typically owning/editing and must consult current revision; **D** = default target input; **C** = conditional, read relevant section on trigger; **—** = not normally necessary. All rows retain mandatory access/authorization/evidence checks.
+GSA roles (Planner, Orchestrator, Coder, Reviewer, Tester, etc.) are **responsibilities**, not literal positions in the MEP org chart. A Coder can be a delegated implementer in one Job and need broad system context in another. Reviewers and Testers require independently sufficient evidence and must not simply accept a delegate's summary.
 
-| Document / record | Orchestrator | Planner | Advisor | Designer | Coder | Reviewer | Tester |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Project identity/branch/scope | D | D | C | C | D | D | D |
-| Approved Criteria (full) | C | O | D for consultation | C | **— if Task packet complete** | C (planning/scope audit) | C (product-level acceptance) |
-| Current Overall Plan | C | O | C | C | **— if Task packet complete** | C (plan review) | — |
-| Exact approved Job/Task/Goal + acceptance | D | O | C | D | **D** | **D** | **D** |
-| Role-specific implementation design/source references | C | C | C on architecture consultation | D | D | D as needed | C |
-| Current source revision / changed files / diff | C | C | — by proposed narrower Advisor contract | C | D | **D** | D for tested revision |
-| Test cases / evidence / verification records | C | C | — | C | D where relevant | **D** | **D** |
-| Historical decisions / lessons / unrelated Jobs | C when resuming | C for impact | C if specifically relevant | C | C on trigger | C on trigger | C on trigger |
+## 3. Delegation contract: what each level passes down
 
-This matrix must be checked against the approved **existing** GSA role contracts. In particular, Advisor currently has a selective source-read permission, whereas Human has proposed a proposal-focused boundary. Treat the difference as an explicit design question, **not** a stealth policy change.
+Treat this as an **illustrative packet**, not a mandated new schema or duplicate authoritative document:
 
-**Reviewer independence:** the Reviewer always reconstructs the exact target/revision and evidence independently. It may need more governing source than Coder to verify scope, and planning Reviewer normally needs relevant Criteria/Overall Goal. **Tester** must obtain the oracle relevant to its tested behavior (Task acceptance or product-level Criteria) and must not derive expected behavior from implementation alone.
+- Objective and exact scope the delegate owns; expected deliverable / quality criteria
+- Relevant constraints and non-goals, including safety/security and interfaces to adjacent work
+- Known prerequisites and inputs; current authoritative revision/source references
+- What the delegate can decide itself, what must be escalated, and required evidence/handoff
+- **Optional discoverable parent context**, not obligatorily loaded in full
 
-## 4. Later document-organizing alternatives (do not choose yet)
+The parent is responsible for conveying sufficient information; the child is responsible for completing its assigned goal and raising concrete gaps. Neither should invent missing approval or treat a condensed summary as authority to override a contradictory canonical decision.
 
-- **P-A: Parent index + cohesive topic leaves.** One authoritative Criteria/Plan entry document with compact goal/scope/index, linked phase/job/decision details; avoid tiny fragments and duplicate normative sources.
-- **P-B: Role-targeted view over canonical records.** No second authoritative copy; generate a narrow Task/Goal packet with exact revision refs that Planner/Reviewer can trace back to the approved source.
-- **P-C: Section navigation without physical splitting.** Keep a cohesive existing document, use headings/anchors or line-range retrieval where source access supports it.
-- **P-D: KEEP** when full-document reading is legitimately required or splitting increases inconsistency.
+## 4. Dynamic read conditions — NOT a fixed Role × Document matrix
 
-Compare on the four fixed User journeys (Bootstrap, Continue Code, Test→Fix→Retest, New Feature), plus scope/Criteria changes, Direct Agent with incomplete scope, conflicting revisions, and independent Reviewer/Tester. Freeze user-derived expected results before checking actual doc links. Report source-navigation chars, file/range reads and hop count separately from Harness payload, with actual project-specific documents **excluded from early Group 1–2 savings accounting**.
+The old "Coder: no Criteria if packet complete" table was overly prescriptive and has been retired as a proposal. Instead, test decisions based on **delegation/task state**:
 
-## 5. Exit criteria for this later study
+| Condition | Initial read strategy | Escalation / widened read |
+| --- | --- | --- |
+| Routine delegated, well-specified Task | Local Goal, deliverables, acceptance, related constraints/references | Open parent Criteria/Plan sections only if needed for accuracy, fit or decision |
+| Incomplete or conflicting Task | Identify exact missing decision/revision and authoritative owner | Read relevant parent source or request owner clarification; no unsupported completion claim |
+| System-level decision / change affecting other disciplines | Owner reviews applicable parent goals and cross-discipline interfaces | Notify/escalate affected management/owners; preserve existing approval rules |
+| Multi-Agent independent review or test | Reconstruct exact approved target, source revision and evidence independently | Review the higher-level governing material necessary to confirm expected behavior or scope |
+| New feature or material Criteria change | Planner/owner examines affected goals/constraints and relationship to parent scope | Seek required Human decision; Advisor consultation under its actual authorized contract |
+| Resume/handoff/recovery | Read local durable state, current revision and bounded handoff | Expand only where state or evidence does not reconcile |
 
-1. A canonical document taxonomy/ownership specification (criteria vs planning vs task execution vs evidence vs historical/reference).
-2. Reviewed role-to-document matrix showing **required / optional / prohibited/irrelevant** under each Task state.
-3. Evidence that Coder can correctly complete the Goal without routinely reading the full Criteria **when the approved Task packet is sufficient**, and safe fallback when it is not.
-4. No loss of Criteria traceability, approval scope, security invariants, independent Reviewer/Tester, or accurate bug classification.
-5. Measured/explicitly simulated navigation and context costs on equivalent tasks; retain KEEP where simpler.
+**Coder/Criteria example:** sometimes reading Criteria is redundant; sometimes it is essential. Whether to read depends on responsibility, task completeness, dependency impact, authoritative gaps and the available retrieval cost — **not on job title**.
 
-**Next action now:** Continue Group 1 + Group 2 A/B source-splitting research and parity design. Do **not** perform this Group 3 study yet.
+## 5. Alternative mechanisms to research later (no selection)
+
+- **H-A: Hierarchical document ownership and summary/index per level.** Parent owns canonical goals, child has bounded Job/Task context and source links; test what information must cross handoff.
+- **H-B: Task-first progressive retrieval.** Initially read local Task/Goal and only traverse parent/adjacent authoritative nodes on explicit triggers; keep source provenance.
+- **H-C: Cohesive documents with precise section navigation.** Avoid extra physical files when range/heading reads can provide equivalent context cheaply.
+- **H-D: Fixed role-document policy** as a comparison/negative-control candidate: likely too rigid, but evaluate rather than assert.
+- **H-E: KEEP existing behavior** when delegated context is incomplete or verification would require full reads.
+
+All proposals should compare aggregate context (not just the deepest member), tool-call/lookup cost, loss of important constraints, cross-discipline dependency handling and correctness of handoff. A short child context that forces every higher-level owner to reread/repair work is **not** an overall win.
+
+## 6. Later simulation scope and acceptance questions
+
+Use four User journeys already identified (Bootstrap; Continue Coding; Test → Fix → Retest; New Feature), and add illustrative multi-level MEP delegation, cross-discipline change, incomplete instruction and source revision conflict. First establish User goals and expected outcomes independent of code; then trace actual context reads. Separate real observed reads from paper assumptions.
+
+The eventual study should establish: (1) reusable document taxonomy and owner links, (2) role + **responsibility-level + Task-state** read decisions, (3) no loss of parent-goal traceability, authority, Reviewer/Tester independence or safety, and (4) a measurable end-to-end improvement or KEEP decision.
+
+**Do not begin this Group 3 study during Group 1–2 file-splitting research.** This document records Human clarification, not a Criteria edit or runtime behavior change.
