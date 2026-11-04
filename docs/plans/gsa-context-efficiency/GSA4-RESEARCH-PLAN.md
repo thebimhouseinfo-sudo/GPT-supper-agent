@@ -1,7 +1,8 @@
 # GSA4 — Research Plan: Agent Activation, Context Loading and Cohesive File Grouping
 
 **Status:** RESEARCH PLAN — Human requested detailed refinement of the existing approved-criteria implementation plan (2026-11-04). Research authorization is distinct from product code-change authorization.  
-**Owner:** GSA Context Efficiency Track R / CX-04.  
+**Owner:** GSA Context Efficiency Track R / CX-04.
+**R0 progress:** [Initial source/meter/simulate capability findings](./GSA4-R0-INITIAL-RESEARCH-20261104.md) — research started, independent method review pending; no implementation or simulate PASS.  
 **Canonical parent:** [DETAIL-PLAN.md](./DETAIL-PLAN.md). This is its **GSA4 detailed research section**, not a second competing Project Plan or a new Job/approval gate.  
 **Baseline:** Source-pinned GSA3 on main (observed GSA3 v58 at commit `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`); re-pin live branch SHAs before every test.  
 **Working branch:** `upgrade/gsa-context-efficiency`. Keep production, GSA3 retained behavior, the existing CT-00 meter, and Track U independent.
