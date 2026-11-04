@@ -1,52 +1,24 @@
 import { validIntegrationBranch } from './project-utils.ts'
 import { normalizeGithubRepo } from './platform-utils.ts'
-import { projectBootstrapReadinessDecision } from './bootstrap.ts'
 import type { ExecutionContract } from './runtime-contract.ts'
 import { parseProjectManifest, validMemoryPath } from './project-manifest-scope.ts'
 
-export function projectBootstrapExecutionError(projectId: string, manifestText: string, evidence: any,
+// Compatibility name retained for existing callers. This checks Project and
+// development-branch scope ONLY. Bootstrap cannot grant or revoke code execution.
+// Job lifecycle, planning review, scoped Human authorization and run evidence are
+// separate execution-phase responsibilities.
+export function projectBootstrapExecutionError(projectId: string, manifestText: string, _unusedBootstrapEvidence: any,
   repositoryUrl: string | null, developmentBranch: string | null): string | null {
-  if (!evidence) return 'BOOTSTRAP_REQUIRED: no approved Project Bootstrap evidence supplied.'
-  if (evidence?.type === 'BOOTSTRAP_CAPABILITY_READINESS_EVIDENCE' &&
-      String(evidence?.status ?? '').includes('SOURCE_EXECUTION_NOT_AUTHORIZED')) {
-    return 'BOOTSTRAP_CAPABILITY_ONLY_CURRENT_PLAN_PROOF_REQUIRED: historical capability evidence is not a source-execution grant. Bind current approved Criteria, current reviewed Project Plan and compatible capabilities to new independently read-back proof of existing Human execution approval; preserve the old artifact as read-only evidence.'
-  }
   const project = parseProjectManifest(manifestText)
   if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
-    return 'BOOTSTRAP_PROJECT_INVALID: exact ACTIVE Project manifest required.'
+    return 'SOURCE_PROJECT_INVALID: exact ACTIVE Project manifest required.'
   if (!repositoryUrl || !developmentBranch || !validIntegrationBranch(developmentBranch) ||
       !project.repositories.some((r: any) => r.relation === 'OWNED' &&
         normalizeGithubRepo(r.url)?.url === normalizeGithubRepo(repositoryUrl)?.url) ||
       project.branch_policies.find((p: any) => p.repository_url === normalizeGithubRepo(repositoryUrl)?.url)?.development_branch !== developmentBranch)
-    return 'BOOTSTRAP_SOURCE_BRANCH_INVALID: source target must be the Human-configured Development Branch of an OWNED repository.'
-  if (evidence?.assessment !== undefined) {
-    const readiness = projectBootstrapReadinessDecision(projectId, evidence)
-    if (readiness.status !== 'BOOTSTRAP_READY')
-      return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
-    if (evidence.human_execution_approved !== true)
-      return 'SOURCE_EXECUTION_HUMAN_APPROVAL_REQUIRED: Bootstrap readiness does not approve source execution.'
-    // This tool validates input/scope only. Caller must independently read
-    // source or Project Memory documents and Human execution approval.
-    return null
-  }
-  const readiness = projectBootstrapReadinessDecision(projectId, evidence)
-  if (readiness.status !== 'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
-    return 'BOOTSTRAP_PREREQUISITE_BLOCKED: ' + readiness.status
-  const proof = evidence?.readback_proof
-  if (!proof || proof.path !== 'projects/' + projectId + '/VERIFICATION/' + proof.name ||
-      !/^[-a-zA-Z0-9_.]+\.json$/.test(String(proof.name || '')) ||
-      !/^[0-9a-f]{40}$/.test(String(proof.sha || '')) ||
-      !/^[0-9a-f]{40}$/.test(String(proof.criteria_sha || '')) ||
-      proof.criteria_sha !== evidence.criteria_current_blob_sha ||
-      !/^[0-9a-f]{40}$/.test(String(proof.reviewed_plan_sha || '')) ||
-      typeof proof.human_approval_ref !== 'string' || !proof.human_approval_ref.trim())
-    return 'BOOTSTRAP_READBACK_PROOF_REQUIRED: immutable reviewed Plan, approved Criteria and actual Human approval references are required.'
-  // A supplied proof is not a GitHub readback. The orchestrator must re-fetch
-  // its exact blob and independently establish provenance; do not call this a
-  // completed source-write authorization without that external verification.
+    return 'SOURCE_BRANCH_INVALID: source target must be the configured Development Branch of an OWNED repository.'
   return null
 }
-
 
 export function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any, targetRevision?: string): string | null {
   const milestone = (job?.milestones ?? []).find((m: any) => m.milestone_id === milestoneId)

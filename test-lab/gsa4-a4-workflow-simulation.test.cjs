@@ -98,23 +98,24 @@ function step(name,s,expect,opts={}){
     source_parity:true,saved_chars:candidate.saved}
 }
 const cases=[]
-test('S1 Bootstrap — existing approved Criteria, Plan CRL, Milestones, capabilities and separate execution approval',()=>{
+test('S1 Bootstrap — existing valid Criteria, Plan, Milestones, Proposal and capabilities',()=>{
   const base={project_context:'BROWNFIELD',
     checklist:{criteria:{status:'PASS',observation:'existing approved source Criteria'},
       plan:{status:'PENDING'},milestones:{status:'PENDING'},capabilities:{status:'PENDING'}},
     criteria_intake:{existing_approved:true,human_update_choice:'NOT_ASKED'}}
   const logs=[]
   let result=plain(bootstrap(base))
-  assert.equal(result.next_action,'ASK_HUMAN')
+  assert.equal(result.next_action,'PLAN_CRL')
   const s=fresh();s.role='planner';s.workflow='BOOTSTRAP';s.human_message_kind='BOOTSTRAP';s.run=undefined
   logs.push(step('BOOTSTRAP_INTAKE',s,'FULL_FALLBACK',{must:['BOOTSTRAP CHECKLIST COORDINATOR']}))
-  base.criteria_intake.human_update_choice='KEEP'
   result=plain(bootstrap(base));assert.equal(result.next_action,'PLAN_CRL')
   logs.push(step('CRITERIA_KEEP_PLAN_CRL',s,'FULL_FALLBACK',{must:['PLAN GOAL ANCHORS','PLANNER RL SHORTCUT']}))
   base.checklist.plan={status:'PASS',observation:'actual reviewed Plan PASS'}
   result=plain(bootstrap(base));assert.equal(result.next_action,'MILESTONES_CRL')
   logs.push(step('MILESTONES_CRL',s,'FULL_FALLBACK'))
   base.checklist.milestones={status:'PASS',observation:'actual milestone review PASS'}
+  result=plain(bootstrap(base));assert.equal(result.next_action,'TECHNICAL_PROPOSAL_REVIEW')
+  base.checklist.technical_proposal={status:'PASS',observation:'Feasible proposal matches Criteria and Plan'}
   result=plain(bootstrap(base));assert.equal(result.next_action,'PREPARE_CODER_TESTER')
   logs.push(step('CAPABILITIES_CHECK',s,'FULL_FALLBACK'))
   base.checklist.capabilities={status:'PASS',observation:'Coder and Tester capabilities verified'}

@@ -47,8 +47,8 @@ function runScenario(kind,{preexisting=false,conflicting=false}={}) {
    const output=decide({...ctx,previous_attempt:prev})
    steps.push(output.next_action)
    if(output.next_action==='BOOTSTRAP_READY'){
-    assert.equal(output.completed,4)
-    assert.ok(exists('CRITERIA.md')&&exists('PLAN.md')&&exists('MILESTONES.md')&&exists('SKILL.md'))
+    assert.equal(output.completed,5)
+    assert.ok(exists('CRITERIA.md')&&exists('PLAN.md')&&exists('MILESTONES.md')&&exists('SKILL.md')&&exists('TECHNICAL_PROPOSAL.md'))
     assert.ok(validatePlan(read('CRITERIA.md'),read('PLAN.md')))
     assert.ok(validateMilestones(read('PLAN.md'),read('MILESTONES.md')))
     return {kind,steps,humanTurns,reviewerCalls,criticCalls,result:output.next_action}
@@ -95,6 +95,10 @@ function runScenario(kind,{preexisting=false,conflicting=false}={}) {
       criticCalls++; assert.ok(validateMilestones(read('PLAN.md'),read('MILESTONES.md')))
       ctx.checklist.milestones={status:'PASS',observation:'Reviewer+Critic test double verified '+read('MILESTONES.md')}
       break
+    case 'TECHNICAL_PROPOSAL_REVIEW':
+      write('TECHNICAL_PROPOSAL.md','Feasible implementation aligned with Criteria and Plan')
+      ctx.checklist.technical_proposal={status:'PASS',observation:'Inspected proposal '+read('TECHNICAL_PROPOSAL.md')}
+      break
     case 'PREPARE_CODER_TESTER':
       write('SKILL.md','Coder skill: TypeScript; Tester skill: Node test')
       assert.ok(read('SKILL.md').includes('Tester'))
@@ -116,16 +120,16 @@ test('Greenfield: draft Criteria, one Human approval then actual file Plan/Miles
  assert.equal(r.reviewerCalls,2)
  assert.equal(r.criticCalls,2)
 })
-test('Brownfield: retains Criteria, one update question, no fake approval or docs gate',()=>{
+test('Brownfield: retains Criteria without an update question or new approval gate',()=>{
  const r=runScenario('BROWNFIELD',{preexisting:true})
  assert.equal(r.result,'BOOTSTRAP_READY')
- assert.equal(r.humanTurns,1)
+ assert.equal(r.humanTurns,0)
  assert.equal(r.reviewerCalls,2)
  assert.equal(r.criticCalls,2)
 })
 test('Brownfield conflicting actual Plans: read competing files, Human picks, continue',()=>{
  const r=runScenario('BROWNFIELD',{preexisting:true,conflicting:true})
  assert.equal(r.result,'BOOTSTRAP_READY')
- assert.equal(r.humanTurns,2)
+ assert.equal(r.humanTurns,1)
  assert.ok(r.steps.indexOf('INVESTIGATE_SOURCES')<r.steps.lastIndexOf('ASK_HUMAN'))
 })
