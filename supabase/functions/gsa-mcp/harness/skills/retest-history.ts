@@ -74,6 +74,7 @@ export function defectIdentity(origin: DefectOrigin): string | null {
     norm(origin.project_id), norm(origin.original_failure_ref),
     origin.original_revision, norm(origin.actual_error),
     norm(origin.user_visible_symptom), norm(origin.original_reproduction),
+    origin.required_surface,
   ])
 }
 function completeRetest(attempt: DefectAttempt, origin: DefectOrigin): string | null {
@@ -133,16 +134,18 @@ export function assessDefectRetests(input: {
     }
     const previous = seen.get(attempt.patch.revision)
     if (previous) {
-      if (previous.tester.result !== attempt.tester.result ||
-          previous.tester.verification_ref !== attempt.tester.verification_ref) conflicting = true
+      if (previous.tester.result !== attempt.tester.result) conflicting = true
       continue // Same patch cannot be counted as another repair cycle.
     }
     seen.set(attempt.patch.revision,attempt)
     completed.push(attempt)
   }
   completed.sort((a,b) => Date.parse(a.tester.tested_at)-Date.parse(b.tester.tested_at))
+  // An earlier unavailable Host attempt is not a continuing blocker once the
+  // SAME repaired revision has a complete independent Tester verdict.
+  const pending = excluded.filter(x => !x.revision || !seen.has(x.revision))
   const failed_cycles = completed.filter(x => x.tester.result === 'FAIL').length
-  const host_blocked = excluded.some(x => x.reason === 'UNVERIFIED_NOT_PRODUCT_FAILURE' ||
+  const host_blocked = pending.some(x => x.reason === 'UNVERIFIED_NOT_PRODUCT_FAILURE' ||
     x.reason === 'INDEPENDENT_TESTER_REPLAY_OR_READBACK_NOT_PROVEN')
   const early = (input.early_escalation_evidence ?? []).some(nonempty)
   const historical = input.history_complete === true &&
@@ -153,7 +156,7 @@ export function assessDefectRetests(input: {
     !historical ? 'READ_HISTORY' :
     host_blocked ? 'AWAIT_TESTER' :
     completed.at(-1)?.tester.result === 'PASS' ? 'CLOSED_BY_TESTER' :
-    excluded.length ? 'AWAIT_TESTER' : 'CONTINUE_REPAIR'
+    pending.length ? 'AWAIT_TESTER' : 'CONTINUE_REPAIR'
   return {
     schema: 'uf-retest-history/v1' as const,
     advisory_only: true as const,
