@@ -39,7 +39,7 @@ class FakeBoundary {
   spawn({ root, id, chat, kind }) {
     const task = { root, id, chat, kind, session: this.session, state: 'WAITING' }
     this.tasks.set(id, task)
-    this.emit('SPAWN', { root, id, chat, kind, parent: root, session: this.session })
+    this.emit('SPAWN', { root, id, chat, flow_kind: kind, parent: root, session: this.session })
     if (kind === 'SYSTEM') { task.state = 'DONE'; this.emit('SYSTEM_DONE', { root, id }); return task }
     if (this.active.length > 0 && !this.bugs.concurrentCad) {
       task.state = 'QUEUED'
@@ -87,7 +87,7 @@ class FakeBoundary {
     this.emit('HOST_CLOSED', { session: this.session })
   }
   reconnect() { this.emit('HOST_RECONNECTED', { session: this.session }); return true }
-  rootCadChildren(root) { return this.events.filter(e => e.kind === 'SPAWN' && e.root === root && e.kind !== 'SYSTEM' && this.tasks.get(e.id)?.kind === 'CAD') }
+  rootCadChildren(root) { return this.events.filter(e => e.kind === 'SPAWN' && e.root === root && e.flow_kind === 'CAD') }
   hostSends(root) { return this.events.filter(e => e.kind === 'HOST_SEND' && e.root === root) }
   report() { return { fidelity: 'SIMULATED', nativeHost: 'REAL_HOST_UNVERIFIED', events: this.events } }
 }
