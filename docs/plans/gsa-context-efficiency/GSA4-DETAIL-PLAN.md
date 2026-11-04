@@ -55,12 +55,12 @@ Only **G4-P** and **G4-A0** define the initial physical design/extraction. **G4-
 | **G4-A0.3** | Extract existing Run 5 / Project Setup 6 / Checkpoint 3 / Evidence Repo 3 tool registrations under original register* facades; migrate 58-name ordered test to actual leaf call chain; KEEP selftest | A0.2 parity checked | 58-name/order inventory at pinned ref (verify current exact count), tool schemas/responses, authentication, Run/Job/evidence/claims and CI test coverage unchanged |
 | **G4-A0.4** | Verify exact extracted commit SHA: 8 Role/11 Skill output golden, 58 tool names/order/schemas, import graph, source-bound negatives and Deno check; use workflow_dispatch on dev ref or PR since push on this branch does not trigger CI | A0.1–A0.3 | Independent Reviewer/Tester evidence, precise tested commit, no behavioral drift; explicit FAIL/UNVERIFIED on missing host |
 | **G4-O1** | Compact SHA-aware source owner/symbol/error→test locator (A1) | **A0.4 PASS** | On identical tasks, measured source reads, owner accuracy, tool overhead; no hidden source authority |
-| **G4-O2** | B-like **logical** context recipes over A module references (A2); Job/Task/Phase/Knowledge candidates, progressive READ_MORE/ASK | O1, A0.4; review existing Task/Skill contract | Same Task targets and negative oracle; source provenance; correct Role skills and broad fallback; no new permission |
+| **G4-O2** | B-like context recipes over actual Job/Task/Run/Knowledge revisions and A owners; GSA3 job_prepare permits only ui-coder-frontend in Task.required_skills while Project addins are verified paths, not a generic Skill loader; ASK/READ_MORE on missing data | O1, A0.4; review existing Task/Skill contract | Same Task targets and negative oracle; source provenance; correct Role skills and broad fallback; no new permission |
 | **G4-O3** | Error→owner→producer/consumer→tests debug route (A3); compare ordinary owner lookup | O1/O2 | Count actual wrong-file opens, repair rounds, changed blast radius, retests, independent regression outcomes |
 | **G4-O4** | Optional Shared policy ownership audit/assembly (A4), **separate high-risk change** | A0.4, independently verified every Role policy mapping | Human/deny/CAS/Review/Tester/CR/unknown cases retain mandatory instruction coverage; actual model-payload observation, revert on regression |
 | **G4-O5** | Optional task/phase Role/Skill section experiments (A5) and guide section reads (A6) | Observed safe selectors, nontrivial savings and O4 overlap audit | Conditional loader state, rehydration when needed, positive/negative proof; de-dup counted once |
 | **G4-G3** | Apply Group 3 bottom-up Task-Need Matrix to canonical Project document taxonomy and handoff, independently of source layout | Can analyze now; **runtime selection/implementation after A0.4** | Task correctness, skills/knowledge relevance, missing-information detection, upstream source links; no role-based blanket ban |
-| **G4-M** | Cross-scenario same-workload comparison, CT-00 measurements and technical selection/KEEP/REVERT per optimization | A0.4; each bounded O candidate separately | Real calls/latency where observable, context buckets, quality/regression, cost + uncertainty, decision record |
+| **G4-M** | Compare identical source/bug fixtures GSA3 KEEP vs A0 vs A1 vs A1+A2 vs A1+A2+A3; count root-owner identification, wrong reads, repair/retest cycles, regressions, CT-00 and extra calls | A0.4; each bounded O candidate separately | Real calls/latency where observable, context buckets, quality/regression, cost + uncertainty, decision record |
 
 **Execution batching:** Each A0 code milestone is broken into minimal reversible commits by **dependency-closed owner group**; no big-bang reformat. If tests require adapting AST/regex location assumptions, move their **lookup** to current symbol owner, preserve every assertion including negative security/regression tests. Do not use “source moved” to justify deleting coverage.
 
@@ -71,7 +71,7 @@ Only **G4-P** and **G4-A0** define the initial physical design/extraction. **G4-
 1. Snapshot **all eight** GSA3 `get_agent_harness` outputs for relevant execution modes, error/unknown/denied branches, 11 exact `load_skill` bodies, role-to-skill and host-suggestion catalogs. Record captured MCP `content`/`structuredContent` shapes separately; do not double count mirrored data.
 2. Isolate original literal Shared, Roles and Skills into owned modules, with parent aggregator preserving exported lookup names/types, current rendering/ordering/newlines and error paths. TypeScript moving may add import syntax but **must not rewrite string text**.
 3. Maintain exact `run_begin.required_skill_contexts` semantics; do not double inject Task Skill merely because a separate `load_skill` is present.
-4. Run module import/type checking and all relevant harness/skill, role mode/permission tests. Reviewer independently compare golden outputs and denied/unknown behavior.
+4. Adapt existing gsa2-harness-dedup, gsa3-tool-skill-payload, llc59, llc60, runtime-logic and other source-bound tests to import **actual** new TS leaf modules. Keep tests of mandatory instruction mutations, exact public output and denied/unknown paths; execute with the same extraction commit.
 
 ### Package I — Mixed index extraction (G4-A0.2)
 
@@ -85,7 +85,7 @@ Only **G4-P** and **G4-A0** define the initial physical design/extraction. **G4-
 1. Retain parent exports `registerRunExecutionTools` / `registerProjectSetupTools` / `registerCheckpointTools` / `registerRepositoryEvidenceTools` and their exact registration order/schema mapping.
 2. Isolate Run admission/knowledge/goal recheck/verification/complete; Project setup/Advisor-addins/Bootstrap/branch; checkpoint claim vs verification/gate; evidence prepare vs finalize/probe **only when owner dependencies are closure-safe**.
 3. Preserve immutable repository evidence publish/probe distinction, claim lease/attempt, stale SHA, exact Job/Task/Run identity, NEXT/V2_STABLE/production/test-lab paths, Git CAS and readback.
-4. Keep `selftest.ts` integrated initially; a fixture region is not independently runnable merely because it is a textual range. Independent Tester verifies all affected negative and cross-group paths.
+4. Keep `selftest.ts` integrated. In the same extraction, adapt gsa1-module-boundary.test.cjs to expand the ordered parent→leaf registrations and compare the exact existing 58-name inventory, including reorder/duplicate/missing negative controls.
 
 ## 5. Common simulation protocol (do not compare different tasks)
 
@@ -143,3 +143,17 @@ Correctness first; do not invent a numeric score or threshold solely to declare 
 4. Only after all A0 parity succeeds, advance the separate reversible A1/A2/A3/A4 experiments using CT-00 already in the repository.
 
 **Plan exit today:** detail milestones, criteria and technical proposal recorded with selected A-first direction. **No runtime/parity/CT-00 claim.**
+
+## 9. Finding closure — source-specific design, not executed product proof
+
+All seven findings from [GSA4-A-FIRST-TECHNICAL-DESIGN-REVIEW-20261104.md](./GSA4-A-FIRST-TECHNICAL-DESIGN-REVIEW-20261104.md) are now mapped to the **existing** source functions and tests in [A0 extraction map](./GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md).
+
+- **TR-01:** actual catalog L1–607; existing GSA2/GSA3/LLC59/LLC60/runtime-logic test owners and import-aware loader.
+- **TR-02:** real five Run, six Project Setup, three Checkpoint and three Evidence Repo registerTool blocks; source-executed ordered 58-tool check.
+- **TR-03:** exact I1–I8 original index functions, cross-owner calls, misplaced L1486 planning schema correction and request-bound probe validator KEEP in createServer.
+- **TR-04:** current workflow push only main; development SHA must be verified by workflow_dispatch, PR or recorded exact Node/Deno execution.
+- **TR-05:** golden source fixture before extraction, preserve all current Role/Skill/tool/denial tests per bounded commit; no fabricated PASS.
+- **TR-06:** same root-cause bug/test fixture across immutable GSA3 KEEP, A0, A1, A2 and A3, tracking repair/retest cycles and regressions; source-read saving alone is insufficient.
+- **TR-07:** current `job-prepare-tool.ts` required_skills enum allows only `ui-coder-frontend`; actual `project_role_addins_resolve` and persisted Task/Run/Knowledge paths are different sources; A2 never presumes generic Skill injection.
+
+**Finding disposition:** design omissions addressed by named source/test migration. No A0 code split, CI run, successful golden parity or repair benefit is asserted here; those are implementation acceptance evidence, not a second speculative research stage.
