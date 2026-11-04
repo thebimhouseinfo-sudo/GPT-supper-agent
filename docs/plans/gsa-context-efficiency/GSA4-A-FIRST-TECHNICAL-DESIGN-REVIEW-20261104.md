@@ -116,3 +116,25 @@ For `createServer`-captured functions that cannot prove safe identity/injection,
 - [ ] In A2, resolve context recipe fields to actual canonical Project/Job/Task/Knowledge records and missing-info ASK/STOP cases.
 
 **Approval disposition:** **DIRECTION APPROVED BY HUMAN; TECHNICAL DESIGN CHANGES REQUIRED; A0 CODE NOT REVIEW-READY AS WRITTEN.** This is a **source-static technical review**, not an independently executed GSA Reviewer outcome. No Criteria/parent Plan, six A/B reports, GSA code, source/test suite, deployment or original reviewed plans were modified by this report. Existing development-authority rules apply; no additional invented Human approval layer.
+
+## 5. Follow-up re-review — direct GSA3 source inspection
+
+**Re-review outcome:** **7/7 original design findings RESOLVED IN THE REVISED DOCUMENTS; SOURCE MIGRATION/EXECUTED PARITY STILL NOT RUN.** Earlier CHANGES_REQUIRED verdict above reflects the original document revisions only. This is source-aware technical review, not a separate GSA Reviewer/Tester runtime PASS.
+
+- [Updated Detail Plan](./GSA4-DETAIL-PLAN.md) blob `9ea9f967cd76857d20b4778d789803c8d95589d6`.
+- [Updated Technical Proposal](./GSA4-TECHNICAL-PROPOSAL.md) blob `e3cd60f894fc4a4a56cc187b810c506eb476d1ab`.
+- [Actual Source→Module Extraction Map](./GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md) blob `a413df14a75fa4e3854c7adcb1fd4e4a26165a48`.
+
+| Finding | Status | Code-specific correction |
+| --- | --- | --- |
+| TR-01 | DESIGN_RESOLVED | Actual catalog Role/Skill declarations and test-only import-aware loader; preserve GSA2/GSA3/LLC59/LLC60/runtime-logic negative oracles |
+| TR-02 | DESIGN_RESOLVED | Real Run 5 / Project Setup 6 / Checkpoint 3 / Evidence 3 tool registrations; adapt ordered 58-name original inventory test |
+| TR-03 | DESIGN_RESOLVED | Actual index helper name/line/call map, correct Planning schema L1486–1503 owner, nested createServer probe L1937–1990 KEEP in parent |
+| TR-04 | DESIGN_RESOLVED | Existing CI push is main-only; use exact development-ref workflow_dispatch/PR and inspect head_sha/logs |
+| TR-05 | DESIGN_RESOLVED | Capture 8 Role/11 Skill exact response corpus and 58 tool schemas/order with source-bound negatives in each A0 package |
+| TR-06 | DESIGN_RESOLVED | Proposal §8 F-BUG-1..4 real-code defect fixtures; compare GSA3 KEEP → A0 → A1/A2/A3 repair/retest metrics |
+| TR-07 | DESIGN_RESOLVED | Real Job Task required_skills supports ui-coder-frontend in current input; role-addins are verified Project paths, not automatic Skill execution |
+
+**Review evidence genuinely performed:** inspected `index.ts`, `harness-catalog.ts`, Run/Project Setup/Checkpoint/Evidence tool parents and corresponding source-bound test files on GitHub; verified source SHAs align with pinned GSA3 on main code parents; checked updated plan/proposal source references and that all 11 distinct relative document links resolve.
+
+**Not performed:** physical extraction, Node/Deno tests, golden parity, real MCP/Host call/CI/CT-00 measurement or independent Reviewer/Tester. Design correction PASS is **not** implementation PASS; exact source tests remain implementation acceptance evidence.
