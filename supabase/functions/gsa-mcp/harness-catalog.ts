@@ -61,10 +61,10 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
   'planning-review': planningReviewSkill,
   'review-evidence': reviewEvidenceSkill,
   'testing-evidence': testingEvidenceSkill,
-  simulate: simulateSkill,
   'tester-lab': testerLabSkill,
   'ui-coder-frontend': uiCoderFrontendSkill,
   secretary: secretarySkill,
+  simulate: simulateSkill,
 }
 
 // GSA2: get_agent_harness already returns suggested_skills beside harness_text.
