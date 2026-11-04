@@ -33,7 +33,7 @@ test('LLC61 ledger is distinct: prior WL-034 and WL-035 remain unique',()=>{
 
 test('LLC61 positive: existing reviewed source Plan can pass current four-check Bootstrap assessment',()=>{
   const outcome=validate(pid,base)
-  assert.match(outcome.status,/BOOTSTRAP_READY/)
+  assert.equal(outcome.status,'BOOTSTRAP_EVIDENCE_READY_EXECUTION_APPROVAL_CLAIMED')
   assert.equal(outcome.source_write_authorized,false,'PREPARE never grants code-write authority')
 })
 
