@@ -287,3 +287,72 @@ The original SIM4 paper was drafted by an author who had already seen source; a 
 - Are A2/A3's potential repair improvements actually measurable as fewer edits/retests, not merely fewer file bytes?
 
 **Technical proposal disposition:** A fine physical design + B-style logical work context is **the selected implementation direction to review and then build under existing authorization**. A0 source movement must prove exact parity. The subsequent options may be kept or reverted independently on correctness and measured value; do not silently optimize Harness text during extraction. No Criteria, GSA runtime, Tool registry, production branch or deployment changed by preparing this proposal.
+
+## 10. Review corrections — concrete A0 execution and test design (TR-01..TR-04)
+
+**Source review:** [GSA4 A-first Technical Design Review](./GSA4-A-FIRST-TECHNICAL-DESIGN-REVIEW-20261104.md). The corrections below resolve missing *design instructions*, **not** the still-future source-executed A0 parity proof. The original Source/Criteria, GSA3 control-plane behavior, and approval gates remain unchanged.
+
+### 10.1 TR-01 — Import-aware Harness test migration (G4-P1/P2 + Package H)
+
+**Evidence at pinned source:** `test-lab/gsa2-harness-dedup.test.cjs` and `gsa3-tool-skill-payload.test.cjs` transpile and run the original `harness-catalog.ts` as a **self-contained** CommonJS module under `vm`; `llc59-autonomy-harness.test.cjs`, `llc60-planning-loop.test.cjs` and `runtime-logic.test.cjs` search for literal `BASE_AGENT_HARNESS`, `ROLE_HARNESSES` or `RUNTIME_SKILLS` AST nodes/text **inside that same original file**. A pure import/re-export facade breaks these tests regardless of operational parity.
+
+**Selected test migration design:**
+1. **Before** touching the catalog, run and capture old catalog outputs from the actual baseline code, not from manually copied policy strings. Golden corpus: all eight roles; `renderHarness(role)`, `renderHarness(role,{includeProgressiveSkills:false})`, `renderHarness(role,{includeProgressiveSkills:true})` and invalid-role return; `BASE_AGENT_HARNESS`; canonical refs and `ROLE_SKILLS`/`ROLE_HOST_SKILLS` ordered mappings; all eleven descriptions/body strings, names/order, `get_skill_catalog` and `load_skill` success/auth/error/fallback; NEXT `run_begin.required_skill_contexts`. Preserve exact LF/newline/space and UTF-8 bytes. Capture GSA3 input/schema and expected output including both `structuredContent` and mirrored text, counting mirrored data only once for measurements.
+2. Introduce a **test-only import-aware source loader** for the real TS catalog module graph. Prefer actual `Deno import` in the existing Deno-compatible check path; for Node 22 test-lab, use a bounded TypeScript CJS loader that resolves **only relative TS imports under the source tree**, preserving original exports and memoizing modules; it must not evaluate a fabricated flattened code copy or grant arbitrary filesystem/network permissions. Pin TypeScript 5.9.3 in the existing test environment. The loader itself is one tested change, not a new production dependency.
+3. Replace monolith-specific AST owner searches with **exact new source-owned symbols** for Shared, Role and Skill leaves; test the public catalog's *actual aggregated exports* independently. In `runtime-logic`, Planner and Advisor negative controls must mutate the **actual owning leaf** or an isolated copy and show the contract test turns RED; source content changes may not be mocked via unrelated hand-written strings.
+4. Explicit affected-suite ownership: `gsa2-harness-dedup` and `gsa3-tool-skill-payload` require import-aware evaluation; `llc59-autonomy-harness`, `llc60-planning-loop` and `runtime-logic` require source-owner AST navigation while retaining security and Planner/Advisor mutation checks; `reliability-cursor` and `project-branch-policy` must retain Role/Skill contract checks; `gsa1-module-boundary` must keep import/export/parity assertions.
+5. **Do not defer test adaptation to A0.4**: Package H's same reversible commit (or an immediately preceding test-adapter-only commit that runs against old source) must have executable relevant tests; do not delete failed suites or loosen negative controls to claim green.
+
+**Exit oracle:** compare actual pre/post catalog values byte-for-byte and **mutation-test** at least (a) missing common Human approval rule, (b) lost Planner-only feasibility guard, (c) polluted Advisor instruction, (d) missing Critic Reviewer independence clause, (e) removed Skill name/body; test must fail at the intended assertion. A Deno check alone does **not** cover these oracles.
+
+### 10.2 TR-02 — Ordered 58-tool proof after R/P/C/E extraction (Package T)
+
+**Source evidence:** `test-lab/gsa1-module-boundary.test.cjs` L58–112 reads the **original parent tool files** and uses `server.registerTool` regex order plus facade call positions; the pinned comparison is `test-lab/gsa1-tool-name-inventory.json` (58 tools). After physical child extraction this assertion must follow the **real expanded registration graph** rather than count zero handlers in parents.
+
+**Selected proof strategy:**
+1. Freeze **exact 58 registered tool names and ordering** from source at intended ref and the immutable existing inventory, including root inline registrations and transition tools. Also freeze each registration's input/output schema and result content/error behavior using real definition capture where executable.
+2. Retain the original exported `registerRunExecutionTools`, `registerProjectSetupTools`, `registerCheckpointTools`, `registerRepositoryEvidenceTools` and their exact root call sites. Each parent invokes leaf registration functions **in the original sequential order**. A child must not register on import or in background; no duplicate registration and no conditional reordering.
+3. Replace the module-boundary regex check with a source-grounded AST walker: root ordered `register*`/inline tool calls → parent sequential child calls → actual leaf `server.registerTool` definitions, preserving left-to-right order. Where AST analysis cannot prove a dynamic path, use an executable mocked `server.registerTool(name, definition, handler)` capture with the **actual** parent/leaf modules and supplied existing dependencies. A stubbed Zod chain is **not** schema proof; complement with actual schema/transport checks under real environment.
+4. Negative mutations must detect removal, duplicate, swap of two calls or wrong name. Compare resulting list strictly to the pinned 58-name JSON and source-executed registration order. Preserve `gsa1-module-boundary` coverage; neither hard-coded “expected” names newly generated from changed source nor a code-comment order counts as proof.
+5. At Package T extraction, preserve `structuredContent`, text fallback, schema, authentication and exception semantics in representative parent/child cases; no A0 Tool API changes.
+
+**Exit oracle:** the same original 58-name/order inventory is produced from the **real source** after extraction, together with intact negative controls; every registration is owned exactly once. Runtime/Host behavior remains UNVERIFIED unless actually executed.
+
+### 10.3 TR-03 — Symbol-capture ledger and safe seam policy (G4-P2; Package I/T)
+
+**Risk:** `index.ts` contains top-level types/schemas, pure helpers, runtime default constants and request-`createServer`-bound helpers. Merely placing I1–I8 into files is not a dependency design. Specifically, `validateRepositoryProbeSnapshot` is **nested inside `createServer`** (original L1937–1990) and passed to the evidence Tool registration; `resolveRequiredTaskSkills` accesses imported `RUNTIME_SKILLS` (L391–413), and `nextDispatchPreflightError` depends on current Job/revision/Run and path helpers (L358–389). The source also relies on NEXT/`V2_STABLE` defaults and `TEST_LAB`/`PRODUCTION` memory namespaces.
+
+**Required **pre-move** symbol ledger format**, populated from the exact live TypeScript AST/compiler and reviewed before *each* child extraction:
+`symbol | source path/blob SHA/start-end | owner I/R/P/C/E | free identifiers, captured vars & imports | current callable scope (global/createServer/request) | value/dependency lifetime | callers/consumers | changed signatures (should be none) | proposed one-way import/injection | test IDs, security negatives | KEEP-in-parent fallback`.
+Tool/argument names and all symbol owners must reconcile to a unique symbol→owner index. **An I/R/P/C/E name in this design is not a declaration of complete dependency closure.**
+
+**Known owner decisions and proof obligation:**
+
+| Candidate owner | Original source example / closure concern | Safe A0 approach |
+| --- | --- | --- |
+| **I1 contract/auth** | `resolveExecutionContract`, `jobExecutionContract`, `runtimeSurface`, `authContext`, bridge; defaults from source globals/request | Move pure values/logic only after fixed default/auth/request-shape analysis; keep request-specific factories in composition scope if unproved |
+| **I2 durable IO** | `recordPath`, `verificationPath`, `checkpointClaimPath`, `parseDurableSnapshots`; namespace/contract defaults | One canonical path implementation; ensure callers compare identical namespaces/record SHAs |
+| **I3 dispatch** | `nextDispatchPreflightError`, `resolveRequiredTaskSkills`, `goalRecheckCoverageError`, `nextClosureCoverageError`; catalog/body and completed Task dependencies | Reference original G1 facade exports (acyclic) and owner helpers; no Task-specific Skill reinterpretation in A0 |
+| **I4/I5 evidence/checkpoint** | `evidenceBundleRefValidationError`, `validateEvidenceBundleAttestationSnapshot`, `evaluateNextEvidenceGate`; binding/attestation and SHA | Retain all old checks and backend-specific error strings; verify producer/consumer tests across C/E |
+| **I6 planning** | `validateNextPlanningModel`, CRL/preflight schemas; Project manifest dependency | Do not silently lift `z` schema roots without defining import/order; preserve Plan revision and approval |
+| **I7 cursor** | `prepareExecutionCursorDecision` and `resumeExecutionCursorDecision`; unknown-write and recovery | Keep exact PENDING/unknown-response/CAS readback; preserve source mutation reconciliation |
+| **I8 Project identity** | `buildProjectManifest`, `parseProjectManifest`, `projectScopeDecision`; path and registered-repo state | Preserve exact Project frame/permissions; avoid child→index cycles |
+| **createServer nested probe** | `validateRepositoryProbeSnapshot` L1937–1990 captures namespace/record/Verification helpers under live closure | **KEEP IN `createServer` at A0 by default**. Move only after a separately proven identical explicit dependency seam. Original E1–E3 children may use the injected callback while keeping owner in parent. |
+| **R/P/C/E handlers** | `register...Tools(deps: any)` and inline `server.registerTool` callbacks; registration-time and call-time values | Keep original parent facade signature, deterministic leaf call order and closure/dep identity; co-locate a strongly coupled handler pair if separation adds hidden state |
+
+**Implementation procedure:** first compute AST name-binding/free-variable ledger for **every** moved symbol; verify unique ownership, imports and no cycles; only then write a dependency-closed patch. Preserve capture lifetime (per request vs module singleton). Do not “fix” wide `deps:any` typing, security checks or orchestration semantics while merely moving code. The original selftest remains KEEP. A helper that cannot be proved safe stays where it is, without being marked extracted.
+
+**Exit oracle:** complete **actual** ledger artifact for the chosen symbols, no missing owner or cycles, Deno typecheck and unchanged source-executed negative results. The above table resolves the *approach* but is **not falsely described as a full already-verified free-variable inventory**.
+
+### 10.4 TR-04 — CI procedure for feature-branch exact-SHA evidence (G4-P1)
+
+The observed `.github/workflows/gsa-next-logic.yml` triggers `push` on **`main` only**, `pull_request`, or `workflow_dispatch`. A plain push to `upgrade/gsa-context-efficiency` is **not** auto-tested by this workflow. No new workflow is required for the plan correction.
+
+**Execution and verification plan:**
+1. For each relevant A0 commit, record **commit SHA** and source tree hash. Execute available `node --test` suites and `deno check supabase/functions/gsa-mcp/index.ts` in a reproducible Node 22 / TypeScript 5.9.3 / Deno 2.x environment, using the **exact workflow-listed command list**, not a green from unrelated CI.
+2. For GitHub runner evidence, use an authorized **workflow_dispatch** targeting the development **ref** or a PR whose head contains the exact A0 commit; the workflow must exist and dispatch be enabled. On completion, read back actual `head_sha`, event, ref, conclusion, jobs and logs. If a PR or manual run is unavailable, **do not** pretend main's latest successful run covered the candidate.
+3. Preserve existing job steps `runtime-helper-check` and `deno-typecheck`. In the existing workflow, runtime-helper-check installs `typescript@5.9.3` and Hono into `/tmp/gsa-next-test`; it sets `NODE_PATH` for Node helper tests. The exact 11 `node --test test-lab/...` files in the workflow must be run, including GSA1/GSA2/GSA3/LLC58–60 and cursor/reliability suites. New import-aware owner adapters join that same test suite.
+4. Label missing runner or unfinished run `CI_UNVERIFIED`; unit/source-only PASS never implies connected MCP/Host PASS. Record actual tool versions and environment restrictions; do not expand CI branch triggers just to manufacture a green check.
+
+**Exit oracle:** CI/test evidence is tied to the **same candidate commit SHA** and independently fetched run conclusion. Changing application code is not needed to resolve this review planning omission.
+
