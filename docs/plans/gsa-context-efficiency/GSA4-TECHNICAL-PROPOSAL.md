@@ -4,7 +4,9 @@
 **Status:** PROPOSAL FOR DESIGN REVIEW; **HUMAN SELECTED A-FIRST ARCHITECTURAL DIRECTION**, not an assertion that code has been split, benchmarks run or technical parity independently verified.  
 **Development source:** `thebimhouseinfo-sudo/GPT-supper-agent` / `upgrade/gsa-context-efficiency`.  
 **Golden GSA3 source pin:** `0b5cf875402c7735e1ef573ab95df5858c6ac5e8`.  
-**Plan:** [GSA4-DETAIL-PLAN.md](./GSA4-DETAIL-PLAN.md); original [DETAIL-PLAN.md](./DETAIL-PLAN.md), [GSA4-RESEARCH-PLAN.md](./GSA4-RESEARCH-PLAN.md).  
+**Plan:** [GSA4-DETAIL-PLAN.md](./GSA4-DETAIL-PLAN.md); original [DETAIL-PLAN.md](./DETAIL-PLAN.md), [GSA4-RESEARCH-PLAN.md](./GSA4-RESEARCH-PLAN.md).
+**Verified source map:** [GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md](./GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md), grounded in the existing named GSA3 helpers and public registrations. It replaces the hypothetical Group 2 file counts and locates the exact affected tests; no new product implementation is proposed during A0.
+  
 **Research:** [G1A](./GSA4-G1-A-RESEARCH.md), [G2A](./GSA4-G2-A-RESEARCH.md), [six-report cross-review](./GSA4-SIX-REPORT-CROSS-REVIEW-20261104.md), [A-first paper simulation](./GSA4-A-BASE-DEVELOPMENT-PATH-SIMULATION-20261104.md), [Agent × Job × Task research](./GSA4-G3-AGENT-JOB-TASK-CONTEXT-RESEARCH.md).
 
 ## 1. Architecture decision and engineering problem
@@ -200,6 +202,18 @@ The recipe may select 1 and 2; it **cannot manufacture 3**. Every current requir
 
 **No requirement to store this whole table as one new durable database record.** First map to existing Job/Task/Run/Knowledge metadata, identifying only verified gaps. Ensure a Task packet's content is a **delegated summary with references**, never a second contradictory approval record.
 
+### Actual GSA3 context inputs (TR-07; not inferred fields)
+
+| Existing source declaration | What is available right now | Consequence for A2 |
+| --- | --- | --- |
+| `job-prepare-tool.ts` L10–21, L62–70 | project_id, criteria_binding, phase, Task records and `required_skills: z.array(z.enum(['ui-coder-frontend']))` | **Only** UI frontend Task-skill declaration is accepted in this input schema today; do not claim all 11 runtime Skills are valid here |
+| `index.ts` L391–413 `resolveRequiredTaskSkills` | Collects Job Task `required_skills` and looks up known names in `RUNTIME_SKILLS` | Preserve current runtime validation; future additions need separate schema/contract tests |
+| `run-execution-tools.ts` L10–20 and L48–115 | Run begins with current project_id, job_id, role, planning_revision, primary_task_id and exact current Job record | Determine effective work position from verified Job Task/topology and current Run, not from a caller's claimed role title |
+| `project-setup-tools.ts` L168–232 `project_role_addins_resolve` | Verified Project `AGENTS.md` role-specific harness/skill **paths** with optional Task evidence | Path metadata is not an already loaded Skill body or permission; verify source path/SHA before use |
+| `project-utils.ts` L57–78 `projectTaskCapabilityAssessment` | Matches Project/Role/Task/path and evidence SHA | Fail closed on missing required addins; never auto-grant CAD/backend capabilities |
+| `run-execution-tools.ts` L225–304 `relationship_knowledge_prepare` | Existing KNOWLEDGE/architecture relationship records with source refs | Use canonical Project Knowledge provenance, not a fresh duplicate system |
+
+**Minimum safe A2 packet:** current authorized Role, exact approved Job Task/revision, Task outcome and acceptance, current Run/phase as independently read back, verified source/Skill/Knowledge refs, pre-start unknown detector (READ_MORE/ASK/STOP) and expected evidence. `work_position` and `mandatory_policy_ids` in §5.2 remain **derived selectors**, not new persisted fields or independent permissions. Reviewers and Testers must independently reconstruct the oracle.
 ### 5.3 Same Role, different work: required real-GSA behavior
 
 | Work position | Logical context selected | Out-of-scope initial content | Mandatory unresolved question |
@@ -265,6 +279,16 @@ The six-report cross-review corrected incompatible denominators (Group 1 A 23 Ro
 
 **Quality metrics:** wrong-file opens; time/steps to first correct ownership; exact root cause; source lines/chars opened; tool calls including index; repair iterations and changed symbols; test-known-bad RED→new SHA GREEN when really executed; independent review and regression; missed ASK/STOP preconditions; source/host latency; UI/host limitations. If A reduces prompt but increases regressions or leaves approvals ambiguous, reject that optimization.
 
+### Source-grounded repair fixtures (TR-06)
+
+The comparison is **GSA3 original source vs extracted A0 vs A1 vs A1+A2 vs A1+A2+A3** on the identical issue and acceptance, never an A-only source navigation score:
+
+- **F-BUG-1:** `nextDispatchPreflightError` in original `index.ts` L358–389 rejects `NEXT_DISPATCH_STALE_JOB_SHA` and wrong Task Role. Correct root owner in A is the dispatch helper plus I1/I2 contracts. Independent test source: `runtime-logic.test.cjs`.
+- **F-BUG-2:** `prepareExecutionCursorDecision` / `resumeExecutionCursorDecision` in original `index.ts` L1279–1485 handle PENDING unknown mutations. Correct root owner is I7 plus I2 and `recovery-decisions.ts`. Independent test: `reliability-cursor.test.cjs`.
+- **F-BUG-3:** `validateRepositoryProbeSnapshot` inside `createServer` L1937–1990 is consumed by `evidence-repository-tools.ts` L3/199; a probe/attestation regression may be emitted in E but originate in the root nested validator. This intentionally tests A's dependency-hopping cost rather than assuming one file/one root cause.
+- **F-BUG-4:** `job-prepare-tool.ts` accepts only Task `ui-coder-frontend` skill; compare detection of unsupported new Task Skill against current `resolveRequiredTaskSkills` and Role addins rather than assuming missing capability is authorized.
+
+Each case captures initial source SHA, known-bad reproduction when possible, expected oracle, module reads, erroneous reads, actual root, diff/changed files, Reviewer independence, Tester execution and repair/retest rounds. Do not mutate production/main: use isolated fixture branches or code-only test runners, and record missing host capability as UNVERIFIED. A fix is not successful merely because the bug is now located in a smaller file.
 ### Test and proof ladder
 
 1. **SOURCE_STATIC:** pinned symbol graph, line ranges, catalog content, expected role/tool inventory.
