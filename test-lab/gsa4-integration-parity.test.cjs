@@ -157,7 +157,7 @@ test('GSA3 vs A0 executable Harness responses: 8 Roles, DIRECT/JOB and 11 Skills
   }
 })
 
-test('all 17 extracted Run/Project/Checkpoint/Evidence registration expressions equal pinned GSA3 exactly',()=>{
+test('all 17 extracted registrations preserve order; 16 byte-equal, run_complete has explicit U-B fence',()=>{
   for(const [file,entry,count] of groups) {
     const original=calls(base(file),'GSA3/'+file)
     const updated=calls(toolSource(file,entry),'A0/'+file)
