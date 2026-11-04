@@ -88,7 +88,7 @@ test('facade executes five registrations exactly once and in original order', as
   const { registerRunExecutionTools } = loadTs('run-execution-tools.ts')
   registerRunExecutionTools({
     server: { registerTool: (name, config, callback) => observed.push({ name, config, callback }) },
-    z, req: {}, AUTH_SCOPES: ['gsa:test'],
+    z, DURABLE_RECORD_SNAPSHOT_SCHEMA: z, req: {}, AUTH_SCOPES: ['gsa:test'],
     authContext: async () => null,
     authError: (_request, message) => ({ isError: true, content: [{ type: 'text', text: message }] })
   })
