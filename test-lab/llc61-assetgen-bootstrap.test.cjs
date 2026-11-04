@@ -11,7 +11,7 @@ const tree=ts.createSourceFile('bootstrap.ts',source,ts.ScriptTarget.Latest,true
 assert.equal(tree.parseDiagnostics.length,0)
 const fn=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='projectBootstrapReadinessDecision')
 assert.ok(fn)
-const code=ts.transpileModule(fn.getText(tree).replace(/^export\\s+/,''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+const code=ts.transpileModule(fn.getText(tree).replace(/^export\s+/,''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
 const decide=vm.runInNewContext(code+'\nprojectBootstrapReadinessDecision')
 const project='11000000-0000-4000-8000-000000000061'
 const valid={criteria:'PASS',plan:'PASS',milestones:'PASS',technical_proposal:'PASS',coder:'READY',tester:'READY'}
