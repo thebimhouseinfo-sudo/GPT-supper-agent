@@ -113,7 +113,7 @@ test('GSA4 A0: all live module literals match the pinned GSA3 source exactly', (
     'harness/skills/critic-review.ts': ['criticReviewSkill', '677983e7d2b00d9a'],
     'harness/skills/critical-challenge.ts': ['criticalChallengeSkill', 'c21c14865ac48584'],
     'harness/skills/job-planning.ts': ['jobPlanningSkill', '70ebb16a8b7e98c8'],
-    'harness/skills/coding-loop.ts': ['codingLoopSkill', 'b3fae2ed6ac72e1c'],
+    'harness/skills/coding-loop.ts': ['codingLoopSkill', '92013c3c459eff79'],
     'harness/skills/delegation.ts': ['delegationSkill', 'a3dcb65cddef4908'],
     'harness/skills/planning-review.ts': ['planningReviewSkill', '55c6fa608f72ff5a'],
     'harness/skills/review-evidence.ts': ['reviewEvidenceSkill', '49d8f7a2dbf4760d'],
