@@ -16,8 +16,8 @@ Repo tree and source inspections independently found the **already implemented**
 | File | Observed role | Blob SHA |
 | --- | --- | --- |
 | [`docs/plans/gsa-context-efficiency/CONTEXT-METER.md`](./CONTEXT-METER.md) | Meter v1 methodology, known limitations, size-only HTTP and run correlation | `766e7b77e3d302debcf1b72cde2753f77198da18` |
-| [`test-lab/context-meter.cjs`](../../test-lab/context-meter.cjs) | Offline JSONL recorder for model-facing/tool/file navigation | `eeaf29ba1e0fdeeb79c7ddba3de421481b7242d6` |
-| [`test-lab/context-run-report.cjs`](../../test-lab/context-run-report.cjs) | Run/runner SHA correlation and invalid-mixed-version rejection | `15618f066276893b25bcd0f2d7ced23609041236` |
+| [`test-lab/context-meter.cjs`](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/blob/upgrade/gsa-context-efficiency/test-lab/context-meter.cjs) | Offline JSONL recorder for model-facing/tool/file navigation | `eeaf29ba1e0fdeeb79c7ddba3de421481b7242d6` |
+| [`test-lab/context-run-report.cjs`](https://github.com/thebimhouseinfo-sudo/GPT-supper-agent/blob/upgrade/gsa-context-efficiency/test-lab/context-run-report.cjs) | Run/runner SHA correlation and invalid-mixed-version rejection | `15618f066276893b25bcd0f2d7ced23609041236` |
 | `test-lab/mcp-context-capture.cjs` | Source-tree-confirmed size-only MCP response adapter; inspect contract before use | tree entry observed |
 | `test-lab/gsa2-harness-dedup.test.cjs` | Existing Harness equality/role-entry test, likely candidate golden baseline after pin | tree entry observed |
 | `test-lab/gsa3-tool-skill-payload.test.cjs` | Existing tool/skill output regression | tree entry observed |
