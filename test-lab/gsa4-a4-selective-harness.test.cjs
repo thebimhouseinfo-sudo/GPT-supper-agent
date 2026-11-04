@@ -195,9 +195,12 @@ test('A4 + A3 measures exact real source/harness chars without inventing token o
   }))
 })
 
-test('A4 does not change the existing eight Role/eleven Skill API contracts',()=>{
+test('A4 retains eight Role contracts and accepts only additive U-A Secretary Skill',()=>{
   assert.equal(Object.keys(catalog.ROLE_HARNESSES).length,8)
-  assert.equal(Object.keys(catalog.RUNTIME_SKILLS).length,11)
+  const expected=['debugging','critic-review','critical-challenge','job-planning','coding-loop',
+    'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend','secretary']
+  assert.deepEqual(Object.keys(catalog.RUNTIME_SKILLS),expected)
+  assert.ok(catalog.RUNTIME_SKILLS.secretary.body.includes('Human'))
   for(const role of Object.keys(catalog.ROLE_HARNESSES))
     assert.ok(catalog.renderHarness(role).includes(catalog.BASE_AGENT_HARNESS))
   assert.ok(fs.readFileSync(path.join(base,'harness-skill-tools.ts'),'utf8')

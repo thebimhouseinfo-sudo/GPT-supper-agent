@@ -1,3 +1,4 @@
+import { decisionFidelityError, DECISION_PREFIX } from './decision-fidelity.ts'
 // GSA1-S6: Planning Reviewer record, preserving current verification and continuation contract.
 export function registerPlanReviewRecordTool(deps: any) {
   const { server, z, req, AUTH_SCOPES, authContext, authError, PLANNING_LOOP_CONTINUATION_SCHEMA, jobExecutionContract, invalidExecutionContract, projectCriteriaBindingError, planningLoopContinuationDecision, prettyJson, verificationPath, recordPath, DEFAULT_NEXT_MEMORY_NAMESPACE, recordNextMemoryNamespace, validateExecutionTopology, validIntegrationBranch, validateNextPlanningModel, uuidv7 } = deps
@@ -83,6 +84,10 @@ export function registerPlanReviewRecordTool(deps: any) {
         planning_topology: current.planning_topology ?? [],
       }, planning_revision)
       if (cp4PlanningError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + cp4PlanningError }], isError: true }
+      if (result === 'PASS') {
+        const decisionError = decisionFidelityError(current)
+        if (decisionError) return { content: [{ type: 'text', text: 'PLANNING_REVIEW_INVALID: ' + decisionError }], isError: true }
+      }
       if (result === 'PASS' && (findings ?? []).some((f: any) => ['CRITICAL','IMPORTANT'].includes(f.severity))) {
         return { content: [{ type: 'text', text: 'PASS cannot contain unresolved CRITICAL/IMPORTANT planning findings.' }], isError: true }
       }
@@ -124,6 +129,12 @@ export function registerPlanReviewRecordTool(deps: any) {
         ] : []),
         ...(current.criteria_binding ? [
           'Reviewer independently fetches approved Criteria revision at exact configured path/blob SHA and compares Overall/Phase GOAL coverage before accepting a Project Plan. Historical source code alone is not Criteria approval.',
+        ] : []),
+        ...(result === 'PASS' ? [
+          'Reviewer must discover the current authorized Project Memory DEC index even when the Job contains no DECISION_REF. Compare all applicable Human-accepted decisions and exceptions with the current Job/Phase/Milestone/Task; a missing reference or unresolved contradiction disallows PASS. Preserve readback proof.',
+        ] : []),
+        ...((current.repository_discovery?.selected_source_evidence ?? []).some((x: string) => x.startsWith(DECISION_PREFIX)) ? [
+          'Reviewer independently reads exact original DEC source_sha/path, complete Human accepted method/rationale and all exceptions, and validates each existing relationship_assessment DECISION_COVERAGE edge against the full source; structural validation alone is not sufficient for PASS.',
         ] : []),
         'Persist verification_record_text first at verification_memory_path after authorize_memory_mutation(create).',
         'Fetch current Job and require blob SHA still equals expected_job_sha and planning_revision still matches.',

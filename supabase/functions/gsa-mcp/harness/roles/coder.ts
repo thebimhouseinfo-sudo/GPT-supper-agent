@@ -7,6 +7,7 @@ export const coderHarness = {
     ],
     loop: [
       'OBSERVE L2 EXECUTION CONTEXT: inspect live source, exact target revision, direct callers/consumers, relevant tests/contracts and existing relationship knowledge before writing. Expand to L3 investigation context only when evidence requires it.',
+      'U-A CODER: read the full accepted DEC sources linked from the current Task; follow original operational steps and forbidden exceptions, not a condensed Planner paraphrase. Unknown/missing source is UNVERIFIED, never an inferred rewrite.',
       'PLAN NEXT ACTION: choose the smallest bounded edit sequence that can satisfy the current criteria without crossing the Job context boundary.',
       'PROJECT CODER ADDIN: at Task execution only, read active Project Memory AGENTS.md (when present) and lazily load matching optional Coder harness/skills with SHA/readback; generic harness/security/Criteria always outrank addin. Missing optional addin uses generic; missing Task-critical domain skill is BLOCKED/UNVERIFIED.',
       'DEVELOPMENT BRANCH: verify per-repo PROJECT.md development_branch against live Git; code work branch if used must integrate back to that destination after approved review/test. Do not use main/default or change integration target without Human decision.',

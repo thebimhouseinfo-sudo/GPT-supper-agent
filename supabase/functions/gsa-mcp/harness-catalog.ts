@@ -18,6 +18,7 @@ import { reviewEvidenceSkill } from './harness/skills/review-evidence.ts'
 import { testingEvidenceSkill } from './harness/skills/testing-evidence.ts'
 import { testerLabSkill } from './harness/skills/tester-lab.ts'
 import { uiCoderFrontendSkill } from './harness/skills/ui-coder-frontend.ts'
+import { secretarySkill } from './harness/skills/secretary.ts'
 
 export { BASE_AGENT_HARNESS }
 
@@ -34,7 +35,7 @@ export const ROLE_HARNESSES: Record<string, { authority: string[]; loop: string[
 
 export const ROLE_SKILLS: Record<string, string[]> = {
   orchestrator: ['delegation'],
-  planner: ['critical-challenge', 'job-planning', 'delegation'],
+  planner: ['critical-challenge', 'job-planning', 'delegation', 'secretary'],
   advisor: [],
   designer: ['delegation'],
   coder: ['coding-loop', 'delegation'],
@@ -61,6 +62,7 @@ export const RUNTIME_SKILLS: Record<string, { description: string; body: string 
   'testing-evidence': testingEvidenceSkill,
   'tester-lab': testerLabSkill,
   'ui-coder-frontend': uiCoderFrontendSkill,
+  secretary: secretarySkill,
 }
 
 // GSA2: get_agent_harness already returns suggested_skills beside harness_text.

@@ -100,7 +100,41 @@ const groups = [
   ['evidence-repository-tools.ts','registerRepositoryEvidenceTools',3],
 ]
 
-test('GSA3 golden 8 Roles, 11 Skills and exact approved U-C coding-loop extension preserved',async()=>{
+
+const uaRoleClauses = {
+  "planner": "U-A DECISIONS: for applicable accepted decisions load exact current and historic DEC source texts including negative exceptions, not summaries; map each stable source clause to Task and preserve links on revision. A user merely brainstorming never triggers a Secretary/Discussion Job.",
+  "coder": "U-A CODER: read the full accepted DEC sources linked from the current Task; follow original operational steps and forbidden exceptions, not a condensed Planner paraphrase. Unknown/missing source is UNVERIFIED, never an inferred rewrite.",
+  "reviewer": "U-A REVIEWER: independently discover applicable current Project Memory DEC index even when a Job has NO references; inspect pinned original full DEC source, rationale, exceptions, provenance and supersession before confirming Plan/Task coverage. Reject omitted applicable decisions, heading-only fidelity, undocumented accepted changes or missing source readback even if metadata says COVERED."
+}
+function withoutUA(h,role) {
+  if(!uaRoleClauses[role])return h
+  assert.equal(h.loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
+  return {...h,loop:h.loop.filter(x=>x!==uaRoleClauses[role])}
+}
+function historicalRender(after,role,options={}) {
+  const h=withoutUA(after.ROLE_HARNESSES[role],role)
+  const skills=(after.ROLE_SKILLS[role]??[]).filter(x=>x!=='secretary')
+  return [after.BASE_AGENT_HARNESS,'','ROLE: '+role.toUpperCase(),'',
+    'AUTHORITY / BOUNDARIES',...h.authority.map(x=>'- '+x),'',
+    'ROLE LOOP',...h.loop.map((x,i)=>(i+1)+'. '+x),'',
+    'EXPECTED OUTPUTS',...h.outputs.map(x=>'- '+x),
+    ...(options?.includeProgressiveSkills===false?[]:['','PROGRESSIVE SKILLS',
+      ...skills.map(x=>'- '+x+': load only when relevant to the current Run.')])
+  ].join('\n')
+}
+function normalizeUAResponse(name,args,response,after) {
+  const result=JSON.parse(JSON.stringify(response))
+  const out=result.structuredContent
+  if(name==='get_skill_catalog') out.skills=out.skills.filter(x=>x.name!=='secretary')
+  if(name==='get_agent_harness' && after.ROLE_HARNESSES[args.role]) {
+    out.harness_text=historicalRender(after,args.role,{includeProgressiveSkills:false})
+    out.suggested_skills=(out.suggested_skills??[]).filter(x=>x!=='secretary')
+  }
+  if(out)result.content[0].text=JSON.stringify(out)
+  return result
+}
+
+test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A addition',async()=>{
   const before=baselineModule(base('harness-catalog.ts'))
   const after=loadSourceModule('harness-catalog.ts')
   const roles=['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
@@ -110,14 +144,18 @@ test('GSA3 golden 8 Roles, 11 Skills and exact approved U-C coding-loop extensio
   assert.deepEqual(Object.keys(before.ROLE_HARNESSES),roles)
   assert.deepEqual(Object.keys(after.ROLE_HARNESSES),roles)
   assert.deepEqual(Object.keys(before.RUNTIME_SKILLS),skills)
-  assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),skills)
+  assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),[...skills,'secretary'])
+  assert.ok(after.RUNTIME_SKILLS.secretary.body.includes('Human'))
   assert.equal(before.BASE_AGENT_HARNESS,after.BASE_AGENT_HARNESS)
-  assert.equal(JSON.stringify(before.ROLE_SKILLS),JSON.stringify(after.ROLE_SKILLS))
+  assert.equal(JSON.stringify(after.ROLE_SKILLS.planner),JSON.stringify([...before.ROLE_SKILLS.planner,'secretary']))
+  for(const role of roles.filter(x=>x!=='planner')) assert.equal(JSON.stringify(after.ROLE_SKILLS[role]),JSON.stringify(before.ROLE_SKILLS[role]))
   assert.equal(JSON.stringify(before.ROLE_HOST_SKILLS),JSON.stringify(after.ROLE_HOST_SKILLS))
   for(const role of roles) {
-    assert.equal(JSON.stringify(before.ROLE_HARNESSES[role]),JSON.stringify(after.ROLE_HARNESSES[role]),role)
-    for(const options of [undefined,{includeProgressiveSkills:false},{includeProgressiveSkills:true}])
-      assert.equal(before.renderHarness(role,options),after.renderHarness(role,options),'render '+role)
+    assert.equal(JSON.stringify(before.ROLE_HARNESSES[role]),JSON.stringify(withoutUA(after.ROLE_HARNESSES[role],role)),role)
+    for(const options of [undefined,{includeProgressiveSkills:false},{includeProgressiveSkills:true}]) {
+      assert.equal(before.renderHarness(role,options),historicalRender(after,role,options),'historical render '+role)
+      if(uaRoleClauses[role]) assert.ok(after.renderHarness(role,options).includes(uaRoleClauses[role]),'U-A role rule delivered '+role)
+    }
   }
   for(const skill of skills) {
     const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
@@ -139,8 +177,12 @@ test('GSA3 golden 8 Roles, 11 Skills and exact approved U-C coding-loop extensio
       normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
       assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
-    } else assert.equal(JSON.stringify(a),JSON.stringify(b),'public result '+name+':'+JSON.stringify(args))
+    } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
   }
+  const secretary=await newTools.get('load_skill').fn({name:'secretary'})
+  assert.equal(secretary.structuredContent.name,'secretary')
+  assert.equal(secretary.structuredContent.skill_text,after.RUNTIME_SKILLS.secretary.body)
+  assert.equal(secretary.content[0].text,JSON.stringify(secretary.structuredContent))
   const deniedBefore=harnessTools(before,false),deniedAfter=harnessTools(after,false)
   for(const [name,args] of [['get_agent_harness',{role:'coder',mode:'JOB'}],
     ['get_skill_catalog',undefined],['load_skill',{name:'coding-loop'}]]) {
