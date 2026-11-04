@@ -79,51 +79,64 @@ A reference to a guide does not inject its text into an Agent. Mark actual reque
 
 ## 4. Group 2 source design — responsibility modules, not oversized workflow files
 
-### 4.1 Existing parents and proposed owners
+### 4.1 Verified **existing** parent and function owners — exact source migration
 
-**Design paths are provisional** and must be reconciled against actual current symbol/import graph (especially lexical captures), with the public parents retained. Names/line ranges below describe G2A's pinned original source, not compiled future layout.
+**Authoritative function-level map:** [GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md](./GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md). The map was built by reading the actual GSA3 source at `0b5cf875` and comparing original Git blob SHAs on this development branch. It gives **current function names/line starts**, direct source calls, proposed destination and tests. This section no longer treats the former 22-child research sketch as the code to implement.
 
-| Parent/facade | Owner candidates | Responsibility | Owner boundary risk |
-| --- | --- | --- | --- |
-| `index.ts` | `I1 runtime-contract-auth`, `I2 durable-record-io` | Request/auth/contract vs path/namespace/snapshots | Namespace and auth must remain consistent |
-| `index.ts` | `I3 run-dispatch-closure-guards` | Preflight, required skills, Goal Recheck, run closure | Needed by Run completion and authorization |
-| `index.ts` | `I4 evidence-validation`, `I5 checkpoint-evidence-gate-policy` | Bundle attestation, Tester evidence, checkpoint/retest/gates | Some original slices mix planning/evidence; split by symbol, not line |
-| `index.ts` | `I6 planning-schemas-and-preflight` | NEXT model, CRL and Bootstrap planning validation | Actual dependency on Project manifest I8 |
-| `index.ts` | `I7 cursor-decisions` | Prepare/resume source mutation reconciliation | Pending cursor/Git readback semantics |
-| `index.ts` | `I8 project-manifest-and-scope` | Manifest parse/build, scope, refs, Role addins | Shared Project identity used by planning |
-| `run-execution-tools.ts` | `R1 run-begin`, `R2 relationship-knowledge`, `R3 goal-recheck`, `R4 run-verification`, `R5 run-complete` | Each Run lifecycle operation | Co-locate R1/R2 if truly edited/tested together |
-| `project-setup-tools.ts` | `P1 project-setup`, `P2 project-advice-addins`, `P3 project-bootstrap`, `P4 project-branch` | Project intake, criteria consultation, addins, readiness, branch | Preserve access check before any mutation |
-| `checkpoint-tools.ts` | `C1 checkpoint-claim`, `C2 checkpoint-verification-gate` | Claim/lease and verification/gate | Atomic claim lifecycle and immutable refs |
-| `evidence-repository-tools.ts` | `E1 evidence-publish-prepare`, `E2 evidence-publish-finalize`, `E3 evidence-probe-verification` | Publish/probe immutable evidence | E1/E2 may need cohesive single owner |
-| `selftest.ts` | **KEEP** | Shared diagnostic route, fixtures, terminal checks | Fixture slices not independently executable |
+| Real original source / line scope | Actual code to move into A responsibility leaves | Source-preserving exception |
+| --- | --- | --- |
+| `harness-catalog.ts` L1–607 | Shared L1–55; eight keyed Role objects L56–261; eleven Skill descriptions/bodies L279–583; keep original Role Skill/Host maps L262–278 and `renderHarness` L584–607 as facade | No new Role/Skill semantics or synthesized policy |
+| `index.ts` L46–207 (I1) | Contract/default helpers `resolveExecutionContract` etc. in contract leaf; auth/request/bridge helpers in separate request owner | Preserve request-scoped auth/config lifetime; not a single mixed I1 leaf |
+| `index.ts` L208–357 (I2) | Namespaces, record paths, snapshots | Imports I1 contract helpers; one authoritative namespace/path implementation |
+| `index.ts` L358–552 (I3) | Actual dispatch/closure functions, required Skill resolution and readback steps | `resolveRequiredTaskSkills` uses **existing** `RUNTIME_SKILLS` catalog |
+| `index.ts` L553–858 (I4) | Bundle/attestation/Tester evidence validators | Imports I1/I2; exact evidence error strings and SHA |
+| `index.ts` L859–1001 (I5) | Evidence gate, checkpoint outcome, failed retest, plan-supersession matching | Uses I4 and I2; no altered gate condition |
+| `index.ts` L1002–1271 plus L1486–1503 (I6) | Zod planning/Criteria/evidence schemas + Bootstrap/CRL/Plan validators | `PLANNING_LOOP_CONTINUATION_SCHEMA` **belongs to Planning**, not Cursor |
+| `index.ts` L1272–1485 (I7) | Cursor path, prepare/resume decisions | Preserve source-PENDING recovery semantics |
+| `index.ts` L1504–1799 (I8) | Manifest parse/build, Project scope, addins/path validations | `readMemoryConfig` initially remains in composition (bound to configured runtime) |
+| `index.ts` L1800–2395 (I0) | **Keep composition root**: createServer, tool registration, HTTP/Hono and request-wiring | **Keep nested `validateRepositoryProbeSnapshot` L1937–1990 in createServer** during A0 |
+| `run-execution-tools.ts` L4,225,305,436,559 | **Five actual** tool handler blocks under stable existing facade | Keep original sequential registrations |
+| `project-setup-tools.ts` L4,119,168,233,279,325 | **Six actual** tools, not four: setup, Criteria advice, Role addins, Bootstrap checklist, Bootstrap readiness, branch policy | Do not combine unrelated advice and addin code to satisfy a file count |
+| `checkpoint-tools.ts` L4,300,518 | **Three actual** tools: claim, verification, gate, housed in two cohesive leaves | Gate may co-locate with verification to avoid a tiny file |
+| `evidence-repository-tools.ts` L3,199,451 | **Three actual** tools: publication prepare/finalize and probe | Shared `validateRepositoryProbeSnapshot` remains request-bound callback |
+| `selftest.ts` | **KEEP** current integrated fixture | No unsupported textual fixture splitting |
 
-**Original G2A count:** 8 I + 5 R + 4 P + 2 C + 3 E = **22 child owners**. In the six-file hotspot, five retained facade parents plus selftest imply **28 logical files**. It is **not** a mandated minimum or maximum; merge co-read, closely coupled children only on source evidence. The original GSA1 modules remain and must not be refactored again without an explicit technical dependency.
+The original source `index.ts` and each of the R/P/C/E parents remain the public registration facades. Each extracted tool handler is the original body wired to the same `deps` values, with **no product-feature rewrite**. The exact 58-tool registration order remains a hard invariant.
 
-### 4.2 Critical dependency DAG
+### 4.2 Verified direct dependency edges and import strategy
+
+The actual current source has a one-way extraction order:
 
 ~~~text
-index.ts  (only public composition / HTTP / registration owner)
-  ├── I1 runtime contract / auth context
-  ├── I2 durable record paths, snapshot parsing   → I1 (or pure common contract)
-  ├── I3 run-dispatch / closure guards              → I1 + I2 + existing execution guards
-  ├── I4 evidence validation                         → I1 + I2
-  ├── I5 checkpoint/evidence gate                     → I2 + I4
-  ├── I8 Project manifest/scope                       → project-utils
-  ├── I6 planning preflight/schema                    → I2 + I8 + planning guards
-  └── I7 cursor decisions                             → I2 + recovery decisions
+original index.ts / createServer / request-scoped values
+   ├── runtime-contract leaf (original execution-contract constants/defaults)
+   ├── request-auth leaf (original auth/bridge helpers, only if lifetime preserved)
+   ├── I2 durable-record-io → runtime-contract
+   ├── I3 run-dispatch-closure → runtime-contract + I2 + harness-catalog
+   ├── I4 evidence-validation → runtime-contract + I2
+   ├── I5 checkpoint-evidence-gate → runtime-contract + I2 + I4
+   ├── I8 pure project-manifest-scope → existing project-utils
+   ├── I6 planning schema/preflight → I8 + existing planning guards
+   └── I7 cursor decisions → I2 + existing recovery decisions
 
-run-execution-tools facade          → R1..R5 → relevant I2/I3/I4/I5
-project-setup-tools facade           → P1..P4 → I6/I8 + existing bootstrap
-checkpoint-tools facade              → C1/C2  → I2/I4/I5
-evidence-repository-tools facade     → E1..E3 → I2/I4/I8
-selftest.ts                          → current callable public test seam
+original Run facade → real run_begin/relationship/goal/verification/complete leaf registration bodies
+original Project Setup facade → six actual ordered leaf registrations
+original Checkpoint facade → claim, then verification + gate
+original Repository Evidence facade → publish prepare, finalize, probe
+original selftest.ts → KEEP real imported facade
 ~~~
 
-**No leaf imports index.ts**. Runtime dependencies should follow leaf → leaf/common pure contract, and parent → children. If two owner candidates require each other, first inspect and relocate only the truly shared pure contract or use the already-injected runtime dependencies; do not duplicate source into two different places. The current implementation uses broad `deps: any` in several registration modules; do not combine unrelated type/API rewrites with an A0 byte/behavior-preserving extraction. New narrow type-only contracts can be proposed after parent/child behavior is established and tested.
+**Source facts driving the edges:**
+- `index.ts` L324–388 `validateCompletedTaskRunSnapshots` / `nextDispatchPreflightError` share the current Job+Run revision gate; I3 calls I2 and I1.
+- L391–413 `resolveRequiredTaskSkills` directly reads `RUNTIME_SKILLS[name]`. **Do not** replace it with a new universal Project Skill selector during physical extraction.
+- L622–858 validators call namespace and durable snapshot helpers; L859–1001 checkpoint/evidence gate calls I4 validator.
+- L1060–1156 Bootstrap/Plan helpers use `parseProjectManifest` and `validMemoryPath` in I8.
+- L1937–1990 `validateRepositoryProbeSnapshot` is **inside** createServer and is passed to repository evidence tools at L1993. Its callback and current source location remain unchanged at A0.
+- Original `registerRunExecutionTools` receives 31 existing `deps` fields, and its `run_begin` uses 23 of them; other R/P/C/E blocks use their current per-request fields. **Reuse the existing deps object** when moving handler bodies; do not invent a new authorization/cache subsystem.
 
-**Highest-risk extraction:** original source near `index.ts` lines 1937–1996 is nested in `createServer` and may capture lexical state. It cannot safely be moved by textual extraction. If lexical closure or registration sequence cannot be preserved by explicit dependency injection, retain that function in the parent until a verified behavior-preserving seam is demonstrated. The status is **DESIGN OPEN**, not “copy this exact line range”.
+**Binding verification at extraction:** for each moved original function, read actual imports/types and check TypeScript free identifiers with the compiler, then move it with explicit one-way imports or same-value dependencies. If any closure cannot retain its value lifetime, **KEEP** that function in the original facade and state that specific exception. This check is necessary to make a concrete code move correct; it does not invalidate the already-recorded actual ownership/caller map.
 
-**Known test-location dependencies:** `test-lab/gsa1-module-boundary.test.cjs`, `runtime-logic.test.cjs`, `reliability-cursor.test.cjs`, `project-branch-policy.test.cjs` and planning/Bootstrap logic suites may locate top-level functions by literal file text or AST. Only retarget symbol lookup, keep the test oracles and negative assertions. A failing test caused by moved source is not permission to delete it.
+**Existing test migration:** see [actual source map `4](./GSA4-A0-SOURCE-TO-MODULE-EXTRACTION-MAP-20261104.md) for each existing GSA2/GSA3/LLC/Module-boundary test that assumes source in old physical files. The source-executed test adaptation is included in **the same** A0 extraction packages, with every original negative oracle retained. Do not claim passing runtime parity from typecheck alone.
 
 ### 4.3 Public contract parity fixture
 
