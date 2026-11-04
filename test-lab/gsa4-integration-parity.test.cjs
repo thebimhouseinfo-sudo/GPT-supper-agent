@@ -12,6 +12,7 @@ const ts = require('typescript')
 const {loadSourceModule} = require('./helpers/harness-ts-loader.cjs')
 const {registrationGraph, toolSource} = require('./helpers/gsa4-source-views.cjs')
 const {normalizeRunComplete, normalizeCodingSkillBody} = require('./helpers/three-pr-approved-deltas.cjs')
+const {normalizeUFBody, normalizeUFRole} = require('./helpers/uf-approved-skill-deltas.cjs')
 
 const repoRoot = path.resolve(__dirname, '..')
 const srcRoot = path.join(repoRoot, 'supabase/functions/gsa-mcp')
@@ -106,14 +107,22 @@ const uaRoleClauses = {
   "coder": "U-A CODER: read the full accepted DEC sources linked from the current Task; follow original operational steps and forbidden exceptions, not a condensed Planner paraphrase. Unknown/missing source is UNVERIFIED, never an inferred rewrite.",
   "reviewer": "U-A REVIEWER: independently discover applicable current Project Memory DEC index even when a Job has NO references; inspect pinned original full DEC source, rationale, exceptions, provenance and supersession before confirming Plan/Task coverage. Reject omitted applicable decisions, heading-only fidelity, undocumented accepted changes or missing source readback even if metadata says COVERED."
 }
+const historicalTesterDiscovery = "SCENARIO DISCOVERY: prefer the ChatGPT-installed scenario-tester named in suggested_host_skills (not GSA load_skill). Activate/read the actual host skill through an available ChatGPT Skills surface and confirm availability before claiming it was loaded. If not exposed, mark SCENARIO_SKILL_NOT_LOADED, use available testing-evidence only for supported checks and report any uncovered scenario testing as UNVERIFIED. Every repaired revision requires independent Tester rerun of the failing scenario plus impacted passing regressions; look for newly exposed defects, then repeat Tester → Coder → Goal Recheck → Tester until truly PASS or blocked."
 function withoutUA(h,role) {
-  if(!uaRoleClauses[role])return h
-  assert.equal(h.loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
-  return {...h,loop:h.loop.filter(x=>x!==uaRoleClauses[role])}
+  let loop=h.loop
+  if(role==='tester') {
+    const current=loop.filter(x=>x.startsWith('SCENARIO DISCOVERY:'))
+    assert.equal(current.length,1,'Tester scenario discovery clause remains singular')
+    assert.match(current[0],/load GSA simulate on demand/,'U-E on-demand addition is not optional')
+    loop=loop.map(x=>x.startsWith('SCENARIO DISCOVERY:')?historicalTesterDiscovery:x)
+  }
+  if(!uaRoleClauses[role])return normalizeUFRole(role,{...h,loop})
+  assert.equal(loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
+  return normalizeUFRole(role,{...h,loop:loop.filter(x=>x!==uaRoleClauses[role])})
 }
 function historicalRender(after,role,options={}) {
   const h=withoutUA(after.ROLE_HARNESSES[role],role)
-  const skills=(after.ROLE_SKILLS[role]??[]).filter(x=>x!=='secretary')
+  const skills=(after.ROLE_SKILLS[role]??[]).filter(x=>x!=='secretary' && x!=='simulate')
   return [after.BASE_AGENT_HARNESS,'','ROLE: '+role.toUpperCase(),'',
     'AUTHORITY / BOUNDARIES',...h.authority.map(x=>'- '+x),'',
     'ROLE LOOP',...h.loop.map((x,i)=>(i+1)+'. '+x),'',
@@ -125,16 +134,48 @@ function historicalRender(after,role,options={}) {
 function normalizeUAResponse(name,args,response,after) {
   const result=JSON.parse(JSON.stringify(response))
   const out=result.structuredContent
-  if(name==='get_skill_catalog') out.skills=out.skills.filter(x=>x.name!=='secretary')
+  if(name==='get_skill_catalog') out.skills=out.skills.filter(x=>x.name!=='secretary' && x.name!=='simulate')
+  if(name==='load_skill' && out?.skill_text)out.skill_text=normalizeHistoricalSkill(args.name,out.skill_text)
   if(name==='get_agent_harness' && after.ROLE_HARNESSES[args.role]) {
     out.harness_text=historicalRender(after,args.role,{includeProgressiveSkills:false})
-    out.suggested_skills=(out.suggested_skills??[]).filter(x=>x!=='secretary')
+    out.suggested_skills=(out.suggested_skills??[]).filter(x=>x!=='secretary' && x!=='simulate')
   }
   if(out)result.content[0].text=JSON.stringify(out)
   return result
 }
 
-test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A addition',async()=>{
+function normalizeUETestingSkillBody(body) {
+  const oldText="For renewed scenario discovery, invoke the *real* ChatGPT-installed scenario-tester when host availability is confirmed; otherwise mark that coverage UNVERIFIED."
+  const newText="For user-triggered scenario discovery load the GSA simulate skill on demand, and invoke the separate host-managed scenario-tester only when its actual ChatGPT host availability is confirmed. A GSA simulation never certifies native host behavior; label REAL_HOST_UNVERIFIED without evidence."
+  assert.equal(body.split(newText).length,2,'one and only one U-E testing-evidence clause')
+  return body.replace(newText,oldText)
+}
+
+function normalizeUDSkillBody(name,body) {
+  const markers = {
+    'coding-loop': '\nU-D — PRE_CODE_TECHNICAL / DESCRIPTIVE PROPOSAL (UD-01)',
+    'critic-review': '\nPRE_CODE_TECHNICAL (U-D): review the complete connected descriptive Markdown design',
+  }
+  if (!Object.hasOwn(markers,name)) return body
+  const marker = markers[name]
+  assert.equal(body.split(marker).length,2,'U-D exact source extension missing/duplicated: '+name)
+  const start = body.indexOf(marker)
+  const addition = body.slice(start+1)
+  assert.match(addition, /Critic|CR FAIL|CRITIC_REVIEW/)
+  assert.match(addition, /reviewed/i)
+  assert.match(addition, /no new|No new|not an automatically created/i)
+  assert.ok(addition.split('\n').length >= 6,'U-D extension cannot be a placeholder')
+  return body.slice(0,start)
+}
+function normalizeHistoricalSkill(name,body) {
+  const withoutUF=normalizeUFBody(name,body)
+  const withoutUD=normalizeUDSkillBody(name,withoutUF)
+  if(name==='testing-evidence')return normalizeUETestingSkillBody(withoutUD)
+  if(name==='coding-loop')return normalizeCodingSkillBody(withoutUD)
+  return withoutUD
+}
+
+test('GSA3 golden 8 Roles and 11 Skills, with explicit U-A/B/C/D/E/F reviewed deltas',async()=>{
   const before=baselineModule(base('harness-catalog.ts'))
   const after=loadSourceModule('harness-catalog.ts')
   const roles=['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
@@ -144,11 +185,13 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
   assert.deepEqual(Object.keys(before.ROLE_HARNESSES),roles)
   assert.deepEqual(Object.keys(after.ROLE_HARNESSES),roles)
   assert.deepEqual(Object.keys(before.RUNTIME_SKILLS),skills)
-  assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),[...skills,'secretary'])
+  assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),[...skills,'secretary','simulate'])
+  assert.match(after.RUNTIME_SKILLS.simulate.body,/SOURCE BLIND/)
   assert.ok(after.RUNTIME_SKILLS.secretary.body.includes('Human'))
   assert.equal(before.BASE_AGENT_HARNESS,after.BASE_AGENT_HARNESS)
   assert.equal(JSON.stringify(after.ROLE_SKILLS.planner),JSON.stringify([...before.ROLE_SKILLS.planner,'secretary']))
-  for(const role of roles.filter(x=>x!=='planner')) assert.equal(JSON.stringify(after.ROLE_SKILLS[role]),JSON.stringify(before.ROLE_SKILLS[role]))
+  for(const role of roles.filter(x=>x!=='planner' && x!=='tester')) assert.equal(JSON.stringify(after.ROLE_SKILLS[role]),JSON.stringify(before.ROLE_SKILLS[role]))
+  assert.equal(JSON.stringify(after.ROLE_SKILLS.tester),JSON.stringify([...before.ROLE_SKILLS.tester,'simulate']))
   assert.equal(JSON.stringify(before.ROLE_HOST_SKILLS),JSON.stringify(after.ROLE_HOST_SKILLS))
   for(const role of roles) {
     assert.equal(JSON.stringify(before.ROLE_HARNESSES[role]),JSON.stringify(withoutUA(after.ROLE_HARNESSES[role],role)),role)
@@ -158,7 +201,7 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
     }
   }
   for(const skill of skills) {
-    const actual = skill === 'coding-loop' ? {...after.RUNTIME_SKILLS[skill], body:normalizeCodingSkillBody(after.RUNTIME_SKILLS[skill].body)} : after.RUNTIME_SKILLS[skill]
+    const actual = {...after.RUNTIME_SKILLS[skill],body:normalizeHistoricalSkill(skill,after.RUNTIME_SKILLS[skill].body)}
     assert.equal(JSON.stringify(before.RUNTIME_SKILLS[skill]),JSON.stringify(actual),'skill '+skill)
   }
   const oldTools=harnessTools(before),newTools=harnessTools(after)
@@ -171,14 +214,17 @@ test('GSA3 golden 8 Roles, 11 original Skills, approved U-C and explicit U-A add
   ]) {
     const a=await oldTools.get(name).fn(args)
     const b=await newTools.get(name).fn(args)
-    if(name === 'load_skill' && args?.name === 'coding-loop') {
+    if(name === 'load_skill' && ['coding-loop','testing-evidence','critic-review'].includes(args?.name)) {
       assert.equal(b.content[0].text,JSON.stringify(b.structuredContent),'U-C fallback remains exact JSON')
       const normalized = JSON.parse(JSON.stringify(b))
-      normalized.structuredContent.skill_text = normalizeCodingSkillBody(normalized.structuredContent.skill_text)
+      normalized.structuredContent.skill_text = normalizeHistoricalSkill(args.name,normalized.structuredContent.skill_text)
       normalized.content[0].text = JSON.stringify(normalized.structuredContent)
-      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'exact U-C delta only in on-demand Skill')
+      assert.equal(JSON.stringify(a),JSON.stringify(normalized),'U-C/U-D/U-E/U-F on-demand Skill deltas checked')
     } else assert.equal(JSON.stringify(a),JSON.stringify(normalizeUAResponse(name,args,b,after)),'historical public result '+name+':'+JSON.stringify(args))
   }
+  const simulate=await newTools.get('load_skill').fn({name:'simulate'})
+  assert.equal(simulate.structuredContent.skill_text,after.RUNTIME_SKILLS.simulate.body)
+  assert.equal(simulate.content[0].text,JSON.stringify(simulate.structuredContent))
   const secretary=await newTools.get('load_skill').fn({name:'secretary'})
   assert.equal(secretary.structuredContent.name,'secretary')
   assert.equal(secretary.structuredContent.skill_text,after.RUNTIME_SKILLS.secretary.body)

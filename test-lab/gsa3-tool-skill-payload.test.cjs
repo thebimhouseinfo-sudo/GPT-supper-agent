@@ -14,7 +14,7 @@ const catalog = sourceModule('harness-catalog.ts')
 const handlers = sourceModule('harness-skill-tools.ts')
 const originalNames = ['debugging','critic-review','critical-challenge','job-planning','coding-loop',
   'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend']
-const names = [...originalNames,'secretary']
+const names = [...originalNames,'secretary','simulate']
 const roles = ['orchestrator','planner','advisor','designer','coder','reviewer','critic_reviewer','tester']
 const { RUNTIME_SKILLS, ROLE_HARNESSES, ROLE_SKILLS, ROLE_HOST_SKILLS, renderHarness } = catalog.exports
 const chain = new Proxy({}, { get: () => () => chain })
@@ -36,7 +36,7 @@ function exactFallback(result) {
   assert.equal(result.content[0].type, 'text')
   assert.equal(result.content[0].text, JSON.stringify(result.structuredContent))
 }
-test('GSA3 original 11 skills remain unchanged; optional U-A Secretary is additive', async () => {
+test('GSA3 original 11 skills unchanged; U-A Secretary and U-E simulate additive', async () => {
   assert.equal(JSON.stringify(Object.keys(RUNTIME_SKILLS)), JSON.stringify(names))
   const tools=setup()
   const result=await tools.get_skill_catalog.handler()

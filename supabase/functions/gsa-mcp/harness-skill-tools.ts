@@ -73,7 +73,7 @@ export function registerHarnessSkillTools(deps: any) {
       title: 'Load one GSA runtime skill',
       description: 'Progressively load a task-specific GSA skill after its catalog entry or role suggestion is relevant.',
       inputSchema: {
-        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','tester-lab','ui-coder-frontend','critical-challenge','secretary']),
+        name: z.enum(['job-planning','coding-loop','debugging','delegation','planning-review','review-evidence','critic-review','testing-evidence','tester-lab','ui-coder-frontend','critical-challenge','secretary','simulate']),
       },
       outputSchema: {
         name: z.string(),

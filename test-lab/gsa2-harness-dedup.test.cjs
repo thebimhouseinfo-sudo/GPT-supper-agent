@@ -13,6 +13,7 @@ const handlerSource = fs.readFileSync(path.join(dir, 'harness-skill-tools.ts'), 
 const rootSource = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8')
 const { loadSourceModule } = require('./helpers/harness-ts-loader.cjs')
 const { normalizeCodingSkillSource } = require('./helpers/three-pr-approved-deltas.cjs')
+const { normalizeUFInitializer } = require('./helpers/uf-approved-skill-deltas.cjs')
 const { BASE_AGENT_HARNESS, ROLE_HARNESSES, ROLE_SKILLS, renderHarness } = loadSourceModule('harness-catalog.ts')
 const roles = ['orchestrator', 'planner', 'advisor', 'designer', 'coder', 'reviewer', 'critic_reviewer', 'tester']
 
@@ -80,7 +81,7 @@ test('measured source-response reduction is strictly the duplicate skill list, n
   }))
 })
 
-test('GSA4 A0 historical exact literals preserved after normalizing ONLY additive U-A clauses', () => {
+test('GSA4 A0 exact literals preserved after normalizing explicit U-A and U-E deltas', () => {
   // Frozen from 6b352a3a1f9b791564b4e8b1682af875adf73da7, before physical extraction.
   // Fingerprints are computed from exact TypeScript initializer text (including newlines).
   function fnv64(s) {
@@ -99,6 +100,13 @@ test('GSA4 A0 historical exact literals preserved after normalizing ONLY additiv
       .filter(d => ts.isIdentifier(d.name) && d.name.text === name)
     assert.equal(declarations.length, 1, name + ' declaration exists exactly once in ' + file)
     return declarations[0].initializer.getText(ast)
+  }
+  // U-E changes only one Tester scenario hint, one existing Tester evidence sentence,
+  // and appends one suggested skill. Restore pinned historical lines before hashing;
+  // every unrelated byte remains checked against the original GSA3 fingerprints.
+  const historicalUESourceLines = {
+    testerHarness: "      'SCENARIO DISCOVERY: prefer the ChatGPT-installed scenario-tester named in suggested_host_skills (not GSA load_skill). Activate/read the actual host skill through an available ChatGPT Skills surface and confirm availability before claiming it was loaded. If not exposed, mark SCENARIO_SKILL_NOT_LOADED, use available testing-evidence only for supported checks and report any uncovered scenario testing as UNVERIFIED. Every repaired revision requires independent Tester rerun of the failing scenario plus impacted passing regressions; look for newly exposed defects, then repeat Tester → Coder → Goal Recheck → Tester until truly PASS or blocked.',",
+    testingEvidenceSkill: "      '- PRODUCT_FAILURE: owning Coder repair → exact Goal Recheck for the repaired target → RETEST; same-target Retest is rejected. Tester reruns the failing case and impacted regression matrix. For renewed scenario discovery, invoke the *real* ChatGPT-installed scenario-tester when host availability is confirmed; otherwise mark that coverage UNVERIFIED. Repeat repairs for every within-scope new defect until complete or genuinely blocked.',",
   }
   const hashes = {
     'harness/shared.ts': ['BASE_AGENT_HARNESS', '9746b3061be44cb4'],
@@ -126,10 +134,20 @@ test('GSA4 A0 historical exact literals preserved after normalizing ONLY additiv
   for (const [file, [name, expected]] of Object.entries(hashes)) {
     const initializer = declarationInitializer(file, name)
     const uaRole = ['plannerHarness','coderHarness','reviewerHarness'].includes(name)
-    const normalizedRole = uaRole ? initializer.replace(/^      'U-A (?:DECISIONS|CODER|REVIEWER):[^\n]*\n/gm, '') : initializer
+    let normalizedRole = uaRole ? initializer.replace(/^      'U-A (?:DECISIONS|CODER|REVIEWER):[^\n]*\n/gm, '') : initializer
     if (uaRole) assert.notEqual(normalizedRole, initializer, 'U-A clause must be exactly present for '+name)
-    const normalized = name === 'ROLE_SKILLS' ? normalizedRole.replace(", 'secretary'", '') : normalizedRole
-    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(normalized) : normalized
+    if (historicalUESourceLines[name]) {
+      const matcher = name === 'testerHarness'
+        ? /^      'SCENARIO DISCOVERY:[^\n]*$/m
+        : /^      '- PRODUCT_FAILURE:[^\n]*$/m
+      assert.match(normalizedRole,matcher,'U-E exact scope: '+name)
+      normalizedRole = normalizedRole.replace(matcher,historicalUESourceLines[name])
+    }
+    const normalized = name === 'ROLE_SKILLS'
+      ? normalizedRole.replace(", 'secretary'", '').replace(", 'simulate'", '')
+      : normalizedRole
+    const normalizedUF = normalizeUFInitializer(name, normalized)
+    const original = name === 'codingLoopSkill' ? normalizeCodingSkillSource(normalizedUF) : normalizedUF
     assert.equal(fnv64(original), expected, name + ' differs from GSA3 baseline (approved U-C delta exempted by exact-byte oracle)')
   }
   assert.equal(fnv64(declarationInitializer('harness-catalog.ts', 'ROLE_HOST_SKILLS')),
@@ -145,7 +163,7 @@ test('GSA4 A0 historical exact literals preserved after normalizing ONLY additiv
     'delegation','planning-review','review-evidence','testing-evidence','tester-lab','ui-coder-frontend']
   const live = loadSourceModule('harness-catalog.ts')
   assert.equal(JSON.stringify(Object.keys(live.ROLE_HARNESSES)), JSON.stringify(expectedRoles))
-  assert.equal(JSON.stringify(Object.keys(live.RUNTIME_SKILLS)), JSON.stringify([...expectedSkills,'secretary']))
+  assert.equal(JSON.stringify(Object.keys(live.RUNTIME_SKILLS)), JSON.stringify([...expectedSkills,'secretary','simulate']))
   assert.ok(live.RUNTIME_SKILLS.secretary.body.includes('Human'))
   assert.equal(JSON.stringify(Object.keys(live.ROLE_SKILLS)), JSON.stringify(expectedRoles))
 })

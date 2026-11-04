@@ -1,0 +1,28 @@
+{
+  "schema": "uf-independent-tester-fixtures/v1",
+  "source": "U-F source-only synthetic cases; no U-E or REAL_HOST claim",
+  "cases": {
+    "failed": {
+      "result": "FAIL",
+      "failure_class": "PRODUCT_FAILURE",
+      "surface": "SIMULATED",
+      "original_trigger_replayed": true,
+      "affected_regressions_replayed": true
+    },
+    "successful": {
+      "result": "PASS",
+      "failure_class": null,
+      "surface": "SIMULATED",
+      "original_trigger_replayed": true,
+      "affected_regressions_replayed": true
+    },
+    "unverified": {
+      "result": "UNVERIFIED",
+      "failure_class": "ENVIRONMENT_FAILURE",
+      "surface": "SIMULATED",
+      "original_trigger_replayed": true,
+      "affected_regressions_replayed": true
+    }
+  },
+  "integration": "On integration, replace synthetic scenes with verified U-E user-trigger scenarios and perform real Tester evidence readback."
+}
