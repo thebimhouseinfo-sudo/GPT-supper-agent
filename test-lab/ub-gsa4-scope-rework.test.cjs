@@ -181,14 +181,17 @@ function register(file,name,deps){
  const fn=exportedFactory(file,name)
  const chain=new Proxy(function(){return chain},{get:()=>chain,apply:()=>chain})
  const z=new Proxy({}, {get:()=>chain})
+ const stubSchema=chain
  fn({server:{registerTool:(n,_def,h)=>handlers.set(n,h)},z,req:{},
-   AUTH_SCOPES:[],authContext:async()=>({id:'test'}),authError:()=>({isError:true}),
+   AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:stubSchema,
+   authContext:async()=>({id:'test'}),authError:()=>({isError:true}),
    ...deps})
  return handlers
 }
 test('UB-03 late NEXT Run completion is denied for any role on pending/stale/terminal Job',async()=>{
  const out=register('run/complete.ts','registerRunComplete',{
-  resolveExecutionContract:contract,recordNextMemoryNamespace:namespace,jobExecutionContract:contract,
+  resolveExecutionContract:c=>['NEXT','V2_STABLE'].includes(c)?c:null,
+  recordNextMemoryNamespace:namespace,jobExecutionContract:contract,
   recordPath:(_p,kind,id)=>kind+'/'+id,prettyJson:x=>JSON.stringify(x),
   durableSnapshotReadbackSteps:()=>[],DEFAULT_NEXT_MEMORY_NAMESPACE:'PRODUCTION'
  }).get('run_complete')
