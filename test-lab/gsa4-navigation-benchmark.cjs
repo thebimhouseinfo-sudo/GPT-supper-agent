@@ -122,7 +122,7 @@ function searchOriginal(c, version) {
   args.push('--',TSROOT+'/')
   const result=git(args)
   const matches=result.split('\n').filter(Boolean).map(v=>{
-    const full = original ? v.slice(v.indexOf(':')+1) : v
+    const full = ref ? v.slice(v.indexOf(':')+1) : v
     return full.slice(TSROOT.length+1)
   }).filter(x=>x.endsWith('.ts'))
   assert.ok(matches.length,c.id+' grep must find real source on '+version)
