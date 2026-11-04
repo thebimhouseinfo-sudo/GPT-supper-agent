@@ -140,6 +140,8 @@ test('UC-03: DEV source protections remain distinct from Human-owned operational
   assert.match(body, /an authorized revised same-name LISP may be reloaded/)
   assert.match(body, /consequential same-name collision or overwrite.*clarify that conflict once/)
   assert.match(body, /recoverable AutoCAD BAK is not equivalent to DWL\/DWL2 lock files/)
+  assert.match(body, /OPERATION permissions are not waived/)
+  assert.match(body, /stop on denied folders, files or program controls/)
   const denied = await setup(false).load_skill.handler({ name: 'coding-loop' })
   assert.equal(denied.isError, true)
   assert.equal(denied.structuredContent, undefined)
