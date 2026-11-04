@@ -23,8 +23,8 @@ const base={criteria:binding,criteria_human_approved:true,criteria_current_blob_
   plan:sourcePlan,capabilities:[{task_id:task,readiness:'GENERIC_READY'}],human_execution_approved:true}
 
 test('LLC61 ledger is distinct: prior WL-034 and WL-035 remain unique',()=>{
-  assert.equal((ledger.match(/^\\| WL-034 \\|/gm)||[]).length,1)
-  assert.equal((ledger.match(/^\\| WL-035 \\|/gm)||[]).length,1)
+  assert.equal((ledger.match(/^\| WL-034 \|/gm)||[]).length,1)
+  assert.equal((ledger.match(/^\| WL-035 \|/gm)||[]).length,1)
   assert.equal((ledger.match(/^## LLC61 —/gm)||[]).length,1)
   assert.match(ledger,/ROOT_CAUSE_UNVERIFIED \/ NO_RUNTIME_FIX/)
   assert.match(ledger,/PLAN_CRITERIA_MISMATCH/)
