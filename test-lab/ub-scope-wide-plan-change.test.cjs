@@ -5,11 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const read = (name) => fs.readFileSync('supabase/functions/gsa-mcp/' + name, 'utf8');
 const fidelityExports={};
 vm.runInNewContext(ts.transpileModule(read('decision-fidelity.ts'),
   {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,
   {exports:fidelityExports,JSON,Date,Array,Set,Map,Number,String});
-const read = (name) => fs.readFileSync('supabase/functions/gsa-mcp/' + name, 'utf8');
 const sha = 'a'.repeat(40), fencedSha='b'.repeat(40);
 const pid='11000000-0000-4000-8000-000000000001';
 const planId='11000000-0000-4000-8000-000000000002';
