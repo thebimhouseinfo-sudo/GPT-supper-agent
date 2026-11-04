@@ -18,8 +18,3 @@ export const critic_reviewerHarness = {
     outputs: ['CRITIC_REVIEW Verification record', 'independent findings', 'prior-review comparison'],
     canonical_refs: ['AGENT-HARNESSES.md', 'EXECUTION-AND-REVIEW.md', 'DISPATCH-AND-HANDOFF.md'],
   }
-
-// U-D remains within the existing independent Critic role and authorization.
-critic_reviewerHarness.loop.push(
-  'U-D PRE_CODE_TECHNICAL: read the entire related-Task Markdown proposal and source truth independently. Check caller/interface coverage, shared functionality, dependency cycles, proportionate Host impact and accepted decisions. CHANGES_REQUIRED uses existing FAIL; HUMAN_ESCALATION uses BLOCKED. Produce reviewed inventory only on true exact-revision CR PASS and readback. Do not mutate source or add Reviewer-of-Reviewer.'
-)
