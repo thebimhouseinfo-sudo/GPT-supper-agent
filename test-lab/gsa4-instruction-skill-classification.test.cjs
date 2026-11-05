@@ -43,7 +43,7 @@ test('CLS-00: 8 independently entered Roles receive universal accepted-decision 
     assert.equal(r.structuredContent.harness_text,renderHarness(role,{includeProgressiveSkills:false}))
     assert.match(r.structuredContent.harness_text,/GSA4-CLS ACCEPTED PROJECT DECISION \(ALL ROLES\)/,role)
     assert.doesNotMatch(r.structuredContent.harness_text,/# Decision Secretary — On Demand/,role)
-    assert.deepEqual(Array.from(r.structuredContent.suggested_skills),ROLE_SKILLS[role]??[])
+    assert.equal(JSON.stringify(r.structuredContent.suggested_skills),JSON.stringify(ROLE_SKILLS[role]??[]))
   }
 })
 test('CLS-01: accepted decision accountability vs optional method and host permissions',async()=>{
@@ -109,7 +109,7 @@ test('CLS-05: unchanged 8-Role+13-Skill tool contracts, optional body and requir
   exact(catalogResponse)
   assert.equal(catalogResponse.structuredContent.skills.length,13)
   for(const role of roles){
-    const r=await t.get_agent_harness.handler({role,mode:'DIRECT'})
+    const r=await t.get_agent_harness.handler({role,mode:'DIRECT_AGENT'})
     exact(r)
     assert.equal(r.structuredContent.harness_text,renderHarness(role,{includeProgressiveSkills:false}))
   }
