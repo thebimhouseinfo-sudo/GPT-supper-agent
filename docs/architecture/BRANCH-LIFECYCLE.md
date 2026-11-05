@@ -44,3 +44,71 @@ No new dedicated Job, gate entity, or background daemon is created only to track
 - Retirement is not a bulk source-code merge; do not import the older branch merely because it has unique commits.
 - A surviving remote branch that has been retired is historical, not an invitation to re-open it.
 - If branch-deletion capability is unavailable, record `physical_ref=PRESENT` and report the unfinished physical cleanup. Do not silently equate logical retirement with remote removal.
+
+## Task-owned Working Branches (design defect repair)
+
+This is a repair of source-branch governance, **not a change to product Criteria**. The
+Human-configured Development Branch is the integration anchor, not the only writable
+Git branch. The configured Release Branch remains a separate Human-controlled gate.
+
+A Working Branch belongs to one authorized Project/Job/Task and may coexist with
+other task/experiment branches. The Project Manifest's optional `## Working Branches`
+section contains one JSON object prefixed with `- ` per branch. This extends the
+existing Project Memory contract; it is not a separate branch database or Job state.
+
+Each record contains: `repository_url`, `branch`, `project_id`, `owning_job_id`,
+`owning_task_id`, `purpose`, `parent_development_branch`, `release_branch`,
+`base_sha`, `integration_target`, `dependencies`, `owner`,
+`authorization_ref`, `handoff_recipient`, `closure_owner_job_id`,
+`closure_owner_task_id`, `deliverables`, `merge_conditions`,
+`retire_conditions`, `status`, `disposition`, `final_head_sha`,
+`handoff_ref`, `closure_evidence_ref` and `physical_ref`. Merge records
+also carry independently checked `review_ref`, `ci_ref`,
+`dependencies_verified_ref`, `integration_sha` and
+`merge_authorization_ref`. Keeping a remote ref after logical closure
+requires `preservation_ref` for a Human KEEP decision.
+
+The lifecycle is:
+
+```text
+PROPOSED → AUTHORIZED → ACTIVE → READY_FOR_HANDOFF → REVIEW → MERGED → CLOSED
+                         ↘ RETIRED ────────────────────────────────↗
+```
+
+AUTHORIZED is bound to existing Job/Task authority, **not an additional per-branch
+Human approval gate**. Source mutation on a Working Branch requires an active
+Project, OWNED repo, current Development/Release mapping, non-retired registration,
+matching Job and Task, authorization evidence and an AUTHORIZED/ACTIVE lifecycle.
+A branch in READY_FOR_HANDOFF, REVIEW, MERGED, RETIRED or CLOSED is not writable.
+Development Branch writes retain existing authority checks; Release/Main source
+writes do not become authorized by being part of this lifecycle.
+
+`working_branch_prepare` prepares registration or status transitions for normal
+GitHub Memory Repo CAS/readback. It does **not** create or delete a Git ref, merge
+a PR, or deploy. A registered branch's base SHA must be reconciled with live Git,
+and branch status/evidence are not trusted without independent readback.
+
+### Convergence / integration ownership
+
+For parallel M01/M02 and downstream M03:
+
+- M01 and M02 produce distinct task-owned branches and hand off their final SHA
+  and evidence to M03; they do not remove the branch themselves.
+- M03 is explicitly the Convergence Task, Integration Owner and Branch Closure
+  Owner, and owns all incoming branches declared in its Task record.
+- M03 independently verifies dependencies, findings, acceptance, review/CI,
+  selects MERGED or RETIRED, integrates only authorized results, records each
+  final disposition and actual Git ref state, and performs the downstream handoff.
+- A successful `run_complete` for a convergence Task is rejected until all
+  incoming branch names exactly match its closure-owned branches, each branch is
+  CLOSED with final SHA, disposition, evidence, handoff and verified physical ref,
+  and a downstream Handoff is prepared. An orphan branch is never silently
+  discarded or relabeled DONE.
+- An unsuccessful experiment may be RETIRED without a merge. A Human KEEP
+  branch is closed logically while the physical Git ref is retained and
+  `preservation_ref` records the exception.
+
+This contract does not transfer merge or production authority. Source mutation,
+integration merge, Main release merge, ref deletion and production deployment
+remain separately authorized, independently reviewed and verified against exact
+source/target commits. Tests and CI are not production verification.
