@@ -24,7 +24,7 @@ export type WorkingBranch = {
   merge_conditions: string[]
   retire_conditions: string[]
   status: 'PROPOSED' | 'AUTHORIZED' | 'ACTIVE' | 'READY_FOR_HANDOFF' | 'REVIEW' | 'MERGED' | 'RETIRED' | 'CLOSED'
-  disposition?: 'MERGED' | 'RETIRED' | 'KEEP' | null
+  disposition?: 'MERGED' | 'RETIRED' | null
   final_head_sha?: string | null
   handoff_ref?: string | null
   review_ref?: string | null
@@ -38,7 +38,7 @@ export type WorkingBranch = {
 }
 
 const STATUSES = new Set(['PROPOSED','AUTHORIZED','ACTIVE','READY_FOR_HANDOFF','REVIEW','MERGED','RETIRED','CLOSED'])
-const DISPOSITIONS = new Set(['MERGED','RETIRED','KEEP'])
+const DISPOSITIONS = new Set(['MERGED','RETIRED'])
 const SHA = /^[a-f0-9]{40}$/i
 const requiredString = (v: unknown) => typeof v === 'string' && v.trim().length > 0
 const strings = (v: unknown) => Array.isArray(v) && v.every(requiredString)
@@ -138,6 +138,8 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
     return 'BRANCH_TRANSITION_INVALID: transition is not permitted.'
   if (previous.authorization_ref && previous.authorization_ref !== next.authorization_ref)
     return 'BRANCH_AUTHORIZATION_IMMUTABLE: existing approval lineage cannot be rewritten.'
+  if (previous.disposition && previous.disposition !== next.disposition)
+    return 'BRANCH_DISPOSITION_IMMUTABLE: merge/retire outcome is independent of KEEP preservation.'
   if (next.status === 'AUTHORIZED' && !next.authorization_ref)
     return 'BRANCH_AUTHORIZATION_REQUIRED: bind approved Job/Task evidence before activation.'
   if (next.status === 'READY_FOR_HANDOFF' && (!next.final_head_sha || !next.handoff_ref))
@@ -158,8 +160,7 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
       (!['MERGED','RETIRED'].includes(previous.status) ||
        !next.disposition || !next.handoff_ref || !next.closure_evidence_ref ||
        !next.final_head_sha || next.physical_ref == null || next.physical_ref === 'UNKNOWN' ||
-       (next.physical_ref === 'PRESENT' &&
-         (next.disposition !== 'KEEP' || !next.preservation_ref))))
+       (next.physical_ref === 'PRESENT' && !next.preservation_ref)))
     return 'BRANCH_CLOSURE_UNVERIFIED: disposition, handoff, evidence and Git ref state required.'
   return null
 }
@@ -176,11 +177,10 @@ export function convergenceCompletionError(
       incoming.some(name => !owned.some(b => b.branch === name)))
     return 'CONVERGENCE_ORPHAN_BRANCH: incoming and closure-owned branch sets must match.'
   for (const b of owned) {
-    if (b.status !== 'CLOSED' || !['MERGED','RETIRED','KEEP'].includes(b.disposition ?? '') ||
+    if (b.status !== 'CLOSED' || !['MERGED','RETIRED'].includes(b.disposition ?? '') ||
         !b.final_head_sha || !b.handoff_ref || !b.closure_evidence_ref ||
         !b.physical_ref || b.physical_ref === 'UNKNOWN' ||
-        (b.physical_ref === 'PRESENT' &&
-          (b.disposition !== 'KEEP' || !b.preservation_ref)))
+        (b.physical_ref === 'PRESENT' && !b.preservation_ref))
       return 'CONVERGENCE_CLOSURE_PENDING: ' + b.branch + ' lacks verified closure/disposition/handoff/ref status.'
   }
   return null
