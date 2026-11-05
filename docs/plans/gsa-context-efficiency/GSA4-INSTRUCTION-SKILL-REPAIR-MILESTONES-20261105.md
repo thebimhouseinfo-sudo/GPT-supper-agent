@@ -55,8 +55,8 @@ Ensure an accepted expert solution (including its exact operational algorithm an
 
 | Task | Action | Deliverable / exit |
 |---|---|---|
-| **M1-T1** | Add minimal accepted-decision recognition/owner/handoff/saved-status contract to Shared or existing receiving Role as proved by M0 | Applicable Role-only text includes Human acceptance trigger, no auto discussion, complete WHAT/WHY/HOW fidelity |
-| **M1-T2** | Clarify Orchestrator/Planner existing authorized recording or handoff responsibility; keep Reviewer/Critic/Tester read-only and Advisor within current rights | Authorization and failure routing; no ninth Role |
+| **M1-T1** | **MUST MODIFY Shared** with a minimal universally-visible accepted-decision recognition and handoff contract; preserve actual write authority of each Role | All eight independently-entered Role-only harness texts include accepted Project-decision trigger, no auto discussion, WHAT/WHY/HOW fidelity and truthful SAVED/NOT_SAVED |
+| **M1-T2** | Clarify Orchestrator/Planner existing authorized recording or handoff responsibility; receiving Reviewer/Critic/Tester/Advisor/Designer/Coder may only do what their current permissions allow | Full source handoff to permitted owner, no role-rights expansion and no ninth Role |
 | **M1-T3** | Keep secretary.ts as optional method for full DEC, CAS, provenance and SUPERSEDES; avoid loading it for speculation | Stable existing DEC path, exact SHA readback, truthful NOT_SAVED where not persisted |
 | **M1-T4** | Add long expert-procedure fixture, rejected tentative opinion, correction chain and cross-Chat recovery; compare no-Skill versus loaded Skill | Positive and negative test evidence, exact full source not a topic summary |
 
@@ -70,7 +70,7 @@ Keep approved source-changing U-D pre-code applicability and independent Critic 
 
 | Task | Action | Deliverable / exit |
 |---|---|---|
-| **M2-T1** | Transfer minimal U-D applicability/required proposed-artifact/failure-route to Coder Role; keep descriptive file/function/caller HOW in coding-loop Skill | Role-only Coder can identify approved U-D requirement and STOP/route if necessary evidence absent |
+| **M2-T1** | Transfer descriptive pre-code **trigger for applicable source-changing Goals/related Tasks under adopted BP-05** to Coder Role; distinguish that generally applicable Coder method from the separately Human/milestone-authorized CR stage. Keep file/function/caller HOW in coding-loop Skill | Role-only Coder cannot skip relevant descriptive proposal when skill absent, and does not invent global CR for ordinary Tasks |
 | **M2-T2** | Transfer minimal PRE_CODE_TECHNICAL review-subject contract into Critic Role; keep completeness checklist and example risk checks inside critic-review Skill | Authorized Critic receives entire Task set and builds independent verdict before prior Reviewer comparison |
 | **M2-T3** | Inspect durable current U-D Task and milestone binding before any new validation code. CR record input review_focus is caller-controlled. Detect a real U-D completion consumer or do not assert a mechanical bypass guard. | Proved trusted subject/ref/SHA binding **OR** explicit NOT_FEASIBLE/DEFERRED mechanical enforcement with a truthful source-contract fix |
 | **M2-T4** | Preserve preCodeTechnicalError for explicitly PRE_CODE_TECHNICAL claims; never use GENERAL CR to declare U-D completed. If trusted existing completion binding exists, add only the narrow validation at that consumer. | Positive and adversarial CR focus tests, preserved unrelated GENERAL tests |
@@ -127,8 +127,8 @@ Produce a complete verified change inventory, source-test and authorization reco
 
 | Finding | Milestone owner | Primary negative test |
 |---|---|---|
-| A-01 confirmed Secretary | M1 | Human accepted decision with 7-step HOW but no secretary Skill: no missing exceptions; read-only Role cannot write; NOT_SAVED when no readback |
-| A-02 U-D Coder | M2 | Applicable source-changing task not permitted to silently omit required descriptive proposal when coding-loop is absent |
+| A-01 confirmed Secretary | M1 | Human accepted decision with 7-step HOW but no secretary Skill: **all eight Role-only entries** recognize and route; no missing exceptions; read-only Role cannot write; NOT_SAVED when no readback |
+| A-02 U-D Coder | M2 | Applicable BP-05 source-changing task cannot silently omit descriptive proposal without coding-loop; unrelated non-source task gets no global CR gate |
 | A-03 U-D Critic | M2 | GENERAL CR still valid generally but cannot be reused as U-D PRE_CODE_TECHNICAL completion |
 | A-04 U-F Coder | M3 | Three independent PRODUCT_FAILURE retests across Jobs/chats stop ordinary fourth patch |
 | A-05 DEV/OPERATION | M3 | User-owned LISP/DWG filename/host action never inherits internal Git SHA; denied Host action remains denied |
