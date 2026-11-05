@@ -27,6 +27,12 @@ export type WorkingBranch = {
   disposition?: 'MERGED' | 'RETIRED' | 'KEEP' | null
   final_head_sha?: string | null
   handoff_ref?: string | null
+  review_ref?: string | null
+  ci_ref?: string | null
+  dependencies_verified_ref?: string | null
+  integration_sha?: string | null
+  merge_authorization_ref?: string | null
+  preservation_ref?: string | null
   closure_evidence_ref?: string | null
   physical_ref?: 'PRESENT' | 'DELETED' | 'UNKNOWN'
 }
@@ -75,6 +81,12 @@ export function parseWorkingBranchRows(manifestText: string): WorkingBranch[] | 
         (item.disposition != null && !DISPOSITIONS.has(item.disposition)) ||
         (item.final_head_sha != null && !SHA.test(item.final_head_sha)) ||
         (item.handoff_ref != null && !requiredString(item.handoff_ref)) ||
+        (item.review_ref != null && !requiredString(item.review_ref)) ||
+        (item.ci_ref != null && !requiredString(item.ci_ref)) ||
+        (item.dependencies_verified_ref != null && !requiredString(item.dependencies_verified_ref)) ||
+        (item.integration_sha != null && !SHA.test(item.integration_sha)) ||
+        (item.merge_authorization_ref != null && !requiredString(item.merge_authorization_ref)) ||
+        (item.preservation_ref != null && !requiredString(item.preservation_ref)) ||
         (item.closure_evidence_ref != null && !requiredString(item.closure_evidence_ref)) ||
         (item.physical_ref != null && !['PRESENT','DELETED','UNKNOWN'].includes(item.physical_ref))) return null
     const key = repo.url.toLowerCase() + '|' + item.branch
@@ -130,6 +142,14 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
     return 'BRANCH_AUTHORIZATION_REQUIRED: bind approved Job/Task evidence before activation.'
   if (next.status === 'READY_FOR_HANDOFF' && (!next.final_head_sha || !next.handoff_ref))
     return 'BRANCH_HANDOFF_REQUIRED: final SHA and handoff reference are required.'
+  for (const key of ['final_head_sha','handoff_ref','review_ref','ci_ref','dependencies_verified_ref',
+    'integration_sha','merge_authorization_ref','preservation_ref','closure_evidence_ref'] as const) {
+    if (previous[key] && next[key] !== previous[key])
+      return 'BRANCH_EVIDENCE_IMMUTABLE: recorded review, SHA and handoff lineage cannot be erased.'
+  }
+  if (next.status === 'MERGED' && (!next.review_ref || !next.ci_ref ||
+      !next.dependencies_verified_ref || !next.integration_sha || !next.merge_authorization_ref))
+    return 'BRANCH_MERGE_GATES_MISSING: review, CI, dependency, integration SHA and merge authority required.'
   if (['MERGED','RETIRED'].includes(next.status) &&
       (next.disposition !== next.status || !next.final_head_sha ||
        !next.handoff_ref || !next.closure_evidence_ref))
@@ -137,7 +157,9 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
   if (next.status === 'CLOSED' &&
       (!['MERGED','RETIRED'].includes(previous.status) ||
        !next.disposition || !next.handoff_ref || !next.closure_evidence_ref ||
-       !next.final_head_sha || next.physical_ref == null))
+       !next.final_head_sha || next.physical_ref == null || next.physical_ref === 'UNKNOWN' ||
+       (next.physical_ref === 'PRESENT' &&
+         (next.disposition !== 'KEEP' || !next.preservation_ref))))
     return 'BRANCH_CLOSURE_UNVERIFIED: disposition, handoff, evidence and Git ref state required.'
   return null
 }
@@ -156,7 +178,9 @@ export function convergenceCompletionError(
   for (const b of owned) {
     if (b.status !== 'CLOSED' || !['MERGED','RETIRED','KEEP'].includes(b.disposition ?? '') ||
         !b.final_head_sha || !b.handoff_ref || !b.closure_evidence_ref ||
-        !b.physical_ref || b.physical_ref === 'UNKNOWN')
+        !b.physical_ref || b.physical_ref === 'UNKNOWN' ||
+        (b.physical_ref === 'PRESENT' &&
+          (b.disposition !== 'KEEP' || !b.preservation_ref)))
       return 'CONVERGENCE_CLOSURE_PENDING: ' + b.branch + ' lacks verified closure/disposition/handoff/ref status.'
   }
   return null
