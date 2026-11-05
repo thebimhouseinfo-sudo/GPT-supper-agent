@@ -1,7 +1,7 @@
 # GSA4 — Instruction / Harness / Skill Classification Repair Plan
 
 Date: 2026-11-05
-Status: PLAN_QUALITY_PASS — direct static source-grounded Reviewer/CRL recheck; READY FOR IMPLEMENTATION-AUTHORIZATION DECISION; product repairs NOT STARTED; no merge/deploy authorization
+Status: PLAN_QUALITY_PASS (design) — Human has subsequently approved implementation; source-level repairs applied on work branch, full CI/runtime acceptance NOT VERIFIED; no merge/deploy authorization
 Review scope: direct static source/plan cross-check, NOT a production GSA CRITIC_REVIEW Verification or runtime agent-behavior PASS
 Execution mode: DIRECT AGENT on dedicated Git branch; do not use GSA Bootstrap or create a GSA Job for this documentation step
 Repository: thebimhouseinfo-sudo/GPT-supper-agent
@@ -186,3 +186,6 @@ This document covers only the branch-local **documentation and source-grounded p
 ## 12. Requested next decision
 
 The corrected plan, six repair milestones and source-level technical proposal have passed direct static design review. U-D subject matching remains conditional on proven durable evidence; it must not be represented as solved mechanically by a caller-controlled review_focus. Source implementation, exact Project authorization and actual model/host verification remain future work. No new Human gate is created by these documents.
+## Implementation evidence update — 2026-11-05
+
+Source edits were subsequently authorized by Human and applied to the dedicated work branch. Source-only role/skill checks are PASS, but the full Node/Deno workflow has not run and live Agent/Host behavior is NOT VERIFIED. The original design PASS is unchanged; implementation and release PASS are distinct. See test-lab/results/gsa4-instruction-skill-repair-20261105.md and the source changes. U-D trusted completion binding and U-F automatic history guard remain explicitly unverified, not silently implemented.
