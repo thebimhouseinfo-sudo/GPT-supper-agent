@@ -1,7 +1,7 @@
 # GSA4 — Instruction / Harness / Skill Classification Repair Plan
 
 Date: 2026-11-05
-Status: SOURCE-REVIEWED PLAN / READY FOR IMPLEMENTATION-AUTHORIZATION DECISION; product repairs NOT STARTED; no merge/deploy authorization
+Status: PLAN_QUALITY_PASS — direct static source-grounded Reviewer/CRL recheck; READY FOR IMPLEMENTATION-AUTHORIZATION DECISION; product repairs NOT STARTED; no merge/deploy authorization
 Review scope: direct static source/plan cross-check, NOT a production GSA CRITIC_REVIEW Verification or runtime agent-behavior PASS
 Execution mode: DIRECT AGENT on dedicated Git branch; do not use GSA Bootstrap or create a GSA Job for this documentation step
 Repository: thebimhouseinfo-sudo/GPT-supper-agent
@@ -177,7 +177,7 @@ Stop and report BLOCKED when an existing Human/Project/branch/CR authorization c
 - Critical technical fact: current U-F retest-history helper is a pure source-level helper tested with fixtures, not evidence that any production dispatch has collected all historical Tester records.
 - Secretary/Project Memory: human acceptance plus durable SHA readback must be separately verified; a role text string cannot write a DEC or confer permissions. Handoff to existing authorized owner is a valid routing response but never a false SAVED status.
 - Test provenance: test-lab/ud-precode-cr.test.cjs expressly expects U-D's detailed proposal HOW to remain progressive; test-lab/uf-three-cycle-retest.test.cjs uses synthetic cases; test-lab/ua-decision-fidelity.test.cjs validates existing Job DEC refs. Preserve these contracts and add missing no-Skill, real-binding and replay checks instead of rewriting test semantics.
-- Plan quality status: source-grounded, structurally ready for implementation *decision*, not proof that fixes work, not new product approval, and not an executable GSA Review or CR Verification.
+- Final plan quality after second source-grounded CRL: PASS (document design and cross-document consistency; 15/15 traceability/structural checks). The first review CHANGES_REQUIRED and intermediate PASS_WITH_FINDINGS remain recorded in CRL history. This does not prove production fixes, create product approval or count as official GSA CRITIC_REVIEW Verification.
 
 ## 11. Explicit exclusions and execution authority
 
@@ -185,4 +185,4 @@ This document covers only the branch-local **documentation and source-grounded p
 
 ## 12. Requested next decision
 
-Human reviews the corrected source-repair sequence. U-D subject matching remains CONDITIONAL on proven existing durable evidence; it must not be represented as solved mechanically by a caller-controlled review_focus. Once source implementation is explicitly authorized under the existing branch/scope rules, begin P0 on this branch and use the smallest changes plus independent evidence. No new Human gate is created by this document.
+The corrected plan, six repair milestones and source-level technical proposal have passed direct static design review. U-D subject matching remains conditional on proven durable evidence; it must not be represented as solved mechanically by a caller-controlled review_focus. Source implementation, exact Project authorization and actual model/host verification remain future work. No new Human gate is created by these documents.
