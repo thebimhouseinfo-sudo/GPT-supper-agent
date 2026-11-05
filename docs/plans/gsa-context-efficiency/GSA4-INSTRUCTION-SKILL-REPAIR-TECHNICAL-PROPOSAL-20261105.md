@@ -41,7 +41,7 @@ Source paths below are relative to supabase/functions/gsa-mcp/ unless prefixed d
 | harness-skill-tools.ts:49–94 | get_skill_catalog and load_skill(name) progressive method body | KEEP APIs, schemas, errors |
 | job-prepare-tool.ts:65–69 | NEXT required_skills only supports ui-coder-frontend | KEEP; no unreviewed enum extension |
 | run/run-begin.ts:89–101,197–200 | NEXT Run returns explicitly declared required Skill context | KEEP; no duplicate injection |
-| harness/shared.ts:1–54 | 49 Shared clauses contain global rights and some long specialized procedures | MODIFY only if global accepted-decision accountability belongs here; defer method dedup |
+| harness/shared.ts:1–54 | 49 Shared clauses contain global rights and some long specialized procedures | **MUST MODIFY** with universally-visible accepted-decision recognition/handoff obligation; defer method dedup |
 | harness/roles/planner.ts:18 | Reads original accepted DEC and links Task but no explicit acceptance-to-recording ownership | MODIFY concise owner/trigger/status |
 | harness/roles/orchestrator.ts:8,23–27 | Repair/retest routing without explicit U-F same-defect patch #4 threshold | MODIFY handoff + U-F STOP |
 | harness/roles/coder.ts:10,19–21 | Original DEC read, bounded repair/Goal Recheck but no U-D and U-F explicit trigger/limit | MODIFY concise U-D, U-F and DEV/OPERATION boundary |
@@ -80,7 +80,7 @@ The source map can be a Markdown appendix or small synthetic test-lab fixture. I
 
 Trigger only when Human genuinely accepts or corrects a concrete decision inside an identified active GSA Project. Ordinary brainstorming, an AI proposal, tentative assent or out-of-Project chat is not an automatic Project DEC.
 
-**Minimum always-visible contract:** receiving Role recognizes duty to preserve exact WHAT/WHY/HOW, ordered algorithm, examples, forbidden alternatives, scope, provenance and correction history. The receiver either performs an already-authorized recording action or hands full source and Human-acceptance evidence to the existing authorized owner. Reviewer/Critic/Tester/Advisor gain NO new Memory/source write permission. A routed/drafted outcome is NOT SAVED. Secretary remains a Planner-suggested on-demand method, not a ninth Role or a generic conversational role.
+**Minimum always-visible Shared contract (MANDATORY for all 8 Roles):** receiving Role recognizes duty to preserve exact WHAT/WHY/HOW, ordered algorithm, examples, forbidden alternatives, scope, provenance and correction history. The receiver either performs an already-authorized recording action or hands full source and Human-acceptance evidence to the existing authorized owner. Reviewer/Critic/Tester/Advisor gain NO new Memory/source write permission. A routed/drafted outcome is NOT SAVED. Secretary remains a Planner-suggested on-demand method, not a ninth Role or a generic conversational role.
 
 **Authorized storage:** projects/<project_id>/KNOWLEDGE/DECISIONS/DEC-<id>.md in current authorized Memory Repo, existing authorize_project_scope and authorize_memory_mutation, GitHub exact create/CAS and independent blob readback. Report SAVED only with confirmed path/SHA. Corrected accepted DEC creates immutable superseding record and keeps the previous full text readable. Planner consumes existing decision-fidelity.ts source path/SHA and DECISION_REF (selected_source_evidence) with DECISION_COVERAGE edges (relationship_assessment); no new Job field or untrusted acceptance flag.
 
@@ -94,7 +94,7 @@ Trigger only when Human genuinely accepts or corrects a concrete decision inside
 
 Source approved U-D Plan at docs/plans/gsa-context-efficiency/DETAIL-PLAN.md (BP-05/BP-06, U-D) specifies a descriptive proposal before the relevant authorized application source changes for the approved Goal and whole related Tasks. The Rule is a conditional Role obligation and must not disappear without coding-loop Skill. Its Method remains in Skill: one whole-related-Task Markdown proposal, file actions CREATE/MODIFY/REUSE_AS_IS/KEEP/REMOVE; exact actual/proposed owners/functions/callers/interfaces/dependencies, inputs/outputs, source evidence, regression oracle, host effects and exclusions, short version for small Task, no empty source stubs or second Registry.
 
-**Coder Role minimum:** inspect approved Job/Task and original Decision for actual U-D applicability; prepare descriptive proposal before code for the applicable source Task; request PRE_CODE_TECHNICAL review only under the EXISTING direct Human cr/crl or approved milestone authority; treat absent required independent completion as STOP/UNVERIFIED, not permission to create a Critic gate; after authorized review, reviewed inventory is reference, never a source-write grant. Unrelated Coder Tasks do not acquire a universal Critic stage.
+**Coder Role minimum:** distinguish two obligations. (1) Approved BP-05 descriptive pre-code applies to relevant source-changing Goal and related Tasks of the adopted coding workflow, not only work named U-D; inspect real Job/Task + original Decisions and prepare a proportionate proposal before applicable source write. (2) Independent PRE_CODE_TECHNICAL Critic execution is still only direct-Human or precisely Human-preauthorized milestone; missing required review is STOP/UNVERIFIED, never permission for a new automatic Critic gate. Reviewed inventory is a reference, not source-write authorization. Unrelated non-source Tasks do not acquire a global Critic stage.
 
 ### Critic identity and evidence
 
@@ -137,7 +137,7 @@ Keep index.ts instructions unchanged without measurement of host delivery and se
 
 | Action | File | Exact proposed modification |
 |---|---|---|
-| MODIFY | harness/shared.ts | Add concise universally applicable accepted-decision responsibility only if no better existing Role owner; preserve all security invariants, then M4 removes only proven redundant method |
+| MODIFY_REQUIRED | harness/shared.ts | Universal accepted-Decision recognition and permitted-owner handoff for all eight independently entered Roles; never grant writes; preserve security invariants, defer method removal to M4 |
 | MODIFY | harness/roles/planner.ts | Accepted decision owner/handoff, truthful durable SAVED/NOT_SAVED, preserve original DEC fidelity |
 | MODIFY | harness/roles/orchestrator.ts | Decision recording authorized route and U-F three-cycle STOP coordination |
 | MODIFY | harness/roles/coder.ts | U-D applicability/pre-code/authorized Critic condition, U-F same-defect STOP, DEV/OPERATION permission invariant |
@@ -163,6 +163,20 @@ Order: M0 exact source/read/authorization inventory -> M1 Role/Secretary route +
 Existing regression test candidates: test-lab/gsa4-integration-parity.test.cjs, gsa3-tool-skill-payload.test.cjs, gsa4-a4-selective-harness.test.cjs, ua-decision-fidelity.test.cjs, ud-precode-cr.test.cjs, uf-three-cycle-retest.test.cjs, runtime-logic.test.cjs and related auth/plan/cursor tests. Discover installed Node/TypeScript runner instead of assuming a root package script.
 
 **Evidence types:** STATIC_SOURCE / SOURCE_EXECUTED_SIMULATED / REAL_PROJECT_DURABLE / LIVE_MODEL_HOST_OBSERVED. Source text and simulation cannot claim actual autonomous Skill loading, Decision persistence, host click, or production runtime parity. Do not invent measured token savings.
+
+## 9A. Findings-to-source traceability
+
+| Finding | Exact repair owner | Evidence boundary |
+|---|---|---|
+| A-01 CONFIRMED | Shared + existing Planner/Orchestrator + optional secretary method | All eight no-Skill Role triggers, authorized DEC source readback/NOT_SAVED |
+| A-02 HIGH-RISK | Coder Role + coding-loop method | Descriptive pre-code for BP-05 source-changing tasks, no invented global CR |
+| A-03 HIGH-RISK | Critic Role + existing critic-review-tools inventory | Caller-controlled GENERAL focus not pre-code completion; no synthetic trusted consumer |
+| A-04 HIGH-RISK | Coder + Orchestrator Role + existing debugging helper | Three independent full failed cycles across Chats/Jobs stop blind fourth patch |
+| A-05 POTENTIAL | Coder Role authority + specialized coding-loop | DEV protection and user/host OPERATION lifecycle both retained |
+| B-01 POTENTIAL | Shared rule inventory + M4 source metric | No removed authority or STOP |
+| B-02 POTENTIAL | Eight Role loops + progressive Skill methods | No lost duty when relevant Skill is missing |
+| B-03 POTENTIAL | index.ts server text consumer measurement | KEEP/NO_CHANGE if delivered bytes/cost unknown |
+| B-04 POTENTIAL | Planner/Reviewer plan contract + job-planning method | Planning review revision/READY remains without Skill |
 
 ## 10. Threats, mitigations and test expectations
 
