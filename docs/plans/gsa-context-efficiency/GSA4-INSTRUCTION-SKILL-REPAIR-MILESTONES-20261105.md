@@ -1,7 +1,7 @@
 # GSA4 — Instruction / Harness / Skill Classification Repair Milestones
 
 **Date:** 2026-11-05  
-**State:** MILESTONE_DESIGN_PASS (direct source-grounded review) / SOURCE NOT IMPLEMENTED  
+**State:** MILESTONE_DESIGN_PASS / SOURCE CONTRACT PATCHES APPLIED / FULL NODE CI NOT VERIFIED  
 **Branch:** fix/gsa4-instruction-skill-classification  
 **Base:** main @ c150954b76fea919907edc15d0673aad2914a1f3  
 **Proposed integration target:** NOT ASSUMED; reconcile active Project Memory branch policy before merge or execution authorization  
@@ -21,12 +21,12 @@ No ninth Secretary Role, new automatic Discussion/Job, new database/schema, new 
 
 | Milestone | Purpose | Dependencies | Exit evidence | Status |
 |---|---|---|---|---|
-| **M0 — Classified contract + reproducible baseline** | Freeze real role/skill/host delivery and decide exact ownership/trigger/fallback | Current branch HEAD + GSA4-G3, U-A/U-D/U-F source and approved plan | Clause-to-owner map; eight-Role × Job/Task read matrix; baseline capture, negative fixtures, authorization matrix | PLANNED |
-| **M1 — Accepted Decision responsibility (A-01)** | Make genuine Human-accepted decision preservation independent of Secretary Skill | M0 | No-Skill acceptance/handoff, full DEC readback or truthful NOT_SAVED; never unauthorized Role write | PLANNED |
-| **M2 — Conditional U-D contract + CR evidence identity (A-02/A-03)** | Preserve pre-code applicability and distinguish pre-code completion from GENERAL CR | M0 + M1 Decision refs where applicable | No-Skill Coder/Critic contract; existing authorization; PRE_CODE_TECHNICAL exact ref/SHA; GENERAL compatibility; no false mechanical-guard claim | PLANNED |
-| **M3 — Third-cycle U-F stop + artifact boundary (A-04/A-05)** | Move Coder/Orchestrator stop responsibility into always-visible text, keep causal method on demand | M0 + M2 scope/invariants | Same-defect 3-cycle STOP, UNVERIFIED exclusions, no unauthorized host/user-file/source action | PLANNED |
-| **M4 — Evidence-based reverse classification (B-01..B-04)** | Remove method overlap only where safe; preserve required read paths and eight-role independence | M1–M3 source-level tests PASS | Before/after rendered Role/Skill payload; no-Skill invariant coverage; actual host data or marked UNKNOWN; keep/revert decision | PLANNED |
-| **M5 — Integration parity, independent review and handoff** | Validate exact branch diff, tests, context data and known gaps before any release recommendation | M0–M4 | Exact SHA, source tests, negative tests, report, Reviewer findings, optional independently authorized CR, explicit release boundary | PLANNED |
+| **M0 — Classified contract + reproducible baseline** | Freeze real role/skill/host delivery and decide exact ownership/trigger/fallback | Current branch HEAD + GSA4-G3, U-A/U-D/U-F source and approved plan | Clause-to-owner map; eight-Role × Job/Task read matrix; baseline capture, negative fixtures, authorization matrix | SOURCE_PASS |
+| **M1 — Accepted Decision responsibility (A-01)** | Make genuine Human-accepted decision preservation independent of Secretary Skill | M0 | No-Skill acceptance/handoff, full DEC readback or truthful NOT_SAVED; never unauthorized Role write | SOURCE_PASS_LIVE_UNVERIFIED |
+| **M2 — Conditional U-D contract + CR evidence identity (A-02/A-03)** | Preserve pre-code applicability and distinguish pre-code completion from GENERAL CR | M0 + M1 Decision refs where applicable | No-Skill Coder/Critic contract; existing authorization; PRE_CODE_TECHNICAL exact ref/SHA; GENERAL compatibility; no false mechanical-guard claim | ROLE_SOURCE_PASS_BINDING_DEFERRED |
+| **M3 — Third-cycle U-F stop + artifact boundary (A-04/A-05)** | Move Coder/Orchestrator stop responsibility into always-visible text, keep causal method on demand | M0 + M2 scope/invariants | Same-defect 3-cycle STOP, UNVERIFIED exclusions, no unauthorized host/user-file/source action | ROLE_SOURCE_PASS_DISPATCH_UNVERIFIED |
+| **M4 — Evidence-based reverse classification (B-01..B-04)** | Remove method overlap only where safe; preserve required read paths and eight-role independence | M1–M3 source-level tests PASS | Before/after rendered Role/Skill payload; no-Skill invariant coverage; actual host data or marked UNKNOWN; keep/revert decision | NO_CHANGE_LEGACY_DEDUP |
+| **M5 — Integration parity, independent review and handoff** | Validate exact branch diff, tests, context data and known gaps before any release recommendation | M0–M4 | Exact SHA, source tests, negative tests, report, Reviewer findings, optional independently authorized CR, explicit release boundary | PARTIAL_PASS_CI_PENDING |
 
 The milestones are **repair units** for findings in the audit; they do not re-open or reimplement the original U-A/U-D/U-F product feature Jobs. Their design is source-reviewed, not a production GSA Job plan, Human execution authorization, runtime PASS or automatic merge. Use existing results and tests as baselines and modify only the actual missing contract.
 
@@ -140,3 +140,7 @@ Produce a complete verified change inventory, source-test and authorization reco
 ## Milestone halt/restart rule
 
 If any milestone discovers a task requiring new Criteria WHAT/WHY, ungranted Memory/source authority, unverified CR admission, misleading runtime evidence or a regression in the original required behavior, halt that affected task and route through existing owner. Continue non-conflicting source-read or test work. Do not create a compensating gate, auto-enable source writes or claim the milestone complete by lowering its acceptance tests. Never silently reclassify a mandatory rule as optional to improve context size.
+
+## Implementation execution status — 2026-11-05
+
+Source clauses and source-level regression checks have been added on the dedicated work branch under subsequent Human implementation authorization. M0–M3 contracts are SOURCE_PASS on executed subset tests, M4 records NO_CHANGE on legacy dedup (new Shared clause shortened), and M5 is PARTIAL_PASS because no hosted Node/Deno CI run was obtained. This milestone plan remains the reviewed design baseline, not a production GSA Job or completed official Verification. See test-lab/results/gsa4-instruction-skill-repair-20261105.md.
