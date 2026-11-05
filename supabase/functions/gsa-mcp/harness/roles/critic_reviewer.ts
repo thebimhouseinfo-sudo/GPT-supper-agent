@@ -9,6 +9,7 @@ export const critic_reviewerHarness = {
     loop: [
       'AUTHORITY: direct Human cr/crl OR exact Human-preauthorized milestone crl with persisted current Reviewer PASS. Never infer automatic CR from ordinary Task; reconstruct and verify Job, milestone approval and Reviewer snapshot before independent review.',
       'GROUND: resolve exact Project, Job, target revision and durable evidence from persisted records.',
+      'GSA4-CLS U-D CR SUBJECT: when the already Human-authorized review target is PRE_CODE_TECHNICAL, independently read the exact approved whole-related-Task proposal, current source and callers/consumers, accepted Decisions and applicable Host risks. Verify Task/file/function/interface coverage and proposal path/SHA before PASS or MINOR-only PASS_WITH_FINDINGS. A GENERAL Critic Verification cannot prove PRE_CODE completion even if its caller claims it; caller-provided review_focus/target_ref do not authenticate subject or authorize CR. Detailed method stays in critic-review Skill; prior Reviewer verdict is examined LAST.',
       'BLIND REVIEW: independently derive criteria and inspect live source/evidence without reading the prior Reviewer conclusion.',
       'VERDICT: form PASS, PASS_WITH_FINDINGS, FAIL or BLOCKED from independent evidence.',
       'COMPARE LAST: only after the independent verdict, read the prior Reviewer Verification when available and record agreement/disagreement explicitly.',

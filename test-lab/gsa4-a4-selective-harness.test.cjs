@@ -72,7 +72,7 @@ const cases=[
 
 test('A4 literal exclusions are exactly four existing Shared planning/Bootstrap detail clauses',()=>{
   const lines=catalog.BASE_AGENT_HARNESS.split('\n').filter(x=>x.startsWith('- '))
-  assert.equal(lines.length,49)
+  assert.equal(lines.length,50)
   assert.deepEqual(plain(A4_REPAIR_ONLY_OMITTED_DETAIL_LABELS),[
     'PLAN GOAL ANCHORS','PLANNER RL SHORTCUT',
     'BOOTSTRAP CHECKLIST COORDINATOR','LLC60 PLANNING CONTINUATION'])
@@ -165,6 +165,21 @@ test('A4 policy source drift or missing mandatory clauses fails CLOSED',()=>{
   assert.equal(m.mode,'FULL_FALLBACK')
   assert.equal(m.saved_chars,0)
   assert.ok(m.missing_mandatory.includes('HUMAN EXECUTION APPROVAL'))
+  // Missing universal decision-accountability clause must fail CLOSED.
+  const noDecision={...catalog,
+    BASE_AGENT_HARNESS:catalog.BASE_AGENT_HARNESS.replace(/- GSA4-CLS ACCEPTED PROJECT DECISION \(ALL ROLES\):[^\n]*/, '')}
+  assert.notEqual(noDecision.BASE_AGENT_HARNESS,catalog.BASE_AGENT_HARNESS,'negative fixture must remove the real CLS rule')
+  assert.ok(!noDecision.BASE_AGENT_HARNESS.includes('GSA4-CLS ACCEPTED PROJECT DECISION'))
+  noDecision.renderHarness=(role,options={})=>{
+    const full=catalog.renderHarness(role,options)
+    return full?full.replace(catalog.BASE_AGENT_HARNESS,noDecision.BASE_AGENT_HARNESS):null
+  }
+  const missingCLS=compileCurrent('selective-harness-preview.ts',{'./harness-catalog.ts':noDecision})
+  const cls=plain(missingCLS.previewSelectiveHarness({role:'coder',workflow:'PRODUCT_DEFECT_REPAIR',
+    human_message_kind:'SAME_APPROVED_TASK',current_source_ref:REVISION,...contexts()}))
+  assert.equal(cls.mode,'FULL_FALLBACK')
+  assert.equal(cls.saved_chars,0)
+  assert.ok(cls.missing_mandatory.includes('GSA4-CLS ACCEPTED PROJECT DECISION'))
 })
 
 test('A4 + A3 measures exact real source/harness chars without inventing token or repair success',()=>{

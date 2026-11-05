@@ -108,22 +108,33 @@ const uaRoleClauses = {
   "reviewer": "U-A REVIEWER: independently discover applicable current Project Memory DEC index even when a Job has NO references; inspect pinned original full DEC source, rationale, exceptions, provenance and supersession before confirming Plan/Task coverage. Reject omitted applicable decisions, heading-only fidelity, undocumented accepted changes or missing source readback even if metadata says COVERED."
 }
 const historicalTesterDiscovery = "SCENARIO DISCOVERY: prefer the ChatGPT-installed scenario-tester named in suggested_host_skills (not GSA load_skill). Activate/read the actual host skill through an available ChatGPT Skills surface and confirm availability before claiming it was loaded. If not exposed, mark SCENARIO_SKILL_NOT_LOADED, use available testing-evidence only for supported checks and report any uncovered scenario testing as UNVERIFIED. Every repaired revision requires independent Tester rerun of the failing scenario plus impacted passing regressions; look for newly exposed defects, then repeat Tester → Coder → Goal Recheck → Tester until truly PASS or blocked."
+// GSA4-CLS adds only explicitly tagged mandatory-role clauses; preserve exact
+// golden historical baseline by removing JUST those new clauses at this oracle.
+function withoutCLSShared(text) {
+  const lines=text.split('\n')
+  const extra=lines.filter(x=>x.startsWith('- GSA4-CLS '))
+  assert.equal(extra.length,1,'one universal CLS rule; unexpected Shared drift')
+  return lines.filter(x=>!x.startsWith('- GSA4-CLS ')).join('\n')
+}
 function withoutUA(h,role) {
-  let loop=h.loop
+  const stripped={...h,
+    authority:h.authority.filter(x=>!x.startsWith('GSA4-CLS ')),
+    loop:h.loop.filter(x=>!x.startsWith('GSA4-CLS '))}
+  let loop=stripped.loop
   if(role==='tester') {
     const current=loop.filter(x=>x.startsWith('SCENARIO DISCOVERY:'))
     assert.equal(current.length,1,'Tester scenario discovery clause remains singular')
     assert.match(current[0],/load GSA simulate on demand/,'U-E on-demand addition is not optional')
     loop=loop.map(x=>x.startsWith('SCENARIO DISCOVERY:')?historicalTesterDiscovery:x)
   }
-  if(!uaRoleClauses[role])return normalizeUFRole(role,{...h,loop})
+  if(!uaRoleClauses[role])return normalizeUFRole(role,{...stripped,loop})
   assert.equal(loop.filter(x=>x===uaRoleClauses[role]).length,1,'U-A role clause must be exactly one and unchanged: '+role)
-  return normalizeUFRole(role,{...h,loop:loop.filter(x=>x!==uaRoleClauses[role])})
+  return normalizeUFRole(role,{...stripped,loop:loop.filter(x=>x!==uaRoleClauses[role])})
 }
 function historicalRender(after,role,options={}) {
   const h=withoutUA(after.ROLE_HARNESSES[role],role)
   const skills=(after.ROLE_SKILLS[role]??[]).filter(x=>x!=='secretary' && x!=='simulate')
-  return [after.BASE_AGENT_HARNESS,'','ROLE: '+role.toUpperCase(),'',
+  return [withoutCLSShared(after.BASE_AGENT_HARNESS),'','ROLE: '+role.toUpperCase(),'',
     'AUTHORITY / BOUNDARIES',...h.authority.map(x=>'- '+x),'',
     'ROLE LOOP',...h.loop.map((x,i)=>(i+1)+'. '+x),'',
     'EXPECTED OUTPUTS',...h.outputs.map(x=>'- '+x),
@@ -188,7 +199,7 @@ test('GSA3 golden 8 Roles and 11 Skills, with explicit U-A/B/C/D/E/F reviewed de
   assert.deepEqual(Object.keys(after.RUNTIME_SKILLS),[...skills,'secretary','simulate'])
   assert.match(after.RUNTIME_SKILLS.simulate.body,/SOURCE BLIND/)
   assert.ok(after.RUNTIME_SKILLS.secretary.body.includes('Human'))
-  assert.equal(before.BASE_AGENT_HARNESS,after.BASE_AGENT_HARNESS)
+  assert.equal(before.BASE_AGENT_HARNESS,withoutCLSShared(after.BASE_AGENT_HARNESS))
   assert.equal(JSON.stringify(after.ROLE_SKILLS.planner),JSON.stringify([...before.ROLE_SKILLS.planner,'secretary']))
   for(const role of roles.filter(x=>x!=='planner' && x!=='tester')) assert.equal(JSON.stringify(after.ROLE_SKILLS[role]),JSON.stringify(before.ROLE_SKILLS[role]))
   assert.equal(JSON.stringify(after.ROLE_SKILLS.tester),JSON.stringify([...before.ROLE_SKILLS.tester,'simulate']))

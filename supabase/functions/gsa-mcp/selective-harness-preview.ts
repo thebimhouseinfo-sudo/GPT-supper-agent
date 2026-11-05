@@ -61,6 +61,7 @@ export const A4_REPAIR_ONLY_OMITTED_DETAIL_LABELS = [
 // guard against accidental broad policy filtering.
 export const A4_REPAIR_MANDATORY_MARKERS = [
   'HUMAN EXECUTION APPROVAL',
+  'GSA4-CLS ACCEPTED PROJECT DECISION',
   'TECH ADVISOR CHECKPOINTS',
   'CRITERIA CHANGE ORDER',
   'BRANCH AUTHORITY',
@@ -150,7 +151,10 @@ export function previewSelectiveHarness(input: PreviewInput) {
   })
   // Keep a complete, stable original clause classification; an insertion,
   // rename or duplicate of a previously audited candidate fails CLOSED.
-  const originalPolicyLineCount=49
+  // GSA4-CLS adds one universally mandatory accepted-decision rule.
+  // A4 remains an unconnected read-only preview: changing policy requires this
+  // explicit inventory update, never a silent relaxation of the fail-closed gate.
+  const originalPolicyLineCount=50
   const goodOmissions=omitted.length===A4_REPAIR_ONLY_OMITTED_DETAIL_LABELS.length &&
     new Set(omitted).size===omitted.length &&
     originalTextLines.length===originalPolicyLineCount &&
