@@ -393,3 +393,10 @@ The observed `.github/workflows/gsa-next-logic.yml` triggers `push` on **`main` 
 
 **Exit oracle:** CI/test evidence is tied to the **same candidate commit SHA** and independently fetched run conclusion. Changing application code is not needed to resolve this review planning omission.
 
+
+
+## 11. M3 Cross-Workload candidate evaluation supplement (2026-11-05)
+
+The source-grounded extension for the **two real-job crossed evaluation** is [GSA4-M3-CROSS-WORKLOAD-TECHNICAL-PROPOSAL.md](./GSA4-M3-CROSS-WORKLOAD-TECHNICAL-PROPOSAL.md), coordinated by the [M3 implementation plan](./GSA4-M3-CROSS-WORKLOAD-IMPLEMENTATION-PLAN.md) and [M3 milestones](./GSA4-M3-CROSS-WORKLOAD-MILESTONES.md). This supplement does not supersede A-first physical modularization, current Tool/Role/Skill contracts, approved Criteria, or separate Human implementation/merge/deploy gates.
+
+Original GSA4 B must independently produce BASE-G and BASE-S; G3 Candidate must repeat WS vs BASE-S with exact Candidate Harness revision genuinely active, Skill Candidate must repeat WG vs BASE-G with actual isolated Skill catalog revision. Reviewer/Tester prioritize correct actual work and safety before costs. Job Instructions are evaluated for routing/handoff continuity, **not** token savings. A Direct Agent admitted on deployed production Harness is **not** Candidate execution evidence. Unknown Host telemetry stays UNKNOWN. No trial/CI/merge success is claimed by these planning documents.
