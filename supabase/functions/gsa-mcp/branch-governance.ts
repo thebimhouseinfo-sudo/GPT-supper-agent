@@ -16,6 +16,7 @@ export type WorkingBranch = {
   integration_target: string
   dependencies: string[]
   owner: string
+  authorization_ref?: string | null
   handoff_recipient: string
   closure_owner_job_id: string
   closure_owner_task_id: string
@@ -62,6 +63,7 @@ export function parseWorkingBranchRows(manifestText: string): WorkingBranch[] | 
         !requiredString(item.owning_task_id) ||
         !requiredString(item.purpose) ||
         !requiredString(item.owner) ||
+        (item.authorization_ref != null && !requiredString(item.authorization_ref)) ||
         !requiredString(item.handoff_recipient) ||
         !requiredString(item.closure_owner_job_id) ||
         !requiredString(item.closure_owner_task_id) ||
@@ -101,6 +103,8 @@ export function workingBranchWriteError(
     return 'SOURCE_BRANCH_STALE: registered integration/release mapping differs from current Project policy.'
   if (!['AUTHORIZED','ACTIVE'].includes(record.status))
     return 'SOURCE_BRANCH_LIFECYCLE_BLOCKED: branch must be AUTHORIZED or ACTIVE for source mutation.'
+  if (!record.authorization_ref)
+    return 'SOURCE_BRANCH_AUTHORIZATION_MISSING: approved Job/Task authorization ref is required.'
   return null
 }
 
@@ -120,6 +124,12 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
   }
   if (!allowed[previous.status]?.includes(next.status))
     return 'BRANCH_TRANSITION_INVALID: transition is not permitted.'
+  if (previous.authorization_ref && previous.authorization_ref !== next.authorization_ref)
+    return 'BRANCH_AUTHORIZATION_IMMUTABLE: existing approval lineage cannot be rewritten.'
+  if (next.status === 'AUTHORIZED' && !next.authorization_ref)
+    return 'BRANCH_AUTHORIZATION_REQUIRED: bind approved Job/Task evidence before activation.'
+  if (next.status === 'READY_FOR_HANDOFF' && (!next.final_head_sha || !next.handoff_ref))
+    return 'BRANCH_HANDOFF_REQUIRED: final SHA and handoff reference are required.'
   if (['MERGED','RETIRED'].includes(next.status) &&
       (next.disposition !== next.status || !next.final_head_sha ||
        !next.handoff_ref || !next.closure_evidence_ref))
@@ -144,7 +154,7 @@ export function convergenceCompletionError(
       incoming.some(name => !owned.some(b => b.branch === name)))
     return 'CONVERGENCE_ORPHAN_BRANCH: incoming and closure-owned branch sets must match.'
   for (const b of owned) {
-    if (b.status !== 'CLOSED' || !['MERGED','RETIRED'].includes(b.disposition ?? '') ||
+    if (b.status !== 'CLOSED' || !['MERGED','RETIRED','KEEP'].includes(b.disposition ?? '') ||
         !b.final_head_sha || !b.handoff_ref || !b.closure_evidence_ref ||
         !b.physical_ref || b.physical_ref === 'UNKNOWN')
       return 'CONVERGENCE_CLOSURE_PENDING: ' + b.branch + ' lacks verified closure/disposition/handoff/ref status.'
