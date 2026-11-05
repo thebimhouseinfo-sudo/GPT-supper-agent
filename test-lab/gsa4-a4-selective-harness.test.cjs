@@ -167,7 +167,9 @@ test('A4 policy source drift or missing mandatory clauses fails CLOSED',()=>{
   assert.ok(m.missing_mandatory.includes('HUMAN EXECUTION APPROVAL'))
   // Missing universal decision-accountability clause must fail CLOSED.
   const noDecision={...catalog,
-    BASE_AGENT_HARNESS:catalog.BASE_AGENT_HARNESS.replace(/- GSA4-CLS ACCEPTED PROJECT DECISION:[^\n]*/, '')}
+    BASE_AGENT_HARNESS:catalog.BASE_AGENT_HARNESS.replace(/- GSA4-CLS ACCEPTED PROJECT DECISION \(ALL ROLES\):[^\n]*/, '')}
+  assert.notEqual(noDecision.BASE_AGENT_HARNESS,catalog.BASE_AGENT_HARNESS,'negative fixture must remove the real CLS rule')
+  assert.ok(!noDecision.BASE_AGENT_HARNESS.includes('GSA4-CLS ACCEPTED PROJECT DECISION'))
   noDecision.renderHarness=(role,options={})=>{
     const full=catalog.renderHarness(role,options)
     return full?full.replace(catalog.BASE_AGENT_HARNESS,noDecision.BASE_AGENT_HARNESS):null
