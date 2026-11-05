@@ -1,0 +1,165 @@
+'use strict'
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
+const ts = require('typescript')
+
+const root = path.join(__dirname, '../supabase/functions/gsa-mcp')
+const files = [
+  'platform-utils.ts','project-utils.ts','branch-governance.ts',
+  'project-manifest-scope.ts','planning-preflight.ts',
+]
+const fn = new Set([
+  'normalizeGithubRepo','validIntegrationBranch','isRetiredSourceBranch',
+  'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError',
+  'workingBranchTransitionError','convergenceCompletionError',
+  'parseProjectManifest','projectBootstrapExecutionError',
+])
+const vars = new Set(['PROJECT_ID_PATTERN','STATUSES','DISPOSITIONS','SHA','requiredString','strings'])
+const snippets = []
+for (const file of files) {
+  const src = fs.readFileSync(path.join(root,file),'utf8')
+  const ast = ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+  assert.equal(ast.parseDiagnostics.length,0,file + ' syntax')
+  for (const node of ast.statements) {
+    if (ts.isFunctionDeclaration(node) && fn.has(node.name?.text)) {
+      snippets.push(node.getText(ast).replace(/^export\s+/, ''))
+    } else if (ts.isVariableStatement(node) &&
+      node.declarationList.declarations.some(d => vars.has(d.name.getText(ast)))) {
+      snippets.push(node.getText(ast).replace(/^export\s+/, ''))
+    }
+  }
+}
+const compiled = ts.transpileModule(snippets.join('\n\n') +
+  '\nglobalThis.__tested = { ' + [...fn].join(', ') + ' };', {
+  compilerOptions:{ target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS },
+}).outputText
+const box={URL,console}
+vm.runInNewContext(compiled,box,{timeout:3000})
+const h=box.__tested
+const id='01a0f051-4353-7bff-8edf-46be4b44fd2f'
+const repo='https://github.com/thebimhouseinfo-sudo/GPT-supper-agent'
+const dev='upgrade/gsa-context-efficiency'
+const sha='a'.repeat(40)
+const bsha='b'.repeat(40)
+const csha='c'.repeat(40)
+const record=(branch, task, changes={})=>({
+  repository_url:repo,branch,project_id:id,owning_job_id:'job-one',
+  owning_task_id:task,purpose:'Task-owned parallel experiment',
+  parent_development_branch:dev,release_branch:'main',base_sha:sha,
+  integration_target:dev,dependencies:[],owner:'coder',handoff_recipient:'M03',
+  closure_owner_job_id:'job-one',closure_owner_task_id:'M03',
+  deliverables:['code','evidence'],merge_conditions:['review','CI'],retire_conditions:['not selected'],
+  status:'ACTIVE',authorization_ref:'projects/'+id+'/WORK/JOBS/job-one.json',
+  ...changes
+})
+const manifest=(rows=[],retired='')=>
+  '---\nproject_id: '+id+'\nname: GSA\nlifecycle: ACTIVE\n'+
+  'primary_repo_url: '+repo+'\nrepo_url: '+repo+'\nrepo_mode: SINGLE\n'+
+  'development_branch: '+dev+'\nrelease_branch: main\n---\n\n'+
+  '## Repositories\n- PRIMARY | OWNED | '+repo+'\n\n'+
+  '## Branch Policy (Human-approved)\n- PRIMARY | '+repo+' | development='+dev+' | release=main\n'+
+  retired+'\n## Working Branches\n'+rows.map(r=>'- '+JSON.stringify(r)).join('\n')+'\n'
+const auth=(text,branch,task='M01',job='job-one')=>
+  h.projectBootstrapExecutionError(id,text,null,repo,branch,{job_id:job,task_id:task})
+const closed=(branch,task,disposition='MERGED')=>record(branch,task,{
+  status:'CLOSED',disposition,final_head_sha:sha,
+  handoff_ref:'H/M03',closure_evidence_ref:'V/closure',
+  physical_ref:disposition==='KEEP'?'PRESENT':'DELETED',
+  ...(disposition==='KEEP'?{preservation_ref:'HUMAN_KEEP'}:{}),
+})
+
+test('existing Projects keep Development branch behavior, without Working Branch registration',()=>{
+  const m=manifest([])
+  assert.equal(h.parseProjectManifest(m).working_branches.length,0)
+  assert.equal(h.projectBootstrapExecutionError(id,m,null,repo,dev),null)
+  assert.match(auth(m,'experiment/unknown'),/SOURCE_BRANCH_INVALID/)
+  assert.match(auth(m,'main'),/SOURCE_BRANCH_INVALID/)
+})
+test('M01 and M02 can mutate distinct authorized Working Branches concurrently',()=>{
+  const a=record('task/m01','M01'),b=record('task/m02','M02')
+  const m=manifest([a,b])
+  assert.equal(auth(m,a.branch,'M01'),null)
+  assert.equal(auth(m,b.branch,'M02'),null)
+  assert.match(auth(m,a.branch,'M02'),/SOURCE_BRANCH_OWNERSHIP_INVALID/)
+  assert.match(auth(m,a.branch,'M01','wrong-job'),/SOURCE_BRANCH_OWNERSHIP_INVALID/)
+  assert.match(h.projectBootstrapExecutionError(id,m,null,repo,a.branch),/SOURCE_BRANCH_UNOWNED/)
+})
+test('unapproved, stale, wrong-repo and closed source branches are rejected',()=>{
+  const a=record('task/a','M01',{authorization_ref:null})
+  assert.match(auth(manifest([a]),a.branch),/SOURCE_BRANCH_AUTHORIZATION_MISSING/)
+  const stale=record('task/a','M01',{parent_development_branch:'old/dev',integration_target:'old/dev'})
+  assert.match(auth(manifest([stale]),stale.branch),/SOURCE_BRANCH_STALE/)
+  const done=closed('task/a','M01')
+  assert.match(auth(manifest([done]),done.branch),/SOURCE_BRANCH_LIFECYCLE_BLOCKED/)
+  assert.match(h.projectBootstrapExecutionError(id,manifest([record('task/a','M01')]),null,
+    'https://github.com/other/repo','task/a',{job_id:'job-one',task_id:'M01'}),/SOURCE_BRANCH_INVALID/)
+})
+test('malformed, duplicate or invalid branch registrations fail closed',()=>{
+  const a=record('task/a','M01')
+  assert.equal(h.parseProjectManifest(manifest([a,a])),null)
+  assert.equal(h.parseProjectManifest(manifest([a]).replace('## Working Branches','## Working Branches\n- {not-json}')),null)
+  assert.equal(h.parseProjectManifest(manifest([record('main','M01',{branch:'../bad'})])),null)
+})
+test('a Human-retired branch cannot be reactivated for source writes',()=>{
+  const m=manifest([record('task/a','M01')],
+    '\n## Retired Branches\n- '+repo+' | branch=task/a | sha='+sha+' | status=RETIRED\n')
+  assert.match(auth(m,'task/a'),/SOURCE_BRANCH_RETIRED/)
+})
+test('branch transition respects authorization, handoff and merge gates',()=>{
+  const proposed=record('task/a','M01',{status:'PROPOSED',authorization_ref:null})
+  const unauthorized={...proposed,status:'AUTHORIZED'}
+  assert.match(h.workingBranchTransitionError(proposed,unauthorized),/BRANCH_AUTHORIZATION_REQUIRED/)
+  const authorized={...unauthorized,authorization_ref:'V/approved-task'}
+  assert.equal(h.workingBranchTransitionError(proposed,authorized),null)
+  const active={...authorized,status:'ACTIVE'}
+  assert.equal(h.workingBranchTransitionError(authorized,active),null)
+  assert.match(h.workingBranchTransitionError(active,{...active,status:'READY_FOR_HANDOFF'}),/BRANCH_HANDOFF_REQUIRED/)
+  const handed={...active,status:'READY_FOR_HANDOFF',handoff_ref:'H/M03',final_head_sha:sha}
+  assert.equal(h.workingBranchTransitionError(active,handed),null)
+  const review={...handed,status:'REVIEW'}
+  assert.equal(h.workingBranchTransitionError(handed,review),null)
+  const merge={...review,status:'MERGED',disposition:'MERGED',closure_evidence_ref:'V/closure'}
+  assert.match(h.workingBranchTransitionError(review,merge),/BRANCH_MERGE_GATES_MISSING/)
+  const verified={...merge,review_ref:'V/review',ci_ref:'V/CI',
+    dependencies_verified_ref:'V/dag',integration_sha:csha,merge_authorization_ref:'AUTH/merge'}
+  assert.equal(h.workingBranchTransitionError(review,verified),null)
+  assert.equal(h.workingBranchTransitionError(verified,{...verified,status:'CLOSED',physical_ref:'DELETED'}),null)
+})
+test('Retire preserves unsuccessful experiment evidence; Human KEEP requires explicit reason',()=>{
+  const active=record('task/a','M01')
+  const retired={...active,status:'RETIRED',disposition:'RETIRED',
+    final_head_sha:sha,handoff_ref:'H/M03',closure_evidence_ref:'V/retire'}
+  assert.equal(h.workingBranchTransitionError(active,retired),null)
+  assert.match(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',physical_ref:'PRESENT'}),/BRANCH_CLOSURE_UNVERIFIED/)
+  assert.equal(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',disposition:'KEEP',
+    physical_ref:'PRESENT',preservation_ref:'HUMAN_KEEP'}),null)
+  assert.match(h.workingBranchTransitionError(retired,{...retired,status:'ACTIVE'}),/BRANCH_TRANSITION_INVALID/)
+})
+test('M03 completion requires all incoming branches closed with evidence and exact set',()=>{
+  const a=closed('task/m01','M01'),b=closed('task/m02','M02','KEEP')
+  assert.equal(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01','task/m02']),null)
+  assert.match(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01']),/CONVERGENCE_ORPHAN_BRANCH/)
+  assert.match(h.convergenceCompletionError([a,record('task/m02','M02')],id,'job-one','M03',['task/m01','task/m02']),/CONVERGENCE_CLOSURE_PENDING/)
+  assert.match(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01','task/m01']),/CONVERGENCE_INCOMING_INVALID/)
+})
+test('source interfaces bind branch owner, Convergence ownership and independent release',()=>{
+  const read=p=>fs.readFileSync(path.join(root,p),'utf8')
+  const authSource=read('project-auth-tools.ts')
+  const runSource=read('run/run-begin.ts')
+  const completion=read('run/complete.ts')
+  const prepare=read('project-setup/working-branch.ts')
+  const tools=read('project-setup-tools.ts')
+  assert.match(authSource,/target_source_branch/)
+  assert.match(authSource,/source_job_id/)
+  assert.match(runSource,/source_branch \?\? owningJob\.repository_context\?\.integration_branch/)
+  assert.match(runSource,/convergence_task:/)
+  assert.match(completion,/convergenceCompletionError/)
+  assert.match(completion,/CONVERGENCE_DOWNSTREAM_HANDOFF_REQUIRED/)
+  assert.match(prepare,/workingBranchTransitionError/)
+  assert.match(prepare,/authorize_memory_mutation/)
+  assert.match(tools,/registerWorkingBranchTools\(deps\)/)
+  assert.doesNotMatch(prepare,/merge_pull_request\(/)
+})
