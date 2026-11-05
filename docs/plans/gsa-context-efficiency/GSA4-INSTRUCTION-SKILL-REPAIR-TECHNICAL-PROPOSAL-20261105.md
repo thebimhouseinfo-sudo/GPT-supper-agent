@@ -1,7 +1,7 @@
 # GSA4 — Technical Proposal: Repair Mandatory Role Instructions vs On-Demand Skills
 
 **Date:** 2026-11-05  
-**Status:** TECHNICAL_DESIGN_PASS (direct static source-grounded review) / NO APPLICATION CODE WRITTEN  
+**Status:** TECHNICAL_DESIGN_PASS / SOURCE PATCHES APPLIED ON WORK BRANCH / FULL CI UNVERIFIED  
 **Repository/branch:** thebimhouseinfo-sudo/GPT-supper-agent / fix/gsa4-instruction-skill-classification  
 **Exact initial source base:** main c150954b76fea919907edc15d0673aad2914a1f3  
 **Canonical plan:** [Repair Plan](./GSA4-INSTRUCTION-HARNESS-SKILL-REPAIR-PLAN-20261105.md)  
@@ -200,3 +200,7 @@ A technical design Reviewer should PASS this proposal only after confirming exac
 **Design verification limit:** this proposal closes the source-design classification questions. Trusted U-D completion binding and real U-F history retrieval are explicit M0 feasibility checks; any mechanical enforcement remains CONDITIONAL and may be DEFERRED, never claimed implemented. SOURCE/TEST/MODEL/HOST behavior is NOT verified by this document.
 
 **No product source edit, merge, deploy or autonomous Job is authorized by this proposal.**
+
+## Implementation follow-up — 2026-11-05
+
+The Human subsequently approved source implementation. Five existing Shared/Role modules contain only tagged additive GSA4-CLS rules; source tests and existing baseline golden normalizers were updated without changing runtime tool schemas. The inspected version does not add a trusted U-D completion consumer or a U-F mechanical dispatch guard. Only partial source-executed checks passed; full Node/Deno workflow remains NOT_RUN and is required before any merge decision. Exact record: test-lab/results/gsa4-instruction-skill-repair-20261105.md.
