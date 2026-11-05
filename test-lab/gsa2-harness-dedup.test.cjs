@@ -139,10 +139,10 @@ test('GSA4 A0 exact literals preserved after normalizing explicit U-A and U-E de
     // GSA4-CLS source-only classification repair is strictly additive to the
     // always-loaded Shared/Role strings. Restore those exact additions before
     // comparing every original pinned initializer byte/hash against GSA3.
-    const clsCount=(normalizedRole.match(/^\s*'GSA4-CLS [^\n]*$/gm)??[]).length
+    const clsCount=(normalizedRole.match(/^\s*'(?:- )?GSA4-CLS [^\n]*$/gm)??[]).length
     const expectedCLS={BASE_AGENT_HARNESS:1,plannerHarness:1,orchestratorHarness:2,coderHarness:3,critic_reviewerHarness:1}
     assert.equal(clsCount, expectedCLS[name]??0, 'unexpected GSA4-CLS source delta: '+name)
-    normalizedRole=normalizedRole.replace(/^\s*'GSA4-CLS [^\n]*\n/gm,'')
+    normalizedRole=normalizedRole.replace(/^\s*'(?:- )?GSA4-CLS [^\n]*\n/gm,'')
     if (historicalUESourceLines[name]) {
       const matcher = name === 'testerHarness'
         ? /^      'SCENARIO DISCOVERY:[^\n]*$/m
