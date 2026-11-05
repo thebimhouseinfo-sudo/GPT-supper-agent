@@ -157,3 +157,13 @@ All seven findings from [GSA4-A-FIRST-TECHNICAL-DESIGN-REVIEW-20261104.md](./GSA
 - **TR-07:** current `job-prepare-tool.ts` required_skills enum allows only `ui-coder-frontend`; actual `project_role_addins_resolve` and persisted Task/Run/Knowledge paths are different sources; A2 never presumes generic Skill injection.
 
 **Finding disposition:** design omissions addressed by named source/test migration. No A0 code split, CI run, successful golden parity or repair benefit is asserted here; those are implementation acceptance evidence, not a second speculative research stage.
+
+
+## 10. M3 — Cross-workload G3 × Skill experiment extension (2026-11-05)
+### GOAL
+Use two frozen real implement-and-verify Jobs as original GSA4 Baseline B controls and re-run each under the *opposite* isolated candidate to validate substantive work, instruction continuity and governed convergence. This M3 program is an extension of the approved A-first direction, not a replacement or claim of executed/approved code.
+
+- **Authoritative M3 planning supplement:** [GSA4-M3-CROSS-WORKLOAD-IMPLEMENTATION-PLAN.md](./GSA4-M3-CROSS-WORKLOAD-IMPLEMENTATION-PLAN.md); [M3 milestones and handoffs](./GSA4-M3-CROSS-WORKLOAD-MILESTONES.md); [M3 technical proposal](./GSA4-M3-CROSS-WORKLOAD-TECHNICAL-PROPOSAL.md).
+- **Sequence:** M3-00 planning + held-out WG/WS fixture freeze + one short instruction.md per meaningful Job Pack → original B executes WG/WS → verified G3 Candidate Direct Agent redoes WS, verified Skill Candidate Direct Agent redoes WG → independent quality/safety/cost comparisons → authorized merge/retire/KEEP and Development HEAD handoff.
+- **Authority:** Criteria unchanged; M2 G2 conditional and C1a NARROW; GH/C2 NO_BUILD and C1b HOLD; approval for code is not implied by this documentation. No main merge/deploy without separate Human authorization.
+- **Operational proof required:** exact Candidate Harness/source actually loaded, real accepted Job outputs and tester-held oracle, not Direct Agent admission or CI PASS alone. Preserve historical A0/GSA4 scope and already reviewed GOALs unchanged.
