@@ -92,6 +92,9 @@ export function registerRunComplete(deps: any) {
       // Convergence is a Task responsibility, not a background cleanup Job.
       // A task cannot complete successfully while any incoming branch is orphaned.
       if (role === 'coder' && lifecycle === 'COMPLETED' && current.convergence_task === true) {
+        if (!handoff || !handoff.completed_summary) {
+          return { content: [{ type: 'text', text: 'CONVERGENCE_DOWNSTREAM_HANDOFF_REQUIRED: downstream handoff must be prepared and persisted before Run closure.' }], isError: true }
+        }
         const manifest = project_manifest_text && project_manifest_sha ? parseProjectManifest(project_manifest_text) : null
         if (!manifest || manifest.project_id !== project_id || manifest.lifecycle !== 'ACTIVE') {
           return { content: [{ type: 'text', text: 'CONVERGENCE_MANIFEST_REQUIRED: exact active Project manifest and blob SHA are required.' }], isError: true }
