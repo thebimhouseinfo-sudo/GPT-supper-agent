@@ -1,23 +1,33 @@
-import { validIntegrationBranch } from './project-utils.ts'
+import { validIntegrationBranch, isRetiredSourceBranch } from './project-utils.ts'
 import { normalizeGithubRepo } from './platform-utils.ts'
 import type { ExecutionContract } from './runtime-contract.ts'
 import { parseProjectManifest, validMemoryPath } from './project-manifest-scope.ts'
+import { workingBranchWriteError } from './branch-governance.ts'
 
 // Compatibility name retained for existing callers. This checks Project and
 // development-branch scope ONLY. Bootstrap cannot grant or revoke code execution.
 // Job lifecycle, planning review, scoped Human authorization and run evidence are
 // separate execution-phase responsibilities.
 export function projectBootstrapExecutionError(projectId: string, manifestText: string, _unusedBootstrapEvidence: any,
-  repositoryUrl: string | null, developmentBranch: string | null): string | null {
+  repositoryUrl: string | null, sourceBranch: string | null,
+  sourceOwner?: { job_id: string; task_id: string } | null): string | null {
   const project = parseProjectManifest(manifestText)
   if (!project || project.project_id !== projectId || project.lifecycle !== 'ACTIVE')
     return 'SOURCE_PROJECT_INVALID: exact ACTIVE Project manifest required.'
-  if (!repositoryUrl || !developmentBranch || !validIntegrationBranch(developmentBranch) ||
-      !project.repositories.some((r: any) => r.relation === 'OWNED' &&
-        normalizeGithubRepo(r.url)?.url === normalizeGithubRepo(repositoryUrl)?.url) ||
-      project.branch_policies.find((p: any) => p.repository_url === normalizeGithubRepo(repositoryUrl)?.url)?.development_branch !== developmentBranch)
-    return 'SOURCE_BRANCH_INVALID: source target must be the configured Development Branch of an OWNED repository.'
-  return null
+  const repo = repositoryUrl ? normalizeGithubRepo(repositoryUrl) : null
+  const policy = project.branch_policies.find((p: any) => p.repository_url === repo?.url)
+  if (!repo || !sourceBranch || !validIntegrationBranch(sourceBranch) ||
+      !project.repositories.some((r: any) => r.relation === 'OWNED' && normalizeGithubRepo(r.url)?.url === repo.url) ||
+      !policy || policy.status !== 'CONFIGURED' || !policy.development_branch)
+    return 'SOURCE_BRANCH_INVALID: an OWNED repository with an active configured Development Branch is required.'
+  if (isRetiredSourceBranch(project.retired_branches, repo.url, sourceBranch))
+    return 'SOURCE_BRANCH_RETIRED: retired branches cannot receive source mutations.'
+  if (sourceBranch === policy.development_branch) return null
+  // Working Branches are authorized per Job/Task; Development remains their
+  // integration target and main is never a source-write fallback.
+  return workingBranchWriteError(project.working_branches, projectId, repo.url,
+    sourceBranch, policy.development_branch, policy.release_branch,
+    sourceOwner?.job_id, sourceOwner?.task_id)
 }
 
 export function milestoneCrlEvidenceError(job: any, milestoneId: string | null, reviewerSnapshot: any, targetRevision?: string): string | null {
