@@ -1,7 +1,7 @@
 # GSA4 — Instruction / Harness / Skill Classification Repair Milestones
 
 **Date:** 2026-11-05  
-**State:** MILESTONES PREPARED / SOURCE NOT IMPLEMENTED  
+**State:** MILESTONE_DESIGN_PASS (direct source-grounded review) / SOURCE NOT IMPLEMENTED  
 **Branch:** fix/gsa4-instruction-skill-classification  
 **Base:** main @ c150954b76fea919907edc15d0673aad2914a1f3  
 **Proposed integration target:** NOT ASSUMED; reconcile active Project Memory branch policy before merge or execution authorization  
@@ -28,7 +28,7 @@ No ninth Secretary Role, new automatic Discussion/Job, new database/schema, new 
 | **M4 — Evidence-based reverse classification (B-01..B-04)** | Remove method overlap only where safe; preserve required read paths and eight-role independence | M1–M3 source-level tests PASS | Before/after rendered Role/Skill payload; no-Skill invariant coverage; actual host data or marked UNKNOWN; keep/revert decision | PLANNED |
 | **M5 — Integration parity, independent review and handoff** | Validate exact branch diff, tests, context data and known gaps before any release recommendation | M0–M4 | Exact SHA, source tests, negative tests, report, Reviewer findings, optional independently authorized CR, explicit release boundary | PLANNED |
 
-The milestones are **repair units** for findings in the audit; they do not re-open or reimplement the original U-A/U-D/U-F product feature Jobs. Use existing results and tests as baselines and modify only the actual missing contract.
+The milestones are **repair units** for findings in the audit; they do not re-open or reimplement the original U-A/U-D/U-F product feature Jobs. Their design is source-reviewed, not a production GSA Job plan, Human execution authorization, runtime PASS or automatic merge. Use existing results and tests as baselines and modify only the actual missing contract.
 
 ## M0 — Classified contract + reproducible baseline
 
