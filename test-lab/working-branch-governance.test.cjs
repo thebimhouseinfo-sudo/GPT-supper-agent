@@ -64,11 +64,11 @@ const manifest=(rows=[],retired='')=>
   retired+'\n## Working Branches\n'+rows.map(r=>'- '+JSON.stringify(r)).join('\n')+'\n'
 const auth=(text,branch,task='M01',job='job-one')=>
   h.projectBootstrapExecutionError(id,text,null,repo,branch,{job_id:job,task_id:task})
-const closed=(branch,task,disposition='MERGED')=>record(branch,task,{
-  status:'CLOSED',disposition,final_head_sha:sha,
+const closed=(branch,task,keep=false)=>record(branch,task,{
+  status:'CLOSED',disposition:'MERGED',final_head_sha:sha,
   handoff_ref:'H/M03',closure_evidence_ref:'V/closure',
-  physical_ref:disposition==='KEEP'?'PRESENT':'DELETED',
-  ...(disposition==='KEEP'?{preservation_ref:'HUMAN_KEEP'}:{}),
+  physical_ref:keep?'PRESENT':'DELETED',
+  ...(keep?{preservation_ref:'HUMAN_KEEP'}:{}),
 })
 
 test('existing Projects keep Development branch behavior, without Working Branch registration',()=>{
@@ -134,12 +134,14 @@ test('Retire preserves unsuccessful experiment evidence; Human KEEP requires exp
     final_head_sha:sha,handoff_ref:'H/M03',closure_evidence_ref:'V/retire'}
   assert.equal(h.workingBranchTransitionError(active,retired),null)
   assert.match(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',physical_ref:'PRESENT'}),/BRANCH_CLOSURE_UNVERIFIED/)
-  assert.equal(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',disposition:'KEEP',
+  assert.equal(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',
     physical_ref:'PRESENT',preservation_ref:'HUMAN_KEEP'}),null)
+  assert.match(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',disposition:'MERGED',
+    physical_ref:'DELETED'}),/BRANCH_DISPOSITION_IMMUTABLE/)
   assert.match(h.workingBranchTransitionError(retired,{...retired,status:'ACTIVE'}),/BRANCH_TRANSITION_INVALID/)
 })
 test('M03 completion requires all incoming branches closed with evidence and exact set',()=>{
-  const a=closed('task/m01','M01'),b=closed('task/m02','M02','KEEP')
+  const a=closed('task/m01','M01'),b=closed('task/m02','M02',true)
   assert.equal(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01','task/m02']),null)
   assert.match(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01']),/CONVERGENCE_ORPHAN_BRANCH/)
   assert.match(h.convergenceCompletionError([a,record('task/m02','M02')],id,'job-one','M03',['task/m01','task/m02']),/CONVERGENCE_CLOSURE_PENDING/)
