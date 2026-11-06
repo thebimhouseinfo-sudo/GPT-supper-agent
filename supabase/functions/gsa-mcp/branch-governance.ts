@@ -35,6 +35,8 @@ export type WorkingBranch = {
   integration_sha?: string | null
   merge_authorization_ref?: string | null
   preservation_ref?: string | null
+  preservation_owner?: string | null
+  preservation_reason?: string | null
   closure_evidence_ref?: string | null
   physical_ref?: 'PRESENT' | 'DELETED' | 'UNKNOWN'
 }
@@ -91,6 +93,8 @@ export function parseWorkingBranchRows(manifestText: string): WorkingBranch[] | 
         (item.integration_sha != null && !SHA.test(item.integration_sha)) ||
         (item.merge_authorization_ref != null && !requiredString(item.merge_authorization_ref)) ||
         (item.preservation_ref != null && !requiredString(item.preservation_ref)) ||
+        (item.preservation_owner != null && !requiredString(item.preservation_owner)) ||
+        (item.preservation_reason != null && !requiredString(item.preservation_reason)) ||
         (item.closure_evidence_ref != null && !requiredString(item.closure_evidence_ref)) ||
         (item.physical_ref != null && !['PRESENT','DELETED','UNKNOWN'].includes(item.physical_ref))) return null
     const key = repo.url.toLowerCase() + '|' + item.branch
@@ -128,6 +132,8 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
   if (previous.repository_url !== next.repository_url || previous.branch !== next.branch ||
       previous.project_id !== next.project_id || previous.owning_job_id !== next.owning_job_id ||
       previous.owning_task_id !== next.owning_task_id ||
+      previous.owner !== next.owner ||
+      previous.handoff_recipient !== next.handoff_recipient ||
       previous.parent_development_branch !== next.parent_development_branch ||
       previous.base_sha !== next.base_sha ||
       (previous.development_head_sha && previous.development_head_sha !== next.development_head_sha) ||
@@ -153,7 +159,8 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
   if (next.status === 'READY_FOR_HANDOFF' && (!next.final_head_sha || !next.handoff_ref))
     return 'BRANCH_HANDOFF_REQUIRED: final SHA and handoff reference are required.'
   for (const key of ['final_head_sha','handoff_ref','review_ref','ci_ref','dependencies_verified_ref',
-    'integration_sha','merge_authorization_ref','preservation_ref','closure_evidence_ref'] as const) {
+    'integration_sha','merge_authorization_ref','preservation_ref','preservation_owner',
+    'preservation_reason','closure_evidence_ref'] as const) {
     if (previous[key] && next[key] !== previous[key])
       return 'BRANCH_EVIDENCE_IMMUTABLE: recorded review, SHA and handoff lineage cannot be erased.'
   }
@@ -168,7 +175,8 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
       (!['MERGED','RETIRED'].includes(previous.status) ||
        !next.disposition || !next.handoff_ref || !next.closure_evidence_ref ||
        !next.final_head_sha || next.physical_ref == null || next.physical_ref === 'UNKNOWN' ||
-       (next.physical_ref === 'PRESENT' && !next.preservation_ref)))
+       (next.physical_ref === 'PRESENT' &&
+         (!next.preservation_ref || !next.preservation_owner || !next.preservation_reason))))
     return 'BRANCH_CLOSURE_UNVERIFIED: disposition, handoff, evidence and Git ref state required.'
   return null
 }
@@ -188,7 +196,8 @@ export function convergenceCompletionError(
     if (b.status !== 'CLOSED' || !['MERGED','RETIRED'].includes(b.disposition ?? '') ||
         !b.final_head_sha || !b.handoff_ref || !b.closure_evidence_ref ||
         !b.physical_ref || b.physical_ref === 'UNKNOWN' ||
-        (b.physical_ref === 'PRESENT' && !b.preservation_ref))
+        (b.physical_ref === 'PRESENT' &&
+          (!b.preservation_ref || !b.preservation_owner || !b.preservation_reason)))
       return 'CONVERGENCE_CLOSURE_PENDING: ' + b.branch + ' lacks verified closure/disposition/handoff/ref status.'
   }
   return null
@@ -201,6 +210,7 @@ export function convergenceCompletionError(
  */
 export function workingBranchTaskContractError(
   branch: WorkingBranch, ownerJob: any, closureJob: any, requireApproved: boolean,
+  allowRetiredOwner = false,
 ): string | null {
   if (!ownerJob || ownerJob.project_id !== branch.project_id ||
       ownerJob.job_id !== branch.owning_job_id || !Array.isArray(ownerJob.tasks))
@@ -209,7 +219,7 @@ export function workingBranchTaskContractError(
       closureJob.job_id !== branch.closure_owner_job_id || !Array.isArray(closureJob.tasks))
     return 'WORKING_BRANCH_CLOSURE_JOB_INVALID: exact Closure Owner Job record is required.'
   const owningTask = ownerJob.tasks.find((t: any) =>
-    t.task_id === branch.owning_task_id && t.lifecycle !== 'RETIRED')
+    t.task_id === branch.owning_task_id && (allowRetiredOwner || t.lifecycle !== 'RETIRED'))
   const closureTask = closureJob.tasks.find((t: any) =>
     t.task_id === branch.closure_owner_task_id && t.lifecycle !== 'RETIRED')
   if (!owningTask || !closureTask)
