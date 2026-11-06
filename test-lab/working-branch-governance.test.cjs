@@ -49,6 +49,7 @@ const record=(branch, task, changes={})=>({
   repository_url:repo,branch,project_id:id,owning_job_id:'job-one',
   owning_task_id:task,purpose:'Task-owned parallel experiment',
   parent_development_branch:dev,release_branch:'main',base_sha:sha,
+  development_head_sha:sha,
   integration_target:dev,dependencies:[],owner:'coder',handoff_recipient:'M03',
   closure_owner_job_id:'job-one',closure_owner_task_id:'M03',
   deliverables:['code','evidence'],merge_conditions:['review','CI'],retire_conditions:['not selected'],
@@ -369,4 +370,15 @@ test('cross-Job convergence requires BOTH Job edge and Task dependency',()=>{
   assert.equal(h.workingBranchTaskContractError(branch,owner,valid,true),null)
   assert.match(h.workingBranchTaskContractError(branch,owner,
     {...valid,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
+})
+
+test('source guard denies registered branch without verified baseline and divergence plan',()=>{
+  const branch=record('task/m01','M01')
+  assert.equal(auth(manifest([branch]),branch.branch,'M01'),null)
+  assert.match(auth(manifest([{...branch,development_head_sha:null}]),branch.branch,'M01'),
+    /SOURCE_BRANCH_BASELINE_MISSING/)
+  assert.match(auth(manifest([{...branch,development_head_sha:bsha}]),branch.branch,'M01'),
+    /SOURCE_BRANCH_RECONCILIATION_MISSING/)
+  assert.equal(auth(manifest([{...branch,development_head_sha:bsha,
+    reconciliation_plan:'Reviewed integration reconciliation'}]),branch.branch,'M01'),null)
 })
