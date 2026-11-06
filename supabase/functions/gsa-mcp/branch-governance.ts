@@ -13,6 +13,8 @@ export type WorkingBranch = {
   parent_development_branch: string
   release_branch: string
   base_sha: string
+  development_head_sha?: string | null
+  reconciliation_plan?: string | null
   integration_target: string
   dependencies: string[]
   owner: string
@@ -64,6 +66,8 @@ export function parseWorkingBranchRows(manifestText: string): WorkingBranch[] | 
         !validIntegrationBranch(item.integration_target) ||
         item.integration_target !== item.parent_development_branch ||
         !SHA.test(item.base_sha ?? '') ||
+        (item.development_head_sha != null && !SHA.test(item.development_head_sha)) ||
+        (item.reconciliation_plan != null && !requiredString(item.reconciliation_plan)) ||
         !requiredString(item.project_id) ||
         !requiredString(item.owning_job_id) ||
         !requiredString(item.owning_task_id) ||
@@ -125,6 +129,10 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
       previous.project_id !== next.project_id || previous.owning_job_id !== next.owning_job_id ||
       previous.owning_task_id !== next.owning_task_id ||
       previous.parent_development_branch !== next.parent_development_branch ||
+      previous.base_sha !== next.base_sha ||
+      (previous.development_head_sha && previous.development_head_sha !== next.development_head_sha) ||
+      (previous.reconciliation_plan && previous.reconciliation_plan !== next.reconciliation_plan) ||
+      previous.release_branch !== next.release_branch ||
       previous.integration_target !== next.integration_target ||
       previous.closure_owner_job_id !== next.closure_owner_job_id ||
       previous.closure_owner_task_id !== next.closure_owner_task_id)
@@ -182,6 +190,71 @@ export function convergenceCompletionError(
         !b.physical_ref || b.physical_ref === 'UNKNOWN' ||
         (b.physical_ref === 'PRESENT' && !b.preservation_ref))
       return 'CONVERGENCE_CLOSURE_PENDING: ' + b.branch + ' lacks verified closure/disposition/handoff/ref status.'
+  }
+  return null
+}
+
+/**
+ * Task-DAG contract for a registered Working Branch. This validates exact
+ * Job/Task identities and Plan topology; it never treats caller-supplied
+ * record text or SHA as proof of a live GitHub readback.
+ */
+export function workingBranchTaskContractError(
+  branch: WorkingBranch, ownerJob: any, closureJob: any, requireApproved: boolean,
+): string | null {
+  if (!ownerJob || ownerJob.project_id !== branch.project_id ||
+      ownerJob.job_id !== branch.owning_job_id || !Array.isArray(ownerJob.tasks))
+    return 'WORKING_BRANCH_OWNER_JOB_INVALID: Job record does not own Project/Task.'
+  if (!closureJob || closureJob.project_id !== branch.project_id ||
+      closureJob.job_id !== branch.closure_owner_job_id || !Array.isArray(closureJob.tasks))
+    return 'WORKING_BRANCH_CLOSURE_JOB_INVALID: exact Closure Owner Job record is required.'
+  const owningTask = ownerJob.tasks.find((t: any) =>
+    t.task_id === branch.owning_task_id && t.lifecycle !== 'RETIRED')
+  const closureTask = closureJob.tasks.find((t: any) =>
+    t.task_id === branch.closure_owner_task_id && t.lifecycle !== 'RETIRED')
+  if (!owningTask || !closureTask)
+    return 'WORKING_BRANCH_TASK_INVALID: the owning and closure Tasks must exist in their current Job records.'
+  if (branch.owning_job_id === branch.closure_owner_job_id) {
+    // Accept direct or transitive Task DAG edges; ignore free-text claims.
+    const known = new Map(ownerJob.tasks.map((t: any) => [t.task_id, t]))
+    const pending = [...(closureTask.dependencies ?? [])]
+    const visited = new Set<string>()
+    let reachable = false
+    while (pending.length) {
+      const id = pending.pop()
+      if (id === branch.owning_task_id) { reachable = true; break }
+      if (typeof id !== 'string' || visited.has(id)) continue
+      visited.add(id)
+      const predecessor: any = known.get(id)
+      if (predecessor) pending.push(...(predecessor.dependencies ?? []))
+    }
+    if (!reachable)
+      return 'WORKING_BRANCH_TASK_DAG_INVALID: Convergence Task must depend on owning Task.'
+  } else {
+    const linked = [
+      ...(closureJob.linked_job_ids ?? []),
+      ...(closureJob.dependencies ?? []),
+    ]
+    if (!linked.some((dep: any) =>
+      dep === ownerJob.job_id || dep?.job_id === ownerJob.job_id ||
+      dep?.depends_on === ownerJob.job_id))
+      return 'WORKING_BRANCH_JOB_DAG_INVALID: cross-Job Convergence has no explicit owning Job dependency.'
+  }
+  if (closureTask.convergence_task !== true)
+    return 'WORKING_BRANCH_CONVERGENCE_UNDECLARED: Closure Owner Task must be marked as Convergence.'
+  if (requireApproved) {
+    for (const job of ownerJob === closureJob ? [ownerJob] : [ownerJob, closureJob]) {
+      if (!['READY','IN_PROGRESS'].includes(job.lifecycle) ||
+          job.planning_review?.status !== 'PASS' ||
+          job.planning_review?.reviewed_revision !== job.planning_revision)
+        return 'WORKING_BRANCH_JOB_UNREVIEWED: reviewed current Job revision required before branch authorization.'
+    }
+    if (!(closureTask.incoming_branches ?? []).includes(branch.branch))
+      return 'WORKING_BRANCH_INCOMING_MISSING: Convergence Task must declare this incoming branch.'
+    if (!branch.development_head_sha || !SHA.test(branch.development_head_sha))
+      return 'WORKING_BRANCH_BASELINE_UNVERIFIED: exact Development HEAD SHA required for authorization.'
+    if (branch.base_sha !== branch.development_head_sha && !branch.reconciliation_plan)
+      return 'WORKING_BRANCH_RECONCILIATION_REQUIRED: diverged branch base requires reconciliation plan.'
   }
   return null
 }
