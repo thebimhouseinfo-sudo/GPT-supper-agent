@@ -81,7 +81,8 @@ export function registerWorkingBranchTools(deps: any) {
           next.parent_development_branch !== policy.development_branch ||
           next.integration_target !== policy.development_branch ||
           next.release_branch !== policy.release_branch ||
-          project.retired_branches.some(r => r.repository_url === repo?.url && r.branch === next.branch))
+          (project.retired_branches.some(r => r.repository_url === repo?.url && r.branch === next.branch) &&
+            (action === 'REGISTER' || !['RETIRED','CLOSED'].includes(next.status))))
         return { content: [{ type: 'text', text: 'WORKING_BRANCH_SCOPE_INVALID: branch must belong to an OWNED Project repo and current Development/Release policy.' }], isError: true }
       const existing = project.working_branches.find(b =>
         b.repository_url === next.repository_url && b.branch === next.branch)
