@@ -68,7 +68,8 @@ const closed=(branch,task,keep=false)=>record(branch,task,{
   status:'CLOSED',disposition:'MERGED',final_head_sha:sha,
   handoff_ref:'H/M03',closure_evidence_ref:'V/closure',
   physical_ref:keep?'PRESENT':'DELETED',
-  ...(keep?{preservation_ref:'HUMAN_KEEP'}:{}),
+  ...(keep?{preservation_ref:'HUMAN_KEEP',preservation_owner:'Human',
+    preservation_reason:'Preserve verified control experiment'}:{}),
 })
 
 test('existing Projects keep Development branch behavior, without Working Branch registration',()=>{
@@ -135,7 +136,8 @@ test('Retire preserves unsuccessful experiment evidence; Human KEEP requires exp
   assert.equal(h.workingBranchTransitionError(active,retired),null)
   assert.match(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',physical_ref:'PRESENT'}),/BRANCH_CLOSURE_UNVERIFIED/)
   assert.equal(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',
-    physical_ref:'PRESENT',preservation_ref:'HUMAN_KEEP'}),null)
+    physical_ref:'PRESENT',preservation_ref:'HUMAN_KEEP',
+    preservation_owner:'Human',preservation_reason:'Keep control history'}),null)
   assert.match(h.workingBranchTransitionError(retired,{...retired,status:'CLOSED',disposition:'MERGED',
     physical_ref:'DELETED'}),/BRANCH_DISPOSITION_IMMUTABLE/)
   assert.match(h.workingBranchTransitionError(retired,{...retired,status:'ACTIVE'}),/BRANCH_TRANSITION_INVALID/)
@@ -266,4 +268,29 @@ test('prepare tool rejects duplicate active Task branch and validates authorizat
     branch_record:{...nowAuthorized,development_head_sha:bsha},
     project_manifest_text:first.structuredContent.updated_manifest_text})
   assert.match(stale.content[0].text,/WORKING_BRANCH_RECONCILIATION_REQUIRED/)
+})
+
+test('Cancelled owning Task may retire its existing branch; closure still requires Convergence Owner',async()=>{
+  const job=approvedJob(), retiredOwner={...job,tasks:job.tasks.map(t=>
+    t.task_id==='M01'?{...t,lifecycle:'RETIRED'}:t)}
+  const a=record('task/m01','M01',{development_head_sha:sha})
+  assert.match(h.workingBranchTaskContractError(a,retiredOwner,retiredOwner,false),
+    /WORKING_BRANCH_TASK_INVALID/)
+  assert.equal(h.workingBranchTaskContractError(a,retiredOwner,retiredOwner,false,true),null)
+  const {registerWorkingBranchTools}=loadRealRuntimeModule('project-setup/working-branch.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerWorkingBranchTools({server:{registerTool:(name,schema,fn)=>handler=fn},
+    z,req:{},AUTH_SCOPES:[],authContext:async()=>({user_id:'tester'}),
+    authError:(_req,text)=>({isError:true,content:[{type:'text',text}]}),
+  })
+  const retired={...a,status:'RETIRED',disposition:'RETIRED',
+    final_head_sha:sha,handoff_ref:'H/M03',closure_evidence_ref:'V/retirement'}
+  const result=await handler({
+    project_id:id,memory_path:'projects/'+id+'/PROJECT.md',
+    project_manifest_text:manifest([a]),project_manifest_sha:sha,
+    action:'TRANSITION',branch_record:retired,
+    job_record_text:JSON.stringify(retiredOwner),job_record_sha:sha,
+  })
+  assert.equal(result.isError,undefined,'cancelled Task must still be able to retire existing branch')
+  assert.equal(result.structuredContent.status,'RETIRED')
 })
