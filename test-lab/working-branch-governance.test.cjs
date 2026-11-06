@@ -13,7 +13,7 @@ const files = [
 ]
 const fn = new Set([
   'normalizeGithubRepo','validIntegrationBranch','isRetiredSourceBranch',
-  'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError',
+  'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError','workingBranchTaskContractError',
   'workingBranchTransitionError','convergenceCompletionError',
   'parseProjectManifest','projectBootstrapExecutionError',
 ])
@@ -164,4 +164,106 @@ test('source interfaces bind branch owner, Convergence ownership and independent
   assert.match(prepare,/authorize_memory_mutation/)
   assert.match(tools,/registerWorkingBranchTools\(deps\)/)
   assert.doesNotMatch(prepare,/merge_pull_request\(/)
+})
+
+const approvedJob = () => ({
+  job_id: 'job-one', project_id: id, lifecycle: 'READY', planning_revision: 1,
+  planning_review: {status:'PASS',reviewed_revision:1},
+  tasks: [
+    {task_id:'M01',dependencies:[],lifecycle:'READY'},
+    {task_id:'M02',dependencies:[],lifecycle:'READY'},
+    {task_id:'M03',dependencies:['M01','M02'],convergence_task:true,
+      incoming_branches:['task/m01','task/m02'],lifecycle:'READY'},
+  ],
+})
+test('Working Branch authorization uses reviewed Job/Task DAG and exact baseline reconciliation',()=>{
+  const job=approvedJob(), branch=record('task/m01','M01',{development_head_sha:sha})
+  assert.equal(h.workingBranchTaskContractError(branch,job,job,true),null)
+  assert.match(h.workingBranchTaskContractError(branch,
+    {...job,planning_review:{status:'PENDING'}},job,true),/WORKING_BRANCH_JOB_UNREVIEWED/)
+  const withoutIncoming={...job,tasks:job.tasks.map(t=>
+    t.task_id==='M03'?{...t,incoming_branches:[]}:t)}
+  assert.match(h.workingBranchTaskContractError(branch,withoutIncoming,withoutIncoming,true),
+    /WORKING_BRANCH_INCOMING_MISSING/)
+  const disconnected={...job,tasks:job.tasks.map(t=>
+    t.task_id==='M03'?{...t,dependencies:['M02']}:t)}
+  assert.match(h.workingBranchTaskContractError(branch,disconnected,disconnected,true),
+    /WORKING_BRANCH_TASK_DAG_INVALID/)
+  assert.match(h.workingBranchTaskContractError({...branch,development_head_sha:null},job,job,true),
+    /WORKING_BRANCH_BASELINE_UNVERIFIED/)
+  assert.match(h.workingBranchTaskContractError({...branch,development_head_sha:bsha},job,job,true),
+    /WORKING_BRANCH_RECONCILIATION_REQUIRED/)
+  assert.equal(h.workingBranchTaskContractError({...branch,development_head_sha:bsha,
+    reconciliation_plan:'Rebase against verified current Development HEAD'},job,job,true),null)
+})
+test('Cross-Job Convergence owner requires explicit Job-level DAG edge',()=>{
+  const owner=approvedJob(),closure={
+    ...approvedJob(),job_id:'job-two',linked_job_ids:['job-one'],
+    tasks:[{task_id:'M03',convergence_task:true,dependencies:['M01'],
+      incoming_branches:['task/m01']}],
+  }
+  const branch=record('task/m01','M01',{closure_owner_job_id:'job-two',
+    development_head_sha:sha})
+  assert.equal(h.workingBranchTaskContractError(branch,owner,closure,true),null)
+  assert.match(h.workingBranchTaskContractError(branch,owner,
+    {...closure,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
+  assert.match(h.workingBranchTaskContractError(branch,owner,
+    {...closure,job_id:'wrong'},true),/WORKING_BRANCH_CLOSURE_JOB_INVALID/)
+})
+function loadRealRuntimeModule(file, cache=new Map()) {
+  const absolute=path.resolve(root,file)
+  assert.ok(absolute.startsWith(root+path.sep))
+  if (cache.has(absolute)) return cache.get(absolute).exports
+  const content=fs.readFileSync(absolute,'utf8')
+  const js=ts.transpileModule(content,{compilerOptions:{
+    module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,
+  }}).outputText
+  const module={exports:{}}
+  cache.set(absolute,module)
+  vm.runInNewContext(js,{module,exports:module.exports,URL,console,require:specifier=>{
+    assert.ok(specifier.startsWith('.'),'outside GSA source import denied')
+    return loadRealRuntimeModule(path.resolve(path.dirname(absolute),specifier),cache)
+  }},{filename:absolute,timeout:2000})
+  return module.exports
+}
+test('prepare tool rejects duplicate active Task branch and validates authorization snapshots',async()=>{
+  const {registerWorkingBranchTools}=loadRealRuntimeModule('project-setup/working-branch.ts')
+  let handler
+  let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerWorkingBranchTools({
+    server:{registerTool:(name,config,fn)=>{if(name==='working_branch_prepare')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+  })
+  assert.equal(typeof handler,'function')
+  const job=approvedJob()
+  const base={
+    project_id:id,memory_path:'projects/'+id+'/PROJECT.md',
+    project_manifest_sha:sha,job_record_text:JSON.stringify(job),
+    job_record_sha:sha,
+  }
+  const a=record('task/m01','M01',{status:'PROPOSED',authorization_ref:null})
+  const first=await handler({...base,action:'REGISTER',branch_record:a,
+    project_manifest_text:manifest([])})
+  assert.equal(first.isError,undefined)
+  assert.equal(first.structuredContent.status,'PROPOSED')
+  const duplicate=await handler({...base,action:'REGISTER',
+    branch_record:{...a,branch:'task/m01-duplicate'},
+    project_manifest_text:first.structuredContent.updated_manifest_text})
+  assert.match(duplicate.content[0].text,/WORKING_BRANCH_TASK_ALREADY_OWNED/)
+  const b=record('task/m02','M02',{status:'PROPOSED',authorization_ref:null})
+  const parallel=await handler({...base,action:'REGISTER',branch_record:b,
+    project_manifest_text:first.structuredContent.updated_manifest_text})
+  assert.equal(parallel.isError,undefined)
+  const nowAuthorized={...a,status:'AUTHORIZED',authorization_ref:'V/reviewed-task',
+    development_head_sha:sha}
+  const accepted=await handler({...base,action:'TRANSITION',
+    branch_record:nowAuthorized,
+    project_manifest_text:first.structuredContent.updated_manifest_text})
+  assert.equal(accepted.isError,undefined)
+  assert.equal(accepted.structuredContent.status,'AUTHORIZED')
+  const stale=await handler({...base,action:'TRANSITION',
+    branch_record:{...nowAuthorized,development_head_sha:bsha},
+    project_manifest_text:first.structuredContent.updated_manifest_text})
+  assert.match(stale.content[0].text,/WORKING_BRANCH_RECONCILIATION_REQUIRED/)
 })
