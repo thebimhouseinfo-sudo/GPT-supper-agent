@@ -74,6 +74,7 @@ export function registerRunComplete(deps: any) {
       // Job or publish stale PASS after the Plan fence was committed. NEXT
       // successful Runs require an exact owning Job snapshot for ALL roles,
       // not only Coder. Failed/cancelled settlement remains possible.
+      let owningNextJob: any = null
       if (lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
         if (!job_record_text || !/^[0-9a-f]{40}$/.test(String(job_record_sha ?? ''))) {
           return { content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_REQUIRES_CURRENT_JOB_SHA.'}],isError:true }
@@ -87,6 +88,17 @@ export function registerRunComplete(deps: any) {
             jobExecutionContract(owning) !== executionContract ||
             recordNextMemoryNamespace(owning) !== nextMemoryNamespace) {
           return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB.'}],isError:true}
+        }
+        owningNextJob = owning
+      }
+      // Enforce the reviewed Job's Task identity, not only the mutable Run
+      // record flag: a stale or stripped convergence bit must never bypass M03.
+      if (role === 'coder' && lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
+        const owningTask = owningNextJob?.tasks?.find((t: any) => t.task_id === current.primary_task_id)
+        if (Boolean(owningTask?.convergence_task) !== Boolean(current.convergence_task) ||
+            (owningTask?.convergence_task === true &&
+             JSON.stringify(owningTask.incoming_branches ?? []) !== JSON.stringify(current.incoming_branches ?? []))) {
+          return { content: [{ type: 'text', text: 'CONVERGENCE_TASK_BINDING_MISMATCH: current Run must match reviewed Job Convergence Task/incoming branches.' }], isError: true }
         }
       }
       // Convergence is a Task responsibility, not a background cleanup Job.
