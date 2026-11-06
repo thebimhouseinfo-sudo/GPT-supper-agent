@@ -1,7 +1,7 @@
 name: GSA NEXT runtime logic gate
 on:
   push:
-    branches: [main]
+    branches: [main, upgrade/gsa-context-efficiency]
     paths:
       - 'supabase/functions/gsa-mcp/**'
       - 'test-lab/**'
