@@ -12,6 +12,7 @@ const ts = require('typescript')
 const {loadSourceModule} = require('./helpers/harness-ts-loader.cjs')
 const {registrationGraph, toolSource} = require('./helpers/gsa4-source-views.cjs')
 const {normalizeRunComplete, normalizeCodingSkillBody} = require('./helpers/three-pr-approved-deltas.cjs')
+const {normalizeWorkingBranchDelta} = require('./helpers/working-branch-approved-deltas.cjs')
 const {normalizeUFBody, normalizeUFRole} = require('./helpers/uf-approved-skill-deltas.cjs')
 
 const repoRoot = path.resolve(__dirname, '..')
@@ -252,15 +253,16 @@ test('all 17 extracted Run/Project/Checkpoint/Evidence registration expressions 
   for(const [file,entry,count] of groups) {
     const original=calls(base(file),'GSA3/'+file)
     const newSource=toolSource(file,entry)
-    const updated=calls(file === 'run-execution-tools.ts' ? normalizeRunComplete(newSource) : newSource,'A0/'+file)
+    const updated=calls(newSource,'A0/'+file)
     assert.equal(original.length,count,'base registrations: '+file)
-    const intentionallyUpdated=new Set(['run_begin','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare'])
+    const intentionallyUpdated=new Set(['run_begin','run_complete','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','working_branch_prepare'])
     assert.deepEqual(updated.filter(([name])=>!intentionallyUpdated.has(name)),
       original.filter(([name])=>!intentionallyUpdated.has(name)),
       'unrelated schemas/handlers/error/result code drift: '+file)
     for(const [name] of original.filter(([name])=>intentionallyUpdated.has(name)))
       assert.ok(updated.some(([actual])=>actual===name),'intentionally updated tool missing: '+name)
-    assert.deepEqual(registrationGraph(file,entry).names,original.map(([name])=>name),
+    assert.deepEqual(registrationGraph(file,entry).names,
+      [...original.map(([name])=>name), ...(file==='project-setup-tools.ts'?['working_branch_prepare']:[])],
       'registration order drift: '+file)
   }
 })
@@ -274,7 +276,8 @@ test('all former index helper function bodies and schema initializers preserve G
   const liveFuncs=new Map()
   const liveVars=new Map()
   for(const f of leaves) {
-    const source=current(f)
+    const source=f==='project-manifest-scope.ts'
+      ? normalizeWorkingBranchDelta(f,current(f)) : current(f)
     for(const [name,body] of functions(source,f)) {
       assert.ok(!liveFuncs.has(name),'duplicate index helper: '+name)
       liveFuncs.set(name,body)
