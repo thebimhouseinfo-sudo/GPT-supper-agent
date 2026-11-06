@@ -118,7 +118,19 @@ Task must be declared as Convergence and be reachable through the Task DAG
 ACTIVE, the current applicable Job revisions must have Reviewer PASS, and
 the Convergence Task must explicitly declare that incoming branch.
 
+A registered branch's source write must retain its exact authorized
+Development HEAD baseline and, where the base SHA diverges, a documented
+reconciliation plan. Missing baseline or required reconciliation fails
+closed even when the branch name and owning Task match.
+
 Only one non-CLOSED branch may own the same repository/Project/Job/Task.
+The registration freezes Project/Job/Task ownership, branch purpose,
+task dependencies, deliverables and merge/retire conditions across every
+lifecycle transition; a transition may add evidence but cannot rewrite
+the approved Task contract. For cross-Job convergence, the closure Job
+must link to the source Job and its Convergence Task must explicitly
+depend on the source Task.
+
 A duplicate Task branch is rejected, rather than silently created. Existing
 authorized branches should be reused. A new branch for that Task requires
 verified closure of the prior branch; simply RETIRED is not enough.
