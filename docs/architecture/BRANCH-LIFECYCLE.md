@@ -108,6 +108,40 @@ For parallel M01/M02 and downstream M03:
   branch is closed logically while the physical Git ref is retained and
   `preservation_ref` records the exception.
 
+### Task/Job snapshots and baseline reconciliation
+
+The `working_branch_prepare` handler requires exact owning Job JSON and blob SHA.
+If the Closure Owner is in a different Job, a second exact Job JSON/SHA is
+required. Both Job/Task identities must match the registration; the closure
+Task must be declared as Convergence and be reachable through the Task DAG
+(or a verified cross-Job dependency). Before the branch becomes AUTHORIZED or
+ACTIVE, the current applicable Job revisions must have Reviewer PASS, and
+the Convergence Task must explicitly declare that incoming branch.
+
+Only one non-CLOSED branch may own the same repository/Project/Job/Task.
+A duplicate Task branch is rejected, rather than silently created. Existing
+authorized branches should be reused. A new branch for that Task requires
+verified closure of the prior branch; simply RETIRED is not enough.
+
+The registration records the exact `base_sha` and the independently
+verified `development_head_sha` at authorization. If they differ, a
+nonempty `reconciliation_plan` is required, and the Convergence Owner must
+reconcile ancestry against live Git. Both Git and Job/Project Memory SHAs
+must be fetched and read back externally: a caller-provided snapshot alone
+does not prove current authority.
+
+If an owning Task becomes RETIRED or superseded, its existing branch may
+still transition to RETIRED/CLOSED under its registered Convergence/Closure
+Owner. It may not resume authorized source writes. A retained Git ref
+requires an explicit `preservation_ref`, `preservation_owner` and
+`preservation_reason`; KEEP does not rewrite MERGED/RETIRED disposition.
+
+For NEXT Run completion, the currently reviewed Job Task's
+`convergence_task` and `incoming_branches` must match the Run record.
+Stripping the Run flag or omitting an incoming branch cannot bypass M03
+closure. The normal Coder Goal Recheck and independent Tester/Reviewer
+requirements remain in force after Convergence checks pass.
+
 This contract does not transfer merge or production authority. Source mutation,
 integration merge, Main release merge, ref deletion and production deployment
 remain separately authorized, independently reviewed and verified against exact
