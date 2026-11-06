@@ -48,3 +48,15 @@ Stop for real permission denial, absent Candidate activation, frozen-fixture con
 
 ## 8. Technical acceptance
 Technical Proposal ready for implementation gate only when independent planning review finds no missing canonical Goal, Task carrier, branch authorization rule, workable fixture/evaluator separation, Candidate activation strategy, independent Reviewer contract or orphaned downstream pack. Source implementation remains separately Human-approved; Product test and performance gains remain NOT_RUN until observed.
+
+## 9. Human-approved shared-branch M3 execution mechanics — 2026-11-06
+### GOAL
+Keep the original source-pinned crossed-workload experiment verifiable without separate working Git branches, while still proving which exact Harness/Skill version a real Agent loaded.
+
+**Branch method:** Human explicitly selected the sole registered Development Branch `upgrade/gsa-context-efficiency` for all M3 source writes, serialized. Earlier requirements for parallel/isolated Git branches and per-branch closure are superseded. Distinct arm outputs must instead be immutable Git/M3 Project Memory receipts, keyed by true Job and Run IDs and bound to source/fixture/tool revision SHAs. Human decision: `GSA4-M3-SHARED-DEVELOPMENT-BRANCH-DECISION-20261106.md` blob `8860e1ebe90f1d889a065ba35be054f9d4b07b6a`.
+
+**Sequence and controls:** BASE-G → BASE-S → G3-on-WS → S-on-WG. For each record actual execution surface, model, loaded full Harness/Skill bytes and SHA, current source HEAD and initial comparison base, frozen fixture byte SHA, output/test/reviewer SHAs and source mutations. No destructive branch reset/revert or baseline solution copying; a shared HEAD is not automatically a comparable initial state, so independence/equivalence must be judged, otherwise report `NON_EQUIVALENT`.
+
+**Candidate runner gap:** Installed runtime is Production `P3-J-7793-R2`. `get_agent_harness(role,mode)` uses `renderHarness` from compiled `harness-catalog.ts`; `start_direct_agent` has no Candidate selector. `selective-harness-preview.ts` is explicitly advisory and not wired to execution. Source snapshots, GitHub Actions unit test successes and preview text are NOT evidence of a live Direct Agent running with Candidate. Do not change Production/deploy or fake a Candidate verdict. A supported non-Production version-pinned execution surface with independently observable loaded Harness/Skill revision is required before real Candidate arms; any implementation of such a runner is a separate scoped and reviewed implementation task with no Production effect.
+
+**Evaluation/closure:** Independent Tester owns held-out oracle, with no author access and immutable evaluator SHA before any Candidate results. Compare only matched pairs G3-on-WS:BASE-S and S-on-WG:BASE-G, require full Criteria/Acceptance, Role/NEXT/Skill safety and accepted HOW. JP-CONVERGE disposition is per Candidate and final authorized Development HEAD, not per experimental branch; `main`/Production decisions remain Human-only. Job instruction is a compact entrypoint and not a context-savings benchmark.
