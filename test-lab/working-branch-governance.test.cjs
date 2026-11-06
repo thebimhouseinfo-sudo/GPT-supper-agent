@@ -294,3 +294,45 @@ test('Cancelled owning Task may retire its existing branch; closure still requir
   assert.equal(result.isError,undefined,'cancelled Task must still be able to retire existing branch')
   assert.equal(result.structuredContent.status,'RETIRED')
 })
+
+test('real Run completion cannot strip Convergence Task flag or bypass orphan branch closure',async()=>{
+  const {registerRunComplete}=loadRealRuntimeModule('run/complete.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerRunComplete({
+    server:{registerTool:(name,schema,fn)=>{assert.equal(name,'run_complete');handler=fn}},
+    z,req:{},AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,text)=>({isError:true,content:[{type:'text',text}]}),
+    resolveExecutionContract:x=>x,recordNextMemoryNamespace:r=>r.memory_namespace,
+    jobExecutionContract:j=>j.execution_contract,
+    parseDurableSnapshots:()=>({error:null,entries:[]}),
+  })
+  const job={...approvedJob(),execution_contract:'NEXT',memory_namespace:'PRODUCTION'}
+  const run={project_id:id,job_id:'job-one',run_id:'run-one',role:'coder',
+    lifecycle:'IN_PROGRESS',execution_contract:'NEXT',
+    memory_namespace:'PRODUCTION',planning_revision:1,
+    primary_task_id:'M03',convergence_task:true,
+    incoming_branches:['task/m01','task/m02']}
+  const args={project_id:id,job_id:'job-one',run_id:'run-one',role:'coder',
+    run_record_sha:sha,job_record_text:JSON.stringify(job),job_record_sha:sha,
+    lifecycle:'COMPLETED',result:'PASS',output_refs:[],verification_refs:[],
+    handoff:{completed_summary:'verified downstream handoff',next_role:'reviewer'}}
+  const call=async(r,extra={})=>handler({...args,run_record_text:JSON.stringify(r),...extra})
+  const spoof=await call({...run,convergence_task:false})
+  assert.match(spoof.content[0].text,/CONVERGENCE_TASK_BINDING_MISMATCH/)
+  const spoofNames=await call({...run,incoming_branches:['task/m01']})
+  assert.match(spoofNames.content[0].text,/CONVERGENCE_TASK_BINDING_MISMATCH/)
+  const noHandoff=await call(run,{handoff:null})
+  assert.match(noHandoff.content[0].text,/CONVERGENCE_DOWNSTREAM_HANDOFF_REQUIRED/)
+  const noManifest=await call(run)
+  assert.match(noManifest.content[0].text,/CONVERGENCE_MANIFEST_REQUIRED/)
+  const open=await call(run,{project_manifest_text:manifest([
+    closed('task/m01','M01'),record('task/m02','M02')]),
+    project_manifest_sha:sha})
+  assert.match(open.content[0].text,/CONVERGENCE_CLOSURE_PENDING/)
+  const allClosed=await call(run,{project_manifest_text:manifest([
+    closed('task/m01','M01'),closed('task/m02','M02')]),
+    project_manifest_sha:sha})
+  assert.match(allClosed.content[0].text,/CODER_COMPLETION_BLOCKED/,
+    'After passing Convergence closure, ordinary Coder Goal Recheck guard must still apply')
+})
