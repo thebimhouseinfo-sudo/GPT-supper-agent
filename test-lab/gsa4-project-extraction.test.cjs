@@ -105,6 +105,9 @@ test('A0-P facade and leaves preserve six tools, owner order, and exact original
     assert.notEqual(fnv32(block + ' '), e.hash, 'mutation oracle must fail closed')
   }
   assert.equal(total, 6)
+  assert.equal((facade.match(/registerWorkingBranchTools\(deps\)/g) || []).length, 1,
+    'one additive Working Branch tool follows all six pinned A0-P registrations')
+  assert.match(facade,/registerProjectBranchPolicyPrepare\(deps\)\s+registerWorkingBranchTools\(deps\)/)
 })
 function loadCode(src, file, cache) {
   if (cache.has(file)) return cache.get(file)
@@ -117,7 +120,7 @@ function loadCode(src, file, cache) {
   const mod = { exports: {} }
   cache.set(file, mod.exports)
   const requireRelative = specifier => {
-    assert.ok(specifier.startsWith('./'), 'unexpected external dependency: ' + specifier)
+    assert.ok(specifier.startsWith('.'), 'unexpected external dependency: ' + specifier)
     const target = path.resolve(path.dirname(file), specifier)
     assert.ok(target.startsWith(root + path.sep), 'import escaped gsa-mcp root')
     return loadCode(read(target), target, cache)
@@ -169,10 +172,11 @@ function makeDeps(authenticated, overrides = {}) {
   }
   return { deps, registered }
 }
-function register(loader, authenticated, overrides = {}) {
+function register(loader, authenticated, overrides = {}, includeWorking = true) {
   const obj = makeDeps(authenticated, overrides)
   loader(obj.deps)
-  assert.deepEqual([...obj.registered.keys()], expected.map(e => e.name))
+  assert.deepEqual([...obj.registered.keys()], [...expected.map(e => e.name),
+    ...(includeWorking ? ['working_branch_prepare'] : [])])
   return obj.registered
 }
 function serial(value) {
@@ -245,7 +249,7 @@ test('A0-P original GSA3 vs extracted runtime source/response parity (when base 
   const oldLoader = loadOriginal(baselineSource)
   const newLoader = loadNew()
   for (const auth of [false, true]) {
-    const before = register(oldLoader, auth)
+    const before = register(oldLoader, auth, {}, false)
     const after = register(newLoader, auth)
     for (const e of expected) {
       if (e.name.startsWith('project_bootstrap_')) {
