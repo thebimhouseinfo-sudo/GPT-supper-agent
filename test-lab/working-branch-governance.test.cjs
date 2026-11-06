@@ -383,3 +383,32 @@ test('source guard denies registered branch without verified baseline and diverg
   assert.equal(auth(manifest([{...branch,development_head_sha:bsha,
     reconciliation_plan:'Reviewed integration reconciliation'}]),branch.branch,'M01'),null)
 })
+
+test('retirement ledger blocks activation but does not orphan registered branch cleanup',async()=>{
+  const {registerWorkingBranchTools}=loadRealRuntimeModule('project-setup/working-branch.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerWorkingBranchTools({server:{registerTool:(name,schema,fn)=>handler=fn},
+    z,req:{},AUTH_SCOPES:[],authContext:async()=>({user_id:'tester'}),
+    authError:(_req,text)=>({isError:true,content:[{type:'text',text}]}),
+  })
+  const a=record('task/m01','M01')
+  const retired={...a,status:'RETIRED',disposition:'RETIRED',
+    final_head_sha:sha,handoff_ref:'H/M03',closure_evidence_ref:'V/retired'}
+  const retiredSection='\n## Retired Branches\n- '+repo+
+    ' | branch=task/m01 | sha='+sha+' | status=RETIRED\n'
+  const job=approvedJob()
+  const params={
+    project_id:id,memory_path:'projects/'+id+'/PROJECT.md',
+    project_manifest_sha:sha,job_record_text:JSON.stringify(job),job_record_sha:sha,
+    project_manifest_text:manifest([a],retiredSection),
+  }
+  const denied=await handler({...params,action:'REGISTER',
+    branch_record:{...a,status:'PROPOSED'}})
+  assert.match(denied.content[0].text,/WORKING_BRANCH_SCOPE_INVALID/)
+  const closing=await handler({...params,action:'TRANSITION',branch_record:retired})
+  assert.equal(closing.isError,undefined,
+    'Human-retired existing source branch must still reach terminal cleanup')
+  assert.equal(closing.structuredContent.status,'RETIRED')
+  assert.match(auth(params.project_manifest_text,'task/m01'),/SOURCE_BRANCH_RETIRED/,
+    'retired branch remains unwritable during cleanup')
+})
