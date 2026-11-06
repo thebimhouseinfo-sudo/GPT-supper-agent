@@ -134,6 +134,11 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
       previous.owning_task_id !== next.owning_task_id ||
       previous.owner !== next.owner ||
       previous.handoff_recipient !== next.handoff_recipient ||
+      previous.purpose !== next.purpose ||
+      JSON.stringify(previous.dependencies) !== JSON.stringify(next.dependencies) ||
+      JSON.stringify(previous.deliverables) !== JSON.stringify(next.deliverables) ||
+      JSON.stringify(previous.merge_conditions) !== JSON.stringify(next.merge_conditions) ||
+      JSON.stringify(previous.retire_conditions) !== JSON.stringify(next.retire_conditions) ||
       previous.parent_development_branch !== next.parent_development_branch ||
       previous.base_sha !== next.base_sha ||
       (previous.development_head_sha && previous.development_head_sha !== next.development_head_sha) ||
@@ -247,8 +252,9 @@ export function workingBranchTaskContractError(
     ]
     if (!linked.some((dep: any) =>
       dep === ownerJob.job_id || dep?.job_id === ownerJob.job_id ||
-      dep?.depends_on === ownerJob.job_id))
-      return 'WORKING_BRANCH_JOB_DAG_INVALID: cross-Job Convergence has no explicit owning Job dependency.'
+      dep?.depends_on === ownerJob.job_id) ||
+        !(closureTask.dependencies ?? []).includes(branch.owning_task_id))
+      return 'WORKING_BRANCH_JOB_DAG_INVALID: cross-Job Convergence requires explicit Job and Task dependency edges.'
   }
   if (closureTask.convergence_task !== true)
     return 'WORKING_BRANCH_CONVERGENCE_UNDECLARED: Closure Owner Task must be marked as Convergence.'
