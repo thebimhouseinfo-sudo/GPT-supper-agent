@@ -112,7 +112,8 @@ export function registerWorkingBranchTools(deps: any) {
         return { content: [{ type: 'text', text: 'WORKING_BRANCH_JOB_SNAPSHOT_INVALID: exact Job JSON and blob SHA(s) required.' }], isError: true }
       }
       const taskError = workingBranchTaskContractError(next, ownerJob, closureJob,
-        action === 'TRANSITION' && ['AUTHORIZED','ACTIVE'].includes(next.status))
+        action === 'TRANSITION' && ['AUTHORIZED','ACTIVE'].includes(next.status),
+        action === 'TRANSITION' && ['RETIRED','CLOSED'].includes(next.status))
       if (taskError)
         return { content: [{ type: 'text', text: taskError }], isError: true }
       const updated = replaceBranchRow(project_manifest_text, next, action === 'TRANSITION')
