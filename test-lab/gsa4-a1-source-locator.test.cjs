@@ -32,12 +32,12 @@ function assertHelper(entry) {
     'symbol absent from owner ' + entry.symbol + ' -> ' + entry.owner)
 }
 
-test('A1 locator covers the exact 58-name GSA public inventory in order', () => {
+test('A1 locator covers the exact 59-name GSA public inventory in order', () => {
   assert.equal(locator.schema, 'gsa4-a1-source-locator/v1')
   assert.equal(locator.advisory_only, true)
-  assert.equal(locator.tool_owners.length, 58)
+  assert.equal(locator.tool_owners.length, 59)
   assert.deepEqual(locator.tool_owners.map(x => x.name), pinnedNames)
-  assert.equal(new Set(locator.tool_owners.map(x => x.name)).size, 58)
+  assert.equal(new Set(locator.tool_owners.map(x => x.name)).size, 59)
   assert.match(locator.validation, /CURRENT Git ref\/blob SHA/)
 })
 
