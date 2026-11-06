@@ -268,7 +268,8 @@ test('prepare tool rejects duplicate active Task branch and validates authorizat
   const stale=await handler({...base,action:'TRANSITION',
     branch_record:{...nowAuthorized,development_head_sha:bsha},
     project_manifest_text:first.structuredContent.updated_manifest_text})
-  assert.match(stale.content[0].text,/WORKING_BRANCH_RECONCILIATION_REQUIRED/)
+  assert.match(stale.content[0].text,/WORKING_BRANCH_TRANSITION_INVALID/,
+    'A registered Development HEAD is immutable; transition may not silently replace its authorization baseline')
 })
 
 test('Cancelled owning Task may retire its existing branch; closure still requires Convergence Owner',async()=>{
