@@ -125,6 +125,10 @@ export function workingBranchWriteError(
     return 'SOURCE_BRANCH_LIFECYCLE_BLOCKED: branch must be AUTHORIZED or ACTIVE for source mutation.'
   if (!record.authorization_ref)
     return 'SOURCE_BRANCH_AUTHORIZATION_MISSING: approved Job/Task authorization ref is required.'
+  if (!record.development_head_sha || !SHA.test(record.development_head_sha))
+    return 'SOURCE_BRANCH_BASELINE_MISSING: exact authorized Development HEAD SHA is required.'
+  if (record.base_sha !== record.development_head_sha && !record.reconciliation_plan)
+    return 'SOURCE_BRANCH_RECONCILIATION_MISSING: divergent source base requires an approved reconciliation plan.'
   return null
 }
 
