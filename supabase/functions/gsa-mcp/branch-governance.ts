@@ -101,12 +101,12 @@ export function workingBranchWriteError(
   branches: WorkingBranch[], projectId: string, repoUrl: string, sourceBranch: string,
   developmentBranch: string, releaseBranch: string | null, jobId?: string | null, taskId?: string | null,
 ): string | null {
-  if (!jobId || !taskId) return 'SOURCE_BRANCH_UNOWNED: Working Branch mutation requires the exact Job and Task.'
   const repo = normalizeGithubRepo(repoUrl)
   if (!repo || sourceBranch === developmentBranch || sourceBranch === releaseBranch)
     return 'SOURCE_BRANCH_INVALID: a Working Branch cannot replace Development or Release.'
   const record = branches.find(b => b.repository_url.toLowerCase() === repo.url.toLowerCase() && b.branch === sourceBranch)
   if (!record) return 'SOURCE_BRANCH_INVALID: Working Branch is not registered in the active Project.'
+  if (!jobId || !taskId) return 'SOURCE_BRANCH_UNOWNED: Working Branch mutation requires the exact Job and Task.'
   if (record.project_id !== projectId || record.owning_job_id !== jobId ||
       record.owning_task_id !== taskId)
     return 'SOURCE_BRANCH_OWNERSHIP_INVALID: Job/Task/Project does not own the registered branch.'
