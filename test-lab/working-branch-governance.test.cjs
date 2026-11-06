@@ -336,3 +336,37 @@ test('real Run completion cannot strip Convergence Task flag or bypass orphan br
   assert.match(allClosed.content[0].text,/CODER_COMPLETION_BLOCKED/,
     'After passing Convergence closure, ordinary Coder Goal Recheck guard must still apply')
 })
+
+test('branch purpose, owner and merge/retire contracts remain immutable across lifecycle',()=>{
+  const a=record('task/m01','M01',{status:'ACTIVE'})
+  const next={...a,status:'READY_FOR_HANDOFF',handoff_ref:'H/M03',final_head_sha:sha}
+  assert.equal(h.workingBranchTransitionError(a,next),null)
+  const mutated={
+    purpose:'Unauthorized replacement scope',
+    owner:'different operator',
+    dependencies:['new unexpected dependency'],
+    deliverables:['different output'],
+    merge_conditions:['skip CI'],
+    retire_conditions:['hide findings'],
+  }
+  for(const [key,value] of Object.entries(mutated)){
+    assert.match(h.workingBranchTransitionError(a,{...next,[key]:value}),
+      /BRANCH_IDENTITY_IMMUTABLE/,key+' must be immutable')
+  }
+})
+test('cross-Job convergence requires BOTH Job edge and Task dependency',()=>{
+  const owner=approvedJob()
+  const closure={
+    ...approvedJob(),job_id:'job-two',linked_job_ids:['job-one'],
+    tasks:[{task_id:'M03',convergence_task:true,dependencies:[],
+      incoming_branches:['task/m01']}],
+  }
+  const branch=record('task/m01','M01',{closure_owner_job_id:'job-two',
+    development_head_sha:sha})
+  assert.match(h.workingBranchTaskContractError(branch,owner,closure,true),
+    /WORKING_BRANCH_JOB_DAG_INVALID/)
+  const valid={...closure,tasks:[{...closure.tasks[0],dependencies:['M01']}]}
+  assert.equal(h.workingBranchTaskContractError(branch,owner,valid,true),null)
+  assert.match(h.workingBranchTaskContractError(branch,owner,
+    {...valid,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
+})
