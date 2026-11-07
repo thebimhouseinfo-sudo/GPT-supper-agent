@@ -68,6 +68,8 @@ const auth=(text,branch,task='M01',job='job-one')=>
 const closed=(branch,task,keep=false)=>record(branch,task,{
   status:'CLOSED',disposition:'MERGED',final_head_sha:sha,
   handoff_ref:'H/M03',closure_evidence_ref:'V/closure',
+  review_ref:'V/review',ci_ref:'V/CI',dependencies_verified_ref:'V/dag',
+  integration_sha:csha,merge_authorization_ref:'AUTH/merge',
   physical_ref:keep?'PRESENT':'DELETED',
   ...(keep?{preservation_ref:'HUMAN_KEEP',preservation_owner:'Human',
     preservation_reason:'Preserve verified control experiment'}:{}),
@@ -150,6 +152,36 @@ test('M03 completion requires all incoming branches closed with evidence and exa
   assert.match(h.convergenceCompletionError([a,record('task/m02','M02')],id,'job-one','M03',['task/m01','task/m02']),/CONVERGENCE_CLOSURE_PENDING/)
   assert.match(h.convergenceCompletionError([a,b],id,'job-one','M03',['task/m01','task/m01']),/CONVERGENCE_INCOMING_INVALID/)
 })
+test('M03 rejects a forged CLOSED/MERGED branch missing any merge gate evidence',()=>{
+  const valid=closed('task/m01','M01')
+  assert.equal(h.convergenceCompletionError([valid],id,'job-one','M03',['task/m01']),null)
+  for (const field of ['review_ref','ci_ref','dependencies_verified_ref',
+    'integration_sha','merge_authorization_ref']) {
+    const forged={...valid}
+    delete forged[field]
+    // These evidence fields are optional in the manifest schema to support
+    // earlier lifecycle phases; M03 must still fail CLOSED/MERGED.
+    assert.equal(h.parseProjectManifest(manifest([forged])).working_branches.length,1,field)
+    assert.match(h.convergenceCompletionError([forged],id,'job-one','M03',['task/m01']),
+      /CONVERGENCE_MERGE_EVIDENCE_MISSING/,field)
+  }
+})
+test('MERGED to CLOSED rejects incomplete merge proof without penalizing RETIRED',()=>{
+  const good=closed('task/m01','M01')
+  for (const field of ['review_ref','ci_ref','dependencies_verified_ref',
+    'integration_sha','merge_authorization_ref']) {
+    const forged={...good}
+    delete forged[field]
+    assert.match(h.workingBranchTransitionError({...forged,status:'MERGED'},forged),
+      /BRANCH_MERGE_GATES_MISSING/,field)
+  }
+  const retired=record('task/m02','M02',{
+    status:'CLOSED',disposition:'RETIRED',final_head_sha:sha,
+    handoff_ref:'H/M03',closure_evidence_ref:'V/retire',physical_ref:'DELETED',
+  })
+  assert.equal(h.convergenceCompletionError([retired],id,'job-one','M03',['task/m02']),null)
+})
+
 test('source interfaces bind branch owner, Convergence ownership and independent release',()=>{
   const read=p=>fs.readFileSync(path.join(root,p),'utf8')
   const authSource=read('project-auth-tools.ts')
