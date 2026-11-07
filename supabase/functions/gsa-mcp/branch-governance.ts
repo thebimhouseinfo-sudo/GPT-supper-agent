@@ -180,6 +180,13 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
       (next.disposition !== next.status || !next.final_head_sha ||
        !next.handoff_ref || !next.closure_evidence_ref))
     return 'BRANCH_DISPOSITION_EVIDENCE_REQUIRED: final SHA, handoff and evidence must be recorded.'
+  // A pre-existing/forged MERGED record cannot skip original merge gates
+  // merely by transitioning directly to CLOSED.
+  if (next.status === 'CLOSED' && next.disposition === 'MERGED' &&
+      (!next.review_ref || !next.ci_ref || !next.dependencies_verified_ref ||
+       !next.integration_sha || !SHA.test(next.integration_sha) ||
+       !next.merge_authorization_ref))
+    return 'BRANCH_MERGE_GATES_MISSING: closed merged branch must retain review, CI, dependency, integration SHA and merge authority.'
   if (next.status === 'CLOSED' &&
       (!['MERGED','RETIRED'].includes(previous.status) ||
        !next.disposition || !next.handoff_ref || !next.closure_evidence_ref ||
@@ -202,6 +209,13 @@ export function convergenceCompletionError(
       incoming.some(name => !owned.some(b => b.branch === name)))
     return 'CONVERGENCE_ORPHAN_BRANCH: incoming and closure-owned branch sets must match.'
   for (const b of owned) {
+    // Convergence reads Project Memory state, not a replay of the transitions:
+    // CLOSED/MERGED alone is not evidence that the guarded merge took place.
+    if (b.status === 'CLOSED' && b.disposition === 'MERGED' &&
+        (!b.review_ref || !b.ci_ref || !b.dependencies_verified_ref ||
+         !b.integration_sha || !SHA.test(b.integration_sha) ||
+         !b.merge_authorization_ref))
+      return 'CONVERGENCE_MERGE_EVIDENCE_MISSING: ' + b.branch + ' lacks review, CI, dependency, integration SHA or merge authority.'
     if (b.status !== 'CLOSED' || !['MERGED','RETIRED'].includes(b.disposition ?? '') ||
         !b.final_head_sha || !b.handoff_ref || !b.closure_evidence_ref ||
         !b.physical_ref || b.physical_ref === 'UNKNOWN' ||
