@@ -66,6 +66,8 @@ export function registerJobPrepareTool(deps: any) {
           dependencies: z.array(z.string()).default([]),
           required_skills: z.array(z.enum(['ui-coder-frontend'])).default([]),
           completion_criteria: z.array(z.string()).min(1),
+          convergence_task: z.boolean().optional(),
+          incoming_branches: z.array(z.string()).optional(),
         })).min(1),
         evidence_needs: z.array(EVIDENCE_NEED_SCHEMA).default([]),
         test_checkpoints: z.array(TEST_CHECKPOINT_SPEC_SCHEMA).default([]),
@@ -251,6 +253,10 @@ export function registerJobPrepareTool(deps: any) {
         dependencies: task.dependencies ?? [],
         required_skills: task.required_skills ?? [],
         completion_criteria: task.completion_criteria,
+        ...(task.convergence_task === true ? {
+          convergence_task: true,
+          incoming_branches: task.incoming_branches ?? [],
+        } : {}),
         lifecycle: 'READY',
       }))
       const topology = normalizedTasks.map((task: any, index: number) => ({

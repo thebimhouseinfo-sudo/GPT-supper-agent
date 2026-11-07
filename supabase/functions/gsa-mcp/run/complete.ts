@@ -1,4 +1,6 @@
 // GSA4 A0-R: run_complete registration extracted from run-execution-tools.ts.
+import { parseProjectManifest } from '../project-manifest-scope.ts'
+import { convergenceCompletionError } from '../branch-governance.ts'
 export function registerRunComplete(deps: any) {
   const { server, z, req, AUTH_SCOPES, authContext, authError, DURABLE_RECORD_SNAPSHOT_SCHEMA, DEFAULT_NEXT_MEMORY_NAMESPACE, jobExecutionContract, invalidExecutionContract, recordNextMemoryNamespace, parseDurableSnapshots, uuidv7, recordPath, prettyJson, durableSnapshotReadbackSteps, resolveExecutionContract, goalRecheckCoverageError, verificationPath, validateRunVerificationSnapshot, validateTesterEvidenceVerificationSnapshot, validateTesterEvidenceClaimSnapshot } = deps
   server.registerTool(
@@ -22,6 +24,8 @@ export function registerRunComplete(deps: any) {
         goal_recheck_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         job_record_text: z.string().min(2).optional(),
         job_record_sha: z.string().min(7).optional(),
+        project_manifest_text: z.string().min(1).optional(),
+        project_manifest_sha: z.string().regex(/^[a-f0-9]{40}$/).optional(),
         run_verification_snapshot: DURABLE_RECORD_SNAPSHOT_SCHEMA.optional(),
         handoff: z.object({
           next_role: z.enum(['planner','designer','coder','reviewer','tester']),
@@ -50,7 +54,7 @@ export function registerRunComplete(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, goal_recheck_snapshot, job_record_text, job_record_sha, run_verification_snapshot, handoff }: any) => {
+    async ({ project_id, job_id, run_id, role, run_record_text, run_record_sha, lifecycle, result, output_refs, verification_refs, goal_recheck_record_text, goal_recheck_verification_ref, goal_recheck_snapshot, job_record_text, job_record_sha, project_manifest_text, project_manifest_sha, run_verification_snapshot, handoff }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to complete a Run.')
       let current: any
@@ -70,6 +74,7 @@ export function registerRunComplete(deps: any) {
       // Job or publish stale PASS after the Plan fence was committed. NEXT
       // successful Runs require an exact owning Job snapshot for ALL roles,
       // not only Coder. Failed/cancelled settlement remains possible.
+      let owningNextJob: any = null
       if (lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
         if (!job_record_text || !/^[0-9a-f]{40}$/.test(String(job_record_sha ?? ''))) {
           return { content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_REQUIRES_CURRENT_JOB_SHA.'}],isError:true }
@@ -84,6 +89,31 @@ export function registerRunComplete(deps: any) {
             recordNextMemoryNamespace(owning) !== nextMemoryNamespace) {
           return {content:[{type:'text',text:'PLAN_CHANGE_RUN_COMPLETION_FENCED_OR_STALE_JOB.'}],isError:true}
         }
+        owningNextJob = owning
+      }
+      // Enforce the reviewed Job's Task identity, not only the mutable Run
+      // record flag: a stale or stripped convergence bit must never bypass M03.
+      if (role === 'coder' && lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
+        const owningTask = owningNextJob?.tasks?.find((t: any) => t.task_id === current.primary_task_id)
+        if (Boolean(owningTask?.convergence_task) !== Boolean(current.convergence_task) ||
+            (owningTask?.convergence_task === true &&
+             JSON.stringify(owningTask.incoming_branches ?? []) !== JSON.stringify(current.incoming_branches ?? []))) {
+          return { content: [{ type: 'text', text: 'CONVERGENCE_TASK_BINDING_MISMATCH: current Run must match reviewed Job Convergence Task/incoming branches.' }], isError: true }
+        }
+      }
+      // Convergence is a Task responsibility, not a background cleanup Job.
+      // A task cannot complete successfully while any incoming branch is orphaned.
+      if (role === 'coder' && lifecycle === 'COMPLETED' && current.convergence_task === true) {
+        if (!handoff || !handoff.completed_summary) {
+          return { content: [{ type: 'text', text: 'CONVERGENCE_DOWNSTREAM_HANDOFF_REQUIRED: downstream handoff must be prepared and persisted before Run closure.' }], isError: true }
+        }
+        const manifest = project_manifest_text && project_manifest_sha ? parseProjectManifest(project_manifest_text) : null
+        if (!manifest || manifest.project_id !== project_id || manifest.lifecycle !== 'ACTIVE') {
+          return { content: [{ type: 'text', text: 'CONVERGENCE_MANIFEST_REQUIRED: exact active Project manifest and blob SHA are required.' }], isError: true }
+        }
+        const closureError = convergenceCompletionError(manifest.working_branches, project_id, job_id,
+          current.primary_task_id ?? '', current.incoming_branches ?? [])
+        if (closureError) return { content: [{ type: 'text', text: closureError }], isError: true }
       }
       if (role === 'coder' && lifecycle === 'COMPLETED') {
         let goal: any = null
@@ -264,6 +294,7 @@ export function registerRunComplete(deps: any) {
         'Verify every output_ref and verification_ref already exists in durable storage before terminal Run update.',
         ...(lifecycle === 'COMPLETED' ? [
           'Independently reread the CURRENT owning Job at its contract-derived Memory path just before writing terminal Run. Reject any plan_change_pending, RETIRED/SUPERSEDED status, stale planning_revision or unexpected Job SHA; do not trust a callback-supplied snapshot.',
+          ...(current.convergence_task === true ? ['Read back the exact PROJECT.md blob SHA and independently verify every incoming Working Branch disposition, closure evidence, physical ref state and handoff before completing convergence.'] : []),
           'Treat delayed completion after an exact-SHA Plan fence as stale, even when a previous Run verification or PASS result exists. Do not promote old evidence to new topology.',
         ] : []),
         ...durableSnapshotReadbackSteps(goal_recheck_snapshot ? [goal_recheck_snapshot] : [], 'Goal Recheck Verification snapshot'),

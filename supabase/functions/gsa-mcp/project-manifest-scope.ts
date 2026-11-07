@@ -1,5 +1,6 @@
 import { validIntegrationBranch, isRetiredSourceBranch, parseRetiredBranchRows } from './project-utils.ts'
 import { normalizeGithubRepo } from './platform-utils.ts'
+import { parseWorkingBranchRows } from './branch-governance.ts'
 import type { ExecutionContract } from './runtime-contract.ts'
 
 export function buildProjectManifest(args: {
@@ -72,6 +73,8 @@ export function parseProjectManifest(text: string) {
   const repo_registry_status = values.repo_registry_status || (values.repo_mode ? 'CONFIRMED' : 'LEGACY_UNASSESSED')
   const retired_branches = parseRetiredBranchRows(text)
   if (retired_branches === null) return null // malformed retirement rows fail closed
+  const working_branches = parseWorkingBranchRows(text)
+  if (working_branches === null) return null // malformed Working Branch rows fail closed
   // The flat fields are the legacy/single-PRIMARY shortcut; section rows support multi-repo Projects.
   // Unknown/invalid branch values are never replaced with GitHub's default branch.
   const branchRows = new Map<string, { repository_url: string; development_branch: string | null; release_branch: string | null }>()
@@ -105,6 +108,7 @@ export function parseProjectManifest(text: string) {
     branch_policy_status: primaryPolicy?.status ?? 'UNCONFIGURED',
     branch_policies,
     retired_branches,
+    working_branches,
     project_id,
     name,
     lifecycle,

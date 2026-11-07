@@ -8,6 +8,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const {normalizeRunComplete} = require('./helpers/three-pr-approved-deltas.cjs')
+const {normalizeWorkingBranchDelta} = require('./helpers/working-branch-approved-deltas.cjs')
 
 const root = path.resolve(__dirname, '../supabase/functions/gsa-mcp')
 const names = ['run_begin','relationship_knowledge_prepare','goal_recheck_record','run_verification_record','run_complete']
@@ -43,7 +44,9 @@ test('five extracted handlers match byte-exact pinned registration blocks', () =
     const source = fs.readFileSync(path.join(root, file), 'utf8')
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
     assert.equal(ast.parseDiagnostics.length, 0, file + ': TS parse diagnostics')
-    const originalSource = name === 'run_complete' ? normalizeRunComplete(source) : source
+    const withoutWorkingBranch = (name === 'run_complete' || name === 'run_begin')
+      ? normalizeWorkingBranchDelta(file,source) : source
+    const originalSource = name === 'run_complete' ? normalizeRunComplete(withoutWorkingBranch) : withoutWorkingBranch
     const block = registrationBlock(originalSource, file)
     assert.equal(block.length, length, name + ': original block length drift')
     assert.equal(hash32(block), fnv1a32, name + ': pinned body/schema/error strings drift outside exact U-B delta')
@@ -74,7 +77,7 @@ function loadTs(filename, cache = new Map()) {
   cache.set(absolute, module)
   const fn = vm.runInThisContext('(function(exports, require, module) {\n' + result.outputText + '\n})', { filename: absolute })
   fn(module.exports, requested => {
-    assert.ok(requested.startsWith('./'), 'unexpected import: ' + requested)
+    assert.ok(requested.startsWith('.'), 'unexpected import: ' + requested)
     return loadTs(path.resolve(path.dirname(absolute), requested), cache)
   }, module)
   return module.exports

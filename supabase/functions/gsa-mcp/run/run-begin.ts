@@ -20,6 +20,7 @@ export function registerRunBegin(deps: any) {
         parent_run_id: z.string().uuid().optional(),
         target_ref: z.string().optional(),
         target_revision: z.string().optional(),
+        source_branch: z.string().optional(),
         input_refs: z.array(z.string()).default([]),
         checkpoint_claim_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
         checkpoint_verification_snapshots: z.array(DURABLE_RECORD_SNAPSHOT_SCHEMA).default([]),
@@ -45,7 +46,7 @@ export function registerRunBegin(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, current_job_record_sha, planning_revision, role, scope_claim, primary_task_id, affected_task_refs, parent_run_id, target_ref, target_revision, source_branch, input_refs, checkpoint_claim_snapshots, checkpoint_verification_snapshots, completed_task_run_snapshots, project_manifest_text, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to begin a Run.')
       let owningJob: any
@@ -67,7 +68,8 @@ export function registerRunBegin(deps: any) {
       if (role === 'coder') {
         const blocked = projectBootstrapExecutionError(project_id, project_manifest_text ?? '', bootstrap_evidence,
           owningJob.repository_context?.working_repository_url ?? null,
-          owningJob.repository_context?.integration_branch ?? null)
+          source_branch ?? owningJob.repository_context?.integration_branch ?? null,
+          primary_task_id ? { job_id, task_id: primary_task_id } : null)
         if (blocked) return { content: [{ type: 'text', text: blocked }], isError: true }
       }
       const currentTaskIds = new Set<string>((owningJob.tasks ?? []).filter((item: any) => item.lifecycle !== 'RETIRED').map((item: any) => item.task_id))
@@ -175,6 +177,11 @@ export function registerRunBegin(deps: any) {
         role,
         target_ref: target_ref ?? null,
         target_revision: target_revision ?? null,
+        ...(source_branch ? { source_branch } : {}),
+        ...(owningJob.tasks?.some((t: any) => t.task_id === primary_task_id && t.convergence_task === true) ? {
+          convergence_task: true,
+          incoming_branches: owningJob.tasks?.find((t: any) => t.task_id === primary_task_id)?.incoming_branches ?? [],
+        } : {}),
         scope_claim,
         input_refs: input_refs ?? [],
         loaded_skills: executionContract === 'NEXT' ? resolvedRequiredSkills.names : [],
@@ -211,7 +218,7 @@ export function registerRunBegin(deps: any) {
             : []),
           'Call authorize_memory_mutation(operation=create, repository_full_name=configured Memory Repo, path=memory_path).',
           'GitHub Memory Repo: create_file at memory_path with run_record_text before role execution begins.',
-          'For coder source writes, re-read Project lifecycle and live target revision immediately before the first write.',
+          'For coder source writes, re-read Project lifecycle, registered Working Branch ownership (when applicable) and live source branch HEAD immediately before the first write.',
           ...(role === 'coder' ? [
             'Independently read the current Job Plan, planning-review evidence and actual Human execution approval for this Job before code. Bootstrap checklist status is not execution authorization; caller-supplied claims are not sufficient.',
             'Use authorize_project_scope(MUTATE_SOURCE) to check current Project-owned repository and development branch before source write; do not infer Human execution approval from scope ALLOW.',

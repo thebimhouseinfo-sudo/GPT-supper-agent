@@ -5,6 +5,7 @@ import { registerProjectRoleAddinsResolve } from './project-setup/role-addins.ts
 import { registerProjectBootstrapChecklistPrepare } from './project-setup/bootstrap-checklist.ts'
 import { registerProjectBootstrapReadinessPrepare } from './project-setup/bootstrap-readiness.ts'
 import { registerProjectBranchPolicyPrepare } from './project-setup/branch-policy.ts'
+import { registerWorkingBranchTools } from './project-setup/working-branch.ts'
 
 export function registerProjectSetupTools(deps: any) {
   registerProjectSetupPrepare(deps)
@@ -13,4 +14,5 @@ export function registerProjectSetupTools(deps: any) {
   registerProjectBootstrapChecklistPrepare(deps)
   registerProjectBootstrapReadinessPrepare(deps)
   registerProjectBranchPolicyPrepare(deps)
+  registerWorkingBranchTools(deps)
 }

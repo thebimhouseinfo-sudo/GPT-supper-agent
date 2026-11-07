@@ -166,6 +166,11 @@
       "facade": "project-setup-tools.ts"
     },
     {
+      "name": "working_branch_prepare",
+      "owner": "project-setup/working-branch.ts",
+      "facade": "project-setup-tools.ts"
+    },
+    {
       "name": "project_open",
       "owner": "project-lifecycle-tools.ts",
       "facade": "project-lifecycle-tools.ts"
