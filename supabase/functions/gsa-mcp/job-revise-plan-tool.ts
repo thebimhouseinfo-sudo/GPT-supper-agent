@@ -54,6 +54,7 @@ export function registerJobRevisePlanTool(deps: any) {
         completion_requirements: z.array(z.string()).optional(),
         verification_requirements: z.array(z.string()).optional(),
         review_triggers: z.array(z.string()).optional(),
+        linked_job_ids: z.array(z.string().uuid()).optional(),
         criteria_binding: CRITERIA_BINDING_SCHEMA.optional(),
         integration_branch: z.string().optional(),
         revision_reason: z.string().min(1),
@@ -74,7 +75,7 @@ export function registerJobRevisePlanTool(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
+    async ({ project_id, job_id, job_record_text, job_record_sha, objective, scope, non_goals, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, tasks, topology, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, linked_job_ids, criteria_binding, integration_branch, revision_reason, superseding_verification_record_text, superseding_verification_ref, superseding_claim_record_text, superseding_claim_record_sha }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to revise a Job plan.')
       let current: any
@@ -127,6 +128,13 @@ export function registerJobRevisePlanTool(deps: any) {
         }
       } else if (inProgressReviewRepair && !current.superseding_verification_ref) {
         return { content: [{ type: 'text', text: 'NEXT_PLAN_SUPERSESSION_REJECTED: review-repair revision has no originating supersession evidence.' }], isError: true }
+      }
+      if (linked_job_ids !== undefined &&
+          (new Set(linked_job_ids).size !== linked_job_ids.length ||
+           linked_job_ids.includes(job_id) ||
+           ((current.scope_predecessor_job_ids?.length || current.replacement_of_job_id) &&
+            JSON.stringify(linked_job_ids) !== JSON.stringify(current.linked_job_ids ?? [])))) {
+        return { content:[{type:'text',text:'JOB_UPSTREAM_LINK_INVALID: links must be unique external Job IDs; inherited replacement lineage is immutable.'}],isError:true }
       }
       if (executionContract === 'NEXT' && tasks !== undefined && topology === undefined) {
         return { content: [{ type: 'text', text: 'NEXT_EXECUTION_TOPOLOGY_REBIND_REQUIRED: revising Tasks must resupply execution topology for the same planning revision.' }], isError: true }
@@ -192,6 +200,7 @@ export function registerJobRevisePlanTool(deps: any) {
         completion_requirements: completion_requirements ?? current.completion_requirements,
         verification_requirements: verification_requirements ?? current.verification_requirements,
         review_triggers: review_triggers ?? current.review_triggers,
+        linked_job_ids: linked_job_ids ?? current.linked_job_ids ?? [],
         planning_revision: nextRevision,
         planning_review: { status: 'PENDING', reviewed_revision: null, verification_ref: null },
         supersedes_planning_revision: inProgressNextRevision ? current.planning_revision : current.supersedes_planning_revision ?? null,
