@@ -128,8 +128,13 @@ The registration freezes Project/Job/Task ownership, branch purpose,
 task dependencies, deliverables and merge/retire conditions across every
 lifecycle transition; a transition may add evidence but cannot rewrite
 the approved Task contract. For cross-Job convergence, the closure Job
-must link to the source Job and its Convergence Task must explicitly
-depend on the source Task.
+explicitly links to the source Job through `linked_job_ids` (or an existing
+Job-level dependency), and its Convergence Task lists the incoming Working
+Branch in `incoming_branches`. Task `dependencies` always reference Tasks
+in the **same Job**; foreign Task IDs cannot pass NEXT topology/Run checks.
+`job_prepare` supports explicit upstream Job links for normal Jobs;
+`job_revise_plan` can revise links through the ordinary plan review process,
+without changing inherited plan-replacement lineage.
 
 A duplicate Task branch is rejected, rather than silently created. Existing
 authorized branches should be reused. A new branch for that Task requires
@@ -150,6 +155,11 @@ requires an explicit `preservation_ref`, `preservation_owner` and
 
 For NEXT Run completion, the currently reviewed Job Task's
 `convergence_task` and `incoming_branches` must match the Run record.
+For each cross-Job incoming branch, M03 also checks that its current reviewed
+Job still links to the owning Job, and that the branch has the required final
+handoff/closure/merge evidence. An upstream Job's Task Run is **not** put
+into another Job's local Task prerequisite snapshots. External Git and Project
+Memory readback is still required to authenticate handoff/closure references.
 Stripping the Run flag or omitting an incoming branch cannot bypass M03
 closure. The normal Coder Goal Recheck and independent Tester/Reviewer
 requirements remain in force after Convergence checks pass.
