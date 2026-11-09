@@ -197,9 +197,16 @@ export function workingBranchTransitionError(previous: WorkingBranch, next: Work
   return null
 }
 
+// Job links are inter-Job prerequisites; Task dependencies remain local to
+// the owning Job and must never reference a Task in a different Job.
+function linksUpstreamJob(links: any[], owningJobId: string): boolean {
+  return links.some(dep => dep === owningJobId ||
+    dep?.job_id === owningJobId || dep?.depends_on === owningJobId)
+}
+
 export function convergenceCompletionError(
   branches: WorkingBranch[], projectId: string, jobId: string, taskId: string,
-  incoming: string[],
+  incoming: string[], linkedUpstreamJobs: any[] = [],
 ): string | null {
   if (!Array.isArray(incoming) || incoming.length === 0 || new Set(incoming).size !== incoming.length)
     return 'CONVERGENCE_INCOMING_INVALID: explicitly list unique incoming Working Branch names.'
@@ -209,6 +216,10 @@ export function convergenceCompletionError(
       incoming.some(name => !owned.some(b => b.branch === name)))
     return 'CONVERGENCE_ORPHAN_BRANCH: incoming and closure-owned branch sets must match.'
   for (const b of owned) {
+    if (b.owning_job_id !== jobId &&
+        !linksUpstreamJob(linkedUpstreamJobs, b.owning_job_id))
+      return 'CONVERGENCE_UPSTREAM_JOB_UNLINKED: ' + b.branch +
+        ' must reference its owning Job in the current Convergence Job.'
     // Convergence reads Project Memory state, not a replay of the transitions:
     // CLOSED/MERGED alone is not evidence that the guarded merge took place.
     if (b.status === 'CLOSED' && b.disposition === 'MERGED' &&
@@ -268,11 +279,14 @@ export function workingBranchTaskContractError(
       ...(closureJob.linked_job_ids ?? []),
       ...(closureJob.dependencies ?? []),
     ]
-    if (!linked.some((dep: any) =>
-      dep === ownerJob.job_id || dep?.job_id === ownerJob.job_id ||
-      dep?.depends_on === ownerJob.job_id) ||
-        !(closureTask.dependencies ?? []).includes(branch.owning_task_id))
-      return 'WORKING_BRANCH_JOB_DAG_INVALID: cross-Job Convergence requires explicit Job and Task dependency edges.'
+    if (!linksUpstreamJob(linked, ownerJob.job_id))
+      return 'WORKING_BRANCH_JOB_DAG_INVALID: cross-Job Convergence requires an explicit upstream Job link.'
+    // NEXT topology only allows dependencies on Tasks in this Job.
+    // Upstream Task completion is represented by the owning Job's
+    // handoff/branch evidence, not by an impossible foreign Task edge.
+    const closureTaskIds = new Set(closureJob.tasks.map((t: any) => t.task_id))
+    if ((closureTask.dependencies ?? []).some((id: string) => !closureTaskIds.has(id)))
+      return 'WORKING_BRANCH_CROSS_JOB_TASK_DEPENDENCY_INVALID: Convergence Task dependencies must belong to its own Job.'
   }
   if (closureTask.convergence_task !== true)
     return 'WORKING_BRANCH_CONVERGENCE_UNDECLARED: Closure Owner Task must be marked as Convergence.'
