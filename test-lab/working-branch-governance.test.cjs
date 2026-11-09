@@ -9,13 +9,13 @@ const ts = require('typescript')
 const root = path.join(__dirname, '../supabase/functions/gsa-mcp')
 const files = [
   'platform-utils.ts','project-utils.ts','branch-governance.ts',
-  'project-manifest-scope.ts','planning-preflight.ts',
+  'project-manifest-scope.ts','planning-preflight.ts','planning-guards.ts',
 ]
 const fn = new Set([
   'normalizeGithubRepo','validIntegrationBranch','isRetiredSourceBranch',
   'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError','workingBranchTaskContractError',
   'workingBranchTransitionError','convergenceCompletionError',
-  'parseProjectManifest','projectBootstrapExecutionError',
+  'parseProjectManifest','projectBootstrapExecutionError','validateExecutionTopology',
 ])
 const vars = new Set(['PROJECT_ID_PATTERN','STATUSES','DISPOSITIONS','SHA','requiredString','strings'])
 const snippets = []
@@ -198,6 +198,9 @@ test('source interfaces bind branch owner, Convergence ownership and independent
   assert.match(prepare,/workingBranchTransitionError/)
   assert.match(prepare,/authorize_memory_mutation/)
   assert.match(tools,/registerWorkingBranchTools\(deps\)/)
+  assert.match(read('job-prepare-tool.ts'),/linked_job_ids: scopeNew \?/)
+  assert.match(read('job-revise-plan-tool.ts'),/linked_job_ids: linked_job_ids \?\? current\.linked_job_ids/)
+  assert.match(completion,/owningNextJob\?\.linked_job_ids/)
   assert.doesNotMatch(prepare,/merge_pull_request\(/)
 })
 
@@ -231,19 +234,48 @@ test('Working Branch authorization uses reviewed Job/Task DAG and exact baseline
   assert.equal(h.workingBranchTaskContractError({...branch,development_head_sha:bsha,
     reconciliation_plan:'Rebase against verified current Development HEAD'},job,job,true),null)
 })
-test('Cross-Job Convergence owner requires explicit Job-level DAG edge',()=>{
-  const owner=approvedJob(),closure={
+test('Cross-Job Convergence uses a Job link and in-Job Task topology, not a foreign Task dependency',()=>{
+  const owner={...approvedJob(),tasks:[{task_id:'M01',dependencies:[],lifecycle:'READY'}]}
+  const closure={
     ...approvedJob(),job_id:'job-two',linked_job_ids:['job-one'],
-    tasks:[{task_id:'M03',convergence_task:true,dependencies:['M01'],
-      incoming_branches:['task/m01']}],
+    tasks:[{task_id:'M03',convergence_task:true,dependencies:[],
+      incoming_branches:['task/m01'],lifecycle:'READY'}],
   }
+  const topology=[{stage:1,handler:'coder',task_id:'M03',depends_on:[],next:null}]
   const branch=record('task/m01','M01',{closure_owner_job_id:'job-two',
     development_head_sha:sha})
+  assert.equal(h.validateExecutionTopology(closure.tasks,topology),null)
   assert.equal(h.workingBranchTaskContractError(branch,owner,closure,true),null)
   assert.match(h.workingBranchTaskContractError(branch,owner,
     {...closure,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
   assert.match(h.workingBranchTaskContractError(branch,owner,
+    {...closure,linked_job_ids:['other-job']},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
+  const foreign={...closure,tasks:[{...closure.tasks[0],dependencies:['M01']}]}
+  assert.match(h.validateExecutionTopology(foreign.tasks,
+    [{...topology[0],depends_on:['M01']}]),/EXECUTION_TOPOLOGY_INVALID/,
+    'NEXT Task dependencies cannot refer to a different Job')
+  assert.match(h.workingBranchTaskContractError(branch,owner,foreign,true),
+    /WORKING_BRANCH_CROSS_JOB_TASK_DEPENDENCY_INVALID/)
+  assert.match(h.workingBranchTaskContractError(branch,owner,
     {...closure,job_id:'wrong'},true),/WORKING_BRANCH_CLOSURE_JOB_INVALID/)
+})
+test('M03 cross-Job completion checks current Job link plus upstream handoff/evidence',()=>{
+  const incoming={...closed('task/m01','M01'),closure_owner_job_id:'job-two'}
+  assert.equal(h.convergenceCompletionError([incoming],id,'job-two','M03',
+    ['task/m01'],['job-one']),null)
+  assert.match(h.convergenceCompletionError([incoming],id,'job-two','M03',
+    ['task/m01']),/CONVERGENCE_UPSTREAM_JOB_UNLINKED/)
+  assert.match(h.convergenceCompletionError([incoming],id,'job-two','M03',
+    ['task/m01'],['another-job']),/CONVERGENCE_UPSTREAM_JOB_UNLINKED/)
+  assert.match(h.convergenceCompletionError([{...incoming,handoff_ref:null}],
+    id,'job-two','M03',['task/m01'],['job-one']),/CONVERGENCE_CLOSURE_PENDING/)
+  assert.match(h.convergenceCompletionError([{...incoming,review_ref:null}],
+    id,'job-two','M03',['task/m01'],['job-one']),/CONVERGENCE_MERGE_EVIDENCE_MISSING/)
+  assert.equal(h.convergenceCompletionError([
+    {...incoming,disposition:'RETIRED',review_ref:null,ci_ref:null,
+      dependencies_verified_ref:null,integration_sha:null,merge_authorization_ref:null}
+  ],id,'job-two','M03',['task/m01'],['job-one']),null,
+    'retired upstream work still needs a handoff but not merge-only evidence')
 })
 function loadRealRuntimeModule(file, cache=new Map()) {
   const absolute=path.resolve(root,file)
