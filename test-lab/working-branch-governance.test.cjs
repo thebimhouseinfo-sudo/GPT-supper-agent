@@ -293,6 +293,65 @@ function loadRealRuntimeModule(file, cache=new Map()) {
   }},{filename:absolute,timeout:2000})
   return module.exports
 }
+test('real job_prepare persists upstream Job links without foreign Task dependencies',async()=>{
+  const {registerJobPrepareTool}=loadRealRuntimeModule('job-prepare-tool.ts')
+  let handler
+  let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  const upstreamId='01a00000-0000-7000-8000-000000000001'
+  const newId='01a00000-0000-7000-8000-000000000002'
+  registerJobPrepareTool({
+    server:{registerTool:(name,schema,fn)=>{if(name==='job_prepare')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    readMemoryConfig:async()=>({data:{memory_repo_full_name:'thebimhouseinfo-sudo/GSA-Projects'}}),
+    normalizeGithubRepo:h.normalizeGithubRepo,
+    resolveExecutionContract:v=>v,nextMemoryNamespaceForRequest:()=> 'TEST_LAB',
+    jobCreationExecutionContractDefault:()=> 'NEXT',uuidv7:()=>newId,
+    validIntegrationBranch:h.validIntegrationBranch,
+    projectCriteriaBindingError:()=>null,
+    validateExecutionTopology:h.validateExecutionTopology,
+    normalizeNextPlanningModel:()=>({evidence_needs:[],test_checkpoints:[],
+      evidence_requirements:[],milestones:[],planning_topology:[]}),
+    validateNextPlanningModel:()=>null,
+    jobHandle:()=> 'J-TEST',recordPath:()=> 'TEST/JOBS/'+newId+'.json',
+    prettyJson:JSON.stringify,
+    planningLoopContinuationDecision:()=>({next_action_after_readback:'REVIEW_CURRENT_REVISION'}),
+  })
+  assert.equal(typeof handler,'function')
+  const args={
+    project_id:id,type:'code',objective:'Cross-Job M03 Convergence',
+    scope:['Handoff from reviewed upstream Job'],non_goals:[],
+    execution_contract:'NEXT',plan_kind:'JOB',integration_branch:dev,
+    work_context:'NEW',phase:'CONVERGENCE',milestone:'M03',
+    relationship_scan_summary:'A reviewed upstream Job produces an incoming branch',
+    job_sizing:{size:'SMALL'},brownfield_logic_review:[],relationship_assessment:[],
+    repository_structure_evidence:['Scoped GSA repository'],
+    selected_source_evidence:[],project_repository_mode:'SINGLE',
+    registered_repositories:[repo],working_repository_url:repo,
+    cross_repo_impact:[{repository_url:repo,impact:'NONE',reason:'Single repo'}],
+    tasks:[{task_id:'M03',objective:'Integrate and close incoming Working Branch',
+      dependencies:[],scope:[],required_skills:[],
+      completion_criteria:['All incoming branches have verified dispositions'],
+      convergence_task:true,incoming_branches:['task/m01']}],
+    evidence_needs:[],test_checkpoints:[],evidence_requirements:[],
+    milestones:[],planning_topology:[],completion_requirements:['M03 finished'],
+    verification_requirements:[],review_triggers:[],linked_job_ids:[upstreamId],
+  }
+  const good=await handler(args)
+  assert.equal(good.isError,undefined)
+  const job=JSON.parse(good.structuredContent.job_record_text)
+  assert.equal(job.lifecycle,'DRAFT')
+  assert.equal(job.planning_review.status,'PENDING',
+    'upstream linkage never substitutes for planning Reviewer PASS')
+  assert.deepEqual(Array.from(job.linked_job_ids),[upstreamId])
+  assert.deepEqual(Array.from(job.tasks[0].dependencies),[])
+  assert.equal(h.validateExecutionTopology(job.tasks,job.topology),null)
+  const bad=await handler({...args,tasks:[{...args.tasks[0],dependencies:['M01']}]})
+  assert.match(bad.content[0].text,/EXECUTION_TOPOLOGY_INVALID/)
+  const duplicate=await handler({...args,linked_job_ids:[upstreamId,upstreamId]})
+  assert.match(duplicate.content[0].text,/JOB_UPSTREAM_LINK_INVALID/)
+})
+
 test('prepare tool rejects duplicate active Task branch and validates authorization snapshots',async()=>{
   const {registerWorkingBranchTools}=loadRealRuntimeModule('project-setup/working-branch.ts')
   let handler
