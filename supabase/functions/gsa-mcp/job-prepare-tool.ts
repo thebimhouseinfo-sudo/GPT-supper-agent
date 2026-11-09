@@ -77,6 +77,8 @@ export function registerJobPrepareTool(deps: any) {
         completion_requirements: z.array(z.string()).min(1),
         verification_requirements: z.array(z.string()).default([]),
         review_triggers: z.array(z.string()).default([]),
+        // Existing Job-level linkage; never put foreign Task IDs in dependencies.
+        linked_job_ids: z.array(z.string().uuid()).default([]),
         // Optional LLC58 replacement: only a durable reviewed Plan intent may
         // reserve a preallocated replacement Job ID.
         // U-B: fresh, non-1:1 topology after the entire reviewed scope is
@@ -112,7 +114,7 @@ export function registerJobPrepareTool(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     } as any,
-    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, replacement_context, scope_change_context }: any) => {
+    async ({ project_id, type, objective, scope, non_goals, execution_contract, plan_kind, criteria_binding, integration_branch, work_context, phase, milestone, relationship_scan_summary, job_sizing, brownfield_logic_review, relationship_assessment, repository_structure_evidence, selected_source_evidence, project_repository_mode, registered_repositories, working_repository_url, cross_repo_impact, product_workflow, temporary_ui, collected_ui_requirements, ui_update_pack_trigger, temporary_ui_human_approval, tasks, evidence_needs, test_checkpoints, evidence_requirements, milestones, planning_topology, completion_requirements, verification_requirements, review_triggers, linked_job_ids, replacement_context, scope_change_context }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to prepare a Job.')
       const { data } = await readMemoryConfig(auth)
@@ -245,6 +247,10 @@ export function registerJobPrepareTool(deps: any) {
         return { content: [{ type: 'text', text: 'Provided Criteria binding is invalid for this Project.' }], isError: true }
       }
       const jobId = scopeNew?.successorId ?? replacement?.item?.replacement?.job_id ?? uuidv7()
+      if ((linked_job_ids ?? []).length &&
+          (scopeNew || replacement || linked_job_ids.includes(jobId) ||
+           new Set(linked_job_ids).size !== linked_job_ids.length))
+        return { content: [{ type:'text', text:'JOB_UPSTREAM_LINK_INVALID: Job links must be unique external Job IDs and must not override a reviewed replacement lineage.' }], isError:true }
       const now = new Date().toISOString()
       const normalizedTasks = tasks.map((task: any) => ({
         task_id: task.task_id || uuidv7(),
@@ -346,7 +352,7 @@ export function registerJobPrepareTool(deps: any) {
         },
         lifecycle: 'DRAFT',
         result: null,
-        linked_job_ids: scopeNew ? scopeNew.predecessors : replacement ? [replacement.predecessor.job_id] : [],
+        linked_job_ids: scopeNew ? scopeNew.predecessors : replacement ? [replacement.predecessor.job_id] : (linked_job_ids ?? []),
         created_at: now,
         updated_at: now,
       }
