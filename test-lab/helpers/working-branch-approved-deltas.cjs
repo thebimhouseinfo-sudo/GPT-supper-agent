@@ -106,7 +106,8 @@ const APPROVED={
         "          return { content: [{ type: 'text', text: 'CONVERGENCE_MANIFEST_REQUIRED: exact active Project manifest and blob SHA are required.' }], isError: true }",
         "        }",
         "        const closureError = convergenceCompletionError(manifest.working_branches, project_id, job_id,",
-        "          current.primary_task_id ?? '', current.incoming_branches ?? [])",
+        "          current.primary_task_id ?? '', current.incoming_branches ?? [],",
+        "          [...(owningNextJob?.linked_job_ids ?? []), ...(owningNextJob?.dependencies ?? [])])",
         "        if (closureError) return { content: [{ type: 'text', text: closureError }], isError: true }",
         "      }"
       ]
