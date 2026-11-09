@@ -13,7 +13,7 @@ const files = [
 ]
 const fn = new Set([
   'normalizeGithubRepo','validIntegrationBranch','isRetiredSourceBranch',
-  'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError','workingBranchTaskContractError',
+  'parseRetiredBranchRows','parseWorkingBranchRows','workingBranchWriteError','workingBranchTaskContractError','linksUpstreamJob',
   'workingBranchTransitionError','convergenceCompletionError',
   'parseProjectManifest','projectBootstrapExecutionError','validateExecutionTopology',
 ])
@@ -420,7 +420,7 @@ test('branch purpose, owner and merge/retire contracts remain immutable across l
       /BRANCH_IDENTITY_IMMUTABLE/,key+' must be immutable')
   }
 })
-test('cross-Job convergence requires BOTH Job edge and Task dependency',()=>{
+test('cross-Job convergence requires upstream Job link and forbids foreign Task dependency',()=>{
   const owner=approvedJob()
   const closure={
     ...approvedJob(),job_id:'job-two',linked_job_ids:['job-one'],
@@ -429,12 +429,12 @@ test('cross-Job convergence requires BOTH Job edge and Task dependency',()=>{
   }
   const branch=record('task/m01','M01',{closure_owner_job_id:'job-two',
     development_head_sha:sha})
-  assert.match(h.workingBranchTaskContractError(branch,owner,closure,true),
-    /WORKING_BRANCH_JOB_DAG_INVALID/)
-  const valid={...closure,tasks:[{...closure.tasks[0],dependencies:['M01']}]}
-  assert.equal(h.workingBranchTaskContractError(branch,owner,valid,true),null)
+  assert.equal(h.workingBranchTaskContractError(branch,owner,closure,true),null)
+  const invalid={...closure,tasks:[{...closure.tasks[0],dependencies:['M01']}]}
+  assert.match(h.workingBranchTaskContractError(branch,owner,invalid,true),
+    /WORKING_BRANCH_CROSS_JOB_TASK_DEPENDENCY_INVALID/)
   assert.match(h.workingBranchTaskContractError(branch,owner,
-    {...valid,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
+    {...closure,linked_job_ids:[]},true),/WORKING_BRANCH_JOB_DAG_INVALID/)
 })
 
 test('source guard denies registered branch without verified baseline and divergence plan',()=>{
