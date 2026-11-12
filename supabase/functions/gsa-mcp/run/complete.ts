@@ -93,12 +93,21 @@ export function registerRunComplete(deps: any) {
       }
       // Enforce the reviewed Job's Task identity, not only the mutable Run
       // record flag: a stale or stripped convergence bit must never bypass M03.
-      if (role === 'coder' && lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
+      if (lifecycle === 'COMPLETED' && executionContract === 'NEXT') {
         const owningTask = owningNextJob?.tasks?.find((t: any) => t.task_id === current.primary_task_id)
+        // Compare the durable Job and Run for every role: stripping the flag cannot
+        // make a legacy non-Coder Convergence Run behave like an ordinary review.
         if (Boolean(owningTask?.convergence_task) !== Boolean(current.convergence_task) ||
             (owningTask?.convergence_task === true &&
              JSON.stringify(owningTask.incoming_branches ?? []) !== JSON.stringify(current.incoming_branches ?? []))) {
           return { content: [{ type: 'text', text: 'CONVERGENCE_TASK_BINDING_MISMATCH: current Run must match reviewed Job Convergence Task/incoming branches.' }], isError: true }
+        }
+        for (const taskId of [current.primary_task_id, ...(current.affected_task_refs ?? [])]) {
+          const task = owningNextJob?.tasks?.find((t: any) => t.task_id === taskId)
+          const stage = owningNextJob?.topology?.find((s: any) => s.task_id === taskId)
+          if (task?.convergence_task === true && (role !== 'coder' || stage?.handler !== 'coder')) {
+            return { content: [{ type: 'text', text: 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.' }], isError: true }
+          }
         }
       }
       // Convergence is a Task responsibility, not a background cleanup Job.

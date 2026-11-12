@@ -29,6 +29,9 @@ export function validateExecutionTopology(tasks: any[], topology: any[]): string
     }
     const stage = topology.find((item: any) => item.task_id === task.task_id)
     if (!stage || !validHandlers.has(stage.handler)) return 'EXECUTION_TOPOLOGY_INVALID: every Task requires one valid execution handler.'
+    if (task.convergence_task === true && stage.handler !== 'coder') {
+      return 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.'
+    }
     if (!sameStringSet(stage.depends_on ?? [], deps)) return 'EXECUTION_TOPOLOGY_INVALID: topology depends_on must match the owning Task dependencies.'
     if (stage.next != null && (!taskIdSet.has(stage.next) || stage.next === task.task_id)) {
       return 'EXECUTION_TOPOLOGY_INVALID: topology next must be null or another current Task ID.'

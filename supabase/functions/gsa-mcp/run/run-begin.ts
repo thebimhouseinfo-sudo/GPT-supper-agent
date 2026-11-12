@@ -97,6 +97,15 @@ export function registerRunBegin(deps: any) {
         const dispatchTaskIds = primary_task_id
           ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]
           : []
+        // A legacy or forged reviewed Job must not dispatch a non-Coder Convergence Task,
+        // including one carried through affected_task_refs rather than the primary Task.
+        for (const taskId of dispatchTaskIds) {
+          const task = (owningJob.tasks ?? []).find((item: any) => item.task_id === taskId)
+          const stage = (owningJob.topology ?? []).find((item: any) => item.task_id === taskId)
+          if (task?.convergence_task === true && (role !== 'coder' || stage?.handler !== 'coder')) {
+            return { content: [{ type: 'text', text: 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.' }], isError: true }
+          }
+        }
         resolvedRequiredSkills = resolveRequiredTaskSkills(owningJob, dispatchTaskIds)
         if (resolvedRequiredSkills.error) {
           return { content: [{ type: 'text', text: resolvedRequiredSkills.error }], isError: true }
