@@ -141,10 +141,28 @@ const APPROVED={
     }
   ]
 }
+// FIR-01: exact reviewed guard edits are removed before testing historical
+// GSA3 extraction parity. These snapshots are byte-pinned, never blanket ignores.
+const FIR01_APPROVED={
+  "run/run-begin.ts": {
+    "before": "        const dispatchTaskIds = primary_task_id\n          ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]\n          : []\n",
+    "after": "        const dispatchTaskIds = primary_task_id\n          ? [primary_task_id, ...((affected_task_refs ?? []).filter((id: string) => id !== primary_task_id))]\n          : []\n        // A legacy or forged reviewed Job must not dispatch a non-Coder Convergence Task,\n        // including one carried through affected_task_refs rather than the primary Task.\n        for (const taskId of dispatchTaskIds) {\n          const task = (owningJob.tasks ?? []).find((item: any) => item.task_id === taskId)\n          const stage = (owningJob.topology ?? []).find((item: any) => item.task_id === taskId)\n          if (task?.convergence_task === true && (role !== 'coder' || stage?.handler !== 'coder')) {\n            return { content: [{ type: 'text', text: 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.' }], isError: true }\n          }\n        }\n"
+  },
+  "run/complete.ts": {
+    "before": "      if (role === 'coder' && lifecycle === 'COMPLETED' && executionContract === 'NEXT') {\n        const owningTask = owningNextJob?.tasks?.find((t: any) => t.task_id === current.primary_task_id)\n        if (Boolean(owningTask?.convergence_task) !== Boolean(current.convergence_task) ||\n            (owningTask?.convergence_task === true &&\n             JSON.stringify(owningTask.incoming_branches ?? []) !== JSON.stringify(current.incoming_branches ?? []))) {\n          return { content: [{ type: 'text', text: 'CONVERGENCE_TASK_BINDING_MISMATCH: current Run must match reviewed Job Convergence Task/incoming branches.' }], isError: true }\n        }\n      }\n",
+    "after": "      if (lifecycle === 'COMPLETED' && executionContract === 'NEXT') {\n        const owningTask = owningNextJob?.tasks?.find((t: any) => t.task_id === current.primary_task_id)\n        // Compare the durable Job and Run for every role: stripping the flag cannot\n        // make a legacy non-Coder Convergence Run behave like an ordinary review.\n        if (Boolean(owningTask?.convergence_task) !== Boolean(current.convergence_task) ||\n            (owningTask?.convergence_task === true &&\n             JSON.stringify(owningTask.incoming_branches ?? []) !== JSON.stringify(current.incoming_branches ?? []))) {\n          return { content: [{ type: 'text', text: 'CONVERGENCE_TASK_BINDING_MISMATCH: current Run must match reviewed Job Convergence Task/incoming branches.' }], isError: true }\n        }\n        for (const taskId of [current.primary_task_id, ...(current.affected_task_refs ?? [])]) {\n          const task = owningNextJob?.tasks?.find((t: any) => t.task_id === taskId)\n          const stage = owningNextJob?.topology?.find((s: any) => s.task_id === taskId)\n          if (task?.convergence_task === true && (role !== 'coder' || stage?.handler !== 'coder')) {\n            return { content: [{ type: 'text', text: 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.' }], isError: true }\n          }\n        }\n      }\n"
+  }
+}
+function normalizeFir01Delta(file,source){
+ const pair=FIR01_APPROVED[file]
+ if(!pair)return source
+ assert.equal(source.split(pair.after).length,2,file+': exact FIR-01 guard delta missing/duplicate/modified')
+ return source.replace(pair.after,pair.before)
+}
 function normalizeWorkingBranchDelta(file,source){
  const hunks=APPROVED[file]
  assert.ok(hunks, 'no approved Working Branch delta for: '+file)
- let normalized=source
+ let normalized=normalizeFir01Delta(file,source)
  for(let i=hunks.length-1;i>=0;i--){
   const h=hunks[i]
   const added=h.add.join('\n')+'\n'

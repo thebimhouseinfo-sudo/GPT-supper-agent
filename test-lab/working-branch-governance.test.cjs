@@ -442,7 +442,12 @@ test('real Run completion cannot strip Convergence Task flag or bypass orphan br
     jobExecutionContract:j=>j.execution_contract,
     parseDurableSnapshots:()=>({error:null,entries:[]}),
   })
-  const job={...approvedJob(),execution_contract:'NEXT',memory_namespace:'PRODUCTION'}
+  const job={...approvedJob(),execution_contract:'NEXT',memory_namespace:'PRODUCTION',
+    topology:[
+      {stage:1,handler:'coder',task_id:'M01',depends_on:[],next:'M02'},
+      {stage:2,handler:'coder',task_id:'M02',depends_on:[],next:'M03'},
+      {stage:3,handler:'coder',task_id:'M03',depends_on:['M01','M02'],next:null},
+    ]}
   const run={project_id:id,job_id:'job-one',run_id:'run-one',role:'coder',
     lifecycle:'IN_PROGRESS',execution_contract:'NEXT',
     memory_namespace:'PRODUCTION',planning_revision:1,
