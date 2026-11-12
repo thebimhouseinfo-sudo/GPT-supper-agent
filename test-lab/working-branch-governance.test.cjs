@@ -353,6 +353,13 @@ test('real job_prepare persists upstream Job links without foreign Task dependen
   assert.match(bad.content[0].text,/EXECUTION_TOPOLOGY_INVALID/)
   const duplicate=await handler({...args,linked_job_ids:[upstreamId,upstreamId]})
   assert.match(duplicate.content[0].text,/JOB_UPSTREAM_LINK_INVALID/)
+  const invalidReview=await handler({...args,type:'review'})
+  assert.match(invalidReview.content[0].text,/CONVERGENCE_HANDLER_INVALID/,
+    'real job_prepare must never create a Reviewer-owned Convergence Task')
+  const ordinaryReview=await handler({...args,type:'review',
+    tasks:[{...args.tasks[0],convergence_task:false,incoming_branches:undefined}]})
+  assert.equal(ordinaryReview.isError,undefined,
+    'ordinary non-Convergence Reviewer Job remains valid')
 })
 
 test('prepare tool rejects duplicate active Task branch and validates authorization snapshots',async()=>{
@@ -463,6 +470,137 @@ test('real Run completion cannot strip Convergence Task flag or bypass orphan br
     project_manifest_sha:sha})
   assert.match(allClosed.content[0].text,/CODER_COMPLETION_BLOCKED/,
     'After passing Convergence closure, ordinary Coder Goal Recheck guard must still apply')
+})
+
+
+test('FIR-01 rejects non-Coder Convergence ownership in the shared NEXT topology validator',()=>{
+  const task={task_id:'M03',dependencies:[],convergence_task:true,
+    incoming_branches:['task/m01']}
+  const stage=handler=>({stage:1,handler,task_id:'M03',depends_on:[],next:null})
+  for(const role of ['planner','designer','reviewer','tester']){
+    assert.match(h.validateExecutionTopology([task],[stage(role)]),
+      /CONVERGENCE_HANDLER_INVALID/,role)
+  }
+  assert.equal(h.validateExecutionTopology([task],[stage('coder')]),null)
+  assert.equal(h.validateExecutionTopology(
+    [{...task,convergence_task:false}],[stage('reviewer')]),null)
+})
+
+test('FIR-01 real job_revise_plan rejects a non-Coder Convergence topology',async()=>{
+  const {registerJobRevisePlanTool}=loadRealRuntimeModule('job-revise-plan-tool.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerJobRevisePlanTool({
+    server:{registerTool:(name,schema,fn)=>{if(name==='job_revise_plan')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],CRITERIA_BINDING_SCHEMA:z,
+    PLANNING_LOOP_CONTINUATION_SCHEMA:z,EVIDENCE_NEED_SCHEMA:z,TEST_CHECKPOINT_SPEC_SCHEMA:z,
+    EVIDENCE_REQUIREMENT_SCHEMA:z,MILESTONE_SCHEMA:z,PLANNING_TOPOLOGY_NODE_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    jobExecutionContract:j=>j.execution_contract,recordNextMemoryNamespace:j=>j.memory_namespace,
+    projectCriteriaBindingError:()=>null,revisedJobIntegrationBranchError:()=>null,
+    validateExecutionTopology:h.validateExecutionTopology,
+    normalizeNextPlanningModel:()=>({evidence_needs:[],test_checkpoints:[],
+      evidence_requirements:[],milestones:[],planning_topology:[]}),
+    validateNextPlanningModel:()=>null,recordPath:()=> 'TEST/JOBS/job-one.json',
+    planningLoopContinuationDecision:()=>({next_action_after_readback:'REVIEW_CURRENT_REVISION'}),
+    prettyJson:JSON.stringify,
+  })
+  assert.equal(typeof handler,'function')
+  const current={...approvedJob(),lifecycle:'DRAFT',execution_contract:'NEXT',
+    memory_namespace:'TEST_LAB',plan_kind:'JOB',criteria_binding:null,
+    repository_context:{integration_branch:dev},
+    tasks:[{task_id:'M03',dependencies:[],convergence_task:true,
+      incoming_branches:['task/m01'],lifecycle:'READY'}],
+    topology:[{stage:1,handler:'coder',task_id:'M03',depends_on:[],next:null}]}
+  const invalidTopology=[{...current.topology[0],handler:'reviewer'}]
+  const bad=await handler({project_id:id,job_id:'job-one',
+    job_record_text:JSON.stringify(current),job_record_sha:sha,
+    topology:invalidTopology,revision_reason:'FIR-01 negative real-handler regression'})
+  assert.match(bad.content[0].text,/CONVERGENCE_HANDLER_INVALID/)
+})
+
+test('FIR-01 real run_begin rejects legacy non-Coder Convergence including affected Tasks',async()=>{
+  const {registerRunBegin}=loadRealRuntimeModule('run/run-begin.ts')
+  const {nextDispatchPreflightError}=loadRealRuntimeModule('run-dispatch-closure-guards.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerRunBegin({
+    server:{registerTool:(name,schema,fn)=>{if(name==='run_begin')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    jobExecutionContract:j=>j.execution_contract,recordNextMemoryNamespace:j=>j.memory_namespace,
+    parseDurableSnapshots:()=>({error:null,entries:[]}),
+    resolveRequiredTaskSkills:()=>({names:[],contexts:[],error:null}),
+    nextDispatchPreflightError,evaluateNextEvidenceGate:()=>({allowed:true,blocking:[]}),
+    uxFirstTemporaryUiGateRequired:()=>false,normalizeGithubRepo:h.normalizeGithubRepo,
+    projectBootstrapExecutionError:()=>null,
+    uuidv7:()=> '01a00000-0000-7000-8000-000000000009',
+    runHandle:()=> 'R-TEST',recordPath:()=> 'TEST/RUNS/new.json',
+    prettyJson:JSON.stringify,durableSnapshotReadbackSteps:()=>[],
+  })
+  const plain={task_id:'M01',dependencies:[],lifecycle:'READY'}
+  const converge={task_id:'M03',dependencies:[],lifecycle:'READY',
+    convergence_task:true,incoming_branches:['task/m01']}
+  const reviewed={job_id:'job-one',project_id:id,lifecycle:'READY',
+    execution_contract:'NEXT',memory_namespace:'TEST_LAB',planning_revision:1,
+    planning_review:{status:'PASS',reviewed_revision:1},
+    tasks:[plain,converge],topology:[
+      {stage:1,handler:'reviewer',task_id:'M01',depends_on:[],next:'M03'},
+      {stage:2,handler:'reviewer',task_id:'M03',depends_on:[],next:null},
+    ]}
+  const args={project_id:id,job_id:'job-one',job_record_text:JSON.stringify(reviewed),
+    job_record_sha:sha,current_job_record_sha:sha,planning_revision:1,role:'reviewer',
+    primary_task_id:'M03',scope_claim:['read-only'],target_ref:repo,
+    target_revision:sha,affected_task_refs:[]}
+  const badPrimary=await handler(args)
+  assert.match(badPrimary.content[0].text,/CONVERGENCE_HANDLER_INVALID/)
+  const badAffected=await handler({...args,primary_task_id:'M01',
+    affected_task_refs:['M03']})
+  assert.match(badAffected.content[0].text,/CONVERGENCE_HANDLER_INVALID/)
+  const good=await handler({...args,primary_task_id:'M01',affected_task_refs:[]})
+  assert.equal(good.isError,undefined,'ordinary Reviewer dispatch must remain valid')
+})
+
+test('FIR-01 real run_complete fails closed for legacy non-Coder Convergence and forged flags',async()=>{
+  const {registerRunComplete}=loadRealRuntimeModule('run/complete.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerRunComplete({
+    server:{registerTool:(name,schema,fn)=>{if(name==='run_complete')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    resolveExecutionContract:x=>x,recordNextMemoryNamespace:r=>r.memory_namespace,
+    jobExecutionContract:j=>j.execution_contract,
+    parseDurableSnapshots:()=>({error:null,entries:[]}),
+    validateRunVerificationSnapshot:()=>({error:null,ref:'V/reviewer'}),
+    recordPath:()=> 'TEST/RUNS/run-one.json',
+    prettyJson:JSON.stringify,uuidv7:()=> '01a00000-0000-7000-8000-000000000009',
+    durableSnapshotReadbackSteps:()=>[],
+  })
+  const task={task_id:'M03',dependencies:[],convergence_task:true,
+    incoming_branches:['task/m01'],lifecycle:'READY'}
+  const job={job_id:'job-one',project_id:id,lifecycle:'READY',
+    execution_contract:'NEXT',memory_namespace:'PRODUCTION',planning_revision:1,
+    tasks:[task],topology:[{stage:1,handler:'reviewer',task_id:'M03',
+      depends_on:[],next:null}]}
+  const run={project_id:id,job_id:'job-one',run_id:'run-one',role:'reviewer',
+    lifecycle:'IN_PROGRESS',execution_contract:'NEXT',memory_namespace:'PRODUCTION',
+    planning_revision:1,primary_task_id:'M03',convergence_task:true,
+    incoming_branches:['task/m01'],target_ref:repo,target_revision:sha}
+  const args={project_id:id,job_id:'job-one',run_id:'run-one',role:'reviewer',
+    run_record_sha:sha,job_record_text:JSON.stringify(job),job_record_sha:sha,
+    lifecycle:'COMPLETED',result:'PASS',output_refs:[],verification_refs:['V/reviewer'],
+    run_verification_snapshot:{path:'V/reviewer',sha,record_text:'{}'}}
+  const call=(r,changes={})=>handler({...args,...changes,run_record_text:JSON.stringify(r)})
+  const invalid=await call(run)
+  assert.match(invalid.content[0].text,/CONVERGENCE_HANDLER_INVALID/)
+  const stripped=await call({...run,convergence_task:false})
+  assert.match(stripped.content[0].text,/CONVERGENCE_TASK_BINDING_MISMATCH/)
+  const changedNames=await call({...run,incoming_branches:['task/forged']})
+  assert.match(changedNames.content[0].text,/CONVERGENCE_TASK_BINDING_MISMATCH/)
+  const failed=await call(run,{lifecycle:'FAILED',result:'FAIL',
+    verification_refs:[],run_verification_snapshot:undefined})
+  assert.equal(failed.isError,undefined,'failed Runs can still settle without fake closure')
 })
 
 test('branch purpose, owner and merge/retire contracts remain immutable across lifecycle',()=>{
