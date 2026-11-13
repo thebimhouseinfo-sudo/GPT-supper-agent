@@ -102,6 +102,9 @@ export function registerRunBegin(deps: any) {
         for (const taskId of dispatchTaskIds) {
           const task = (owningJob.tasks ?? []).find((item: any) => item.task_id === taskId)
           const stage = (owningJob.topology ?? []).find((item: any) => item.task_id === taskId)
+          if (task?.convergence_task === true && taskId !== primary_task_id) {
+            return { content: [{ type: 'text', text: 'CONVERGENCE_PRIMARY_TASK_REQUIRED: Convergence Task must be the primary Run Task.' }], isError: true }
+          }
           if (task?.convergence_task === true && (role !== 'coder' || stage?.handler !== 'coder')) {
             return { content: [{ type: 'text', text: 'CONVERGENCE_HANDLER_INVALID: Convergence Task must be Coder-owned.' }], isError: true }
           }
