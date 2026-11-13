@@ -219,8 +219,10 @@ const bootstrapExecution = load('projectBootstrapExecutionError', {
   projectBootstrapReadinessDecision: bootstrapReadiness,
   parseProjectManifest: () => ({project_id:cadProjectId,lifecycle:'ACTIVE',
     repositories:[{relation:'OWNED',url:cadRepo}],
-    branch_policies:[{repository_url:cadRepo,development_branch:cadBranch}]}),
-  normalizeGithubRepo:u=>({url:u}),validIntegrationBranch:b=>b===cadBranch
+    branch_policies:[{repository_url:cadRepo,development_branch:cadBranch,release_branch:'main',status:'CONFIGURED'}],
+    retired_branches:[],working_branches:[]}),
+  normalizeGithubRepo:u=>({url:u}),validIntegrationBranch:b=>b===cadBranch,
+  isRetiredSourceBranch:()=>false,workingBranchWriteError:()=> 'SOURCE_BRANCH_INVALID: unregistered fixture branch.'
 });
 function admission(data) {
   return bootstrapExecution(cadProjectId,'verified manifest fixture',data,cadRepo,cadBranch);
@@ -317,6 +319,7 @@ const parseProjectManifestWithRetirement = load('parseProjectManifest', {
   validIntegrationBranch: validBranchName,
   parseRetiredBranchRows,
   isRetiredSourceBranch,
+  parseWorkingBranchRows:()=>[],
 });
 const retirementRepo = 'https://github.com/org/repo';
 const retirementRecord = '- ' + retirementRepo + ' | branch=old-feature | sha=' + sha + ' | status=RETIRED';

@@ -83,7 +83,7 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
     ['registerExecutionCursorTools','execution-cursor-tools.ts',['execution_cursor_prepare','execution_cursor_resume_evaluate','execution_recovery_evaluate','orchestration_progress_evaluate']],
     ['registerBrowserTestTools','browser-test-tools.ts',['browser_ui_inspect','browser_test_flow']],
     ['registerProjectSetupTools','project-setup-tools.ts',[
-      'project_setup_prepare','project_criteria_advice_check','project_role_addins_resolve','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','project_branch_policy_prepare']],
+      'project_setup_prepare','project_criteria_advice_check','project_role_addins_resolve','project_bootstrap_checklist_prepare','project_bootstrap_readiness_prepare','project_branch_policy_prepare','working_branch_prepare']],
     ['registerProjectLifecycleTools','project-lifecycle-tools.ts',[
       'project_open', 'project_status', 'project_pause', 'project_resume', 'project_archive', 'project_delete']],
     ['registerProjectManagementTools','project-management-tools.ts',[
@@ -110,5 +110,5 @@ test('MCP public tool names retain the pinned static-plus-transition order',()=>
   const names=positions.sort((a,b)=>a.pos-b.pos).map(x=>x.name)
   assert.deepEqual(names,pinned.names)
   assert.equal(new Set(names).size,names.length)
-  assert.equal(names.length,58)
+  assert.equal(names.length,59)
 })

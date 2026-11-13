@@ -112,6 +112,9 @@ export function registerProjectAuthorizationTools(deps: any) {
         target_memory_path: z.string().min(1).optional(),
         user_directed_external_read: z.boolean().default(false),
         target_development_branch: z.string().optional(),
+        target_source_branch: z.string().optional(),
+        source_job_id: z.string().optional(),
+        source_task_id: z.string().optional(),
         bootstrap_evidence: z.any().optional(),
       },
       outputSchema: {
@@ -127,12 +130,15 @@ export function registerProjectAuthorizationTools(deps: any) {
       _meta: { securitySchemes: [{ type: 'oauth2', scopes: AUTH_SCOPES }] },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     } as any,
-    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read, target_development_branch, bootstrap_evidence }: any) => {
+    async ({ project_id, project_manifest_text, project_manifest_sha, operation, target_repository_url, target_memory_path, user_directed_external_read, target_development_branch, target_source_branch, source_job_id, source_task_id, bootstrap_evidence }: any) => {
       const auth = await authContext(req)
       if (!auth) return authError(req, 'Authentication required to authorize Project scope.')
       if (operation === 'MUTATE_SOURCE') {
-        const blocked = projectBootstrapExecutionError(project_id, project_manifest_text, bootstrap_evidence,
-          target_repository_url ?? null, target_development_branch ?? null)
+        const blocked = target_source_branch && target_development_branch && target_source_branch !== target_development_branch
+          ? 'SOURCE_BRANCH_AMBIGUOUS: conflicting source branch arguments.'
+          : projectBootstrapExecutionError(project_id, project_manifest_text, bootstrap_evidence,
+              target_repository_url ?? null, target_source_branch ?? target_development_branch ?? null,
+              source_job_id && source_task_id ? { job_id: source_job_id, task_id: source_task_id } : null)
         if (blocked) {
           const denied = { allowed: false, mutation_allowed: false, scope: 'NONE', reason: blocked, project_id, project_manifest_sha,
             external_steps: ['Source mutation denied by Project ownership or development branch scope.'] }
@@ -151,7 +157,7 @@ export function registerProjectAuthorizationTools(deps: any) {
         external_steps: operation === 'MUTATE_SOURCE' ? [
           'This checks Project ownership/branch scope only; ALLOW does not authorize a Job execution or attest Human approval.',
           'Before executing a Job, independently verify its current reviewed Plan and real Human execution authorization; do not infer execution permission from Bootstrap or caller-provided boolean.',
-          'Verify live target source HEAD is on the configured Development Branch; do not write or merge to the Release Branch by inference.',
+          'Verify live target branch HEAD, registered owner Job/Task for any Working Branch, and exact current Project manifest; the configured Development Branch remains integration target. Never infer main/default.',
         ] : [] }
       return { structuredContent: out, content: [{ type: 'text', text: (decision.allowed ? 'ALLOW SCOPE (readback required): ' : 'DENY: ') + decision.reason }] }
     },

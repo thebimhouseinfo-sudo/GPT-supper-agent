@@ -97,8 +97,10 @@ function register(file,fn,depsExtra={}){
   const js=toJS(read(file));
   const init=vm.runInNewContext(js+'\n'+fn,{JSON,Date,Array,Set,Map,Number,String,exports:{},
     require:(name)=>{
-      assert.equal(name,'./decision-fidelity.ts','U-B source registration may import only the reviewed U-A decision helper');
-      return fidelityExports;
+      if(name==='./decision-fidelity.ts') return fidelityExports;
+      if(name==='../project-manifest-scope.ts') return {parseProjectManifest:()=>null};
+      if(name==='../branch-governance.ts') return {convergenceCompletionError:()=>null};
+      assert.fail('U-B source registration imported an unreviewed module: '+name);
     }});
   const schema=stubZ().object({});
   init({...deps,...depsExtra,z:stubZ(),req:{},AUTH_SCOPES:[],

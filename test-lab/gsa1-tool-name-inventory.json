@@ -35,6 +35,7 @@
     "project_bootstrap_checklist_prepare",
     "project_bootstrap_readiness_prepare",
     "project_branch_policy_prepare",
+    "working_branch_prepare",
     "project_open",
     "project_status",
     "project_pause",

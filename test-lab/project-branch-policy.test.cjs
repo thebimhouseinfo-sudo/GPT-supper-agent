@@ -17,14 +17,14 @@ const parseErrors = ast.parseDiagnostics.filter(d => d.category === ts.Diagnosti
 assert.equal(parseErrors.length, 0, parseErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('; '))
 
 const names = [
-  'parseRetiredBranchRows', 'isRetiredSourceBranch', 'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
+  'parseRetiredBranchRows', 'parseWorkingBranchRows', 'workingBranchWriteError', 'isRetiredSourceBranch', 'normalizeGithubRepo', 'validMemoryPath', 'validProjectManifestPath',
   'validIntegrationBranch', 'revisedJobIntegrationBranchError', 'parseProjectManifest', 'resolveProjectRoleAddins', 'projectCriteriaBindingError', 'milestoneCrlEvidenceError', 'milestoneLoopDecision',
   'resolveProjectCriteriaIntake', 'projectTaskCapabilityAssessment', 'projectBootstrapReadinessDecision',
   'formatAdvisorAdviceReceipt', 'parseAdvisorAdviceReceipts', 'projectCriteriaAdvisoryDecision', 'projectBootstrapExecutionError',
   'edgeFunctionSlug', 'runtimeSurface', 'nextMemoryNamespaceForRequest', 'jobCreationExecutionContractDefault'
 ]
 const extracted = []
-const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts','planning-preflight.ts','project-manifest-scope.ts'].map(file =>
+const sources = [ast, ...['project-utils.ts','platform-utils.ts','advisor-receipt.ts','planning-guards.ts','bootstrap.ts','runtime-contract.ts','planning-preflight.ts','project-manifest-scope.ts','branch-governance.ts'].map(file =>
   ts.createSourceFile(file,
     fs.readFileSync(path.join(__dirname,'../supabase/functions/gsa-mcp/',file),'utf8'),
     ts.ScriptTarget.Latest,true,ts.ScriptKind.TS))]
@@ -34,7 +34,7 @@ for (const owner of sources) {
     if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
       extracted.push(node.getText(owner).replace(/^export\s+/, ''))
     if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d =>
-      ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX'].includes(d.name.getText(owner))))
+      ['PROJECT_ID_PATTERN','ADVISOR_RECEIPT_SCOPE_MAX','STATUSES','DISPOSITIONS','SHA','requiredString','strings'].includes(d.name.getText(owner))))
       extracted.push(node.getText(owner).replace(/^export\s+/, ''))
   }
 }
