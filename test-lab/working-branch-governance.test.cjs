@@ -608,6 +608,84 @@ test('FIR-01 real run_complete fails closed for legacy non-Coder Convergence and
   assert.equal(failed.isError,undefined,'failed Runs can still settle without fake closure')
 })
 
+
+test('FIR-01 Coder Run cannot dispatch Convergence only as affected Task',async()=>{
+  const {registerRunBegin}=loadRealRuntimeModule('run/run-begin.ts')
+  const {nextDispatchPreflightError}=loadRealRuntimeModule('run-dispatch-closure-guards.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerRunBegin({
+    server:{registerTool:(name,schema,fn)=>{if(name==='run_begin')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    jobExecutionContract:j=>j.execution_contract,recordNextMemoryNamespace:j=>j.memory_namespace,
+    parseDurableSnapshots:()=>({error:null,entries:[]}),
+    resolveRequiredTaskSkills:()=>({names:[],contexts:[],error:null}),
+    nextDispatchPreflightError,evaluateNextEvidenceGate:()=>({allowed:true,blocking:[]}),
+    uxFirstTemporaryUiGateRequired:()=>false,normalizeGithubRepo:h.normalizeGithubRepo,
+    projectBootstrapExecutionError:()=>null,
+    uuidv7:()=> '01a00000-0000-7000-8000-000000000009',
+    runHandle:()=> 'R-TEST',recordPath:()=> 'TEST/RUNS/new.json',
+    prettyJson:JSON.stringify,durableSnapshotReadbackSteps:()=>[],
+  })
+  const job={job_id:'job-one',project_id:id,lifecycle:'READY',
+    execution_contract:'NEXT',memory_namespace:'TEST_LAB',planning_revision:1,
+    planning_review:{status:'PASS',reviewed_revision:1},
+    tasks:[
+      {task_id:'M01',dependencies:[],lifecycle:'READY'},
+      {task_id:'M03',dependencies:[],lifecycle:'READY',
+        convergence_task:true,incoming_branches:['task/m01']}],
+    topology:[
+      {stage:1,handler:'coder',task_id:'M01',depends_on:[],next:'M03'},
+      {stage:2,handler:'coder',task_id:'M03',depends_on:[],next:null}],
+    repository_context:{working_repository_url:repo,integration_branch:dev}}
+  const result=await handler({
+    project_id:id,job_id:'job-one',job_record_text:JSON.stringify(job),
+    job_record_sha:sha,current_job_record_sha:sha,planning_revision:1,
+    role:'coder',primary_task_id:'M01',affected_task_refs:['M03'],
+    scope_claim:['non-convergence Coder Run cannot close downstream branch'],
+    target_ref:repo,target_revision:sha,
+  })
+  assert.equal(result.isError,true,'affected Convergence must not silently dispatch under a non-Convergence primary')
+  assert.match(result.content[0].text,/CONVERGENCE_PRIMARY_TASK_REQUIRED/)
+})
+
+test('FIR-01 Coder Run cannot complete an affected-only Convergence without branch closure',async()=>{
+  const {registerRunComplete}=loadRealRuntimeModule('run/complete.ts')
+  let handler;let z;z=new Proxy(function(){return z},{get:()=>z,apply:()=>z})
+  registerRunComplete({
+    server:{registerTool:(name,schema,fn)=>{if(name==='run_complete')handler=fn}},
+    z,req:{},AUTH_SCOPES:[],DURABLE_RECORD_SNAPSHOT_SCHEMA:z,
+    authContext:async()=>({user_id:'tester'}),
+    authError:(_req,message)=>({isError:true,content:[{type:'text',text:message}]}),
+    resolveExecutionContract:x=>x,recordNextMemoryNamespace:r=>r.memory_namespace,
+    jobExecutionContract:j=>j.execution_contract,
+    parseDurableSnapshots:()=>({error:null,entries:[]}),
+  })
+  const job={job_id:'job-one',project_id:id,lifecycle:'READY',
+    execution_contract:'NEXT',memory_namespace:'PRODUCTION',planning_revision:1,
+    tasks:[
+      {task_id:'M01',dependencies:[],lifecycle:'READY'},
+      {task_id:'M03',dependencies:[],lifecycle:'READY',
+        convergence_task:true,incoming_branches:['task/m01']}],
+    topology:[
+      {stage:1,handler:'coder',task_id:'M01',depends_on:[],next:'M03'},
+      {stage:2,handler:'coder',task_id:'M03',depends_on:[],next:null}]}
+  const run={project_id:id,job_id:'job-one',run_id:'run-one',role:'coder',
+    lifecycle:'IN_PROGRESS',execution_contract:'NEXT',memory_namespace:'PRODUCTION',
+    planning_revision:1,primary_task_id:'M01',affected_task_refs:['M03'],
+    target_ref:repo,target_revision:sha}
+  const result=await handler({
+    project_id:id,job_id:'job-one',run_id:'run-one',role:'coder',
+    run_record_text:JSON.stringify(run),run_record_sha:sha,
+    job_record_text:JSON.stringify(job),job_record_sha:sha,
+    lifecycle:'COMPLETED',result:'PASS',output_refs:[],verification_refs:[],
+  })
+  assert.equal(result.isError,true)
+  assert.match(result.content[0].text,/CONVERGENCE_PRIMARY_TASK_REQUIRED/,
+    'completion must reject an affected-only closing Task before ordinary Coder Goal Recheck')
+})
+
 test('branch purpose, owner and merge/retire contracts remain immutable across lifecycle',()=>{
   const a=record('task/m01','M01',{status:'ACTIVE'})
   const next={...a,status:'READY_FOR_HANDOFF',handoff_ref:'H/M03',final_head_sha:sha}
